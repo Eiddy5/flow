@@ -1,0 +1,40 @@
+{
+  "options": {
+    "apns_production": false,
+    "classification": 0,
+    "sendno": "1736332409",
+    "third_party_channel": {
+      "asus": {
+        "skip_quota": true
+      },
+      "honor": {
+        "skip_quota": true
+      },
+      "huawei": {
+        "category": "IM",
+        "channel_id": "",
+        "importance": "NORMAL",
+        "receipt_id": "",
+        "skip_quota": true
+      },
+      "meizu": {
+        "skip_quota": true
+      },
+      "oppo": {
+        "category": "",
+        "channel_id": "",
+        "skip_quota": true
+      },
+      "vivo": {
+        "callback_id": "",
+        "category": "TODO",
+        "skip_quota": true
+      },
+      "xiaomi": {
+        "channel_id": "131776",
+        "skip_quota": true
+      }
+    },
+    "time_to_live": 86400
+  }
+}

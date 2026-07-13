@@ -1,0 +1,34 @@
+[versions]
+micronaut-plugins = "4.6.2"
+shadow = "8.3.9"
+paas-library = "1.0.0.19"
+hikaricp = "7.1.0"
+
+[libraries]
+micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" } # 可以看到这些依赖是没有版本号的，因为它们只接受我们平台管理
+micronaut-serde-processor = { module = "io.micronaut.serde:micronaut-serde-processor" }
+micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
+micronaut-discovery-client = { module = "io.micronaut.discovery:micronaut-discovery-client" }
+micronaut-serde-jackson = { module = "io.micronaut.serde:micronaut-serde-jackson" }
+logback-classic = { module = "ch.qos.logback:logback-classic" }
+snakeyaml = { module = "org.yaml:snakeyaml" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+paas-json = { module = "org.paas:paas-json" }
+lombok = { module = "org.projectlombok:lombok" }
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+org-paas-all = { module = "org.paas:paas-all" }
+org-x9-cloud-library = { module = "org.paas:paas-library", version.ref = "paas-library" }
+org-paas-service-all = { module = "org.paas.service:paas-service-all" }
+grpc-inprocess = { module = "io.grpc:grpc-inprocess" }
+grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded" }
+jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension" }
+micronaut-jooq = { module = "io.micronaut.sql:micronaut-jooq" }
+micronaut-jdbc-hikari = { module = "io.micronaut.sql:micronaut-jdbc-hikari" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+
+[plugins]
+micronaut-application = { id = "io.micronaut.application", version.ref = "micronaut-plugins" }
+micronaut-aot = { id = "io.micronaut.aot", version.ref = "micronaut-plugins" }
+micronaut-test-resources = { id = "io.micronaut.test-resources", version.ref = "micronaut-plugins" }
+micronaut-library = { id = "io.micronaut.library", version.ref = "micronaut-plugins" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

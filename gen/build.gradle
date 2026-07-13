@@ -1,0 +1,31 @@
+plugins {
+    id 'org.flow.build.base'
+    alias(libs.plugins.micronaut.library)
+}
+
+configurations.configureEach {
+    exclude group: "io.micronaut.data"
+    exclude group: "jakarta.persistence"
+}
+
+dependencies {
+    compileOnly libs.lombok
+    annotationProcessor libs.lombok
+    runtimeOnly(libs.logback.classic)
+
+    // Trino JDBC Driver
+    runtimeOnly 'io.trino:trino-jdbc:477'
+
+    // 为了解决 temporal sdk 的旧版本grpc不兼容问题  此处手动引入我们的版本
+    api libs.grpc.inprocess
+    api libs.grpc.netty.shaded
+
+    api(libs.jooq.codegen.extension)
+    api(libs.micronaut.jooq)
+    api(libs.micronaut.jdbc.hikari)
+
+}
+
+test {
+    useJUnitPlatform()
+}

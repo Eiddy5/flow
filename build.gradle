@@ -1,0 +1,7 @@
+plugins {
+    alias(libs.plugins.micronaut.application) apply false
+    alias(libs.plugins.micronaut.library) apply false
+    alias(libs.plugins.micronaut.aot) apply false
+    alias(libs.plugins.micronaut.test.resources) apply false
+    alias(libs.plugins.shadow) apply false
+}

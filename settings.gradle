@@ -1,0 +1,24 @@
+pluginManagement {
+    repositories {
+        maven {
+            url = uri("http://maven.wehanyu.com:8082/artifactory/java3/")
+            allowInsecureProtocol = true
+        }
+        gradlePluginPortal()
+        mavenCentral()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+            allowInsecureProtocol = true
+        }
+        maven {
+            url "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+}
+
+
+rootProject.name = "flow"
+
+
+include("gen")
+include("server")

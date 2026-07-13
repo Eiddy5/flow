@@ -1,0 +1,71 @@
+plugins {
+    id 'org.flow.build.base'
+    alias(libs.plugins.micronaut.application)
+    alias(libs.plugins.shadow)
+    alias(libs.plugins.micronaut.aot)
+    id 'java-library'
+}
+
+version = "0.1"
+group = "org.cses.flow"
+
+// 将代码中的 repositories 替换为如下所示
+repositories {
+    maven {
+        url = uri("http://maven.wehanyu.com:8082/artifactory/java3/")    //uri可也配置到gradle.properties中当一个变量方便多模块引用
+        allowInsecureProtocol = true
+    }
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+dependencies {
+    annotationProcessor(libs.micronaut.http.validation)
+    implementation(libs.micronaut.http.client)
+    implementation(libs.micronaut.discovery.client)
+    api(libs.paas.json)
+    api(libs.opentelemetry.exporter.otlp)
+    runtimeOnly(libs.logback.classic)
+    runtimeOnly(libs.snakeyaml)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+application {
+    mainClass = "org.cses.flow.Application"
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion("21")
+    targetCompatibility = JavaVersion.toVersion("21")
+}
+
+graalvmNative.toolchainDetection = false
+
+micronaut {
+    runtime("netty")
+    testRuntime("junit5")
+    processing {
+        incremental(true)
+        annotations("org.cses.flow.*")
+    }
+    aot {
+        optimizeServiceLoading = false
+        convertYamlToJava = false
+        precomputeOperations = true
+        cacheEnvironment = true
+        optimizeClassLoading = true
+        deduceEnvironment = true
+        optimizeNetty = true
+        replaceLogbackXml = true
+    }
+}
+
+tasks.named("dockerfileNative") {
+    jdkVersion = "21"
+}
+
+tasks.configureEach {
+    if (name in ["shadowJar", "optimizedJitJarAll"]) {
+        zip64 = true
+    }
+}

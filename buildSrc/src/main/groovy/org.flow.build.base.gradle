@@ -1,0 +1,42 @@
+plugins {
+    id 'java-library'
+}
+
+repositories {
+    maven {
+        url repoUrl
+        allowInsecureProtocol = true
+    }
+    mavenCentral()
+}
+
+
+configurations.configureEach {
+    exclude group: "io.netty", module: "netty-transport-native-io_uring"
+    exclude group: "io.netty", module: "netty-transport-classes-io_uring"
+    resolutionStrategy {
+        force(libs.hikaricp)
+    }
+}
+
+dependencies {
+    implementation(libs.org.paas.all)
+    implementation(libs.org.x9.cloud.library)
+    implementation(libs.org.paas.service.all) {
+        exclude group: 'xpp3', module: 'xpp3'
+        exclude group: 'xpp3', module: 'xpp3_min'
+        exclude group: 'xmlpull', module: 'xmlpull'
+        exclude group: 'pull-parser', module: 'pull-parser'
+    }
+
+    testImplementation libs.snakeyaml
+
+}
+
+java {
+    withSourcesJar()
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
