@@ -31,6 +31,23 @@ public final class Process {
         this.startedAt = Instant.now();
     }
 
+    private Process(Process source) {
+        this.id = source.id;
+        this.flowId = source.flowId;
+        this.flowKey = source.flowKey;
+        this.flowVersion = source.flowVersion;
+        this.startedAt = source.startedAt;
+        this.variables = new LinkedHashMap<>(source.variables);
+        source.executors.forEach((id, executor) -> executors.put(id, executor.copy()));
+        this.state = source.state;
+        this.rootExecutorId = source.rootExecutorId;
+        this.endedAt = source.endedAt;
+    }
+
+    public Process copy() {
+        return new Process(this);
+    }
+
     public Executor createRootExecutor(String executorId, Node startNode) {
         if (rootExecutorId != null) {
             throw new IllegalStateException("Process already has a root Executor: " + id);
@@ -62,6 +79,14 @@ public final class Process {
         }
         state = ProcessState.COMPLETED;
         endedAt = Instant.now();
+    }
+
+    public void completeIfPossible() {
+        if (executors.isEmpty() || executors.values().stream()
+                .anyMatch(executor -> executor.state() != ExecutorState.COMPLETED)) {
+            return;
+        }
+        complete();
     }
 
     public String id() {

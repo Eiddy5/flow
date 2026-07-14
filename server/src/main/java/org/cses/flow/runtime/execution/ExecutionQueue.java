@@ -5,14 +5,14 @@ import java.util.Objects;
 
 public final class ExecutionQueue {
 
-    private final ArrayDeque<ExecutionOperation> operations = new ArrayDeque<>();
+    private final ArrayDeque<EngineOperation> operations = new ArrayDeque<>();
 
-    public void plan(ExecutionOperation operation) {
+    public void plan(EngineOperation operation) {
         operations.addLast(Objects.requireNonNull(operation, "operation"));
     }
 
-    public ExecutionOperation poll() {
-        ExecutionOperation operation = operations.pollFirst();
+    public EngineOperation poll() {
+        EngineOperation operation = operations.pollFirst();
         if (operation == null) {
             throw new IllegalStateException("ExecutionQueue is empty");
         }

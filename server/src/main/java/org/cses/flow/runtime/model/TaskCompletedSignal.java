@@ -5,19 +5,13 @@ import java.util.Objects;
 
 public record TaskCompletedSignal(
         String taskId,
-        String processId,
-        String executorId,
-        String activityId,
-        Map<String, Object> payload,
+        Map<String, Object> result,
         String operatorId,
-        String idempotencyKey) {
+        String idempotencyKey) implements Signal {
 
     public TaskCompletedSignal {
         Objects.requireNonNull(taskId, "taskId");
-        Objects.requireNonNull(processId, "processId");
-        Objects.requireNonNull(executorId, "executorId");
-        Objects.requireNonNull(activityId, "activityId");
-        payload = Map.copyOf(Objects.requireNonNull(payload, "payload"));
+        result = Map.copyOf(Objects.requireNonNull(result, "result"));
         Objects.requireNonNull(operatorId, "operatorId");
         Objects.requireNonNull(idempotencyKey, "idempotencyKey");
     }

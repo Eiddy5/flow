@@ -151,7 +151,7 @@ CE-002
 - `FlowEngine.start(flowId)` 的版本选择规则必须沿用核心设计。
 - 人工等待期间 Activity 保持 running。
 - Executor 是游标，由 Process 创建和管理。
-- ExecutionRunner 只执行已经安排的 ExecutionOperation。
+- ExecutionRunner 只按 FIFO 执行已经安排的 EngineOperation。
 - 外部 complete 不能指定目标 Node 或 Edge。
 
 ### 第二步：确定文档边界

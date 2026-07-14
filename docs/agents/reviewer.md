@@ -26,7 +26,7 @@ Reviewer 开始工作前，必须按顺序读取：
 
 1. 项目根目录 `AGENTS.md`。
 2. `docs/agents/verifier.md`，理解验证文档的结构和编号规则。
-3. `docs/decisions/2026-07-09-workflow-core-architecture.md`。
+3. `docs/decisions/2026-07-14-workflow-core-architecture-v2.md`。
 4. `docs/verification/README.md`。
 5. 用户指定的 verification 文档。
 6. verification 文档映射的生产代码和测试代码。
@@ -96,15 +96,19 @@ Reviewer 优先使用 Gradle Wrapper，并按以下顺序执行：
 - Flow、Node 和 Edge 不保存运行状态。
 - deployed Flow 不会被 Process 运行过程修改。
 - Process 创建和管理 Executor。
-- FlowEngine 不直接构造 Executor。
+- FlowEngine 只依赖 CommandExecutor，不查询 Flow 或运行实体。
 - CommandExecutor 创建第一个 CommandOperation。
-- ExecutionRunner 只执行 ExecutionOperation。
+- ExecutionRunner 只按 FIFO 执行 EngineOperation。
 - ExecutionQueue 为空时本次运行调用结束。
+- ExecutionQueue 属于 CommandContext，FlowContext 不持有队列或事务。
+- DefinitionSession 和 RuntimeSession 绑定同一个 EngineTransaction。
+- Operation 在职责阶段通过 RuntimeSession 立即写入，CommandContext 最终只提交一次。
 - 人工等待不阻塞线程。
 - 人工等待期间 Activity 保持 running，Executor 为 waiting。
 - complete 不接受目标 Node 或 Edge。
 - Process 绑定实际启动的 flowId 和 flowVersion。
-- 内存 Repository 之间的数据不会跨 Process 污染。
+- RuntimeQuery 不进入 start 或 complete 运行主链。
+- 内存事务回滚后不会残留 Process、Activity 或 Task。
 
 架构边界违反即使暂时没有导致测试失败，也必须作为发现报告。
 
@@ -167,8 +171,8 @@ BLOCKED      因环境、依赖或规范歧义无法完成验证
 使用代码搜索找到：
 
 - 场景涉及的公开入口。
-- Command、ExecutionOperation 和 ActivityBehavior。
-- Repository 实现。
+- Command、EngineOperation 和 ActivityBehavior。
+- Session、Transaction、Query 及其 Adapter 实现。
 - 对应测试类和测试方法。
 
 记录每条 PASS 对应的测试证据；没有证据的条目先标记 NOT_COVERED。
@@ -241,7 +245,7 @@ Reviewer 不允许：
 - 未经执行或静态证据确认就记录反例。
 - 直接修改生产代码修复发现的问题。
 - 在验收过程中重构无关代码。
-- 使用数据库替代 MVP 明确要求的内存 Repository。
+- 使用数据库替代第一阶段明确要求的内存 Session Adapter。
 - 忽略失败测试或只报告最后一个失败。
 - 修改已经确认的核心架构概念。
 - 删除已有反例；修复后只能更新处理和复验结果。
@@ -274,4 +278,3 @@ Reviewer 的输出必须按以下顺序组织：
 - 实际反例已经按 CE 编号记录。
 - 已有反例已经复验或明确仍未修复。
 - 没有通过修改验收规范掩盖实现问题。
-

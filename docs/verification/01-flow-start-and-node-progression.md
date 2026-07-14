@@ -8,7 +8,7 @@ VER-FLOW-001
 
 ## 前置条件
 
-1. 每个场景开始前清空所有内存 Repository。
+1. 每个场景使用独立的 InMemoryRuntimeState。
 2. START、ACTION、WAIT 和 END 已注册对应的 ActivityBehavior。
 3. ACTION 使用无副作用的 `noop` 测试行为，执行后立即返回 completed。
 4. WAIT 使用 `config.completion.mode = manual`，进入后创建 manual Task。
@@ -67,10 +67,10 @@ START -> WAIT_A -> ACTION_A -> WAIT_B -> END
 2. ACTION_A 和 ACTION_B 的 `config.executor` 都设置为 `noop`。
 3. 部署 Flow，记录 deployed `flowId` 和 `version`。
 4. 调用 `FlowEngine.start(flowId)`。
-5. 根据返回的 processId 查询 Process。
+5. 根据返回的 processId 通过 RuntimeQuery 查询 Process。
 6. 查询该 Process 的全部 Executor、Activity 和 Task。
 7. 记录 Activity 的 nodeId、state、startedAt 和 endedAt。
-8. 检查本次 FlowContext 的 ExecutionQueue 是否已经清空。
+8. 检查本次 CommandContext 的 ExecutionQueue 是否已经清空。
 
 ### 场景 S2 的验证方式
 
@@ -82,7 +82,7 @@ START -> WAIT_A -> ACTION_A -> WAIT_B -> END
 6. 使用 taskId、operatorId、result 和唯一 idempotencyKey 调用 `TaskService.complete(...)`。
 7. 查询 complete 后的 Process、Executor、Activity 和 Task。
 8. 再次查询全部 Activity，确认实际经过的 Node 顺序。
-9. 检查 start 和 complete 两次运行调用结束后的 ExecutionQueue。
+9. 检查 start 和 complete 两个 CommandContext 的 ExecutionQueue。
 
 ### 场景 S3 的验证方式
 
@@ -174,4 +174,3 @@ START -> WAIT_A -> ACTION_A -> WAIT_B -> END
 - 影响：如果实现分别读取不同路径，同一个 WAIT Node 可能在校验阶段被认为合法，但在运行时无法识别为人工节点，或者无法创建 Task。
 - 处理结论：统一使用 `config.completion.mode = manual`，并同步修正核心设计和验证文档。
 - 复验结果：核心设计的人工节点说明、Node JSON 示例和本验证文档现已使用相同配置路径。
-

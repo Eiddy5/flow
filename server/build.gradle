@@ -69,3 +69,9 @@ tasks.configureEach {
         zip64 = true
     }
 }
+
+tasks.withType(Test).configureEach {
+    testLogging {
+        showStandardStreams = true
+    }
+}

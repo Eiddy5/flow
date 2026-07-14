@@ -1,14 +1,13 @@
 package org.cses.flow.runtime.execution;
 
-import org.cses.flow.runtime.context.FlowContext;
+import org.cses.flow.runtime.context.CommandContext;
 
 public final class ExecutionRunner {
 
-    public void execute(FlowContext flowContext) {
-        ExecutionQueue queue = flowContext.executionQueue();
+    public void execute(CommandContext commandContext) {
+        ExecutionQueue queue = commandContext.executionQueue();
         while (!queue.isEmpty()) {
-            ExecutionOperation operation = queue.poll();
-            operation.execute(flowContext);
+            queue.poll().execute(commandContext);
         }
     }
 }

@@ -24,6 +24,20 @@ public final class Executor {
         this.updatedAt = createdAt;
     }
 
+    private Executor(Executor source) {
+        this.id = source.id;
+        this.processId = source.processId;
+        this.parentId = source.parentId;
+        this.currentNodeId = source.currentNodeId;
+        this.state = source.state;
+        this.createdAt = source.createdAt;
+        this.updatedAt = source.updatedAt;
+    }
+
+    Executor copy() {
+        return new Executor(this);
+    }
+
     public void moveTo(Node node) {
         requireState(ExecutorState.ACTIVE);
         currentNodeId = Objects.requireNonNull(node, "node").id();

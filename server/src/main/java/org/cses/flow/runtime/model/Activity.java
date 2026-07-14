@@ -29,6 +29,22 @@ public final class Activity {
         this.startedAt = Instant.now();
     }
 
+    private Activity(Activity source) {
+        this.id = source.id;
+        this.processId = source.processId;
+        this.executorId = source.executorId;
+        this.nodeId = source.nodeId;
+        this.nodeType = source.nodeType;
+        this.state = source.state;
+        this.outputVariables = Map.copyOf(source.outputVariables);
+        this.startedAt = source.startedAt;
+        this.endedAt = source.endedAt;
+    }
+
+    public Activity copy() {
+        return new Activity(this);
+    }
+
     public void complete(Map<String, Object> outputVariables) {
         if (state != ActivityState.RUNNING) {
             throw new IllegalStateException("Only running Activity can complete: " + id);
