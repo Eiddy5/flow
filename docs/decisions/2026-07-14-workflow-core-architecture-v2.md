@@ -94,6 +94,7 @@ Edge
 ```text
 Process
 Executor
+Execution
 Activity
 Task
 Signal
@@ -444,7 +445,7 @@ Executor 推进期间直接读取对象关系，不根据 nodeId 或 edgeId 查�
 
 ### Process
 
-Process 是一个 Flow 启动后产生的流程进程，也是 Executor 的创建者和管理者。
+Process 是一个 Flow 启动后产生的流程进程，也是 Executor 的创建者和管理者。一个流程实例只创建一个 Process，Process 记录整条流程实例的生命周期状态。
 
 建议字段：
 
@@ -478,9 +479,11 @@ TERMINATED
 
 Process 不设置 WAITING。人工等待期间 Process 仍为 RUNNING。
 
+流程内仍有任意 Executor 处于 ACTIVE、WAITING 或 SUSPENDED 时，Process 保持 RUNNING。全部执行路径结束后，Process 回填最终状态和 endedAt。
+
 ### Executor
 
-Executor 是 Process 中沿 Flow 图移动的运行游标。
+Executor 是 Process 中沿一条 Flow 路径推进的内存运行对象。它保存当前命令执行期间所需的游标、状态和父子关系，并通过 Execution 进入 RuntimeSession。
 
 建议字段：
 
@@ -488,11 +491,12 @@ Executor 是 Process 中沿 Flow 图移动的运行游标。
 id
 processId
 parentId
+executionId
 currentNodeId
 state
+children
 createdAt
 updatedAt
-revision
 ```
 
 状态：
@@ -516,6 +520,44 @@ TERMINATED
 ```
 
 只有 Process 可以创建 Executor。
+
+线性流程只有一个根 Executor。并行分支、子流程或多实例需要独立推进时，当前 Executor 为每条执行路径创建子 Executor；子路径再次分叉时继续创建下一层子 Executor。Executor 通过 parentId 和 children 组成树，每个 Executor 只跟踪自己所在路径的生命周期。
+
+### Execution
+
+Process 创建 Executor 时同时创建与其一一对应的 Execution。Execution 进入 RuntimeSession 后，在同一个 Executor 的后续推进中持续更新。
+
+建议字段：
+
+```text
+id
+processId
+executorId
+parentExecutionId
+currentNodeId
+activeActivityId
+state
+createdAt
+updatedAt
+revision
+```
+
+Execution.state 与对应 Executor.state 使用相同状态集合。parentExecutionId 与 Executor.parentId 表达同一层级关系，由全部 Execution 组成可恢复的执行树。
+
+以下运行变化完成后更新对应 Execution：
+
+```text
+创建 Executor
+进入 Node 并建立当前 Activity
+经过 Edge 并移动到目标 Node
+进入或离开 WAITING
+创建或结束子 Executor
+进入 SUSPENDED、COMPLETED、FAILED 或 TERMINATED
+```
+
+状态变化、Execution 写入和后续 Operation 的安排位于同一个 CommandContext 中。Operation 在 RuntimeSession 完成 Execution 写入后，才能安排依赖该状态的下一个 Operation。
+
+恢复运行时，RuntimeSession 加载 Process、Execution 树以及当前 Activity、Task 等关联数据，根据每个 Execution 重建 Executor，并按 parentExecutionId 恢复父子关系。重建后的 Executor.id、位置、状态和层级必须与 Execution 一致；已有 Process 仍按 process.flowId 加载原 Flow 版本。
 
 ### Activity
 
@@ -626,11 +668,25 @@ targetEdgeId
 
 ## 状态不变量
 
+### Executor 与 Execution
+
+```text
+每个 Executor 恰好对应一个 Execution
+每个 Execution 恰好恢复一个 Executor
+根 Executor.parentId 和根 Execution.parentExecutionId 均为空
+子 Executor.parentId 对应父 Executor.id
+子 Execution.parentExecutionId 对应父 Execution.id
+Executor 与 Execution 的 processId、currentNodeId 和 state 一致
+```
+
+流程推进只更新当前 Executor 对应的 Execution。只有 Process 创建新 Executor 时才创建新的 Execution。
+
 ### 人工等待稳定状态
 
 ```text
 Process.state  = RUNNING
 Executor.state = WAITING
+Execution.state = WAITING
 Activity.state = RUNNING
 Task.state     = CREATED 或 CLAIMED
 Queue          = EMPTY
@@ -644,6 +700,9 @@ Task.executorId = Executor.id
 Task.activityId = Activity.id
 Task.nodeId     = Activity.nodeId
 Executor.currentNodeId = Activity.nodeId
+Execution.executorId = Executor.id
+Execution.currentNodeId = Executor.currentNodeId
+Execution.activeActivityId = Activity.id
 ```
 
 第一阶段同一个人工 Activity 只能存在一个有效 Task。
@@ -654,6 +713,7 @@ Executor.currentNodeId = Activity.nodeId
 
 ```text
 当前 Executor COMPLETED
+-> 对应 Execution COMPLETED
 -> Process 检查全部 Executor
 -> 不存在 ACTIVE、WAITING、SUSPENDED Executor
 -> Process COMPLETED
@@ -667,14 +727,21 @@ Executor.currentNodeId = Activity.nodeId
 | --- | --- |
 | 创建 Process | StartFlowCommand |
 | 创建根 Executor | Process |
+| 创建根 Execution | StartFlowCommand |
+| 创建子 Executor | Process |
+| 创建子 Execution | 创建子 Executor 的 Operation |
 | 创建 Activity | EnterNodeOperation |
 | Activity 完成 | LeaveNodeOperation |
 | 创建 Task | EnterNodeOperation 的 WAIT 分支 |
 | Executor 进入 WAITING | EnterNodeOperation |
+| Execution 记录 WAITING | EnterNodeOperation |
 | Task 完成 | ResumeNodeOperation |
 | Executor 恢复 ACTIVE | ResumeNodeOperation |
+| Execution 记录 ACTIVE | ResumeNodeOperation |
 | Executor 移动 Node | TraverseEdgeOperation |
+| Execution 记录 Node 位置 | EnterNodeOperation、TraverseEdgeOperation |
 | Executor 完成 | EndProcessOperation |
+| Execution 完成 | EndProcessOperation |
 | Process 完成 | Process 自身判断 |
 
 实体不提供任意 setter，只提供带状态校验的意图方法。
@@ -731,7 +798,7 @@ attributes
 
 FlowContext 不持有 Repository，不创建事务，不拥有 Command 结果，也不负责最终 commit。
 
-FlowContext 不保存唯一 currentExecutor。每个 Operation 明确携带自己的 Executor、Node、Activity 或 Edge。
+FlowContext 不保存唯一 currentExecutor。每个 Operation 明确携带自己的 Executor、Execution、Node、Activity 或 Edge。
 
 ### OperationContext
 
@@ -769,6 +836,7 @@ ResumeTarget 是人工任务恢复所需运行对象的组合：
 public record ResumeTarget(
         Process process,
         Executor executor,
+        Execution execution,
         Activity activity,
         Task task) {
 }
@@ -802,13 +870,21 @@ public interface RuntimeSession {
 
     ResumeTarget loadResumeTarget(String taskId);
 
+    Process loadProcess(String processId);
+
+    List<Execution> loadExecutions(String processId);
+
     void insert(Process process);
+
+    void insert(Execution execution);
 
     void insert(Activity activity);
 
     void insert(Task task);
 
     void update(Process process);
+
+    void update(Execution execution);
 
     void update(Activity activity);
 
@@ -880,6 +956,8 @@ DatabaseRuntimeQuery
 public interface RuntimeQuery {
 
     Optional<Process> findProcess(String processId);
+
+    List<Execution> findExecutions(String processId);
 
     List<Activity> findActivities(String processId);
 
@@ -1001,6 +1079,8 @@ public void execute(CommandContext context) {
 校验 Executor ACTIVE 且位于目标 Node
 -> 创建 Activity(RUNNING)
 -> RuntimeSession.insert(activity)
+-> Execution 记录 currentNodeId、activeActivityId 和 ACTIVE
+-> RuntimeSession.update(execution)
 -> 调用 ActivityBehavior.execute(ActivityContext)
 ```
 
@@ -1015,8 +1095,9 @@ Behavior 返回 Waiting：
 ```text
 创建 Task(CREATED)
 -> Executor ACTIVE -> WAITING
+-> Execution ACTIVE -> WAITING
 -> insert Task
--> update Process
+-> update Execution
 -> 不安排后续 Operation
 ```
 
@@ -1027,6 +1108,8 @@ Behavior 返回 Waiting：
 ```text
 Activity RUNNING -> COMPLETED
 -> update Activity
+-> Execution 清除 activeActivityId
+-> update Execution
 -> 读取 Node.outgoing
 -> 选择可通过 Edge
 ```
@@ -1052,7 +1135,8 @@ plan EndProcessOperation
 ```text
 校验 edge.source 等于 Executor 当前 Node
 -> executor.moveTo(edge.target)
--> update Process
+-> execution.moveTo(edge.target)
+-> update Execution
 -> plan EnterNodeOperation(executor, edge.target)
 ```
 
@@ -1068,8 +1152,9 @@ plan EndProcessOperation
 -> 调用 ActivityBehavior.resume(ActivityContext, signal)
 -> Task -> COMPLETED
 -> Executor WAITING -> ACTIVE
+-> Execution WAITING -> ACTIVE
 -> update Task
--> update Process
+-> update Execution
 -> plan LeaveNodeOperation
 ```
 
@@ -1081,6 +1166,8 @@ Activity 的完成仍由 LeaveNodeOperation 负责，因此自动执行和人工
 
 ```text
 Executor ACTIVE -> COMPLETED
+-> Execution ACTIVE -> COMPLETED
+-> update Execution
 -> Process 检查所有 Executor
 -> 如果不存在可继续运行的 Executor，则 Process -> COMPLETED
 -> update Process
@@ -1146,7 +1233,9 @@ sequenceDiagram
     DS-->>CMD: 完整 deployed Flow
     CMD->>CMD: new Process(flow)
     CMD->>CMD: process.createRootExecutor(startNode)
+    CMD->>CMD: new Execution(rootExecutor)
     CMD->>RS: insert(process)
+    CMD->>RS: insert(execution)
     CMD->>CC: bindFlowContext(flow, process)
     CMD->>CC: plan(EnterNodeOperation)
 
@@ -1154,6 +1243,8 @@ sequenceDiagram
         ER->>EN: execute(OperationContext)
         EN->>EN: new Activity(RUNNING)
         EN->>RS: insert(activity)
+        EN->>EN: execution.enterNode(activity)
+        EN->>RS: update(execution)
         EN->>BEH: execute(ActivityContext)
         BEH-->>EN: Completed 或 Waiting
 
@@ -1162,25 +1253,31 @@ sequenceDiagram
             ER->>LV: execute(OperationContext)
             LV->>LV: activity.complete(output)
             LV->>RS: update(activity)
+            LV->>LV: execution.leaveActivity()
+            LV->>RS: update(execution)
 
             alt 存在 Edge
                 LV->>OS: plan(TraverseEdgeOperation)
                 ER->>TE: execute(OperationContext)
                 TE->>TE: executor.moveTo(edge.target)
-                TE->>RS: update(process)
+                TE->>TE: execution.moveTo(edge.target)
+                TE->>RS: update(execution)
                 TE->>OS: plan(EnterNodeOperation)
             else 没有出边
                 LV->>OS: plan(EndProcessOperation)
                 ER->>EP: execute(OperationContext)
                 EP->>EP: executor.complete()
+                EP->>EP: execution.complete()
                 EP->>EP: process.completeIfPossible()
+                EP->>RS: update(execution)
                 EP->>RS: update(process)
             end
         else Waiting
             EN->>EN: new Task(CREATED)
             EN->>EN: executor.waitForTask()
+            EN->>EN: execution.waitForTask()
             EN->>RS: insert(task)
-            EN->>RS: update(process)
+            EN->>RS: update(execution)
             Note over EN,CC: 不安排后续 Operation
         end
     end
@@ -1218,7 +1315,8 @@ sequenceDiagram
 
     ER->>CMD: execute(CC)
     CMD->>RS: loadResumeTarget(taskId)
-    RS-->>CMD: Process、Executor、Activity、Task
+    RS-->>CMD: Process、Execution、Activity、Task
+    CMD->>CMD: Execution 重建 Executor
     CMD->>DS: loadBoundFlow(process.flowId)
     DS-->>CMD: 完整 Flow
     CMD->>CC: bindFlowContext(flow, process, resumeTarget)
@@ -1230,13 +1328,16 @@ sequenceDiagram
     BEH-->>RN: Completed(output)
     RN->>RN: task.complete(result)
     RN->>RN: executor.resumeFromTask()
+    RN->>RN: execution.resumeFromTask()
     RN->>RS: update(task)
-    RN->>RS: update(process)
+    RN->>RS: update(execution)
     RN->>OS: plan(LeaveNodeOperation)
 
     ER->>LV: execute(OperationContext)
     LV->>LV: activity.complete(output)
     LV->>RS: update(activity)
+    LV->>LV: execution.leaveActivity()
+    LV->>RS: update(execution)
     LV->>OS: plan 后续 Operation
 
     loop 后续 Operation
@@ -1334,8 +1435,8 @@ Behavior 或 Operation 抛出异常
 - complete 请求必须携带 idempotencyKey。
 - 相同 Task 和相同 idempotencyKey 的重复 complete 返回第一次结果，不重复推进。
 - 已完成 Task 使用不同 idempotencyKey 再次 complete 时拒绝执行。
-- RuntimeSession 恢复时校验 Task、Activity、Executor、Process 关联。
-- 同一个 Executor 在同一时间只能有一个推进调用。
+- RuntimeSession 恢复时校验 Task、Activity、Execution、Process 关联，并校验重建后的 Executor 与 Execution 一致。
+- 同一个 Execution 在同一时间只能有一个推进调用，revision 用于拒绝过期状态写入。
 
 具体数据库锁和 revision 更新方式在第二阶段设计。
 
@@ -1377,6 +1478,8 @@ public interface RuntimeQuery {
 
     Optional<Process> findProcess(String processId);
 
+    List<Execution> findExecutions(String processId);
+
     List<Activity> findActivities(String processId);
 
     List<Task> findTasks(String processId);
@@ -1402,6 +1505,7 @@ org.cses.flow/
 │   ├── model/
 │   │   ├── Process.java
 │   │   ├── Executor.java
+│   │   ├── Execution.java
 │   │   ├── Activity.java
 │   │   ├── Task.java
 │   │   └── Signal.java
@@ -1495,7 +1599,7 @@ infrastructure.memory
 
 ```text
 Flow、Node、Edge
-Process、Executor、Activity、Task
+Process、Executor、Execution、Activity、Task
 FlowValidator
 ActivityBehaviorRegistry
 ExecutionQueue
@@ -1541,8 +1645,10 @@ V2 第一阶段仍需通过 `VER-FLOW-001` 的四个场景，但验证重点需�
 6. Operation 完成本阶段写入后再安排下一 Operation。
 7. WAIT 不安排后续 Operation。
 8. complete 只通过 taskId 恢复内部关联。
-9. 自动执行和人工恢复共用 LeaveNodeOperation。
-10. 每次 start 或 complete 只 commit 一次。
+9. 每个 Executor 都有且只有一个 Execution，父子关系可以还原完整 Executor 树。
+10. Operation 在移动、等待、恢复和完成后更新对应 Execution，再安排后续 Operation。
+11. 自动执行和人工恢复共用 LeaveNodeOperation。
+12. 每次 start 或 complete 只 commit 一次。
 
 ## 关联文档迁移
 
@@ -1586,7 +1692,7 @@ Operation 每次通过 Repository 保存运行实体
 - 暂停、终止、失败记录和重试。
 - EventLog 和审计。
 - 外部副作用 Outbox。
-- 运行恢复和运维接口。
+- 自动恢复调度和运维接口。
 
 ## 最终结论
 
@@ -1605,4 +1711,4 @@ Service
 -> CommandContext commit
 ```
 
-定义层保持完整 Flow 图；Process 管理 Executor；Activity 记录节点执行；Task 承载外部等待；Behavior 只实现节点语义；Operation 负责公共生命周期和环节交接；Session 隔离内存与未来数据库实现。
+定义层保持完整 Flow 图；Process 记录流程实例状态并管理 Executor；Executor 沿各自路径推进；Execution 保存可恢复的 Executor 状态和执行树；Activity 记录节点执行；Task 承载外部等待；Behavior 只实现节点语义；Operation 负责公共生命周期和环节交接；Session 隔离内存与未来数据库实现。
