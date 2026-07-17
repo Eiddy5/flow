@@ -59,7 +59,49 @@ Edge.target -> 目标 Node
 
 Node 脱离 Flow 没有独立的流程语义；Edge 也必须连接同一个 Flow 中有效的来源 Node 和目标 Node。只有 Node 和 Edge 的关系完整、可达且满足流程定义约束时，Flow 才是一份可以部署和运行的完整定义。
 
-### 2.5 定义层与运行层的边界
+### 2.5 三种常见 Flow 结构
+
+下面只展示 Flow、Node 和 Edge 如何组成流程定义，不表示流程运行时产生的数据。
+
+#### 单向流程
+
+单向流程中的 Node 按一个方向依次连接，每个 Edge 都明确指向下一个 Node。
+
+```mermaid
+flowchart LR
+    subgraph FLOW["Flow：单向流程"]
+        A["Node A"] -->|"Edge A-B"| B["Node B"]
+        B -->|"Edge B-C"| C["Node C"]
+    end
+```
+
+#### 并行流程
+
+并行流程从同一个 Node 引出多条 Edge，形成多个分支；分支也可以通过后续 Edge 连接到同一个 Node。
+
+```mermaid
+flowchart LR
+    subgraph FLOW["Flow：并行流程"]
+        A["Node A"] -->|"Edge A-B"| B["Node B"]
+        A -->|"Edge A-C"| C["Node C"]
+        B -->|"Edge B-D"| D["Node D"]
+        C -->|"Edge C-D"| D
+    end
+```
+
+#### 条件流程
+
+条件流程同样从一个 Node 定义多条候选 Edge，不同 Edge 分别携带自己的静态选择条件，并指向对应的目标 Node。
+
+```mermaid
+flowchart LR
+    subgraph FLOW["Flow：条件流程"]
+        A["Node A"] -->|"Edge A-B：条件一"| B["Node B"]
+        A -->|"Edge A-C：条件二"| C["Node C"]
+    end
+```
+
+### 2.6 定义层与运行层的边界
 
 定义层回答“流程是什么”，运行层回答“这份流程定义的某次实例如何运行”。二者的关系是同一份定义可以被启动多次，每次启动产生相互独立的运行实例，但它们共同读取已经绑定的 Flow 定义。
 
