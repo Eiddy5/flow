@@ -126,9 +126,9 @@ Flow 的运行由两组相互对应的对象支撑：
 
 流程元素之间不直接互相调用。流程推进被拆成固定的 Operation，Operation 放入 FIFO 的 Agenda，由 Dispatcher 依次取出执行。每个 Operation 完成自己负责的状态变化后，只安排下一步 Operation，不直接调用下一步。
 
-自动推进不会在每经过一个节点或一条边时单独提交。一次推进从上一个稳定位置开始，在同一事务中持续执行，直到到达下一个可等待、可停止或已结束的位置。此时统一生成或更新 ActivityEntry，更新 Execution 和 Process，再提交事务。
+自动推进不会在每经过一个节点或一条边时单独提交。启动流程时，推进从创建 Process 开始；恢复已有流程时，推进从上一个稳定位置开始。二者都在各自 CommandContext 的同一事务中持续执行，直到到达下一个可等待、可停止或已结束的位置。此时统一生成或更新 ActivityEntry，更新 Execution 和 Process，再提交事务。
 
-如果服务在自动推进中途崩溃，当前事务回滚。恢复时从上一个已经提交的 Execution 和 ActivityEntry 继续，而不是尝试恢复未提交的内存步骤。技术执行过程、异常和回滚进入独立 Trace 链路，不写入业务 ActivityEntry。
+如果服务在自动推进中途崩溃，当前 CommandContext 的事务整体回滚。启动 CommandContext 尚未提交时，Process 不会落库；已有流程的恢复 CommandContext 回滚后，仍从上一个已经提交的 Execution 和 ActivityEntry 继续。技术执行过程、异常和回滚进入独立 Trace 链路，不写入业务 ActivityEntry。
 
 ## 4. 从启动流程开始理解运行对象
 
@@ -138,7 +138,7 @@ Flow 的运行由两组相互对应的对象支撑：
 
 Process 在启动时进入运行状态；人工等待期间仍然表示流程正在运行；当所有执行线路都完成后，再回填完成状态和结束时间。Process 不负责记录某一条线路当前走到哪里，这由 Executor 和 Execution 负责。
 
-Process 的创建和初始运行状态写入构成第一个事务。提交成功后，系统再从已提交的初始状态开始内部推进。这样即使后续节点执行失败，流程实例本身仍有明确的恢复起点。
+启动 Flow 时，Process 在 StartFlowCommand 所属的 CommandContext 中创建。该 CommandContext 随后直接安排并执行节点与边的 Operation，直到到达第一个稳定位置才统一提交。Process 的创建不是独立事务；如果首次自动推进在提交前发生技术异常，Process 和本次推进产生的全部业务变化一起回滚。
 
 ### 4.2 Executor 与 Execution：一条线路的运行和恢复
 
@@ -201,6 +201,10 @@ Task 只在节点需要外部人员或外部系统协作时创建，普通自动
 
 ## 6. 事务边界与稳定位置
 
+CommandContext 是一次 Command 的完整执行上下文，并持有该次推进唯一的事务。Command、Agenda、Dispatcher、Operation 和 RuntimeSession 都在这个事务工作区中协作，可以读取彼此尚未提交的修改；最终只能整体提交或整体回滚。
+
+事务边界跟随 CommandContext，而不是跟随 Process 创建、单个 Node、单条 Edge 或单个 Operation。一个 Command 在同一个 CommandContext 中创建或恢复运行对象、安排 Operation，并持续推进到下一个稳定位置。
+
 稳定位置是可以完整提交，并能在进程重启后无歧义恢复的运行位置。当前设计中的稳定位置包括：
 
 - 人工节点进入 WAIT，等待外部 Task；
@@ -208,13 +212,13 @@ Task 只在节点需要外部人员或外部系统协作时创建，普通自动
 - 显式暂停或终止；
 - 多线路在汇合点等待其他线路完成。
 
-一次 Flow 运行分为以下事务单元：
+一次 Flow 的生命周期会经历多个 CommandContext，每个 CommandContext 分别形成一个事务推进单元：
 
-1. 启动事务：解析已部署 Flow，创建 Process、根 Executor 和根 Execution，写入初始状态并提交。
-2. 内部推进事务：从一个已提交的稳定位置恢复 Executor，连续执行 Operation，直到下一个稳定位置，统一写入运行变化并提交。
-3. 人工恢复事务：完成 Task、恢复等待中的 Activity、继续自动推进到下一个稳定位置，全部位于同一个事务中。
+1. 启动 CommandContext：解析已部署 Flow，创建 Process、根 Executor 和根 Execution，随即执行自动 Operation，直到首次到达 WAIT、END 或其他稳定位置，再统一写入并提交。
+2. 人工恢复 CommandContext：完成 Task、恢复等待中的 Activity，并继续执行自动 Operation，直到下一个稳定位置，再统一写入并提交。
+3. 其他外部 CommandContext：暂停、终止或后续信号处理也各自在自己的 CommandContext 中推进，并遵守相同的稳定提交规则。
 
-在内部推进事务中，经过自动节点和边只是内存状态变化，并不形成新的事务边界。这样可以保证节点完成、选边、线路移动和稳定状态写入是一个原子结果。
+在任一 CommandContext 中，创建或恢复运行对象、经过自动节点和边、选边以及移动线路都只是当前事务内的状态变化，不形成新的事务边界。这样可以保证本次 Command 从入口到稳定位置的全部业务变化是一个原子结果。
 
 Agenda 为空只表示当前没有待执行 Operation。提交前还必须验证所有受影响的 Executor 已经 WAITING、COMPLETED、SUSPENDED、TERMINATED，或处于明确的汇合等待状态。如果某条线路仍为活动状态，却因为漏排 Operation 而停止，稳定性校验必须失败并回滚。
 
@@ -290,7 +294,7 @@ ResumeNodeOperation 不加载数据、不直接更新 ActivityEntry、不选择 
 
 ## 9. 完整运行时序
 
-下面的时序把 Process 创建、自动推进、人工等待、恢复、分支和结束放在同一条运行链中。图中的 RuntimeSession 表示运行数据的加载和写入边界；CommandContext 持有本次事务、Agenda 和事务内运行对象。
+下面的时序把 Process 创建、自动推进、人工等待、恢复、分支和结束放在同一条运行链中。启动和人工恢复分别创建自己的 CommandContext；每个 CommandContext 都持有本次唯一的事务、Agenda 和事务内运行对象。图中的 RuntimeSession 表示运行数据的加载和写入边界。
 
 ```mermaid
 sequenceDiagram
@@ -307,25 +311,14 @@ sequenceDiagram
     participant Trace
 
     rect rgb(240, 247, 255)
-        Note over Caller,RS: 启动事务：建立流程实例的恢复起点
+        Note over Caller,Trace: 启动 CommandContext：创建流程并自动推进到第一个稳定位置
         Caller->>Engine: start(flowId)
-        Engine->>CE: 执行启动 Command
-        CE->>CC: 开启事务
+        Engine->>CE: 执行 StartFlowCommand
+        CE->>CC: 创建 CommandContext 并开启事务
+        CC->>CC: 加载已部署 Flow
         CC->>CC: 创建唯一 Process
         CC->>CC: 创建根 Executor 与根 Execution
-        CC->>RS: 写入初始稳定状态
-        CC->>CC: commit
-        CE-->>Caller: 返回 Process
-    end
-
-    rect rgb(246, 252, 242)
-        Note over Engine,Trace: 自动推进事务：从初始稳定位置运行到人工 WAIT
-        Engine->>CE: 推进 Process
-        CE->>CC: 开启事务
-        CC->>RS: 加载 Process 与目标 Execution
-        RS-->>CC: 已提交的稳定状态
-        CC->>CC: Execution 恢复根 Executor
-        CC->>Agenda: plan EnterNode(START)
+        CC->>Agenda: plan EnterNode(flow.entryNode)
         CE->>Dispatcher: dispatch
 
         loop Agenda 非空
@@ -339,6 +332,13 @@ sequenceDiagram
                 NE-->>Op: COMPLETED
                 Op->>CC: 完成 Node Activity
                 Op->>Agenda: plan SelectEdge
+            else EnterNode：结束节点完成
+                Op->>CC: Executor 进入结束 Node 并创建 Node Activity
+                Op->>NE: execute(Activity)
+                NE-->>Op: COMPLETED
+                Op->>CC: 完成 Activity、Executor 和 Execution
+                Op->>CC: 全部线路完成时完成 Process
+                Note over Op,Agenda: 当前线路不再安排 Operation
             else SelectEdge：选中一条边
                 Op->>CC: 执行选边并使 Executor 指向 Edge
                 Op->>Agenda: plan EnterEdge
@@ -363,17 +363,22 @@ sequenceDiagram
 
         Dispatcher-->>CE: Agenda 为空
         CE->>CC: 校验所有受影响线路均处于稳定位置
+        alt 全部线路到达 END
+            CC->>CC: Process 保持 COMPLETED
+        else 到达 WAIT、汇合等待或显式停止位置
+            CC->>CC: Process 保持运行或相应停止状态
+        end
         CC->>CC: 为本次 Activity 创建 ActivityEntry
         CC->>RS: 写入 Execution、ActivityEntry、Task 与 Process 变化
         CC->>CC: commit
-        CE-->>Caller: 返回等待中的 Process
+        CE-->>Caller: 返回已到达稳定位置的 Process
     end
 
     rect rgb(255, 249, 235)
-        Note over Caller,Trace: 人工恢复事务：只恢复 Task 所属线路并推进到下一个稳定位置
+        Note over Caller,Trace: 人工恢复 CommandContext：只恢复 Task 所属线路并推进到下一个稳定位置
         Caller->>Engine: completeTask(taskId, result, idempotencyKey)
         Engine->>CE: 执行完成 Task Command
-        CE->>CC: 开启事务
+        CE->>CC: 创建新的 CommandContext 并开启事务
         CC->>RS: 根据 taskId 加载 Task 所属 Execution 与原 ActivityEntry
         RS-->>CC: Process、Execution、ActivityEntry、Task
         CC->>CC: 校验关联、幂等状态并取得该 Execution 推进权
@@ -414,28 +419,32 @@ sequenceDiagram
         CE-->>Caller: 返回推进结果
     end
 
-    opt 任一推进事务发生技术异常或提交前崩溃
+    opt 任一 CommandContext 发生技术异常或提交前崩溃
         Op--xDispatcher: 抛出技术异常
         Dispatcher--xCE: 中断调度
         CE->>CC: rollback
         CE->>Trace: 记录 Operation、异常、耗时与回滚
-        Note over CC,RS: 未提交的 Activity 不形成 ActivityEntry<br/>Execution 仍停留在上一个已提交的稳定位置
+        alt 启动 CommandContext 尚未提交
+            Note over CC,RS: Process、Execution、Activity 和 Task 全部回滚，不留下流程实例
+        else 已有流程的 CommandContext
+            Note over CC,RS: 未提交的 Activity 不形成 ActivityEntry<br/>Execution 仍停留在上一个已提交的稳定位置
+        end
     end
 ```
 
 ## 10. 自动流程的完整交接
 
-以全自动的 `Node A -> Edge A-B -> END B` 为例，一次内部推进事务按下面的顺序运行：
+以全自动的 `Node A -> Edge A-B -> END B` 为例，一次 StartFlowCommand 的 CommandContext 按下面的顺序运行：
 
-1. Command 向 Agenda 安排 `EnterNode(A)`。
+1. StartFlowCommand 加载 Flow，创建 Process、根 Executor 和根 Execution，再向 Agenda 安排 `EnterNode(A)`。
 2. Dispatcher 取出 EnterNodeOperation。Executor 进入 A，创建 `Activity(Node A)`，节点内部执行器完成 A；Operation 完成该 Activity，并安排 SelectEdgeOperation。
 3. SelectEdgeOperation 选中 A-B，使 Executor 指向这条 Edge，并安排 EnterEdgeOperation。
 4. EnterEdgeOperation 创建 `Activity(Edge A-B)`，执行并完成这条 Edge，再安排 `EnterNode(B)`。
 5. EnterNodeOperation 使 Executor 进入 END B，创建 `Activity(Node B)`，执行 END 行为并完成 Activity、Executor 和 Execution。
 6. Process 检查全部线路。没有其他活动、等待或暂停线路时，Process 完成。
-7. Agenda 为空。CommandExecutor 校验稳定状态，根据三个 Activity 生成对应 ActivityEntry，更新 Execution 和 Process，提交事务。
+7. Agenda 为空。CommandExecutor 校验稳定状态，根据三个 Activity 生成对应 ActivityEntry，将 Process 创建及全部运行变化一起提交。
 
-这段交接说明了 Executor 的位置只在负责该位置的 Operation 中变化；Activity 则在节点或边真正被激活时创建。即使自动流程经过多个元素，对外仍只提交一个完整的稳定结果。
+这段交接说明了 Process 创建和后续自动交接属于同一个 CommandContext。Executor 的位置只在负责该位置的 Operation 中变化；Activity 则在节点或边真正被激活时创建。即使自动流程经过多个元素，对外仍只提交一个完整的稳定结果。
 
 ## 11. 人工等待与恢复
 
@@ -496,11 +505,12 @@ ActivityEntry 只记录已经提交的业务激活状态，例如节点完成、
 -> Dispatcher 停止
 -> CommandExecutor 回滚当前事务
 -> 本次未提交 Activity 不生成 ActivityEntry
--> Execution 保持上一个已提交稳定位置
 -> Trace 保存本次技术执行和失败信息
 ```
 
-服务重新启动后，不需要重建崩溃前尚未提交的 Agenda，也不从 Trace 推导业务状态。系统加载最近一次已提交的 Execution；如果它指向等待中的 ActivityEntry，则同时恢复 Activity。随后通过新的 Command 和 Agenda 从该稳定位置继续。
+如果异常发生在首次启动的 CommandContext，尚未提交的 Process、Executor、Execution、Activity 和 Task 全部回滚，系统中不留下这次流程实例。如果异常发生在已有 Process 的恢复或信号处理 CommandContext，Execution 保持在上一个已提交的稳定位置。
+
+服务重新启动后，不需要重建崩溃前尚未提交的 Agenda，也不从 Trace 推导业务状态。首次启动没有提交成功时，由调用方重新发起启动 Command；已有流程则加载最近一次已提交的 Execution，如果它指向等待中的 ActivityEntry，同时恢复 Activity，再通过新的 Command 和 Agenda 从该稳定位置继续。
 
 ## 14. 隔离、幂等与并发
 
@@ -564,4 +574,4 @@ Command 负责加载和校验关联对象、处理幂等，并取得目标 Execu
 - 多线路是否互不修改，只有汇合逻辑读取兄弟 Execution？
 - Agenda 为空后是否仍执行稳定状态校验？
 - 技术异常是否只进入 Trace，并使未提交业务变化整体回滚？
-- 服务崩溃后是否能够仅依靠已提交的 Execution 和 ActivityEntry 回到上一个稳定位置？
+- 首次启动提交前崩溃时是否不留下 Process，而已有流程崩溃时能否依靠已提交的 Execution 和 ActivityEntry 回到上一个稳定位置？
