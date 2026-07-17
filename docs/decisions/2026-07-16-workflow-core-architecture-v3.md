@@ -22,7 +22,56 @@ V3 是核心运行机制的技术评审基线。V2 保留前期演进过程和�
 
 子流程、多实例、汇合算法、数据库锁策略和持久化模型将在后续设计中展开。它们应遵守本文确定的运行原则。
 
-## 2. 核心设计结论
+## 2. 定义层
+
+定义层描述一条流程本身是什么。它只保存流程在某个版本下的静态结构和运行规则，不表示任何一次真实运行，也不记录流程当前走到哪里。
+
+### 2.1 Flow：完整流程定义
+
+Flow 是一份完整的、带版本的流程定义。它包含构成该流程的全部 Node 和 Edge，以及这些定义之间已经装配好的关系。Flow 不是流程名称或流程元信息的简单容器，也不是一次正在运行的流程实例。
+
+Flow 发布后成为可以启动的确定版本。已经运行的流程始终绑定启动时选定的 Flow 版本；后续发布新版本不会改变已有流程实例所使用的定义。
+
+### 2.2 Node：流程中的静态位置
+
+Node 是 Flow 中的静态节点定义，表示流程图中的一个确定位置，并保存该位置所需的静态配置。Node 只说明这个位置是什么、应使用什么规则，不保存某次运行中的处理结果、当前状态、执行时间或处理人。
+
+Node 可以知道与自己连接的进入 Edge 和离开 Edge，使流程引擎在加载完整 Flow 后能够直接沿定义关系读取后续结构，而不需要在推进过程中重新拼装流程图。
+
+### 2.3 Edge：节点之间的有向连接
+
+Edge 是 Flow 中连接两个 Node 的有向关系。它具有明确的来源 Node 和目标 Node，用来表达流程允许从哪个位置流向哪个位置。Edge 还可以携带静态的选择条件或连接规则，但不保存某次运行是否选择了它。
+
+同一个 Node 可以连接多条候选 Edge。候选关系属于定义层；某次运行最终选择了哪条 Edge，则属于运行层产生的事实。
+
+### 2.4 Flow、Node 与 Edge 的组成关系
+
+一个完整 Flow 由 Node 集合和 Edge 集合共同组成。Node 提供流程中的位置，Edge 把这些位置连接成有方向的流程图：
+
+```text
+Flow
+├── Node 集合：定义流程中有哪些位置
+└── Edge 集合：定义这些位置之间允许如何流转
+
+Edge.source -> 来源 Node
+Edge.target -> 目标 Node
+```
+
+Node 脱离 Flow 没有独立的流程语义；Edge 也必须连接同一个 Flow 中有效的来源 Node 和目标 Node。只有 Node 和 Edge 的关系完整、可达且满足流程定义约束时，Flow 才是一份可以部署和运行的完整定义。
+
+### 2.5 定义层与运行层的边界
+
+定义层回答“流程是什么”，运行层回答“这份流程定义的某次实例如何运行”。二者的关系是同一份定义可以被启动多次，每次启动产生相互独立的运行实例，但它们共同读取已经绑定的 Flow 定义。
+
+| 定义层 | 表达内容 | 运行后对应的事实 |
+| --- | --- | --- |
+| Flow | 完整流程结构及版本 | 启动后产生一条独立流程实例 |
+| Node | 流程中的静态位置和配置 | Executor 到达该位置时产生一次节点激活 |
+| Edge | Node 之间允许发生的有向流转 | 选边后，只有实际进入的 Edge 产生一次边激活 |
+
+运行层不能在推进过程中修改已经绑定的 Flow、Node 或 Edge。运行状态、选择结果和执行行踪分别由 Process、Executor、Execution、Activity 和 ActivityEntry 等运行对象承载。
+
+## 3. 核心设计结论
 
 Flow 的运行由两组相互对应的对象支撑：
 
@@ -39,9 +88,9 @@ Flow 的运行由两组相互对应的对象支撑：
 
 如果服务在自动推进中途崩溃，当前事务回滚。恢复时从上一个已经提交的 Execution 和 ActivityEntry 继续，而不是尝试恢复未提交的内存步骤。技术执行过程、异常和回滚进入独立 Trace 链路，不写入业务 ActivityEntry。
 
-## 3. 从启动流程开始理解运行对象
+## 4. 从启动流程开始理解运行对象
 
-### 3.1 Process：一条流程实例
+### 4.1 Process：一条流程实例
 
 调用方启动一个已部署的 Flow 时，系统先创建 Process。Process 表示这一次完整的流程运行，因此一个流程实例从开始到结束只存在一个 Process。
 
@@ -49,7 +98,7 @@ Process 在启动时进入运行状态；人工等待期间仍然表示流程正
 
 Process 的创建和初始运行状态写入构成第一个事务。提交成功后，系统再从已提交的初始状态开始内部推进。这样即使后续节点执行失败，流程实例本身仍有明确的恢复起点。
 
-### 3.2 Executor 与 Execution：一条线路的运行和恢复
+### 4.2 Executor 与 Execution：一条线路的运行和恢复
 
 Process 创建根 Executor，让它沿 Flow 中的一条线路推进。Executor 是事务内的真实运行对象，持有当前线路的位置、状态和父子关系。节点和边的激活只能由 Executor 发起，因此流程的运行行踪由 Executor 负责。
 
@@ -66,7 +115,7 @@ Process 创建根 Executor，让它沿 Flow 中的一条线路推进。Executor 
 
 在线性流程中，根 Executor 会贯穿整条线路，因此通常只有一个 Execution。选择出多条边、进入子流程或展开多实例时，当前线路需要拆成可以独立推进的子线路，Process 才为它们创建子 Executor 和子 Execution。子线路再次分叉时继续创建下一层，Executor 与 Execution 分别形成结构一致的树。
 
-### 3.3 Activity 与 ActivityEntry：一次流程元素激活
+### 4.3 Activity 与 ActivityEntry：一次流程元素激活
 
 Executor 到达某个节点时，会激活该节点并创建一个 Activity；选中并进入某条边时，也会激活该边并创建一个新的 Activity。Activity 因此表示某个 Executor 对一个节点或一条已选边的一次运行时激活。
 
@@ -86,13 +135,13 @@ ActivityEntry 是 Activity 到达稳定位置后形成的运行记录，并与 A
 
 Activity 是当前事务中的运行事实，ActivityEntry 是提交后的稳定事实。自动推进尚未到达稳定位置时，Activity 只存在于事务工作区中。如果事务回滚，这一轮未提交的 Activity 不会形成 ActivityEntry。
 
-### 3.4 Task：需要外部协作时的等待凭证
+### 4.4 Task：需要外部协作时的等待凭证
 
 Task 只在节点需要外部人员或外部系统协作时创建，普通自动节点不会创建 Task。Task 绑定产生它的人工节点 Activity，并用于把外部处理结果准确交回该 Activity 所属的 Execution。
 
 本文先限定单任务人工节点：完成 Task 就代表当前节点本轮执行完成。审批通过和审批拒绝都是业务上的完成结果，后续由选边规则根据结果决定进入哪一条边。若拒绝路线最终重新回到同一个审批节点，那是一次新的节点激活，会创建新的 Activity 和 ActivityEntry；上一轮记录保持完成。
 
-## 4. 运行不变量
+## 5. 运行不变量
 
 流程推进必须始终满足以下规则：
 
@@ -108,7 +157,7 @@ Task 只在节点需要外部人员或外部系统协作时创建，普通自动
 | 提交 | 只有所有受影响线路都到达稳定位置，当前事务才能提交 |
 | 异常 | 技术异常进入 Trace；未提交的业务运行变化随事务回滚 |
 
-## 5. 事务边界与稳定位置
+## 6. 事务边界与稳定位置
 
 稳定位置是可以完整提交，并能在进程重启后无歧义恢复的运行位置。当前设计中的稳定位置包括：
 
@@ -127,15 +176,15 @@ Task 只在节点需要外部人员或外部系统协作时创建，普通自动
 
 Agenda 为空只表示当前没有待执行 Operation。提交前还必须验证所有受影响的 Executor 已经 WAITING、COMPLETED、SUSPENDED、TERMINATED，或处于明确的汇合等待状态。如果某条线路仍为活动状态，却因为漏排 Operation 而停止，稳定性校验必须失败并回滚。
 
-## 6. Agenda 与 Dispatcher
+## 7. Agenda 与 Dispatcher
 
-### 6.1 Agenda：承载待执行 Operation
+### 7.1 Agenda：承载待执行 Operation
 
 Agenda 属于当前 CommandContext，是本次事务推进期间的 FIFO 容器。Operation 通过 `plan` 进入队尾，Dispatcher 通过 `next` 从队首取出；`isEmpty` 用来判断是否还有待执行工作。
 
 Agenda 只保存本次事务接下来要做的流程交接，不执行 Operation、不选择路由、不判断稳定状态、不提交事务，也不参与持久化或恢复。事务结束后，本次 Agenda 随 CommandContext 一起释放。
 
-### 6.2 Dispatcher：执行 Agenda
+### 7.2 Dispatcher：执行 Agenda
 
 Dispatcher 是 Operation 调度器。它重复执行下面的循环：
 
@@ -151,7 +200,7 @@ Dispatcher 不理解节点、边、人工等待或 Process 状态。Agenda 为�
 
 当一个 Operation 安排多个后续 Operation 时，它们仍由同一个 Dispatcher 按 FIFO 顺序处理。这表示一个事务内的逻辑并行线路，不表示创建多个运行线程。
 
-## 7. Operation 交接协议
+## 8. Operation 交接协议
 
 Operation 描述流程元素之间的一次交接。每个 Operation 都遵守同一协议：
 
@@ -167,7 +216,7 @@ Operation 描述流程元素之间的一次交接。每个 Operation 都遵守�
 
 节点和边各自可以有内部执行器，用于完成元素内部的业务行为。内部执行器不参与流程交接：它不能访问 Agenda，不能移动 Executor，不能选择 Edge，也不能提交事务。
 
-### 7.1 EnterNodeOperation：进入并执行节点
+### 8.1 EnterNodeOperation：进入并执行节点
 
 EnterNodeOperation 把指定 Executor 交接到目标 Node，并由该 Executor 激活 Node Activity。随后它调用节点内部执行器。
 
@@ -175,7 +224,7 @@ EnterNodeOperation 把指定 Executor 交接到目标 Node，并由该 Executor 
 
 节点需要外部协作时，EnterNodeOperation 创建 Task，使当前 Activity、Executor 和 Execution 进入等待状态，不安排后续 Operation。这条线路就到达了一个稳定位置，但 Agenda 中其他线路已经排入的 Operation 仍可继续执行。
 
-### 7.2 SelectEdgeOperation：选择下一条线路
+### 8.2 SelectEdgeOperation：选择下一条线路
 
 SelectEdgeOperation 读取已完成节点的出边，并根据流程变量和节点结果执行选边规则。
 
@@ -183,13 +232,13 @@ SelectEdgeOperation 读取已完成节点的出边，并根据流程变量和节
 
 同时选中多条 Edge 时，当前线路发生分支。Process 为每条选中 Edge 创建一个子 Executor，并为每个子 Executor 创建对应的子 Execution。每个子 Executor 指向自己的 Edge，然后分别安排 EnterEdgeOperation。候选但未选中的 Edge 不创建 Executor，也不创建 Activity。
 
-### 7.3 EnterEdgeOperation：进入已选边
+### 8.3 EnterEdgeOperation：进入已选边
 
 EnterEdgeOperation 校验 Executor 当前确实指向已选 Edge，然后由 Executor 激活 Edge Activity。边的内部行为完成后，当前 Edge Activity 完成，并安排目标 Node 的 EnterNodeOperation。
 
 EnterEdgeOperation 不提前把 Executor 指向目标 Node。Executor 从 Edge 到目标 Node 的位置变化由下一次 EnterNodeOperation 完成，因此每个位置变化都有明确的 Operation 负责。
 
-### 7.4 ResumeNodeOperation：把人工结果交回节点
+### 8.4 ResumeNodeOperation：把人工结果交回节点
 
 ResumeNodeOperation 只处理已经由外部 Task 唤醒的单任务人工节点。执行它之前，Command 已经根据 Task 找到所属 Execution，从该 Execution 恢复 Executor，并从原 ActivityEntry 恢复等待中的 Activity。
 
@@ -197,7 +246,7 @@ ResumeNodeOperation 校验 Task、Activity、Executor 和 Execution 均处于同
 
 ResumeNodeOperation 不加载数据、不直接更新 ActivityEntry、不选择 Edge、不提交事务。原 ActivityEntry 会在本次事务到达下一个稳定位置时由统一提交阶段修改为完成状态。
 
-## 8. 完整运行时序
+## 9. 完整运行时序
 
 下面的时序把 Process 创建、自动推进、人工等待、恢复、分支和结束放在同一条运行链中。图中的 RuntimeSession 表示运行数据的加载和写入边界；CommandContext 持有本次事务、Agenda 和事务内运行对象。
 
@@ -332,7 +381,7 @@ sequenceDiagram
     end
 ```
 
-## 9. 自动流程的完整交接
+## 10. 自动流程的完整交接
 
 以全自动的 `Node A -> Edge A-B -> END B` 为例，一次内部推进事务按下面的顺序运行：
 
@@ -346,15 +395,15 @@ sequenceDiagram
 
 这段交接说明了 Executor 的位置只在负责该位置的 Operation 中变化；Activity 则在节点或边真正被激活时创建。即使自动流程经过多个元素，对外仍只提交一个完整的稳定结果。
 
-## 10. 人工等待与恢复
+## 11. 人工等待与恢复
 
-### 10.1 进入人工等待
+### 11.1 进入人工等待
 
 EnterNodeOperation 激活人工节点后，节点内部执行器返回等待结果。当前事务创建 Task，使 Node Activity、Executor 和 Execution 进入 WAITING。该线路不再安排 Operation。
 
 如果 Agenda 中还有其他子线路的 Operation，Dispatcher 继续推进它们；只有 Agenda 为空且所有受影响线路均稳定后，才统一提交。提交后，等待状态由 Execution、ActivityEntry 和 Task 共同支撑：Execution 可以恢复 Executor，ActivityEntry 可以恢复当前 Activity，Task 可以接收外部结果。
 
-### 10.2 完成 Task 并恢复
+### 11.2 完成 Task 并恢复
 
 外部完成 Task 时，Command 先根据 taskId 找到 Task 所属 Execution。普通人工恢复只加载这条 Execution 以及关联的 Process、原 ActivityEntry 和 Task，不加载或锁定其他兄弟线路。
 
@@ -371,13 +420,13 @@ ResumeNodeOperation 将人工结果交给节点恢复入口。节点完成后，
 
 Task 完成与后续自动推进属于同一个事务。假设人工节点之后还有两个自动节点，而第二个自动节点发生技术异常，那么 Task 完成、原 ActivityEntry 修改和中间自动推进全部回滚。下一次仍从原 WAITING Execution 和原 WAITING ActivityEntry 恢复，外部可以使用原幂等键重试。
 
-### 10.3 审批拒绝后重走审批
+### 11.3 审批拒绝后重走审批
 
 审批拒绝是当前审批 Activity 的正常完成结果。SelectEdgeOperation 根据拒绝结果选择打回边，Executor 沿打回线路继续运行。
 
 如果后续流程再次进入同一个审批 Node，EnterNodeOperation 会进行一次新的激活，创建新的 Activity；到达稳定等待后再创建新的 ActivityEntry 和 Task。两轮记录的含义分别是“第一次审批已拒绝并完成”和“第二次审批正在等待”，不会覆盖成同一次激活。
 
-## 11. 多线路与汇合
+## 12. 多线路与汇合
 
 SelectEdgeOperation 同时选中多条 Edge 时，当前线路产生多个子 Executor 和子 Execution。每个子 Executor 只推进自己的路径，并独立创建 Activity。Agenda 可以同时承载这些线路的后续 Operation，Dispatcher 仍按 FIFO 顺序执行。
 
@@ -392,7 +441,7 @@ SelectEdgeOperation 同时选中多条 Edge 时，当前线路产生多个子 Ex
 
 具体的汇合计数、到达集合、并发竞争和父线路恢复方式不在本文中确定，将在并行执行设计中单独评审。
 
-## 12. 技术异常与崩溃恢复
+## 13. 技术异常与崩溃恢复
 
 业务运行记录和技术执行记录分开处理。
 
@@ -411,7 +460,7 @@ ActivityEntry 只记录已经提交的业务激活状态，例如节点完成、
 
 服务重新启动后，不需要重建崩溃前尚未提交的 Agenda，也不从 Trace 推导业务状态。系统加载最近一次已提交的 Execution；如果它指向等待中的 ActivityEntry，则同时恢复 Activity。随后通过新的 Command 和 Agenda 从该稳定位置继续。
 
-## 13. 隔离、幂等与并发
+## 14. 隔离、幂等与并发
 
 人工恢复至少遵守以下规则：
 
@@ -426,7 +475,7 @@ ActivityEntry 只记录已经提交的业务激活状态，例如节点完成、
 
 Command 负责加载和校验关联对象、处理幂等，并取得目标 Execution 的推进权。Operation 只在已经建立好的事务工作区内推进，不自行查询数据库或扩大锁定范围。具体锁方式和版本竞争策略由持久化设计决定，但不能改变上述隔离边界。
 
-## 14. 运行职责总览
+## 15. 运行职责总览
 
 | 组件 | 运行职责 |
 | --- | --- |
@@ -444,7 +493,7 @@ Command 负责加载和校验关联对象、处理幂等，并取得目标 Execu
 | CommandExecutor | 管理事务，启动调度，校验稳定状态，统一写入并提交或回滚 |
 | Trace | 记录技术调用、耗时、异常和回滚，不改变业务运行状态 |
 
-## 15. 风险与后续设计
+## 16. 风险与后续设计
 
 后续设计需要在不改变本文运行原则的前提下，继续明确：
 
@@ -457,7 +506,7 @@ Command 负责加载和校验关联对象、处理幂等，并取得目标 Execu
 - Trace 与一次 Command、Operation、事务的关联方式；
 - 服务启动后的等待任务扫描、主动恢复和运维查询。
 
-## 16. 技术评审检查项
+## 17. 技术评审检查项
 
 评审可以按以下问题判断核心设计是否闭合：
 
