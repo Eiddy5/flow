@@ -16,12 +16,11 @@ consul:
 #    defaultZone: [ "http://192.168.6.6:8500" ] # prod
     #    defaultZone: [ "http://consul-test-2-0.consul-test-2.consul.svc.cluster.local:8500" ] # dev (打包使用)
     config:
-      #      path: "X9-Config-Im/"  # (打包使用/dev consul)
-      path: "X92-Config/"
       format: "YAML"
       datacenter: "beijing"
       separator: "/"
       raw: true
+      path: "x9-config-flow"
     watch:
       service:
         enabled: true

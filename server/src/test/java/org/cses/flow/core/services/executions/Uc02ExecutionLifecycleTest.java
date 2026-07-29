@@ -1,0 +1,612 @@
+package org.cses.flow.core.services.executions;
+
+import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.executions.TaskRunStatus;
+import org.cses.flow.core.domains.externaltasks.ExternalTask;
+import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
+import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.flows.FlowStatus;
+import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.junit.jupiter.api.Test;
+import org.paas.session.Session;
+import org.paas.session.User;
+
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+/**
+ * UC: docs/uc/flow/UC-02 启动与取消 Execution.md
+ */
+class Uc02ExecutionLifecycleTest {
+
+    @Test
+    void s1StartsAndCompletesLatestDeployedFlow() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow flow = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s1-flow",
+                    "初始审批 Flow",
+                    true
+                )
+            );
+
+            Execution started = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+            String executionId = started.id();
+
+            // PASS-S1-01
+            assertNotEquals("", executionId);
+            assertEquals(1, fixture.executionCount());
+            assertEquals(flow.id(), started.flowId());
+            assertEquals(1L, started.flowReversion());
+            assertEquals(ExecutionStatus.RUNNING, started.status());
+
+            fixture.restartServer();
+            ExternalTask externalTask =
+                fixture.waitingForExecution(executionId);
+            // PASS-S1-02
+            assertEquals(ExternalTaskStatus.WAITING, externalTask.status());
+            assertEquals(executionId, externalTask.executionId());
+
+            Execution completed =
+                fixture.externalTaskService().complete(
+                    fixture.session(),
+                    externalTask.id(),
+                    Map.of("decision", "APPROVED")
+                );
+            Execution reloaded = fixture.executionService().execution(
+                fixture.session(),
+                executionId
+            ).orElseThrow();
+
+            // PASS-S1-03
+            assertEquals(2, reloaded.taskRuns().size());
+            assertEquals(
+                flow.tasks().getFirst().id(),
+                reloaded.taskRuns().getFirst().taskId()
+            );
+            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(ExecutionStatus.COMPLETED, reloaded.status());
+            assertEquals(
+                java.util.List.of(
+                    TaskRunStatus.COMPLETED,
+                    TaskRunStatus.COMPLETED
+                ),
+                reloaded.taskRuns().stream()
+                    .map(taskRun -> taskRun.status())
+                    .toList()
+            );
+            assertEquals(
+                ExternalTaskStatus.COMPLETED,
+                fixture.externalTaskService().externalTask(
+                    fixture.session(),
+                    externalTask.id()
+                ).orElseThrow().status()
+            );
+            assertEquals(
+                0,
+                fixture.externalTaskService().waitingTasks(
+                    fixture.session()
+                ).size()
+            );
+            assertEquals(
+                flow,
+                fixture.flowService().flow(
+                    fixture.session(),
+                    flow.id(),
+                    1L,
+                    FlowStatus.DEPLOYED
+                ).orElseThrow()
+            );
+        }
+    }
+
+    @Test
+    void s2NewStartsUseLatestVersionWithoutMovingExistingExecution() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow version1 = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s2-flow",
+                    "初始审批 Flow",
+                    false
+                )
+            );
+            Execution first = fixture.executionService().create(
+                fixture.session(),
+                version1.id()
+            );
+            String firstTaskId = version1.tasks().getFirst().id();
+
+            fixture.flowService().createUpgradeDraft(
+                fixture.session(),
+                version1.id()
+            );
+            fixture.flowService().saveDraft(
+                fixture.session(),
+                version1.id(),
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s2-flow",
+                    "升级审批 Flow",
+                    true
+                )
+            );
+            Flow version2 = fixture.flowService().publish(
+                fixture.session(),
+                version1.id()
+            );
+            Execution second = fixture.executionService().create(
+                fixture.session(),
+                version1.id()
+            );
+
+            Execution firstCompleted = fixture.completeAfterRestart(
+                first.id(),
+                Map.of("decision", "APPROVED")
+            );
+            Execution secondCompleted = fixture.completeAfterRestart(
+                second.id(),
+                Map.of("decision", "APPROVED")
+            );
+
+            // PASS-S2-01
+            assertEquals(1L, firstCompleted.flowReversion());
+            assertEquals(2L, secondCompleted.flowReversion());
+            // PASS-S2-02
+            assertEquals(ExecutionStatus.COMPLETED, firstCompleted.status());
+            assertEquals(ExecutionStatus.COMPLETED, secondCompleted.status());
+            // PASS-S2-03
+            assertNotEquals(first.id(), second.id());
+            assertTrue(firstCompleted.taskRuns().stream()
+                .map(taskRun -> taskRun.id())
+                .noneMatch(secondCompleted.taskRuns().stream()
+                    .map(taskRun -> taskRun.id())
+                    .collect(java.util.stream.Collectors.toSet())::contains));
+            assertEquals(firstTaskId, version2.tasks().getFirst().id());
+            assertEquals(
+                FlowStatus.CLOSED,
+                fixture.flowService().flow(
+                    fixture.session(),
+                    version1.id(),
+                    1L,
+                    FlowStatus.CLOSED
+                ).orElseThrow().status()
+            );
+            assertEquals(
+                version2,
+                fixture.flowService().flow(
+                    fixture.session(),
+                    version2.id(),
+                    2L,
+                    FlowStatus.DEPLOYED
+                ).orElseThrow()
+            );
+        }
+    }
+
+    @Test
+    void s3CancelOnlyTargetsOneExecutionAndItsWaitingTrigger() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow flow = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s3-flow",
+                    "初始审批 Flow",
+                    false
+                )
+            );
+            Execution target = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+            Execution control = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+            fixture.restartServer();
+            ExternalTask targetExternal =
+                fixture.waitingForExecution(target.id());
+            ExternalTask controlExternal =
+                fixture.waitingForExecution(control.id());
+
+            Execution canceled = fixture.executionService().cancel(
+                fixture.session(),
+                target.id()
+            );
+
+            // PASS-S3-01
+            assertEquals(ExecutionStatus.CANCELED, canceled.status());
+            assertEquals(
+                TaskRunStatus.CANCELED,
+                canceled.taskRuns().getFirst().status()
+            );
+            assertEquals(
+                ExternalTaskStatus.CANCELED,
+                fixture.externalTaskService().externalTask(
+                    fixture.session(),
+                    targetExternal.id()
+                ).orElseThrow().status()
+            );
+            // PASS-S3-02
+            Execution controlCompleted = fixture.completeAfterRestart(
+                control.id(),
+                Map.of("decision", "APPROVED")
+            );
+            assertEquals(
+                ExecutionStatus.COMPLETED,
+                controlCompleted.status()
+            );
+            assertEquals(
+                ExternalTaskStatus.COMPLETED,
+                fixture.externalTaskService().externalTask(
+                    fixture.session(),
+                    controlExternal.id()
+                ).orElseThrow().status()
+            );
+            assertEquals(
+                flow,
+                fixture.flowService().flow(
+                    fixture.session(),
+                    flow.id(),
+                    1L,
+                    FlowStatus.DEPLOYED
+                ).orElseThrow()
+            );
+        }
+    }
+
+    @Test
+    void s4RejectsDraftClosedMissingAndCrossTenantFlows() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow draft = fixture.flowService().saveDraft(
+                fixture.session(),
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s4-draft",
+                    "未发布 Flow",
+                    false
+                )
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().create(
+                    fixture.session(),
+                    draft.id()
+                )
+            );
+
+            Flow deployed = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s4-closed",
+                    "已关闭 Flow",
+                    false
+                )
+            );
+            fixture.flowService().close(
+                fixture.session(),
+                deployed.id()
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().create(
+                    fixture.session(),
+                    deployed.id()
+                )
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().create(
+                    fixture.session(),
+                    "missing-flow-id"
+                )
+            );
+
+            Session<User> otherCompany =
+                fixture.sessionFor("company-2");
+            Flow otherDraft = fixture.flowService().saveDraft(
+                otherCompany,
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s4-other-company",
+                    "其他公司 Flow",
+                    false
+                )
+            );
+            Flow otherFlow = fixture.flowService().publish(
+                otherCompany,
+                otherDraft.id()
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().create(
+                    fixture.session(),
+                    otherFlow.id()
+                )
+            );
+
+            // PASS-S4-01
+            assertEquals(
+                FlowStatus.DRAFT,
+                fixture.flowService().flow(
+                    fixture.session(),
+                    draft.id(),
+                    null,
+                    FlowStatus.DRAFT
+                ).orElseThrow().status()
+            );
+            assertEquals(
+                FlowStatus.CLOSED,
+                fixture.flowService().flow(
+                    fixture.session(),
+                    deployed.id(),
+                    1L,
+                    FlowStatus.CLOSED
+                ).orElseThrow().status()
+            );
+            // PASS-S4-02
+            assertEquals(0, fixture.executionCount());
+        }
+    }
+
+    @Test
+    void s5RejectsMissingCrossTenantAndTerminalCancellation() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow flow = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s5-flow",
+                    "取消校验 Flow",
+                    false
+                )
+            );
+            Execution running = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+            long originalLockVersion = running.lockVersion();
+
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().cancel(
+                    fixture.session(),
+                    "missing-execution-id"
+                )
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().cancel(
+                    fixture.sessionFor("company-2"),
+                    running.id()
+                )
+            );
+            Execution afterRejectedCancel =
+                fixture.executionService().execution(
+                    fixture.session(),
+                    running.id()
+                ).orElseThrow();
+            assertEquals(ExecutionStatus.RUNNING, afterRejectedCancel.status());
+            assertEquals(
+                originalLockVersion,
+                afterRejectedCancel.lockVersion()
+            );
+
+            Execution canceled = fixture.executionService().cancel(
+                fixture.session(),
+                running.id()
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().cancel(
+                    fixture.session(),
+                    running.id()
+                )
+            );
+            Execution canceledReloaded =
+                fixture.executionService().execution(
+                    fixture.session(),
+                    running.id()
+                ).orElseThrow();
+            assertEquals(ExecutionStatus.CANCELED, canceledReloaded.status());
+            assertEquals(canceled.lockVersion(), canceledReloaded.lockVersion());
+
+            Flow automaticFlow = fixture.publish("""
+                key: uc02-s5-completed
+                tasks:
+                  - key: complete
+                    type: AUTO
+                """);
+            Execution completed = fixture.executionService().create(
+                fixture.session(),
+                automaticFlow.id()
+            );
+            assertThrows(
+                WorkflowException.class,
+                () -> fixture.executionService().cancel(
+                    fixture.session(),
+                    completed.id()
+                )
+            );
+            Execution completedReloaded =
+                fixture.executionService().execution(
+                    fixture.session(),
+                    completed.id()
+                ).orElseThrow();
+
+            // PASS-S5-01 and PASS-S5-02
+            assertEquals(ExecutionStatus.COMPLETED, completedReloaded.status());
+            assertEquals(
+                completed.lockVersion(),
+                completedReloaded.lockVersion()
+            );
+        }
+    }
+
+    @Test
+    void s6RunningExecutionKeepsItsBoundVersionAfterUpgrade() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow version1 = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s6-flow",
+                    "初始审批 Flow",
+                    false
+                )
+            );
+            Execution started = fixture.executionService().create(
+                fixture.session(),
+                version1.id()
+            );
+
+            fixture.flowService().createUpgradeDraft(
+                fixture.session(),
+                version1.id()
+            );
+            fixture.flowService().saveDraft(
+                fixture.session(),
+                version1.id(),
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s6-flow",
+                    "升级审批 Flow",
+                    true
+                )
+            );
+            fixture.flowService().publish(
+                fixture.session(),
+                version1.id()
+            );
+
+            Execution completed = fixture.completeAfterRestart(
+                started.id(),
+                Map.of("decision", "APPROVED")
+            );
+
+            // PASS-S6-01
+            assertEquals(1L, completed.flowReversion());
+            assertEquals(started.id(), completed.id());
+            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(1, completed.taskRuns().size());
+            assertEquals(
+                version1.tasks().getFirst().id(),
+                completed.taskRuns().getFirst().taskId()
+            );
+
+            Execution newStarted = fixture.executionService().create(
+                fixture.session(),
+                version1.id()
+            );
+            Execution newCompleted = fixture.completeAfterRestart(
+                newStarted.id(),
+                Map.of("decision", "APPROVED")
+            );
+            // PASS-S6-02
+            assertEquals(2L, newCompleted.flowReversion());
+            assertEquals(ExecutionStatus.COMPLETED, newCompleted.status());
+            assertEquals(2, newCompleted.taskRuns().size());
+        }
+    }
+
+    @Test
+    void s7CompleteAndCancelRaceCommitsOneConsistentTerminalState()
+        throws Exception {
+
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open();
+             var executor = Executors.newFixedThreadPool(2)) {
+            Flow flow = fixture.publish(
+                WorkflowUcFixture.pauseYaml(
+                    "uc02-s7-flow",
+                    "完成取消竞争",
+                    false
+                )
+            );
+            Execution started = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+            fixture.restartServer();
+            ExternalTask externalTask =
+                fixture.waitingForExecution(started.id());
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch start = new CountDownLatch(1);
+
+            Future<Boolean> complete = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                try {
+                    fixture.externalTaskService().complete(
+                        fixture.session(),
+                        externalTask.id(),
+                        Map.of("decision", "approved")
+                    );
+                    return true;
+                } catch (WorkflowException failure) {
+                    return false;
+                }
+            });
+            Future<Boolean> cancel = executor.submit(() -> {
+                ready.countDown();
+                start.await();
+                try {
+                    fixture.executionService().cancel(
+                        fixture.session(),
+                        started.id()
+                    );
+                    return true;
+                } catch (WorkflowException failure) {
+                    return false;
+                }
+            });
+            ready.await();
+            start.countDown();
+
+            // PASS-S7-01
+            assertEquals(1, (complete.get() ? 1 : 0) + (cancel.get() ? 1 : 0));
+
+            Execution reloaded = fixture.executionService().execution(
+                fixture.session(),
+                started.id()
+            ).orElseThrow();
+            ExternalTask externalReloaded =
+                fixture.externalTaskService().externalTask(
+                    fixture.session(),
+                    externalTask.id()
+                ).orElseThrow();
+            // PASS-S7-02
+            if (reloaded.status() == ExecutionStatus.COMPLETED) {
+                assertEquals(
+                    TaskRunStatus.COMPLETED,
+                    reloaded.taskRuns().getFirst().status()
+                );
+                assertEquals(
+                    ExternalTaskStatus.COMPLETED,
+                    externalReloaded.status()
+                );
+            } else {
+                assertEquals(ExecutionStatus.CANCELED, reloaded.status());
+                assertEquals(
+                    TaskRunStatus.CANCELED,
+                    reloaded.taskRuns().getFirst().status()
+                );
+                assertEquals(
+                    ExternalTaskStatus.CANCELED,
+                    externalReloaded.status()
+                );
+            }
+            // PASS-S7-03
+            assertEquals(1, reloaded.taskRuns().size());
+            assertTrue(reloaded.taskRuns().stream()
+                .allMatch(taskRun ->
+                    taskRun.status() != TaskRunStatus.RUNNING
+                        && taskRun.status() != TaskRunStatus.CREATED
+                ));
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).stream().noneMatch(task ->
+                task.executionId().equals(started.id())
+            ));
+        }
+    }
+}

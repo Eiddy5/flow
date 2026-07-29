@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flow 领域建模"
+  short_description: "统一 Flow 领域对象、类图、状态机与不变量设计"
+  default_prompt: "使用 $flow-domain-modeling 梳理并落地一个新的 Flow 项目领域对象。"

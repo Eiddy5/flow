@@ -28,9 +28,6 @@ dependencies {
         exclude group: 'xmlpull', module: 'xmlpull'
         exclude group: 'pull-parser', module: 'pull-parser'
     }
-
-    testImplementation libs.snakeyaml
-
 }
 
 java {

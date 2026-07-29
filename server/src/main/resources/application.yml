@@ -68,3 +68,17 @@ endpoints:
 path:
   configPath: "/workspace/java/cses/server/conf/"
 
+jooq:
+  send-event: false
+
+# Flow Core does not consume PAAS RPC/message services or publish JOOQ
+# database events.
+grpc:
+  server:
+    enabled: false
+thrift:
+  server:
+    enabled: false
+pulsar:
+  consumer:
+    enabled: false

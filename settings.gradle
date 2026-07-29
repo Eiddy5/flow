@@ -22,3 +22,7 @@ rootProject.name = "flow"
 
 include("gen")
 include("server")
+
+if (providers.gradleProperty("useLocalCloudDatapilot").orNull?.toBoolean()) {
+    includeBuild("../../yundiz/cloud-datapilot")
+}

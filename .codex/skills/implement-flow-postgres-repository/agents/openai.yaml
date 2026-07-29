@@ -1,0 +1,4 @@
+interface:
+  display_name: "实现 PostgreSQL Repository"
+  short_description: "按领域契约、租户边界和乐观锁实现 PostgreSQL 仓储适配器"
+  default_prompt: "使用 $implement-flow-postgres-repository 按现有领域契约实现并验证 PostgreSQL Repository。"

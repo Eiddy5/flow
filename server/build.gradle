@@ -19,14 +19,34 @@ repositories {
     gradlePluginPortal()
 }
 
+configurations.configureEach {
+    // The Flow server does not expose the PAAS diagnostic module. Its eager
+    // ServerService bean requires MongoDB and prevents a standalone local boot.
+    exclude group: "org.paas", module: "paas-diagnostic"
+    // The PAAS response filter has a hard runtime reference to the diagnostic
+    // module. Flow controllers will define their own HTTP contract later.
+    exclude group: "org.paas", module: "paas-response-wrapper"
+    // Temporal is not part of the current Flow Core phase. Its application
+    // listener requires Redisson and a Temporal server during startup.
+    exclude group: "org.paas", module: "paas-temporal"
+}
+
 dependencies {
+    api(project(':gen'))
+
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
     annotationProcessor(libs.micronaut.http.validation)
     implementation(libs.micronaut.http.client)
     implementation(libs.micronaut.discovery.client)
+    implementation(libs.micronaut.elasticsearch)
+    implementation(libs.jackson.dataformat.yaml)
+    api(libs.org.x9.cloud.datapilot)
+    api(libs.jooq.paas)
     api(libs.paas.json)
+    api(libs.paas.session)
     api(libs.opentelemetry.exporter.otlp)
     runtimeOnly(libs.logback.classic)
-    runtimeOnly(libs.snakeyaml)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 

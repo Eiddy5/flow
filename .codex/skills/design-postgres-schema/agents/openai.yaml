@@ -1,0 +1,4 @@
+interface:
+  display_name: "PostgreSQL 表结构设计"
+  short_description: "基于领域建模、三范式取舍和 PostgreSQL 特性完成表结构设计"
+  default_prompt: "使用 $design-postgres-schema 根据领域关系合理运用三范式，生成表关系图和经过验证的 PostgreSQL SQL。"

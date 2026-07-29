@@ -29,3 +29,11 @@ dependencies {
 test {
     useJUnitPlatform()
 }
+
+tasks.register('generateJooq', JavaExec) {
+    group = 'code generation'
+    description = 'Generates Flow jOOQ sources from the local PostgreSQL schema.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'org.flow.builder.JOOQFlowGenerator'
+    workingDir = rootProject.projectDir
+}

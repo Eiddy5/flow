@@ -6,10 +6,12 @@
 
 Agent 文件使用小写英文和连字符命名：
 
+文件名直接表达职责，不添加 `-agent` 后缀。
+
 ```text
-verifier.md
-backend-agent.md
-reviewer.md
+uc.md
+backend.md
+test.md
 ```
 
 ## Agent 文档结构
@@ -52,5 +54,8 @@ reviewer.md
 
 ## 当前规划
 
-- `verifier.md`：名称是 `Verifier`，用于根据核心设计文档建立和检查 `docs/verification/` 下的验证规范。
-- `reviewer.md`：名称是 `Reviewer`，用于根据 verification 文档验收已经完成的代码，并记录实际反例。
+- `uc.md`：名称是 `UC Agent`，用于从已确认 PRD 和生效架构设计中提炼尽可能完整
+  的场景、归并 UC、管理领域归类和目录、调用 `$generate-uc` 落地可验证文档，
+  并审计需求与架构规则覆盖；不根据当前代码定义验收预期。
+- `test.md`：名称是 `Test Agent`，用于读取 `docs/uc/` 中的 UC 文档，
+  按 UC 测试规范创建或补齐测试、执行测试并生成测试报告。
