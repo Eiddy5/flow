@@ -7,7 +7,6 @@ import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
 import org.cses.flow.core.exceptions.shared.WorkflowException;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,8 +23,7 @@ class FlowMaterializationTest {
 
     private static final ActorRef ACTOR =
         ActorRef.create("user-1", "Flow Designer");
-    private static final Instant DEPLOYED_AT =
-        Instant.parse("2026-07-29T08:00:00Z");
+    private static final long DEPLOYED_AT = 1_785_312_000_000L;
 
     private final TaskTypeDispatcher dispatcher = builtInDispatcher();
 
@@ -155,8 +153,8 @@ class FlowMaterializationTest {
 
     @Test
     void validatesRoutesAndDependenciesDuringMaterialization() {
-        IllegalArgumentException route = assertThrows(
-            IllegalArgumentException.class,
+        WorkflowException route = assertThrows(
+            WorkflowException.class,
             () -> deploy(
                 "flow-1",
                 Map.of(
@@ -180,8 +178,8 @@ class FlowMaterializationTest {
             "references undeclared parent output"
         ));
 
-        IllegalArgumentException dependency = assertThrows(
-            IllegalArgumentException.class,
+        WorkflowException dependency = assertThrows(
+            WorkflowException.class,
             () -> deploy(
                 "flow-1",
                 Map.of(
@@ -197,7 +195,7 @@ class FlowMaterializationTest {
             )
         );
         assertTrue(dependency.getMessage().contains(
-            "depends on missing Task"
+            "Task dependency does not exist"
         ));
     }
 
@@ -240,7 +238,7 @@ class FlowMaterializationTest {
             null,
             dispatcher
         );
-        first.close(ACTOR, DEPLOYED_AT.plusSeconds(10));
+        first.close(ACTOR, DEPLOYED_AT + 10_000L);
 
         assertThrows(
             WorkflowException.class,

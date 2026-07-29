@@ -1,13 +1,16 @@
 package org.cses.flow.core.services.flows;
 
 import io.micronaut.context.ApplicationContext;
+import org.cses.flow.core.domains.flows.FlowWithSource;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
 
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlowServiceTest {
 
@@ -22,43 +25,32 @@ class FlowServiceTest {
     );
 
     @Test
-    void requiresIdWhenEditingAnExistingFlowKey() {
+    void savesOpaqueInvalidSourceAndRejectsOnlyAtDeployment() {
         try (ApplicationContext context =
                  ApplicationContext.run(PROPERTIES)) {
             FlowService service = context.getBean(FlowService.class);
             Session<User> session = session("company-1");
-            service.saveDraft(
+            String invalidRaw = "key: [not-valid";
+
+            FlowWithSource source = service.saveDraft(
                 session,
-                yaml("existing-key", "初始 Flow", "start")
+                invalidRaw
+            );
+            assertEquals(
+                invalidRaw,
+                service.source(session, source.id()).orElseThrow().raw()
             );
 
             assertThrows(
-                IllegalArgumentException.class,
-                () -> service.saveDraft(
-                    session,
-                    yaml("existing-key", "已修改 Flow", "start", "finish")
-                )
+                RuntimeException.class,
+                () -> service.deploy(session, source.id())
             );
+            assertEquals(
+                invalidRaw,
+                service.source(session, source.id()).orElseThrow().raw()
+            );
+            assertTrue(service.latestFlow(session, source.id()).isEmpty());
         }
-    }
-
-    private static String yaml(
-        String key,
-        String description,
-        String... taskKeys
-    ) {
-        String tasks = java.util.Arrays.stream(taskKeys)
-            .map(taskKey -> """
-                  - key: %s
-                    type: AUTO
-                """.formatted(taskKey))
-            .reduce("", String::concat);
-        return """
-            key: %s
-            description: %s
-            tasks:
-            %s
-            """.formatted(key, description, tasks.indent(2));
     }
 
     private static Session<User> session(String companyId) {

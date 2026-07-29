@@ -12,8 +12,6 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-import java.time.Instant;
-
 @Singleton
 public final class SaveFlowSourceHandler implements CommandHandler<
     Session<User>,
@@ -48,7 +46,7 @@ public final class SaveFlowSourceHandler implements CommandHandler<
             context.getSession()
         );
         ActorRef actor = FlowHandlerSupport.actor(context.getSession());
-        Instant now = Instant.now();
+        long now = System.currentTimeMillis();
         FlowWithSource source;
         if (command.id() == null) {
             source = FlowWithSource.create(

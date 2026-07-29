@@ -132,18 +132,6 @@ public final class ExecutionPostgresRepository
             long storedVersion = stored.lockVersion == null
                 ? 0
                 : stored.lockVersion;
-            if (!alreadyFlushed
-                && execution.lockVersion() == storedVersion) {
-                Execution storedExecution = stored.toDomain(
-                    storedTaskRuns.stream()
-                        .map(TaskRunEntry::toDomain)
-                        .toList()
-                );
-                if (sameState(storedExecution, execution)) {
-                    return;
-                }
-                throw conflict(execution, storedVersion);
-            }
             long expectedVersion = alreadyFlushed
                 ? storedVersion
                 : storedVersion + 1;
@@ -227,39 +215,6 @@ public final class ExecutionPostgresRepository
                 + ": stored " + storedVersion
                 + ", attempted " + execution.lockVersion()
         );
-    }
-
-    private static boolean sameState(
-        Execution stored,
-        Execution attempted
-    ) {
-        if (!stored.id().equals(attempted.id())
-            || !stored.companyId().equals(attempted.companyId())
-            || !stored.flowId().equals(attempted.flowId())
-            || stored.flowReversion() != attempted.flowReversion()
-            || stored.status() != attempted.status()
-            || stored.lockVersion() != attempted.lockVersion()) {
-            return false;
-        }
-        List<TaskRun> storedRuns = stored.taskRuns();
-        List<TaskRun> attemptedRuns = attempted.taskRuns();
-        if (storedRuns.size() != attemptedRuns.size()) {
-            return false;
-        }
-        for (int index = 0; index < storedRuns.size(); index++) {
-            TaskRun left = storedRuns.get(index);
-            TaskRun right = attemptedRuns.get(index);
-            if (!left.id().equals(right.id())
-                || !left.taskId().equals(right.taskId())
-                || !left.parentId().equals(right.parentId())
-                || !left.inputs().equals(right.inputs())
-                || left.status() != right.status()
-                || !left.outputs().equals(right.outputs())
-                || !left.error().equals(right.error())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     private static final class FlushState {

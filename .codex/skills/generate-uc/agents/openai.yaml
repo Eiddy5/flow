@@ -1,0 +1,4 @@
+interface:
+  display_name: "生成并补齐用户场景 UC"
+  short_description: "按流程编排、流程运行或任务类型生成并补齐完整用户场景 UC"
+  default_prompt: "使用 $generate-uc 补齐 Pause task 的 UC；按任务类型标准流程审计已有场景，只写入已确认预期，并列出需要确认的问题。"

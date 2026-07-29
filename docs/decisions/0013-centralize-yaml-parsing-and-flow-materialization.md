@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted
+Accepted（其中过渡期 `FlowDefinition`、Draft 创建入口和迁移差距描述由
+ADR 0014 取代；集中 YAML 解析与 Task 插件注册决定继续生效）
 
 ## 背景
 

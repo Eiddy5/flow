@@ -89,7 +89,7 @@ public final class InMemoryFlowRepository
         Flow existing = flows.get(identity);
         if (existing != null) {
             if (existing.status() != FlowStatus.DEPLOYED
-                || flow.status() != FlowStatus.CLOSEDD) {
+                || flow.status() != FlowStatus.CLOSED) {
                 throw new WorkflowException(
                     "Existing Flow reversion may only be closed: "
                         + flow.id() + ":" + flow.reversion()
@@ -137,10 +137,18 @@ public final class InMemoryFlowRepository
         flowIds.putAll(state.flowIds);
     }
 
-    private record RepositoryState(
-        Map<FlowIdentity, Flow> flows,
-        Map<FlowKey, String> flowIds
-    ) {
+    private static final class RepositoryState {
+
+        private final Map<FlowIdentity, Flow> flows;
+        private final Map<FlowKey, String> flowIds;
+
+        private RepositoryState(
+            Map<FlowIdentity, Flow> flows,
+            Map<FlowKey, String> flowIds
+        ) {
+            this.flows = flows;
+            this.flowIds = flowIds;
+        }
     }
 
     private static final class FlowIdentity {
@@ -178,6 +186,31 @@ public final class InMemoryFlowRepository
         }
     }
 
-    private record FlowKey(String companyId, String flowKey) {
+    private static final class FlowKey {
+
+        private final String companyId;
+        private final String flowKey;
+
+        private FlowKey(String companyId, String flowKey) {
+            this.companyId = companyId;
+            this.flowKey = flowKey;
+        }
+
+        @Override
+        public boolean equals(Object value) {
+            if (this == value) {
+                return true;
+            }
+            if (!(value instanceof FlowKey other)) {
+                return false;
+            }
+            return Objects.equals(companyId, other.companyId)
+                && Objects.equals(flowKey, other.flowKey);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(companyId, flowKey);
+        }
     }
 }

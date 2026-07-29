@@ -11,8 +11,6 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-import java.time.Instant;
-
 @Singleton
 public final class DiscardFlowSourceHandler implements CommandHandler<
     Session<User>,
@@ -55,7 +53,7 @@ public final class DiscardFlowSourceHandler implements CommandHandler<
         );
         source.discard(
             FlowHandlerSupport.actor(context.getSession()),
-            Instant.now()
+            System.currentTimeMillis()
         );
         repository.save(context.getDsl(), source);
         return source.copy();

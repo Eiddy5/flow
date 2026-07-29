@@ -3,7 +3,8 @@
 ## 状态
 
 Accepted（生产内存实现部分由 ADR 0007 修订；Flow 定义生命周期部分由
-ADR 0008 修订；Executor/Worker 包边界由 ADR 0012 修订）
+ADR 0008 修订，并由 ADR 0014 完成来源与 Reversion 迁移；Executor/Worker
+包边界由 ADR 0012 修订）
 
 ## 背景
 

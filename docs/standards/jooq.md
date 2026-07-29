@@ -10,6 +10,7 @@
 - JOOQ 生成代码的边界。
 - 生成类与 `XxxEntry` 的关系。
 - `XxxEntry` 与领域对象的转换。
+- `fetch`、`fetchInto`、`fetchOne` 和 `fetchOneInto` 的选择与映射条件。
 - `buildInsertMap()`、字段级 `set(...)` 和 `buildUpdateMap()` 的使用场景。
 
 ## 1. JOOQ 生成代码位置
@@ -271,6 +272,11 @@ public final class ExternalTaskEntry extends AssignmentObject {
 私有字段绕过领域约束。如果领域对象尚无必要的重建入口，应先补充领域持久化
 契约。
 
+项目自有 Java 类型的时间点统一为 Epoch 毫秒 `long/Long`。PostgreSQL
+`timestamptz` 对应的 `OffsetDateTime` 只允许出现在生成代码和 Entry/Repository
+转换边界；Entry 写入时使用 `Instant.ofEpochMilli(...)` 转换，重建时使用
+`toInstant().toEpochMilli()`，不得把日期时间对象返回给 Core。
+
 Entry 可以复用生成父类已有的 `toMap()`、`table()`、`buildInsertMap()` 和
 `buildUpdateMap()`，不得重复实现同名通用能力。只有生成能力无法满足已确认的
 数据库语义时才允许新增专用方法。
@@ -300,7 +306,7 @@ dsl.insertInto(EXECUTIONS)
     .set(EXECUTIONS.ID, entry.id)
     .set(EXECUTIONS.COMPANY_ID, entry.companyId)
     .set(EXECUTIONS.FLOW_ID, entry.flowId)
-    .set(EXECUTIONS.FLOW_VERSION, entry.flowVersion)
+    .set(EXECUTIONS.FLOW_REVERSION, entry.flowReversion)
     .set(EXECUTIONS.STATUS, entry.status)
     .execute();
 ```
@@ -382,9 +388,60 @@ dsl.insertInto(EXECUTIONS)
 所有 `save` 实现成 Upsert；需要区分首次创建、合法更新和冲突的聚合必须使用明确
 的 insert/update/CAS 协议。
 
-## 10. 查询与领域重建
+## 10. 查询结果、对象映射与领域重建
 
-查询可以直接映射到 Entry：
+### 按结果数量和映射方式选择查询方法
+
+查询方法先按业务预期的结果数量选择 `fetch` 或 `fetchOne`，再按是否需要 JOOQ
+直接映射对象选择是否使用 `Into`：
+
+| 方法 | 预期结果数量 | 返回形式 | 适用场景 |
+| --- | --- | --- | --- |
+| `fetch()` | 零到多条 | JOOQ `Result` / `Record` | 查询后还要读取字段、组合多表结果或执行自定义转换 |
+| `fetchInto(Xxx.class)` | 零到多条 | 映射后的对象列表 | 每条查询记录都能直接、完整地映射为同一种对象 |
+| `fetchOne()` | 零或一条 | 单个 `Record`；无记录时为 `null` | 单条查询结果仍需执行自定义读取或转换 |
+| `fetchOneInto(Xxx.class)` | 零或一条 | 单个映射对象；无记录时为 `null` | 单条查询记录可以直接、完整地映射为目标对象 |
+
+`fetchOne()` 和 `fetchOneInto(...)` 表达的是“至多一条”，不是“任取第一条”。实际
+返回多条记录时 JOOQ 会报错，因此查询条件必须有唯一键、主键或其他明确的单结果
+保证。可能合法返回多条记录时必须使用 `fetch`。
+
+不带 `Into` 的方法保留 JOOQ Record，Repository 可以在查询后执行自己的映射和
+组合逻辑，也可以使用接收映射函数的重载，把自定义转换集中在 Entry：
+
+```java
+ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
+    .where(EXECUTIONS.COMPANY_ID.eq(companyId))
+    .and(EXECUTIONS.ID.eq(executionId))
+    .fetchOne(ExecutionEntry::fromRecord);
+
+List<TaskRunEntry> taskRuns = dsl.selectFrom(TASK_RUN)
+    .where(TASK_RUN.EXECUTION_ID.eq(executionId))
+    .orderBy(TASK_RUN.CREATED_AT)
+    .fetch(TaskRunEntry::fromRecord);
+```
+
+以下情况应使用不带 `Into` 的方法和显式转换：
+
+- 查询包含多表 Join、聚合、计算字段或同名字段，需要自行决定组合语义。
+- 数据库类型与对象字段之间存在 JSON、枚举、时间等专用转换。
+- 查询结果需要组合成一个聚合，不能由单条记录直接表达。
+- 需要根据某个字段执行条件分支，或需要区分字段缺失与字段值为 `null`。
+
+### `Into` 直接映射的前提
+
+带 `Into` 的方法会让 JOOQ 直接把查询结果映射为目标对象。只有同时满足以下条件
+时才允许使用：
+
+- 目标类型能够被 JOOQ 实例化，并提供与查询字段对应的可写属性，例如公共字段或
+  Setter；项目中的 Entry 通常通过生成对象继承这些能力。
+- `select` 返回的每个字段名或别名都能对应到目标对象的属性名。计算字段、重命名
+  字段以及 Join 后的字段必须使用与目标属性对应的 `as(...)` 别名。
+- 查询字段类型与目标属性类型一致，或存在已确认且经过测试的 JOOQ 类型转换。
+- 领域重建所需的目标属性都包含在查询字段中；未被查询到的属性会保留为
+  `null` 或 Java 默认值，不能据此构造不完整领域对象。
+
+同表完整字段查询且 Entry 与生成对象字段一致时，可以直接映射：
 
 ```java
 ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
@@ -393,7 +450,14 @@ ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
     .fetchOneInto(ExecutionEntry.class);
 ```
 
-Repository 必须在返回前调用 Entry 的领域转换方法：
+如果查询字段名称、别名、类型或转换逻辑与 Entry 不完全对应，应改用
+`fetch(...)`、`fetchOne(...)` 或它们接收映射函数的重载，显式完成转换，不能依赖
+未验证的自动映射。
+
+### 映射后重建领域对象
+
+无论使用自定义 Record 映射还是 `Into` 直接映射，Repository 都必须在返回前调用
+Entry 的领域转换方法：
 
 ```java
 return entry == null
@@ -430,6 +494,10 @@ Entry 列表暴露给 Core 调用方。
 - 禁止字段级更新时为了方便构造一个不完整 Entry 并调用
   `buildUpdateMap()`。
 - 禁止依赖 `buildUpdateMap()` 把字段更新为 `NULL`。
+- 禁止在未确认查询字段名称、别名、类型和目标可写属性对应关系时使用
+  `fetchInto(...)` 或 `fetchOneInto(...)`。
+- 禁止用 `fetchOne()` 或 `fetchOneInto(...)` 从可能返回多条记录的查询中任取
+  第一条。
 - 禁止在没有 `where`、租户或并发条件的情况下执行 update/delete。
 
 ## 13. 开发与审查清单
@@ -444,7 +512,9 @@ Entry 列表暴露给 Core 调用方。
 6. 完整插入是否使用 `buildInsertMap()`。
 7. 字段级更新是否使用 JOOQ 字段级 `set(...)`。
 8. 完整对象更新是否使用 `buildUpdateMap()`。
-9. 是否正确处理 `null`、数据库默认值和生成字段。
-10. 查询、更新和删除是否包含租户、主键及并发条件。
-11. 是否复用了传入的 `DSLContext` 和已有事务。
-12. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。
+9. 查询方法是否根据结果基数正确选择了 `fetch` 或 `fetchOne`。
+10. 使用 `Into` 时，查询字段名称、别名、类型和目标对象可写属性是否对应。
+11. 是否正确处理 `null`、数据库默认值和生成字段。
+12. 查询、更新和删除是否包含租户、主键及并发条件。
+13. 是否复用了传入的 `DSLContext` 和已有事务。
+14. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。

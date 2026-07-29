@@ -13,7 +13,6 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-import java.time.Instant;
 import java.util.Optional;
 
 @Singleton
@@ -66,7 +65,7 @@ public final class CloseFlowHandler implements CommandHandler<
             command.id()
         );
         var actor = FlowHandlerSupport.actor(context.getSession());
-        Instant now = Instant.now();
+        long now = System.currentTimeMillis();
         flow.close(actor, now);
         if (source.isPresent()) {
             FlowWithSource editableSource = source.orElseThrow();

@@ -92,7 +92,7 @@ docs/
 ├── harness/             # 可复用的运行、调试和验证方法
 ├── standards/           # 开发和测试规范
 ├── test-reports/        # Test Agent 生成的历史测试报告
-└── uc/                  # 基于已确认需求与架构生成的 UC 验收契约
+└── uc/                  # 基于已确认用户需求整理的真实用户场景
 ```
 
 `standards` 只保存规范；说明性目录地图统一放在本文，不放入 `standards`。

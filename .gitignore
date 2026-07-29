@@ -20,5 +20,7 @@ out/
 !.codex/skills/design-postgres-schema/**
 !.codex/skills/flow-domain-modeling/
 !.codex/skills/flow-domain-modeling/**
+!.codex/skills/generate-uc/
+!.codex/skills/generate-uc/**
 !.codex/skills/implement-flow-postgres-repository/
 !.codex/skills/implement-flow-postgres-repository/**

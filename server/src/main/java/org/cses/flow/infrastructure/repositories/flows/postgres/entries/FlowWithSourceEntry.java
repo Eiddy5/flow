@@ -62,23 +62,28 @@ public final class FlowWithSourceEntry extends FlowDraftsObject {
                 deleter,
                 "FlowWithSource.deleter"
             ),
-            toInstant(createdAt, "FlowWithSource.createdAt"),
-            toInstant(updatedAt, "FlowWithSource.updatedAt"),
-            deletedAt == null ? null : deletedAt.toInstant(),
+            toEpochMillis(createdAt, "FlowWithSource.createdAt"),
+            toEpochMillis(updatedAt, "FlowWithSource.updatedAt"),
+            deletedAt == null
+                ? null
+                : deletedAt.toInstant().toEpochMilli(),
             lockVersion == null ? 0 : lockVersion
         );
     }
 
-    static OffsetDateTime toOffsetDateTime(Instant value) {
-        return value.atOffset(ZoneOffset.UTC);
+    static OffsetDateTime toOffsetDateTime(long epochMillis) {
+        return OffsetDateTime.ofInstant(
+            Instant.ofEpochMilli(epochMillis),
+            ZoneOffset.UTC
+        );
     }
 
-    static Instant toInstant(OffsetDateTime value, String field) {
+    static long toEpochMillis(OffsetDateTime value, String field) {
         if (value == null) {
             throw new IllegalStateException(
                 "Persisted " + field + " must not be null"
             );
         }
-        return value.toInstant();
+        return value.toInstant().toEpochMilli();
     }
 }

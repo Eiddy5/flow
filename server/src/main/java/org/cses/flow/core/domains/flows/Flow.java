@@ -6,7 +6,6 @@ import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
 import org.cses.flow.core.exceptions.shared.WorkflowException;
 import org.paas.common.util.StringUtil;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -60,12 +59,12 @@ public final class Flow {
     private final List<Output> outputs;
     private final List<Task> tasks;
     private final ActorRef creator;
-    private final Instant createdAt;
+    private final long createdAt;
     private FlowStatus status;
     private ActorRef updater;
     private ActorRef deleter;
-    private Instant updatedAt;
-    private Instant deletedAt;
+    private long updatedAt;
+    private Long deletedAt;
 
     private Flow(
         String id,
@@ -79,9 +78,9 @@ public final class Flow {
         ActorRef creator,
         ActorRef updater,
         ActorRef deleter,
-        Instant createdAt,
-        Instant updatedAt,
-        Instant deletedAt,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt,
         FlowStatus status
     ) {
         this.id = requireText(id, "Flow id");
@@ -100,14 +99,8 @@ public final class Flow {
         validateDefinition(this.tasks);
         this.creator = Objects.requireNonNull(creator, "Flow creator");
         this.updater = Objects.requireNonNull(updater, "Flow updater");
-        this.createdAt = Objects.requireNonNull(
-            createdAt,
-            "Flow createdAt"
-        );
-        this.updatedAt = Objects.requireNonNull(
-            updatedAt,
-            "Flow updatedAt"
-        );
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
         this.status = Objects.requireNonNull(status, "Flow status");
         this.deleter = deleter;
         this.deletedAt = deletedAt;
@@ -139,7 +132,7 @@ public final class Flow {
         Flow latest,
         TaskTypeDispatcher taskTypeDispatcher,
         ActorRef actor,
-        Instant deployedAt
+        long deployedAt
     ) {
         Objects.requireNonNull(
             taskTypeDispatcher,
@@ -232,9 +225,9 @@ public final class Flow {
         ActorRef creator,
         ActorRef updater,
         ActorRef deleter,
-        Instant createdAt,
-        Instant updatedAt,
-        Instant deletedAt,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt,
         FlowStatus status
     ) {
         return new Flow(
@@ -256,13 +249,13 @@ public final class Flow {
         );
     }
 
-    public void close(ActorRef closedBy, Instant closedAt) {
+    public void close(ActorRef closedBy, long closedAt) {
         if (status == FlowStatus.CLOSED) {
             throw new WorkflowException("Flow is already closed: " + id);
         }
         updater = Objects.requireNonNull(closedBy, "Flow updater");
         deleter = closedBy;
-        updatedAt = Objects.requireNonNull(closedAt, "Flow updatedAt");
+        updatedAt = closedAt;
         deletedAt = closedAt;
         status = FlowStatus.CLOSED;
     }
@@ -311,15 +304,15 @@ public final class Flow {
         return Optional.ofNullable(deleter);
     }
 
-    public Instant createdAt() {
+    public long createdAt() {
         return createdAt;
     }
 
-    public Instant updatedAt() {
+    public long updatedAt() {
         return updatedAt;
     }
 
-    public Optional<Instant> deletedAt() {
+    public Optional<Long> deletedAt() {
         return Optional.ofNullable(deletedAt);
     }
 

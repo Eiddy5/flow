@@ -6,7 +6,7 @@
 - 文档：[UC-01 Flow 草稿生命周期与多租户管理.md](../UC-01%20Flow%20草稿生命周期与多租户管理.md)
 - 涉及范围：目标领域模型迁移，以及旧 S7 并发写协议
 
-## 当前目标模型缺口
+## 历史目标模型缺口（已关闭）
 
 目标模型已经改为：
 
@@ -16,12 +16,15 @@
 - `close` 不产生新版本，旧版本不会因为升级而进入 `CLOSED`。
 - `FlowStatus` 不包含 `DRAFT`。
 
-当前生产代码仍使用一个 `Flow` 聚合持有 Draft 和版本集合，仍存在
+迁移前的生产代码使用一个 `Flow` 聚合持有 Draft 和版本集合，并存在
 `FlowDefinition`、`createUpgradeDraft()`、`PublishFlowCommand` 和
-`id + version + status` 查询契约。当前 `Uc01FlowLifecycleTest` 也只验证旧
-模型。因此目标 UC 还不具备可执行入口，不能沿用历史 PASS 结果判定新模型通过。
+`id + version + status` 查询契约。当时 `Uc01FlowLifecycleTest` 也只验证旧
+模型，因此历史 PASS 结果不能判定新模型通过。
 
-## 当前风险
+上述模型、调用链、Schema 和测试现已完成迁移，以下内容作为缺口形成时的历史
+证据保留。
+
+## 历史风险（已消除）
 
 - 未解析来源和有效 Flow 仍可能被调用方视为同一种对象。
 - 编辑草稿时会提前解析 YAML，无法满足“部署时才解析”的规则。
@@ -29,7 +32,7 @@
 - 发布新版本仍会把旧版本改为 CLOSE，与 close 表达整个 Flow 删除语义冲突。
 - 历史测试成功可能掩盖目标领域模型尚未实现。
 
-## 目标模型所需最小能力
+## 已落地的最小能力
 
 - 独立 `FlowWithSource` 聚合及 Repository。
 - 只接收完整解析结果的 `Flow.deploy` 创建入口。
@@ -48,7 +51,7 @@
 两个调用方读取同一 DRAFT 后分别保存不同修改时，系统必须检测陈旧写入或使用
 明确的版本协议，不能让后提交者在无提示的情况下覆盖先提交者。
 
-## 项目现有能力
+## 缺口形成时的项目能力
 
 - `Flow` 聚合负责 DRAFT、发布、升级和关闭状态转换。
 - `FlowQueryHandler` 按 companyId、id、version 和 status 精确查询。
@@ -78,13 +81,15 @@
 
 ## 当前状态与后续角色
 
-- 目标模型迁移状态：`OPEN`
+- 目标模型迁移状态：`RESOLVED`
 - 历史 S7 缺口状态：`RESOLVED`
-- 历史处理结论：FlowDefinition 暴露 DRAFT revision，编辑命令携带 expected
-  revision；Flow 聚合和内存 Repository 均拒绝陈旧 revision，companyId + key
-  使用原子唯一索引。
-- 复验证据：`Uc01FlowLifecycleTest#s7RejectsAStaleDraftSaveWithoutOverwritingCommittedContent`。
+- 最终处理结论：以 `FlowWithSource.lockVersion` 保护来源编辑，以
+  `Flow.id + reversion` 保存不可变部署快照；部署时才解析 YAML，部署后保留
+  来源，关闭时在同一事务丢弃来源。生产 PostgreSQL Repository 和测试内存
+  Repository 都拒绝陈旧写入。
+- 复验证据：`Uc01FlowLifecycleTest` 按当前 ACCEPTED UC 覆盖 S1～S13，包括
+  无效 YAML、部署回滚、多租户、陈旧写、并发部署、来源保留和关闭语义。
 - UC Agent：保留 S7 和通过规范，不把静态证据写成运行 FAIL。
-- 开发角色：已实现最小修订冲突协议。
-- Test Agent：已补齐唯一测试类，复验结果见
-  [UC-01-2026-07-27-1948.md](../../../test-reports/flow/UC-01-2026-07-27-1948.md)。
+- 开发角色：已完成领域、命令、仓储、Schema、JOOQ、UC 和测试的完整迁移。
+- Test Agent：旧模型复验报告继续保留；本轮结果写入新的历史测试报告，不覆盖
+  旧报告。

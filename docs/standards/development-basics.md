@@ -147,6 +147,75 @@ public record ExecutionSnapshot(
 - 存量 `record` 属于待迁移项；新代码不得继续使用。修改相关类型时，应同步检查
   构造调用、访问方法、相等性判断和序列化协议，避免迁移后行为变化。
 
+### 时间统一使用 long
+
+项目自有 Java 类型中的时间点统一使用 Unix Epoch 毫秒值，不使用 Java 日期时间
+对象作为字段、方法参数或返回值。
+
+- Domain、Command、Query、Service、Handler、DTO、View、事件和测试辅助类型中的
+  必填时间点统一使用原始类型 `long`。
+- `long` 时间点的单位固定为毫秒，时区基准固定为 UTC。例如 `createdAt` 的值等于
+  从 `1970-01-01T00:00:00Z` 到该时间点经过的毫秒数。
+- 只有业务上确实存在“尚未发生”或“未知”语义的可空时间才允许使用 `Long`；
+  `null` 只表示时间不存在，其非空值仍是 Epoch 毫秒。禁止使用 `0`、`-1` 或其他
+  魔法数字表示时间不存在。
+- 时间点字段继续使用 `createdAt`、`updatedAt`、`deletedAt`、`startedAt` 和
+  `completedAt` 等业务名称；因为单位已由本规范统一，不重复添加 `Millis` 后缀。
+- 时长、超时和间隔也使用 `long` 毫秒，但字段或参数名必须明确包含单位，例如
+  `timeoutMillis`、`durationMillis`，不能使用含义不明的 `timeout` 或 `duration`。
+- 禁止在项目自有业务类型的字段和公开方法签名中使用 `Instant`、
+  `OffsetDateTime`、`LocalDateTime`、`ZonedDateTime`、`Date` 或 `Timestamp`。
+
+正确示例：
+
+```java
+public final class ExecutionSnapshot {
+
+    private final long createdAt;
+    private final Long completedAt;
+
+    public ExecutionSnapshot(long createdAt, Long completedAt) {
+        this.createdAt = createdAt;
+        this.completedAt = completedAt;
+    }
+
+    public long createdAt() {
+        return createdAt;
+    }
+
+    public Long completedAt() {
+        return completedAt;
+    }
+}
+```
+
+数据库和第三方框架可以使用自身要求的日期时间类型，但这些类型只能存在于生成
+代码或基础设施适配边界。当前 PostgreSQL `timestamptz` 对应的 JOOQ
+`OffsetDateTime` 必须在 Entry 或 Repository 映射处与 Epoch 毫秒 `long` 转换，
+不能泄漏到 Core 或其他项目自有业务接口：
+
+```java
+static OffsetDateTime toDatabaseTime(long epochMillis) {
+    return OffsetDateTime.ofInstant(
+        Instant.ofEpochMilli(epochMillis),
+        ZoneOffset.UTC
+    );
+}
+
+static long fromDatabaseTime(OffsetDateTime value) {
+    return value.toInstant().toEpochMilli();
+}
+```
+
+时间转换必须集中在对应 Entry 或稳定的基础设施转换组件中。写入和回读都以毫秒
+精度为准；数据库或第三方系统提供更高精度时，进入项目自有 Java 类型前统一转换
+为毫秒。领域对象仍不得自行读取系统时钟，当前时间由调用链在边界获取一次并以
+`long` 显式传入，以保证同一次业务操作时间一致且测试可控。
+
+存量 `Instant`、`OffsetDateTime` 等业务字段和方法签名属于待迁移项。修改相关
+业务链路时，必须同步迁移调用方、Entry 转换、序列化契约和测试；基础设施中的
+JOOQ 生成字段不因此改为 `long`，数据库列也不因此改为 `bigint`。
+
 ## 4. 复用优先与小范围重构规则
 
 ### 新增前先检查

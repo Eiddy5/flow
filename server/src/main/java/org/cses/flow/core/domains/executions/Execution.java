@@ -197,15 +197,20 @@ public final class Execution {
                 "Execution already has a TaskRun for Task: " + taskId
             );
         }
-        if (parentId != null && findTaskRun(parentId).isEmpty()) {
+        String normalizedParentId =
+            parentId == null || parentId.isBlank()
+                ? null
+                : parentId.trim();
+        if (normalizedParentId != null
+            && findTaskRun(normalizedParentId).isEmpty()) {
             throw new WorkflowException(
-                "Parent TaskRun does not exist: " + parentId
+                "Parent TaskRun does not exist: " + normalizedParentId
             );
         }
         TaskRun taskRun = new TaskRun(
             StringUtil.newId(),
             taskId,
-            parentId,
+            normalizedParentId,
             inputs
         );
         markModified();

@@ -11,10 +11,11 @@
 [`ADR 0006`](../decisions/0006-single-execution-branch-routing-and-join.md)、
 [`ADR 0008`](../decisions/0008-separate-flow-source-from-deployed-flow.md)、
 [`ADR 0013`](../decisions/0013-centralize-yaml-parsing-and-flow-materialization.md)
+、[`ADR 0014`](../decisions/0014-complete-flow-source-and-reversion-migration.md)
 以及
 [`domain-object-modeling.md`](domain-object-modeling.md)
-已经确认的领域语义。现有 Java 代码尚未完成该模型的迁移；冲突时，本规范表示
-目标设计，不能以旧实现反向修改领域定义。
+已经确认的领域语义。Java、插件注册、YAML 物化和 PostgreSQL 重建链路已经完成
+本模型迁移；不能以插件属性快照或数据库结构反向修改 Task 领域字段。
 
 本领域统一使用 `Flow Reversion` 和字段名 `reversion`。旧文档或代码中的
 `FlowVersion`、`FlowDefinition`、`version` 和“发布”，应分别迁移为
@@ -88,8 +89,9 @@ class Task {
 
 class TaskTypeDispatcher {
     <<domainExtensionPort>>
-    +dispatch(id, parentId, key, type, inputs, outputs, route, properties, children) Task
+    +dispatch(id, parentId, key, type, inputs, outputs, route, dependOn, properties, children) Task
     +restore(...) Task
+    +properties(task) Map
 }
 
 class TaskPluginRegistry {
@@ -100,18 +102,19 @@ class TaskPluginRegistry {
 class TaskPlugin {
     <<extensionSPI>>
     +type() String
-    +create(id, parentId, key, inputs, outputs, route, properties, children) Task
+    +create(id, parentId, key, inputs, outputs, route, dependOn, properties, children) Task
     +rehydrate(...) Task
+    +properties(task) Map
 }
 
 class AutomaticTask {
     <<entitySubtype>>
-    +create(id, parentId, key, inputs, outputs, route, properties, children) AutomaticTask$
+    +create(id, parentId, key, inputs, outputs, route, dependOn, children) AutomaticTask$
 }
 
 class PauseTask {
     <<entitySubtype>>
-    +create(id, parentId, key, inputs, outputs, route, properties, children) PauseTask$
+    +create(id, parentId, key, inputs, outputs, route, dependOn, children) PauseTask$
 }
 
 class RouteExpression {
@@ -443,24 +446,22 @@ Execution 的运行事实来改变已部署 Task。
 
 ## 现有实现迁移差距
 
-当前代码是实现证据，不是目标模型。已确认的主要差距如下：
+本轮确认的 Task 定义链路差距已经关闭：
 
-- 当前仍在保存 DRAFT 时由 Flow 把通用定义映射物化为完整 Task；目标链路要求
-  `FlowWithSource` 只保存原始 YAML，并把 Task 装配推迟到 `Flow.deploy`。
-- 当前 Task、Task Plugin、YAML Task 节点物化与持久化重建已经使用正式的
-  `List<Input>`、`List<Output>`；这一部分已与目标模型对齐。
-- 当前 Task 从通用 `properties` Map 中提取 `dependOn`；目标模型将
-  `dependOn` 作为明确、只读的编排字段。
-- 当前 Task 保留通用 `properties` Map；目标模型要求具体 Task 子类型使用明确
-  字段或值对象保护类型专有规则。
-- 当前 `route()` 返回字符串，并另设 `routeOutputName()` 与
-  `routeMatches()`；目标 API 直接返回 RouteExpression，并统一使用
-  `matchesRoute(...)`。
-- 当前 Java 和部分文档仍使用 `FlowDefinition`、`version`、`publish` 等旧
-  术语，需要随 Flow 定义域迁移统一替换。
+- `FlowWithSource` 只保存原始 YAML，Task 只在 `Flow.deploy` 中递归物化。
+- Task、Task Plugin、YAML 节点物化与持久化重建统一使用
+  `List<Input>`、`List<Output>`。
+- `dependOn` 已是 Task 的明确只读字段；`route()` 返回
+  `RouteExpression`，运行判断统一使用 `matchesRoute(...)`。
+- Task 基类不保存通用 properties。`Map<String, ?> properties` 只存在于插件
+  创建/重建协议和 PostgreSQL 快照边界，具体插件必须把它转成具体 Task 子类型的
+  明确字段，并在回写时显式编码。
+- `TaskPluginRegistry` 按规范化 type 自动收集插件，拒绝重复注册；分派器不包含
+  中心枚举或 `switch`。
+- `FlowDefinition`、旧 version 和 publish 生产契约已经移除。
 
-这些差距应在同一条 Flow 定义域迁移链路中处理，不能通过长期保留两套 Task
-模型或增加转换型 Snapshot 解决。
+仍待确认的是 Data type 的稳定代码及 TaskRun 实际值校验，不改变 Task 定义
+对象和插件注册机制。
 
 ## 相关文档
 

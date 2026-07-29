@@ -270,9 +270,8 @@ Input 和 Output 的对象形态、主键和 YAML 来源已经确认，以下业
   值相等已经落地。
 - Task、Task Plugin、Flow 的 Task 节点物化和 PostgreSQL 定义映射已经统一使用
   `Input`、`Output`，不再用定义 Map 或字符串列表代替。
-- 目标 Flow 自身的 `List<Input> inputs`、`List<Output> outputs` 尚未迁移到
-  当前单聚合实现；这部分应随 `FlowWithSource` 与 `Flow.deploy` 生命周期迁移
-  一并完成。
+- Flow 自身的 `List<Input> inputs`、`List<Output> outputs` 已随
+  `FlowWithSource` 与 `Flow.deploy` 生命周期迁移完成。
 - TaskRun 仍以 `Map<String, Object>` 保存实际运行值；type 代码协议与实际值
   校验规则确认后，需要在执行入口增加契约校验，但不能把实际值放回 Data。
 - 如果已有持久化记录仍使用字符串 outputs 或缺少 type 的 inputs，必须由业务

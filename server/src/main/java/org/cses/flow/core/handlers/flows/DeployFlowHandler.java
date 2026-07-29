@@ -15,8 +15,6 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-import java.time.Instant;
-
 @Singleton
 public final class DeployFlowHandler implements CommandHandler<
     Session<User>,
@@ -79,7 +77,7 @@ public final class DeployFlowHandler implements CommandHandler<
             latest,
             taskTypeDispatcher,
             FlowHandlerSupport.actor(context.getSession()),
-            Instant.now()
+            System.currentTimeMillis()
         );
         flowRepository.save(context.getDsl(), deployed);
         return deployed.copy();

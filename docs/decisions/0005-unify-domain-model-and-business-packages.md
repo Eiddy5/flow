@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted（单一 FlowDefinition 生命周期模型由 ADR 0008 修订）
+Accepted（单一 `FlowDefinition` 生命周期模型由 ADR 0008 修订，并由
+ADR 0014 的 `FlowWithSource + Flow Reversion` 模型取代）
 
 ## 背景
 

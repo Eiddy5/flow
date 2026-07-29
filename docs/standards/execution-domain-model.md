@@ -15,9 +15,9 @@ Flow Reversion 绑定、真实运行历史、并行、失败、取消、恢复�
 [`domain-object-modeling.md`](domain-object-modeling.md)
 已经确认的领域语义。
 
-现有 Java 代码已实现大部分第一阶段行为，但仍使用 `flowVersion`、单数
-`currentTaskRun()` 和公共 `beginModification()` 等旧接口。冲突时，本规范表示
-目标设计；迁移差距不能反向改变领域定义。
+现有 Java、Executor、Handler、Repository 和 UC 已完成本规范第一阶段接口迁移。
+仍待确认的 Flow 实际输入与运行值规则单独记录在迁移差距中，不能反向改变已经
+确认的 Execution 聚合边界。
 
 ## 定义与对象角色
 
@@ -457,18 +457,16 @@ Execution 和 TaskRun 的 creator、时间戳、耗时、尝试次数与重试�
 
 ## 现有实现迁移差距
 
-- `Execution.flowVersion`、`flowVersion()` 和相关调用仍需统一改为
-  `flowReversion`、`flowReversion()`。
-- `Execution.currentTaskRun()` 在并行模型下含义错误，目标模型只保留
-  `activeTaskRuns()`。
-- 当前 `taskRunForTask(taskId)` 只返回第一条记录；目标 API 使用
-  `taskRunsForTask` 和 `latestTaskRunForTask`，避免阻塞未来 Loop。
-- 当前 `beginModification()` 是公共方法并由 Handler 手工调用；目标模型把
-  lockVersion 留在 Repository CAS/聚合重建边界，不作为业务动作公开。
-- 当前 `cancelRunningTaskRuns()` 使用技术实现名称；目标业务方法统一为
-  `cancel()`。
-- 当前 TaskRun 的 `parentId()`、`error()` 直接返回可空 String；目标查询使用
-  Optional 表达业务可空性。
+以下接口迁移已经完成：
+
+- Execution 使用 `flowReversion`；并行查询使用 `activeTaskRuns()`。
+- 按 Task 查询历史使用 `taskRunsForTask` 和 `latestTaskRunForTask`。
+- 公共 `beginModification()` 和技术命名 `cancelRunningTaskRuns()` 已删除；
+  聚合业务取消统一使用 `cancel()`，Repository 使用 `lockVersion` 做 CAS。
+- TaskRun 的 `parentId()`、`error()` 使用 Optional 表达可空性。
+
+剩余差距是尚未确认的业务规则：
+
 - 并行分支中一个 Worker 失败后的其他活动 TaskRun 和 ExternalTask 清理策略
   尚未确认。
 - Execution 创建尚不接收 Flow 实际 inputs，也没有正式 globalContext 字段；
@@ -476,8 +474,9 @@ Execution 和 TaskRun 的 creator、时间戳、耗时、尝试次数与重试�
 - TaskRun 仍使用通用 Map 保存实际值；Data type 和运行值校验规则确认后需要
   同步收紧执行入口。
 
-这些差距应以 Execution 运行链路为最小完整单元，统一修改 Domain、Executor、
-Handler、Worker、Repository、UC 和测试，不能建立第二套运行 Snapshot 模型。
+确认这些规则后，仍须以 Execution 运行链路为最小完整单元统一修改 Domain、
+Executor、Handler、Worker、Repository、UC 和测试，不能建立第二套运行
+Snapshot 模型。
 
 ## 相关文档
 

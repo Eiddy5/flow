@@ -3,7 +3,6 @@ package org.cses.flow.core.domains.flows;
 import org.cses.flow.core.exceptions.shared.WorkflowException;
 import org.paas.common.util.StringUtil;
 
-import java.time.Instant;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -15,12 +14,12 @@ public final class FlowWithSource {
     private final String id;
     private final String companyId;
     private final ActorRef creator;
-    private final Instant createdAt;
+    private final long createdAt;
     private String raw;
     private ActorRef updater;
     private ActorRef deleter;
-    private Instant updatedAt;
-    private Instant deletedAt;
+    private long updatedAt;
+    private Long deletedAt;
     private long lockVersion;
 
     private FlowWithSource(
@@ -30,9 +29,9 @@ public final class FlowWithSource {
         ActorRef creator,
         ActorRef updater,
         ActorRef deleter,
-        Instant createdAt,
-        Instant updatedAt,
-        Instant deletedAt,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt,
         long lockVersion
     ) {
         this.id = requireText(id, "FlowWithSource id");
@@ -47,14 +46,8 @@ public final class FlowWithSource {
             "FlowWithSource updater"
         );
         this.deleter = deleter;
-        this.createdAt = Objects.requireNonNull(
-            createdAt,
-            "FlowWithSource createdAt"
-        );
-        this.updatedAt = Objects.requireNonNull(
-            updatedAt,
-            "FlowWithSource updatedAt"
-        );
+        this.createdAt = createdAt;
+        this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
         if ((deleter == null) != (deletedAt == null)) {
             throw new IllegalArgumentException(
@@ -74,7 +67,7 @@ public final class FlowWithSource {
         String companyId,
         String raw,
         ActorRef creator,
-        Instant createdAt
+        long createdAt
     ) {
         return new FlowWithSource(
             StringUtil.newId(),
@@ -97,9 +90,9 @@ public final class FlowWithSource {
         ActorRef creator,
         ActorRef updater,
         ActorRef deleter,
-        Instant createdAt,
-        Instant updatedAt,
-        Instant deletedAt,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt,
         long lockVersion
     ) {
         return new FlowWithSource(
@@ -119,7 +112,7 @@ public final class FlowWithSource {
     public void revise(
         String revisedRaw,
         ActorRef revisedBy,
-        Instant revisedAt
+        long revisedAt
     ) {
         ensureEditable();
         raw = requireRaw(revisedRaw);
@@ -134,16 +127,13 @@ public final class FlowWithSource {
         lockVersion++;
     }
 
-    public void discard(ActorRef discardedBy, Instant discardedAt) {
+    public void discard(ActorRef discardedBy, long discardedAt) {
         ensureEditable();
         deleter = Objects.requireNonNull(
             discardedBy,
             "FlowWithSource deleter"
         );
-        deletedAt = Objects.requireNonNull(
-            discardedAt,
-            "FlowWithSource deletedAt"
-        );
+        deletedAt = discardedAt;
         updater = discardedBy;
         updatedAt = discardedAt;
         lockVersion++;
@@ -183,15 +173,15 @@ public final class FlowWithSource {
         return Optional.ofNullable(deleter);
     }
 
-    public Instant createdAt() {
+    public long createdAt() {
         return createdAt;
     }
 
-    public Instant updatedAt() {
+    public long updatedAt() {
         return updatedAt;
     }
 
-    public Optional<Instant> deletedAt() {
+    public Optional<Long> deletedAt() {
         return Optional.ofNullable(deletedAt);
     }
 
@@ -205,6 +195,42 @@ public final class FlowWithSource {
 
     public FlowWithSource copy() {
         return rehydrate(
+            id,
+            companyId,
+            raw,
+            creator,
+            updater,
+            deleter,
+            createdAt,
+            updatedAt,
+            deletedAt,
+            lockVersion
+        );
+    }
+
+    @Override
+    public boolean equals(Object value) {
+        if (this == value) {
+            return true;
+        }
+        if (!(value instanceof FlowWithSource other)) {
+            return false;
+        }
+        return lockVersion == other.lockVersion
+            && Objects.equals(id, other.id)
+            && Objects.equals(companyId, other.companyId)
+            && Objects.equals(raw, other.raw)
+            && Objects.equals(creator, other.creator)
+            && Objects.equals(updater, other.updater)
+            && Objects.equals(deleter, other.deleter)
+            && Objects.equals(createdAt, other.createdAt)
+            && Objects.equals(updatedAt, other.updatedAt)
+            && Objects.equals(deletedAt, other.deletedAt);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
             id,
             companyId,
             raw,

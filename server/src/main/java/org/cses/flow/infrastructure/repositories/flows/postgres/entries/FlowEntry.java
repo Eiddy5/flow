@@ -5,7 +5,10 @@ import org.cses.flow.core.domains.flows.FlowStatus;
 import org.cses.flow.core.domains.tasks.Task;
 import org.flow.gen.flow.pojos.FlowsObject;
 import org.flow.gen.flow.records.FlowsRecord;
+import org.paas.json.JsonObjects;
 import java.util.List;
+
+import static org.flow.gen.flow.Tables.FLOWS;
 
 public final class FlowEntry extends FlowsObject {
 
@@ -26,8 +29,12 @@ public final class FlowEntry extends FlowsObject {
         entry.createdAt = record.getCreatedAt();
         entry.updatedAt = record.getUpdatedAt();
         entry.deletedAt = record.getDeletedAt();
-        entry.inputs = record.getInputs();
-        entry.outputs = record.getOutputs();
+        entry.inputs = JsonObjects.Parse(
+            record.get(FLOWS.INPUTS).data()
+        );
+        entry.outputs = JsonObjects.Parse(
+            record.get(FLOWS.OUTPUTS).data()
+        );
         return entry;
     }
 
@@ -76,15 +83,17 @@ public final class FlowEntry extends FlowsObject {
             ActorRefJsonCodec.decode(creator, "Flow.creator"),
             ActorRefJsonCodec.decode(updater, "Flow.updater"),
             ActorRefJsonCodec.decodeOptional(deleter, "Flow.deleter"),
-            FlowWithSourceEntry.toInstant(
+            FlowWithSourceEntry.toEpochMillis(
                 createdAt,
                 "Flow.createdAt"
             ),
-            FlowWithSourceEntry.toInstant(
+            FlowWithSourceEntry.toEpochMillis(
                 updatedAt,
                 "Flow.updatedAt"
             ),
-            deletedAt == null ? null : deletedAt.toInstant(),
+            deletedAt == null
+                ? null
+                : deletedAt.toInstant().toEpochMilli(),
             FlowStatus.valueOf(status)
         );
     }

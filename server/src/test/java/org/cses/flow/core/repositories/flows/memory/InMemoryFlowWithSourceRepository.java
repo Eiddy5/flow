@@ -12,6 +12,7 @@ import org.jooq.DSLContext;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -115,6 +116,31 @@ public final class InMemoryFlowWithSourceRepository
         );
     }
 
-    private record SourceIdentity(String companyId, String flowId) {
+    private static final class SourceIdentity {
+
+        private final String companyId;
+        private final String flowId;
+
+        private SourceIdentity(String companyId, String flowId) {
+            this.companyId = companyId;
+            this.flowId = flowId;
+        }
+
+        @Override
+        public boolean equals(Object value) {
+            if (this == value) {
+                return true;
+            }
+            if (!(value instanceof SourceIdentity other)) {
+                return false;
+            }
+            return Objects.equals(companyId, other.companyId)
+                && Objects.equals(flowId, other.flowId);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(companyId, flowId);
+        }
     }
 }

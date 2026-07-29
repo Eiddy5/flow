@@ -41,6 +41,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
     private final PostgresJooqTestAdapter jooq;
     private final boolean triggerWaitingOnClose;
     private final boolean cleanupOnClose;
+    private final Map<String, Object> properties;
     private final Object[] singletons;
     private final Set<String> companyIds = new LinkedHashSet<>();
 
@@ -49,11 +50,18 @@ public final class WorkflowUcFixture implements AutoCloseable {
         boolean triggerWaitingOnClose,
         String companyId,
         boolean cleanupOnClose,
+        Map<String, Object> additionalProperties,
         Object... singletons
     ) {
         this.jooq = jooq;
         this.triggerWaitingOnClose = triggerWaitingOnClose;
         this.cleanupOnClose = cleanupOnClose;
+        Map<String, Object> mergedProperties =
+            new java.util.LinkedHashMap<>(PROPERTIES);
+        if (additionalProperties != null) {
+            mergedProperties.putAll(additionalProperties);
+        }
+        this.properties = Map.copyOf(mergedProperties);
         this.singletons = singletons == null
             ? new Object[0]
             : singletons.clone();
@@ -65,25 +73,32 @@ public final class WorkflowUcFixture implements AutoCloseable {
     }
 
     public static WorkflowUcFixture open() {
-        return open(false, true, null);
+        return open(false, true, null, Map.of());
     }
 
     public static WorkflowUcFixture openLeavingWaiting(
         String companyId
     ) {
-        return open(false, false, companyId);
+        return open(false, false, companyId, Map.of());
     }
 
     public static WorkflowUcFixture openWithSingletons(
         Object... singletons
     ) {
-        return open(false, true, null, singletons);
+        return open(false, true, null, Map.of(), singletons);
+    }
+
+    public static WorkflowUcFixture openWithProperties(
+        Map<String, Object> properties
+    ) {
+        return open(false, true, null, properties);
     }
 
     private static WorkflowUcFixture open(
         boolean triggerWaitingOnClose,
         boolean cleanupOnClose,
         String companyId,
+        Map<String, Object> properties,
         Object... singletons
     ) {
         PostgresJooqTestAdapter jooq =
@@ -93,6 +108,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
             triggerWaitingOnClose,
             companyId,
             cleanupOnClose,
+            properties,
             singletons
         );
     }
@@ -132,7 +148,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
         ));
     }
 
-    public Flow publish(String yaml) {
+    public Flow deploy(String yaml) {
         FlowWithSource source = flowService.saveDraft(session, yaml);
         return flowService.deploy(session, source.id());
     }
@@ -232,7 +248,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     private void startServer() {
         var builder = ApplicationContext.builder()
-            .properties(PROPERTIES)
+            .properties(properties)
             .singletons(jooq);
         if (singletons.length > 0) {
             builder.singletons(singletons);

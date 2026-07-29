@@ -20,14 +20,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * UC: docs/uc/flow/UC-05 并行 Task 调度与汇合.md
+ * UC: docs/uc/flow/UC-05 用户处理并行外派任务.md
  */
 class Uc05ParallelTaskJoinTest {
 
     @Test
     void s1UserCompletesTwoWaitingBranchesAndJoinsOnce() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(parallelYaml("uc05-s1-flow"));
+            Flow flow = fixture.deploy(parallelYaml("uc05-s1-flow"));
             Execution execution = fixture.executionService().create(
                 fixture.session(),
                 flow.id()
@@ -43,8 +43,8 @@ class Uc05ParallelTaskJoinTest {
             assertEquals(TaskRunStatus.COMPLETED, fork.status());
             assertEquals(TaskRunStatus.RUNNING, backend.status());
             assertEquals(TaskRunStatus.RUNNING, frontend.status());
-            assertEquals(fork.id(), backend.parentId());
-            assertEquals(fork.id(), frontend.parentId());
+            assertEquals(fork.id(), backend.parentId().orElseThrow());
+            assertEquals(fork.id(), frontend.parentId().orElseThrow());
 
             fixture.restartServer();
             // PASS-S1-02
@@ -90,7 +90,7 @@ class Uc05ParallelTaskJoinTest {
     @Test
     void s2JoinsExactlyOnceAfterBothBranchesComplete() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(parallelYaml("uc05-s2-flow"));
+            Flow flow = fixture.deploy(parallelYaml("uc05-s2-flow"));
             Execution started = fixture.executionService().create(
                 fixture.session(),
                 flow.id()
@@ -153,7 +153,7 @@ class Uc05ParallelTaskJoinTest {
     @Test
     void s3DoesNotJoinWhenOnlyOneBranchCompletes() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(parallelYaml("uc05-s3-flow"));
+            Flow flow = fixture.deploy(parallelYaml("uc05-s3-flow"));
             Execution started = fixture.executionService().create(
                 fixture.session(),
                 flow.id()
@@ -188,13 +188,18 @@ class Uc05ParallelTaskJoinTest {
                 );
             // PASS-S3-02
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(1, countRuns(completed, task(flow, "join-checks")));
+            assertEquals(1, countRuns(completed, task(flow, "finish")));
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s4RejectsRepeatedBranchCompletionWithoutJoining() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(parallelYaml("uc05-s4-flow"));
+            Flow flow = fixture.deploy(parallelYaml("uc05-s4-flow"));
             Execution started = fixture.executionService().create(
                 fixture.session(),
                 flow.id()
@@ -240,16 +245,21 @@ class Uc05ParallelTaskJoinTest {
                     fixture.session(),
                     remaining.id(),
                     Map.of("frontendResult", "PASS")
-                );
+            );
             // PASS-S4-02
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(1, countRuns(completed, task(flow, "join-checks")));
+            assertEquals(1, countRuns(completed, task(flow, "finish")));
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s5BranchCompletionOrderDoesNotChangeJoinResult() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(parallelYaml("uc05-s5-flow"));
+            Flow flow = fixture.deploy(parallelYaml("uc05-s5-flow"));
             Execution first = completeBoth(fixture, flow, true);
             Execution second = completeBoth(fixture, flow, false);
 
@@ -271,13 +281,16 @@ class Uc05ParallelTaskJoinTest {
                 run(first, task(flow, "frontend-check")).outputs(),
                 run(second, task(flow, "frontend-check")).outputs()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s6CancellationStopsRemainingBranchAndPreventsJoin() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(parallelYaml("uc05-s6-flow"));
+            Flow flow = fixture.deploy(parallelYaml("uc05-s6-flow"));
             Execution started = fixture.executionService().create(
                 fixture.session(),
                 flow.id()
@@ -326,6 +339,9 @@ class Uc05ParallelTaskJoinTest {
             ).orElseThrow();
             assertNoRun(reloaded, task(flow, "join-checks"));
             assertNoRun(reloaded, task(flow, "finish"));
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 

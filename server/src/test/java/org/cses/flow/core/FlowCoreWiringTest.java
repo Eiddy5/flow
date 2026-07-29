@@ -62,7 +62,7 @@ class FlowCoreWiringTest {
                     type: AUTO
                 """
             );
-            service.publish(
+            service.deploy(
                 session,
                 draft.id()
             );
@@ -70,18 +70,15 @@ class FlowCoreWiringTest {
             var current = service.flow(
                 session,
                 draft.id(),
-                1L,
-                FlowStatus.DEPLOYED
+                1L
             ).orElseThrow();
             assertEquals(FlowStatus.DEPLOYED, current.status());
             assertEquals(1L, current.reversion());
             assertEquals("AUTO", current.tasks().getFirst().type());
-            assertTrue(service.flow(
-                session,
-                draft.id(),
-                null,
-                FlowStatus.DRAFT
-            ).isEmpty());
+            assertEquals(
+                draft.raw(),
+                service.source(session, draft.id()).orElseThrow().raw()
+            );
         }
     }
 

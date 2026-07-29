@@ -7,6 +7,7 @@ import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.flows.FlowWithSource;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.Test;
@@ -19,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * UC: docs/uc/flow/UC-06 条件 Task 路由.md
+ * UC: docs/uc/flow/UC-06 用户提交外派结果后的条件路径.md
  */
 class Uc06ConditionalRouteTest {
 
@@ -47,6 +48,9 @@ class Uc06ConditionalRouteTest {
             // PASS-S1-03
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -73,6 +77,9 @@ class Uc06ConditionalRouteTest {
             );
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -92,33 +99,43 @@ class Uc06ConditionalRouteTest {
             // PASS-S3-02
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
             assertEquals(1, completed.taskRuns().size());
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
-    void s4RejectsInvalidRouteBeforeSavingFlow() {
+    void s4RejectsInvalidRouteWhenDeployingFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             // PASS-S4-01
+            FlowWithSource source = fixture.flowService().saveDraft(
+                fixture.session(),
+                routeYaml(
+                    "uc06-s4-flow",
+                    "outputs.decision =="
+                )
+            );
             IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
-                () -> fixture.flowService().saveDraft(
+                () -> fixture.flowService().deploy(
                     fixture.session(),
-                    routeYaml(
-                        "uc06-s4-flow",
-                        "outputs.decision =="
-                    )
+                    source.id()
                 )
             );
             assertTrue(failure.getMessage().contains("route expression"));
-
-            // PASS-S4-02
-            Flow valid = fixture.publish(
-                routeYaml(
-                    "uc06-s4-flow",
-                    "outputs.decision == \"APPROVED\""
-                )
+            assertTrue(
+                fixture.flowService()
+                    .latestFlow(fixture.session(), source.id())
+                    .isEmpty()
             );
-            assertEquals(1L, valid.reversion());
+            assertTrue(
+                fixture.executionService().executions(fixture.session())
+                    .isEmpty()
+            );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -141,6 +158,9 @@ class Uc06ConditionalRouteTest {
                     .outputs().isEmpty()
             );
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -173,7 +193,7 @@ class Uc06ConditionalRouteTest {
     @Test
     void s7ExternalTaskIdRoutesOnlyItsOwningExecution() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(routeYaml(
+            Flow flow = fixture.deploy(routeYaml(
                 "uc06-s7-flow",
                 "outputs.decision == \"APPROVED\""
             ));
@@ -228,9 +248,12 @@ class Uc06ConditionalRouteTest {
                     fixture.session(),
                     remaining.id(),
                     Map.of("decision", "APPROVED")
-                );
+            );
             assertEquals(ExecutionStatus.COMPLETED, firstCompleted.status());
             assertEquals(ExecutionStatus.COMPLETED, selected.status());
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -238,7 +261,7 @@ class Uc06ConditionalRouteTest {
         WorkflowUcFixture fixture,
         String key
     ) {
-        Flow flow = fixture.publish(routeYaml(
+        Flow flow = fixture.deploy(routeYaml(
             key,
             "outputs.decision == \"APPROVED\""
         ));

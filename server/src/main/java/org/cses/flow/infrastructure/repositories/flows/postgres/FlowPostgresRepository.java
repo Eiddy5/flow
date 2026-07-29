@@ -278,7 +278,7 @@ public final class FlowPostgresRepository implements FlowRepository {
                 && stored.outputs().equals(attempted.outputs())
                 && stored.tasks().equals(attempted.tasks())
                 && stored.creator().equals(attempted.creator())
-                && stored.createdAt().equals(attempted.createdAt());
+                && stored.createdAt() == attempted.createdAt();
         if (!immutableStateMatches) {
             throw new WorkflowException(
                 "Closing a Flow must not change its deployed definition: "

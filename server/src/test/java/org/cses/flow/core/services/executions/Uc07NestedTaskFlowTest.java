@@ -8,6 +8,7 @@ import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowStatus;
+import org.cses.flow.core.domains.flows.FlowWithSource;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.shared.WorkflowException;
 import org.junit.jupiter.api.Test;
@@ -22,12 +23,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * UC: docs/uc/flow/UC-07 两层嵌套 Task 流程.md
+ * UC: docs/uc/flow/UC-07 用户处理多阶段外派流程.md
  */
 class Uc07NestedTaskFlowTest {
 
@@ -58,7 +58,7 @@ class Uc07NestedTaskFlowTest {
     @Test
     void s1CompletesTwoLevelNestedFlowThroughPublicQueries() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 baselineYaml("uc07-s1-flow")
             );
             Map<String, Task> tasks = tasksByKey(flow);
@@ -79,9 +79,12 @@ class Uc07NestedTaskFlowTest {
             );
 
             // PASS-S1-01
-            assertEquals(1, fixture.executionCount());
+            assertEquals(
+                1,
+                fixture.executionService().executions(fixture.session()).size()
+            );
             assertEquals(flow.id(), execution.flowId());
-            assertEquals(flow.reversion().longValue(), execution.flowReversion());
+            assertEquals(flow.reversion(), execution.flowReversion());
             assertEquals(ExecutionStatus.RUNNING, execution.status());
             assertEquals(INITIAL_RUN_ORDER, taskKeys(execution, flow));
             assertEquals(6, execution.taskRuns().size());
@@ -161,6 +164,10 @@ class Uc07NestedTaskFlowTest {
                 .allMatch(run ->
                     run.status() == TaskRunStatus.COMPLETED
                 ));
+            assertEquals(COMPLETE_RUN_ORDER, taskKeys(completed, flow));
+            tasks.values().forEach(task ->
+                assertEquals(1, countRuns(completed, task))
+            );
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -170,7 +177,7 @@ class Uc07NestedTaskFlowTest {
     @Test
     void s2CompletesLongFlowAcrossThreeDeepWaitingPoints() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 baselineYaml("uc07-s2-flow")
             );
             Map<String, Task> tasks = tasksByKey(flow);
@@ -265,7 +272,10 @@ class Uc07NestedTaskFlowTest {
             assertCompleted(afterFrontend, tasks, "security-stage");
             assertEquals(TaskRunStatus.COMPLETED, securityCheck.status());
             assertEquals(TaskRunStatus.RUNNING, securityApprove.status());
-            assertEquals(securityCheck.id(), securityApprove.parentId());
+            assertEquals(
+                securityCheck.id(),
+                securityApprove.parentId().orElseThrow()
+            );
             assertEquals(
                 ExternalTaskStatus.WAITING,
                 securityExternal.status()
@@ -322,23 +332,28 @@ class Uc07NestedTaskFlowTest {
                 ExternalTaskStatus.COMPLETED,
                 externalTask(fixture, securityExternal.id()).status()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s3RejectsDuplicateKeyAcrossNestedBranchesAtomically() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow draft = fixture.flowService().saveDraft(
+            FlowWithSource draft = fixture.flowService().saveDraft(
                 fixture.session(),
                 duplicateNestedKeyYaml("uc07-s3-flow")
             );
-            long revision = draft.revision();
-            long executionCount = fixture.executionCount();
+            long lockVersion = draft.lockVersion();
+            int executionCount = fixture.executionService().executions(
+                fixture.session()
+            ).size();
 
             // PASS-S3-01
             WorkflowException exception = assertThrows(
                 WorkflowException.class,
-                () -> fixture.flowService().publish(
+                () -> fixture.flowService().deploy(
                     fixture.session(),
                     draft.id()
                 )
@@ -347,35 +362,34 @@ class Uc07NestedTaskFlowTest {
                 "Duplicate Task key: backend-review"
             ));
 
-            Flow reloaded = fixture.flowService().flow(
+            FlowWithSource reloaded = fixture.flowService().source(
                 fixture.session(),
-                draft.id(),
-                null,
-                FlowStatus.DRAFT
+                draft.id()
             ).orElseThrow();
 
             // PASS-S3-02
-            assertEquals(FlowStatus.DRAFT, reloaded.status());
-            assertEquals(revision, reloaded.revision());
-            assertEquals(
-                taskKeys(draft.tasks()),
-                taskKeys(reloaded.tasks())
-            );
+            assertEquals(lockVersion, reloaded.lockVersion());
+            assertEquals(draft.raw(), reloaded.raw());
             assertTrue(fixture.flowService().flow(
                 fixture.session(),
                 draft.id(),
-                1L,
-                FlowStatus.DEPLOYED
+                1L
             ).isEmpty());
             // PASS-S3-02
-            assertEquals(executionCount, fixture.executionCount());
+            assertEquals(
+                executionCount,
+                fixture.executionService().executions(fixture.session()).size()
+            );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s4CancelsAllDeepWaitingBranchesAndRejectsResume() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 baselineYaml("uc07-s4-flow")
             );
             Map<String, Task> tasks = tasksByKey(flow);
@@ -470,13 +484,16 @@ class Uc07NestedTaskFlowTest {
                 externalTask(fixture, frontendExternal.id())
             );
             assertNoRunsFrom(afterRejected, flow, "integrate-results");
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s5ReversedDeepBranchResumeOrderKeepsEquivalentHistory() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 baselineYaml("uc07-s5-flow")
             );
             Map<String, Task> tasks = tasksByKey(flow);
@@ -631,13 +648,16 @@ class Uc07NestedTaskFlowTest {
                     secondSecurity.id()
                 )
             ));
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
-    void s6MovedGrandchildUsesPublishedDirectParent() {
+    void s6MovedGrandchildUsesDeployedDirectParent() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 movedBackendReviewYaml("uc07-s6-flow")
             );
             Map<String, Task> tasks = tasksByKey(flow);
@@ -645,15 +665,15 @@ class Uc07NestedTaskFlowTest {
             // PASS-S6-01
             assertEquals(
                 tasks.get("prepare-release").id(),
-                tasks.get("backend-review").parentId()
+                tasks.get("backend-review").parentId().orElseThrow()
             );
             assertNotEquals(
                 tasks.get("backend-build").id(),
-                tasks.get("backend-review").parentId()
+                tasks.get("backend-review").parentId().orElseThrow()
             );
             assertEquals(
                 tasks.get("frontend-build").id(),
-                tasks.get("frontend-review").parentId()
+                tasks.get("frontend-review").parentId().orElseThrow()
             );
 
             Execution execution = fixture.executionService().create(
@@ -682,9 +702,18 @@ class Uc07NestedTaskFlowTest {
             );
 
             // PASS-S6-02
-            assertEquals(prepare.id(), backendReview.parentId());
-            assertNotEquals(backendBuild.id(), backendReview.parentId());
-            assertEquals(frontendBuild.id(), frontendReview.parentId());
+            assertEquals(
+                prepare.id(),
+                backendReview.parentId().orElseThrow()
+            );
+            assertNotEquals(
+                backendBuild.id(),
+                backendReview.parentId().orElseThrow()
+            );
+            assertEquals(
+                frontendBuild.id(),
+                frontendReview.parentId().orElseThrow()
+            );
 
             fixture.restartServer();
             assertEquals(
@@ -742,36 +771,36 @@ class Uc07NestedTaskFlowTest {
     }
 
     private static void assertDefinitionTopology(Map<String, Task> tasks) {
-        assertNull(tasks.get("receive-request").parentId());
-        assertNull(tasks.get("prepare-release").parentId());
+        assertTrue(tasks.get("receive-request").parentId().isEmpty());
+        assertTrue(tasks.get("prepare-release").parentId().isEmpty());
         assertEquals(
             tasks.get("prepare-release").id(),
-            tasks.get("backend-build").parentId()
+            tasks.get("backend-build").parentId().orElseThrow()
         );
         assertEquals(
             tasks.get("backend-build").id(),
-            tasks.get("backend-review").parentId()
+            tasks.get("backend-review").parentId().orElseThrow()
         );
         assertEquals(
             tasks.get("prepare-release").id(),
-            tasks.get("frontend-build").parentId()
+            tasks.get("frontend-build").parentId().orElseThrow()
         );
         assertEquals(
             tasks.get("frontend-build").id(),
-            tasks.get("frontend-review").parentId()
+            tasks.get("frontend-review").parentId().orElseThrow()
         );
-        assertNull(tasks.get("integrate-results").parentId());
-        assertNull(tasks.get("security-stage").parentId());
+        assertTrue(tasks.get("integrate-results").parentId().isEmpty());
+        assertTrue(tasks.get("security-stage").parentId().isEmpty());
         assertEquals(
             tasks.get("security-stage").id(),
-            tasks.get("security-check").parentId()
+            tasks.get("security-check").parentId().orElseThrow()
         );
         assertEquals(
             tasks.get("security-check").id(),
-            tasks.get("security-approve").parentId()
+            tasks.get("security-approve").parentId().orElseThrow()
         );
-        assertNull(tasks.get("publish-artifact").parentId());
-        assertNull(tasks.get("notify-result").parentId());
+        assertTrue(tasks.get("publish-artifact").parentId().isEmpty());
+        assertTrue(tasks.get("notify-result").parentId().isEmpty());
     }
 
     private static void assertRuntimeTopology(
@@ -781,16 +810,13 @@ class Uc07NestedTaskFlowTest {
         Map<String, String> expected = new LinkedHashMap<>();
         execution.taskRuns().forEach(taskRun -> {
             Task task = taskById(tasks, taskRun.taskId());
-            expected.put(
-                task.key(),
-                task.parentId() == null
-                    ? null
-                    : tasks.values().stream()
-                        .filter(parent -> parent.id().equals(task.parentId()))
-                        .map(Task::key)
-                        .findFirst()
-                        .orElseThrow()
-            );
+            expected.put(task.key(), task.parentId()
+                .map(parentId -> tasks.values().stream()
+                    .filter(parent -> parent.id().equals(parentId))
+                    .map(Task::key)
+                    .findFirst()
+                    .orElseThrow())
+                .orElse(null));
         });
         assertEquals(expected, runtimeTopology(execution, tasks));
     }
@@ -806,18 +832,16 @@ class Uc07NestedTaskFlowTest {
         Map<String, String> topology = new LinkedHashMap<>();
         execution.taskRuns().forEach(taskRun -> {
             String key = taskById(tasks, taskRun.taskId()).key();
-            String parentKey = taskRun.parentId() == null
-                ? null
-                : taskById(
+            String parentKey = taskRun.parentId()
+                .map(parentRunId -> taskById(
                     tasks,
                     runsByTaskId.values().stream()
-                        .filter(parent -> parent.id().equals(
-                            taskRun.parentId()
-                        ))
+                        .filter(parent -> parent.id().equals(parentRunId))
                         .findFirst()
                         .orElseThrow()
                         .taskId()
-                ).key();
+                ).key())
+                .orElse(null);
             topology.put(key, parentKey);
         });
         return topology;

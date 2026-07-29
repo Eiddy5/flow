@@ -13,7 +13,11 @@
 psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-28/001_create_flow_tables.sql
 psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-07-28/002_align_repository_persistence.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-28/003_align_temporal_columns.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-07-29/001_align_flow_source_and_reversion.sql
 ```
 
 已有 001 表结构的数据库还需按顺序执行：
@@ -23,11 +27,16 @@ psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-28/002_align_repository_persistence.sql
 psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-28/003_align_temporal_columns.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-07-29/001_align_flow_source_and_reversion.sql
 ```
 
 `003_align_temporal_columns.sql` 将旧脚本中的毫秒时间戳转换为
 `timestamptz`，使数据库 Schema 与 JOOQ 生成模型使用的 `OffsetDateTime`
-保持一致。
+保持一致。`001_align_flow_source_and_reversion.sql` 分离原始来源与部署快照，
+统一 `reversion/flow_reversion` 字段，并增加 Flow/Task 的 Input、Output 和
+`dependOn` 存储。项目自有 Java 类型仍使用 Epoch 毫秒 `long`，只在 Entry
+边界与 `OffsetDateTime` 转换。
 
 测试只使用随机 companyId，不会清空或删除数据库中的其他租户数据。
 UC 测试默认保留本场景创建的 Flow、Execution、TaskRun 和 ExternalTask 数据，

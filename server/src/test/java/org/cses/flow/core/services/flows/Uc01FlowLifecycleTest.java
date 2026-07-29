@@ -1,8 +1,6 @@
 package org.cses.flow.core.services.flows;
 
-import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.flows.FlowWithSource;
 import org.cses.flow.core.exceptions.shared.WorkflowException;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.AfterEach;
@@ -12,18 +10,15 @@ import org.paas.session.User;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * UC: docs/uc/flow/UC-01 创建并发布 Flow.md
+ * UC: docs/uc/flow/UC-01 Flow 草稿生命周期与多租户管理.md
  */
 class Uc01FlowLifecycleTest {
 
@@ -35,506 +30,436 @@ class Uc01FlowLifecycleTest {
     }
 
     @Test
-    void s1CreatesAndEditsDraftWithStableIdentity() {
-        Fixture fixture = fixture();
-        Flow saved = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml("uc01-s1-flow")
-        );
+    void s1UserCompletesTheSourceLifecycle() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> user = fixture.session();
+        String initial = validYaml("uc01-s1", "initial");
+        String revised = validYaml("uc01-s1", "revised");
 
-        fixture.service.saveDraft(
-            fixture.session,
-            saved.id(),
-            modifiedYaml("uc01-s1-flow")
-        );
-        Flow reopened = flow(
-            fixture,
-            saved.id(),
-            null,
-            FlowStatus.DRAFT
-        ).orElseThrow();
-
-        // PASS-S1-01
-        assertFalse(saved.id().isBlank());
-        assertNull(saved.reversion());
-        // PASS-S1-02
-        assertEquals(saved.id(), reopened.id());
-        assertNull(reopened.reversion());
-        // PASS-S1-03
+        FlowWithSource created = service.saveDraft(user, initial);
+        assertFalse(created.id().isBlank());
         assertEquals(
-            "已修改 Flow",
-            reopened.description()
+            initial,
+            service.source(user, created.id()).orElseThrow().raw()
         );
-        assertAutomaticTasks(reopened, "start", "finish");
-        assertTrue(flow(
-            fixture,
-            saved.id(),
-            1L,
-            FlowStatus.DEPLOYED
-        ).isEmpty());
+
+        FlowWithSource edited = service.saveDraft(
+            user,
+            created.id(),
+            revised
+        );
+        assertEquals(created.id(), edited.id());
+        assertEquals(
+            revised,
+            service.source(user, created.id()).orElseThrow().raw()
+        );
+        assertTrue(service.latestFlow(user, created.id()).isEmpty());
+
+        service.discardDraft(user, created.id());
+        assertTrue(service.source(user, created.id()).isEmpty());
     }
 
     @Test
-    void s2PublishesUpgradesAndClosesFlow() {
-        Fixture fixture = fixture();
-        String key = "uc01-s2-flow";
-        String id = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml(key)
-        ).id();
-        Flow version1 = fixture.service.publish(
-            fixture.session,
-            id
-        );
+    void s2UserRecoversFromAnInvalidDeployment() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> user = fixture.session();
+        String invalid = "key: [invalid";
 
-        // PASS-S2-01
-        assertEquals(FlowStatus.DEPLOYED, version1.status());
-        assertEquals(1L, version1.reversion());
-        assertTrue(flow(
-            fixture,
-            id,
-            null,
-            FlowStatus.DRAFT
-        ).isEmpty());
-
-        fixture.service.createUpgradeDraft(fixture.session, id);
-        fixture.service.saveDraft(
-            fixture.session,
-            id,
-            modifiedYaml(key)
-        );
-        Flow version2 = fixture.service.publish(
-            fixture.session,
-            id
-        );
-        Flow version1History = flow(
-            fixture,
-            id,
-            1L,
-            FlowStatus.CLOSED
-        ).orElseThrow();
-
-        // PASS-S2-02
-        assertEquals(2L, version2.reversion());
-        assertEquals("已修改 Flow", version2.description());
-        assertAutomaticTasks(version2, "start", "finish");
-        assertEquals("初始 Flow", version1History.description());
-        assertAutomaticTasks(version1History, "start");
-
-        fixture.service.createUpgradeDraft(fixture.session, id);
-        Flow closed = fixture.service.close(
-            fixture.session,
-            id
-        );
-
-        // PASS-S2-03
-        assertEquals(FlowStatus.CLOSED, closed.status());
-        assertEquals(2L, closed.reversion());
-        assertEquals("已修改 Flow", closed.description());
-        assertAutomaticTasks(closed, "start", "finish");
-        assertTrue(flow(
-            fixture,
-            id,
-            null,
-            FlowStatus.DRAFT
-        ).isEmpty());
+        FlowWithSource source = service.saveDraft(user, invalid);
         assertEquals(
-            closed,
-            flow(
-            fixture,
-            id,
-            2L,
-            FlowStatus.CLOSED
-        ).orElseThrow()
+            invalid,
+            service.source(user, source.id()).orElseThrow().raw()
         );
+        assertThrows(
+            RuntimeException.class,
+            () -> service.deploy(user, source.id())
+        );
+        assertEquals(
+            invalid,
+            service.source(user, source.id()).orElseThrow().raw()
+        );
+        assertTrue(service.latestFlow(user, source.id()).isEmpty());
+
+        service.saveDraft(user, source.id(), "still invalid: [");
+        service.discardDraft(user, source.id());
+        assertTrue(service.source(user, source.id()).isEmpty());
+        assertTrue(service.latestFlow(user, source.id()).isEmpty());
     }
 
     @Test
-    void s3RejectsInvalidDefinitionsAndLifecycleOperationsAtomically() {
-        Fixture fixture = fixture();
-        String emptyId = fixture.service.saveDraft(
-            fixture.session,
-            """
-            key: uc01-s3-empty
-            tasks: []
-            """
-        ).id();
-        Flow emptyBefore = flow(
-            fixture,
-            emptyId,
-            null,
-            FlowStatus.DRAFT
-        ).orElseThrow();
-        // PASS-S3-01
-        assertThrows(
-            WorkflowException.class,
-            () -> fixture.service.publish(fixture.session, emptyId)
+    void s3TenantsManageIdenticalSourcesIndependently() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> tenantA = fixture.session();
+        Session<User> tenantB = fixture.sessionFor("tenant-b");
+        String sameRaw = validYaml("uc01-s3", "same");
+
+        FlowWithSource sourceA = service.saveDraft(tenantA, sameRaw);
+        FlowWithSource sourceB = service.saveDraft(tenantB, sameRaw);
+        assertNotEquals(sourceA.id(), sourceB.id());
+        assertTrue(service.source(tenantA, sourceB.id()).isEmpty());
+        assertTrue(service.source(tenantB, sourceA.id()).isEmpty());
+
+        service.saveDraft(
+            tenantA,
+            sourceA.id(),
+            validYaml("uc01-s3", "tenant-a")
         );
         assertEquals(
-            emptyBefore,
-            flow(fixture, emptyId, null, FlowStatus.DRAFT).orElseThrow()
+            sameRaw,
+            service.source(tenantB, sourceB.id()).orElseThrow().raw()
+        );
+        service.saveDraft(
+            tenantB,
+            sourceB.id(),
+            validYaml("uc01-s3", "tenant-b")
         );
 
-        String duplicateId = fixture.service.saveDraft(
-            fixture.session,
-            """
-            key: uc01-s3-duplicate
-            tasks:
-              - key: repeated
-                type: AUTO
-              - key: repeated
-                type: AUTO
-            """
-        ).id();
-        Flow duplicateBefore = flow(
-            fixture,
-            duplicateId,
-            null,
-            FlowStatus.DRAFT
-        ).orElseThrow();
-        assertThrows(
-            WorkflowException.class,
-            () -> fixture.service.publish(fixture.session, duplicateId)
-        );
-        assertEquals(
-            duplicateBefore,
-            flow(fixture, duplicateId, null, FlowStatus.DRAFT).orElseThrow()
-        );
-
-        String deployedId = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml("uc01-s3-deployed")
-        ).id();
-        Flow deployed = fixture.service.publish(
-            fixture.session,
-            deployedId
-        );
-        assertThrows(
-            WorkflowException.class,
-            () -> fixture.service.publish(fixture.session, deployedId)
-        );
-        assertEquals(
-            deployed,
-            flow(
-                fixture,
-                deployedId,
-                1L,
-                FlowStatus.DEPLOYED
-            ).orElseThrow()
-        );
-
-        Flow upgradeDraft =
-            fixture.service.createUpgradeDraft(
-                fixture.session,
-                deployedId
-            );
-        assertThrows(
-            WorkflowException.class,
-            () -> fixture.service.createUpgradeDraft(
-                fixture.session,
-                deployedId
-            )
-        );
-        assertEquals(
-            upgradeDraft,
-            flow(
-                fixture,
-                deployedId,
-                null,
-                FlowStatus.DRAFT
-            ).orElseThrow()
-        );
-
-        String draftOnlyId = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml("uc01-s3-draft-only")
-        ).id();
-        Flow draftOnly = flow(
-            fixture,
-            draftOnlyId,
-            null,
-            FlowStatus.DRAFT
-        ).orElseThrow();
-        assertThrows(
-            WorkflowException.class,
-            () -> fixture.service.close(fixture.session, draftOnlyId)
-        );
-        // PASS-S3-02
-        assertEquals(
-            draftOnly,
-            flow(
-                fixture,
-                draftOnlyId,
-                null,
-                FlowStatus.DRAFT
-            ).orElseThrow()
-        );
+        service.discardDraft(tenantA, sourceA.id());
+        assertTrue(service.source(tenantA, sourceA.id()).isEmpty());
+        assertTrue(service.source(tenantB, sourceB.id()).isPresent());
+        service.discardDraft(tenantB, sourceB.id());
+        assertTrue(service.source(tenantB, sourceB.id()).isEmpty());
     }
 
     @Test
-    void s4IsolatesFlowReadsAndWritesByTenant() {
-        Fixture fixture = fixture();
-        Session<User> otherCompany = fixture.sessionFor("company-2");
-        Flow first = fixture.service.saveDraft(
-            fixture.session,
-            yaml("uc01-s4-shared", "第一家公司 Flow", "first")
+    void s4UsersInOneTenantPreserveCreationAudit() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        String companyId = fixture.session().getCompanyId();
+        Session<User> creator = session(
+            companyId,
+            "creator-user",
+            "Creator"
         );
-        Flow second = fixture.service.saveDraft(
-            otherCompany,
-            yaml("uc01-s4-shared", "第二家公司 Flow", "second")
+        Session<User> editor = session(
+            companyId,
+            "editor-user",
+            "Editor"
         );
 
-        // PASS-S4-01
-        assertTrue(fixture.service.flow(
-            fixture.session,
-            second.id(),
-            null,
-            FlowStatus.DRAFT
-        ).isEmpty());
-        // PASS-S4-02
-        assertThrows(
-            WorkflowException.class,
-            () -> fixture.service.saveDraft(
-                fixture.session,
-                second.id(),
-                yaml("uc01-s4-shared", "越权修改", "changed")
-            )
+        FlowWithSource created = service.saveDraft(
+            creator,
+            validYaml("uc01-s4", "created")
         );
-        assertEquals(
-            "第一家公司 Flow",
-            fixture.service.flow(
-                fixture.session,
-                first.id(),
-                null,
-                FlowStatus.DRAFT
-            ).orElseThrow().description()
+        FlowWithSource seenByEditor = service.source(
+            editor,
+            created.id()
+        ).orElseThrow();
+        service.saveDraft(
+            editor,
+            created.id(),
+            validYaml("uc01-s4", "edited")
         );
-        assertEquals(
-            "第二家公司 Flow",
-            fixture.service.flow(
-                otherCompany,
-                second.id(),
-                null,
-                FlowStatus.DRAFT
-            ).orElseThrow().description()
-        );
+        FlowWithSource edited = service.source(
+            creator,
+            created.id()
+        ).orElseThrow();
+
+        assertEquals("creator-user", edited.creator().id());
+        assertEquals(created.createdAt(), edited.createdAt());
+        assertEquals("editor-user", edited.updater().id());
+        assertTrue(edited.updatedAt() >= seenByEditor.updatedAt());
+        assertTrue(edited.raw().contains("edited"));
+
+        service.discardDraft(creator, created.id());
+        assertTrue(service.source(creator, created.id()).isEmpty());
     }
 
     @Test
-    void s5RequiresExactVersionAndStatusReferences() {
-        Fixture fixture = fixture();
-        String id = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml("uc01-s5-flow")
-        ).id();
-        fixture.service.publish(fixture.session, id);
-        fixture.service.createUpgradeDraft(fixture.session, id);
-        fixture.service.saveDraft(
-            fixture.session,
-            id,
-            modifiedYaml("uc01-s5-flow")
+    void s5WrongSourceIdsDoNotAffectTheControlSource() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> user = fixture.session();
+        FlowWithSource control = service.saveDraft(
+            user,
+            validYaml("uc01-s5", "control")
         );
-        fixture.service.publish(fixture.session, id);
-        fixture.service.createUpgradeDraft(fixture.session, id);
+        FlowWithSource before = service.source(
+            user,
+            control.id()
+        ).orElseThrow();
 
-        // PASS-S5-01
-        assertTrue(flow(
-            fixture,
-            id,
-            3L,
-            FlowStatus.DEPLOYED
-        ).isEmpty());
-        // PASS-S5-02
-        assertTrue(flow(
-            fixture,
-            id,
-            1L,
-            FlowStatus.DEPLOYED
-        ).isEmpty());
-        assertTrue(flow(
-            fixture,
-            id,
-            2L,
-            FlowStatus.CLOSED
-        ).isEmpty());
+        assertTrue(service.source(user, "missing-source-id").isEmpty());
         assertThrows(
             IllegalArgumentException.class,
-            () -> flow(fixture, id, 1L, FlowStatus.DRAFT)
+            () -> service.source(user, " ")
         );
+        assertEquals(
+            before,
+            service.source(user, control.id()).orElseThrow()
+        );
+
+        service.discardDraft(user, control.id());
+        assertTrue(service.source(user, control.id()).isEmpty());
     }
 
     @Test
-    void s6KeepsTaskIdentityStableAcrossVersions() {
-        Fixture fixture = fixture();
-        String id = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml("uc01-s6-flow")
-        ).id();
-        Flow version1 = fixture.service.publish(
-            fixture.session,
-            id
+    void s6MissingTenantIdentityCannotManageSources() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> owner = fixture.session();
+        Session<User> noTenant = session(null, "no-tenant", "No tenant");
+        FlowWithSource control = service.saveDraft(
+            owner,
+            validYaml("uc01-s6", "control")
         );
-        String startId = version1.tasks().getFirst().id();
-        fixture.service.createUpgradeDraft(fixture.session, id);
-        fixture.service.saveDraft(
-            fixture.session,
-            id,
-            modifiedYaml("uc01-s6-flow")
-        );
-        Flow version2 = fixture.service.publish(
-            fixture.session,
-            id
-        );
-        Flow history = flow(
-            fixture,
-            id,
-            1L,
-            FlowStatus.CLOSED
+        FlowWithSource before = service.source(
+            owner,
+            control.id()
         ).orElseThrow();
 
-        // PASS-S6-01
-        assertEquals(startId, version2.tasks().getFirst().id());
-        // PASS-S6-02
-        assertNotEquals(
-            startId,
-            version2.tasks().get(1).id()
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.saveDraft(noTenant, "raw")
         );
-        assertAutomaticTasks(history, "start");
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.source(noTenant, control.id())
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.saveDraft(noTenant, control.id(), "changed")
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.discardDraft(noTenant, control.id())
+        );
+        assertEquals(
+            before,
+            service.source(owner, control.id()).orElseThrow()
+        );
+        assertTrue(service.latestFlow(owner, control.id()).isEmpty());
+
+        service.discardDraft(owner, control.id());
+        assertTrue(service.source(owner, control.id()).isEmpty());
     }
 
     @Test
-    void s7RejectsAStaleDraftSaveWithoutOverwritingCommittedContent() {
-        Fixture fixture = fixture();
-        Flow baseline = fixture.service.saveDraft(
-            fixture.session,
-            initialYaml("uc01-s7-flow")
+    void s7AnotherTenantCannotQueryTheSource() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> owner = fixture.session();
+        Session<User> other = fixture.sessionFor("tenant-b");
+        FlowWithSource source = service.saveDraft(
+            owner,
+            validYaml("uc01-s7", "owner")
         );
-        long sharedRevision = baseline.revision();
+        FlowWithSource before = service.source(
+            owner,
+            source.id()
+        ).orElseThrow();
 
-        Flow committed = fixture.service.saveDraft(
-            fixture.session,
-            baseline.id(),
-            sharedRevision,
-            yaml("uc01-s7-flow", "第一个调用方", "start", "first")
+        assertTrue(service.source(other, source.id()).isEmpty());
+        assertEquals(
+            before,
+            service.source(owner, source.id()).orElseThrow()
         );
+        service.discardDraft(owner, source.id());
+        assertTrue(service.source(owner, source.id()).isEmpty());
+    }
 
-        // PASS-S7-01
-        WorkflowException conflict = assertThrows(
+    @Test
+    void s8AnotherTenantCannotModifyTheSource() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> owner = fixture.session();
+        Session<User> other = fixture.sessionFor("tenant-b");
+        FlowWithSource source = service.saveDraft(
+            owner,
+            validYaml("uc01-s8", "owner")
+        );
+        FlowWithSource before = service.source(
+            owner,
+            source.id()
+        ).orElseThrow();
+
+        assertThrows(
             WorkflowException.class,
-            () -> fixture.service.saveDraft(
-                fixture.session,
-                baseline.id(),
-                sharedRevision,
-                yaml(
-                    "uc01-s7-flow",
-                    "陈旧的第二个调用方",
-                    "start",
-                    "second"
-                )
+            () -> service.saveDraft(
+                other,
+                source.id(),
+                validYaml("uc01-s8", "intruder")
             )
         );
-        assertTrue(conflict.getMessage().contains("revision conflict"));
-
-        Flow reloaded = flow(
-            fixture,
-            baseline.id(),
-            null,
-            FlowStatus.DRAFT
-        ).orElseThrow();
-        // PASS-S7-02
-        assertEquals(committed.revision(), reloaded.revision());
-        assertEquals("第一个调用方", reloaded.description());
-        assertAutomaticTasks(reloaded, "start", "first");
-    }
-
-    private Fixture fixture() {
-        WorkflowUcFixture workflow = WorkflowUcFixture.open();
-        fixtures.add(workflow);
-        return new Fixture(workflow);
-    }
-
-    private static Optional<Flow> flow(
-        Fixture fixture,
-        String id,
-        Long version,
-        FlowStatus status
-    ) {
-        return fixture.service.flow(
-            fixture.session,
-            id,
-            version,
-            status
+        assertEquals(
+            before,
+            service.source(owner, source.id()).orElseThrow()
         );
+
+        service.discardDraft(owner, source.id());
+        assertTrue(service.source(owner, source.id()).isEmpty());
     }
 
-    private static String initialYaml(String key) {
-        return yaml(key, "初始 Flow", "start");
+    @Test
+    void s9AnotherTenantCannotDeleteTheSource() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> owner = fixture.session();
+        Session<User> other = fixture.sessionFor("tenant-b");
+        FlowWithSource source = service.saveDraft(
+            owner,
+            validYaml("uc01-s9", "owner")
+        );
+
+        assertThrows(
+            WorkflowException.class,
+            () -> service.discardDraft(other, source.id())
+        );
+        service.saveDraft(
+            owner,
+            source.id(),
+            validYaml("uc01-s9", "owner-edited")
+        );
+        assertTrue(
+            service.source(owner, source.id())
+                .orElseThrow()
+                .raw()
+                .contains("owner-edited")
+        );
+
+        service.discardDraft(owner, source.id());
+        assertTrue(service.source(owner, source.id()).isEmpty());
     }
 
-    private static String modifiedYaml(String key) {
-        return yaml(key, "已修改 Flow", "start", "finish");
+    @Test
+    void s10AnotherTenantCannotDeployTheSource() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> owner = fixture.session();
+        Session<User> other = fixture.sessionFor("tenant-b");
+        String raw = validYaml("uc01-s10", "deployable");
+        FlowWithSource source = service.saveDraft(owner, raw);
+
+        assertThrows(
+            WorkflowException.class,
+            () -> service.deploy(other, source.id())
+        );
+        assertTrue(service.latestFlow(owner, source.id()).isEmpty());
+        assertTrue(service.latestFlow(other, source.id()).isEmpty());
+        assertEquals(
+            raw,
+            service.source(owner, source.id()).orElseThrow().raw()
+        );
+
+        service.discardDraft(owner, source.id());
+        assertTrue(service.source(owner, source.id()).isEmpty());
     }
 
-    private static String yaml(
-        String key,
-        String description,
-        String... taskKeys
-    ) {
-        String tasks = List.of(taskKeys).stream()
-            .map(taskKey -> """
-                  - key: %s
-                    type: AUTO
-                """.formatted(taskKey))
-            .reduce("", String::concat);
+    @Test
+    void s11DeletedSourceCannotBeModifiedOrDeployed() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> user = fixture.session();
+        FlowWithSource source = service.saveDraft(
+            user,
+            validYaml("uc01-s11", "deleted")
+        );
+        service.discardDraft(user, source.id());
+
+        assertThrows(
+            WorkflowException.class,
+            () -> service.saveDraft(
+                user,
+                source.id(),
+                validYaml("uc01-s11", "revived")
+            )
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> service.deploy(user, source.id())
+        );
+        assertTrue(service.source(user, source.id()).isEmpty());
+        assertTrue(service.latestFlow(user, source.id()).isEmpty());
+    }
+
+    @Test
+    void s12SourceAndDeployedFlowQueriesStaySeparate() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> user = fixture.session();
+        String raw = validYaml("uc01-s12", "source-only");
+        FlowWithSource source = service.saveDraft(user, raw);
+
+        assertTrue(service.latestFlow(user, source.id()).isEmpty());
+        assertTrue(service.flow(user, source.id(), 1).isEmpty());
+        assertEquals(
+            raw,
+            service.source(user, source.id()).orElseThrow().raw()
+        );
+
+        service.discardDraft(user, source.id());
+        assertTrue(service.source(user, source.id()).isEmpty());
+    }
+
+    @Test
+    void s13SystemFieldsRemainOpaqueSourceAndCannotBeInjected() {
+        WorkflowUcFixture fixture = fixture();
+        FlowService service = fixture.flowService();
+        Session<User> user = fixture.session();
+        String raw = """
+            id: user-controlled-id
+            key: uc01-s13
+            reversion: 99
+            status: CLOSED
+            creator:
+              id: injected-user
+            tasks:
+              - key: start
+                type: AUTO
+            """;
+        FlowWithSource source = service.saveDraft(user, raw);
+        FlowWithSource before = service.source(
+            user,
+            source.id()
+        ).orElseThrow();
+
+        assertNotEquals("user-controlled-id", source.id());
+        assertEquals(raw, before.raw());
+        assertEquals(user.getUserId(), before.creator().id());
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> service.deploy(user, source.id())
+        );
+        assertEquals(
+            before,
+            service.source(user, source.id()).orElseThrow()
+        );
+        assertTrue(service.latestFlow(user, source.id()).isEmpty());
+
+        service.discardDraft(user, source.id());
+        assertTrue(service.source(user, source.id()).isEmpty());
+    }
+
+    private WorkflowUcFixture fixture() {
+        WorkflowUcFixture fixture = WorkflowUcFixture.open();
+        fixtures.add(fixture);
+        return fixture;
+    }
+
+    private static String validYaml(String key, String description) {
         return """
             key: %s
             description: %s
             tasks:
-            %s
-            """.formatted(key, description, tasks.indent(2));
+              - key: start
+                type: AUTO
+            """.formatted(key, description);
     }
 
-    private static void assertAutomaticTasks(
-        Flow flow,
-        String... expected
+    private static Session<User> session(
+        String companyId,
+        String userId,
+        String userName
     ) {
-        assertEquals(
-            List.of(expected),
-            flow.tasks().stream().map(Task::key).toList()
-        );
-        for (Task task : flow.tasks()) {
-            assertEquals("AUTO", task.type());
-            assertEquals(List.of(), task.inputs());
-            assertEquals(List.of(), task.outputs());
-            assertEquals("DIRECT", task.route());
-            assertEquals(Map.of(), task.properties());
-            assertEquals(List.of(), task.tasks());
-        }
+        User user = new User();
+        user.setId(userId);
+        user.setName(userName);
+        user.setCompanyId(companyId);
+        Session<User> session = new Session<>();
+        session.setUser(user);
+        return session;
     }
-
-    private static final class Fixture {
-
-        private final WorkflowUcFixture workflow;
-        private final FlowService service;
-        private final Session<User> session;
-
-        private Fixture(WorkflowUcFixture workflow) {
-            this.workflow = workflow;
-            this.service = workflow.flowService();
-            this.session = workflow.session();
-        }
-
-        private Session<User> sessionFor(String tenantLabel) {
-            return workflow.sessionFor(tenantLabel);
-        }
-
-        private FlowService service() {
-            return service;
-        }
-
-        private Session<User> session() {
-            return session;
-        }
-    }
-
 }

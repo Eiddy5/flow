@@ -1,6 +1,7 @@
 # Flow UC 能力缺口
 
-本目录保留 UC Agent 通过项目代码、公开接口和架构决策静态确认的能力缺口及其处理记录。
+本目录保留历史 UC 实现能力缺口及其处理记录。这些记录只说明过去的实现状态，
+不能定义或修改当前 UC 用户场景。
 
 - 缺口文档用于说明为什么某些 `PASS-*` 曾缺少实现保障，以及相应的关闭证据。
 - 静态缺口不等于测试已经失败。
@@ -12,7 +13,7 @@
 
 | 文档 | 原主要缺口 | 状态 |
 | --- | --- | --- |
-| [UC-01-gap.md](UC-01-gap.md) | FlowWithSource/Flow 目标模型迁移；历史并发写缺口已关闭 | OPEN |
+| [UC-01-gap.md](UC-01-gap.md) | FlowWithSource/Flow 目标模型迁移与并发写协议 | RESOLVED |
 | [UC-02-gap.md](UC-02-gap.md) | Execution 状态竞争保护 | RESOLVED |
 | [UC-03-gap.md](UC-03-gap.md) | 内存存储事务回滚 | RESOLVED |
 | [UC-04-gap.md](UC-04-gap.md) | 外部完成与恢复原子性 | RESOLVED |

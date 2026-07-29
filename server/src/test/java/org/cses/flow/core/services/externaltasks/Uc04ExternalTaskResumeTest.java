@@ -10,43 +10,34 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.exceptions.shared.WorkflowException;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.domains.tasks.TaskPlugin;
 import org.cses.flow.worker.WorkerContext;
 import org.cses.flow.worker.WorkerTaskHandler;
 import org.cses.flow.worker.WorkerTaskResult;
-import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
-import org.junit.jupiter.api.MethodOrderer;
-import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestMethodOrder;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * UC: docs/uc/flow/UC-04 外部任务等待与恢复.md
+ * UC: docs/uc/flow/UC-04 用户处理外派任务并恢复流程.md
  */
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class Uc04ExternalTaskResumeTest {
-
-    private static final String S9_COMPANY_ID =
-        "uc04-s9-" + StringUtil.newId();
 
     @Test
     void s1UserQueriesAndCompletesSingleExternalTask() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s1-flow",
                     "外部恢复 Flow",
@@ -95,12 +86,13 @@ class Uc04ExternalTaskResumeTest {
     }
 
     @Test
-    @Order(1)
-    void s9aStarterPersistsWaitingExecutionAndStops() {
+    void s9FreshServerQueriesAndCompletesThePersistedWaitingTask() {
+        String companyId = "uc04-s9-" + StringUtil.newId();
+        String executionId;
         try (WorkflowUcFixture starter =
-            WorkflowUcFixture.openLeavingWaiting(S9_COMPANY_ID)) {
+            WorkflowUcFixture.openLeavingWaiting(companyId)) {
 
-            Flow flow = starter.publish(
+            Flow flow = starter.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s9-flow",
                     "跨 server 持久化恢复 Flow",
@@ -113,44 +105,29 @@ class Uc04ExternalTaskResumeTest {
             );
 
             assertEquals(ExecutionStatus.RUNNING, started.status());
+            assertEquals(
+                1,
+                starter.externalTaskService().waitingTasks(starter.session())
+                    .size()
+            );
+            executionId = started.id();
         }
-    }
 
-    @Test
-    @Order(2)
-    void s9bExternalTriggerRestoresWaitingExecutionFromPostgres() {
-        PostgresJooqTestAdapter jooq =
-            PostgresJooqTestAdapter.fromEnvironment();
-        assertEquals(
-            1,
-            executionCount(jooq, ExecutionStatus.RUNNING)
-        );
-
-        // PASS-S9-01：该测试用例没有启动阶段的 ApplicationContext，
-        // 外派用户只通过公开 waitingTasks 查询任务。
-        PostgresExternalTriggerRunner.completeWaiting(
-            Set.of(S9_COMPANY_ID)
-        );
-
-        assertEquals(
-            0,
-            executionCount(jooq, ExecutionStatus.RUNNING)
-        );
-    }
-
-    @Test
-    @Order(3)
-    void s9cFreshServerVerifiesPersistedCompletion() {
         try (WorkflowUcFixture verifier = WorkflowUcFixture.open()) {
             Session<User> session =
-                verifier.sessionForExactCompany(S9_COMPANY_ID);
-            Execution completed = verifier.executionService()
-                .executions(session)
+                verifier.sessionForExactCompany(companyId);
+            ExternalTask waiting = verifier.externalTaskService()
+                .waitingTasks(session)
                 .stream()
+                .filter(task -> task.executionId().equals(executionId))
                 .findFirst()
                 .orElseThrow();
+            Execution completed = verifier.externalTaskService().complete(
+                session,
+                waiting.id(),
+                Map.of("decision", "APPROVED")
+            );
 
-            // PASS-S9-02
             assertEquals(ExecutionStatus.COMPLETED, completed.status());
             assertEquals(
                 List.of(
@@ -161,25 +138,27 @@ class Uc04ExternalTaskResumeTest {
                     .map(TaskRun::status)
                     .toList()
             );
-        }
-    }
+            assertTrue(
+                verifier.externalTaskService().waitingTasks(session).isEmpty()
+            );
 
-    private static int executionCount(
-        PostgresJooqTestAdapter jooq,
-        ExecutionStatus status
-    ) {
-        return jooq.get(dsl -> dsl
-            .fetchCount(
-                dsl.selectFrom(EXECUTIONS)
-                    .where(EXECUTIONS.COMPANY_ID.eq(S9_COMPANY_ID))
-                    .and(EXECUTIONS.STATUS.eq(status.name()))
-            ));
+            verifier.restartServer();
+            Execution persisted = verifier.executionService().execution(
+                session,
+                executionId
+            ).orElseThrow();
+            assertEquals(ExecutionStatus.COMPLETED, persisted.status());
+            assertEquals(2, persisted.taskRuns().size());
+            assertTrue(
+                verifier.externalTaskService().waitingTasks(session).isEmpty()
+            );
+        }
     }
 
     @Test
     void s2CompletesAndResumesWithoutRunningPauseWorkerAgain() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s2-flow",
                     "外部恢复 Flow",
@@ -243,13 +222,16 @@ class Uc04ExternalTaskResumeTest {
                     Map.of("decision", "approved")
                 )
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s3RejectsInvalidInputWithoutChangingWaitingState() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s3-flow",
                     "非法输入恢复 Flow",
@@ -286,7 +268,7 @@ class Uc04ExternalTaskResumeTest {
                 () -> fixture.externalTaskService().complete(
                     fixture.session(),
                     externalTask.id(),
-                    Map.of("undeclared", "value")
+                    Map.of()
                 )
             );
 
@@ -331,7 +313,7 @@ class Uc04ExternalTaskResumeTest {
     @Test
     void s4RejectsRepeatedCompletionWithoutChangingCompletedData() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s4-flow",
                     "重复恢复 Flow",
@@ -400,13 +382,16 @@ class Uc04ExternalTaskResumeTest {
                 completedExternal.lockVersion(),
                 externalReloaded.lockVersion()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s5RejectsCrossTenantReadAndCompletion() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s5-flow",
                     "租户隔离恢复 Flow",
@@ -462,13 +447,16 @@ class Uc04ExternalTaskResumeTest {
                     externalTask.id()
                 ).orElseThrow().status()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s6ExternalTaskIdSelectsOnlyItsOwningExecution() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s6-flow",
                     "恢复目标隔离 Flow",
@@ -532,13 +520,16 @@ class Uc04ExternalTaskResumeTest {
                     second.id()
                 ).orElseThrow().status()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
     @Test
     void s7RejectsCompletionAfterExecutionCancellation() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.publish(
+            Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "uc04-s7-flow",
                     "取消后恢复 Flow",
@@ -587,6 +578,9 @@ class Uc04ExternalTaskResumeTest {
                 ExternalTaskStatus.CANCELED,
                 externalReloaded.status()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -597,7 +591,7 @@ class Uc04ExternalTaskResumeTest {
                      new ThrowingTaskPlugin(),
                      new ThrowingTaskHandler()
                  )) {
-            Flow flow = fixture.publish("""
+            Flow flow = fixture.deploy("""
                 key: uc04-s8-flow
                 description: 恢复异常回滚
                 tasks:
@@ -659,6 +653,9 @@ class Uc04ExternalTaskResumeTest {
                 TaskRunStatus.CANCELED,
                 canceled.taskRuns().getFirst().status()
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
         }
     }
 
@@ -670,8 +667,8 @@ class Uc04ExternalTaskResumeTest {
             String key,
             List<? extends Input> inputs,
             List<? extends Output> outputs,
-            String route,
-            Map<String, ?> properties,
+            RouteExpression route,
+            List<String> dependOn,
             List<? extends Task> tasks
         ) {
             super(
@@ -682,7 +679,7 @@ class Uc04ExternalTaskResumeTest {
                 inputs,
                 outputs,
                 route,
-                properties,
+                dependOn,
                 tasks
             );
         }
@@ -693,8 +690,8 @@ class Uc04ExternalTaskResumeTest {
             String key,
             List<? extends Input> inputs,
             List<? extends Output> outputs,
-            String route,
-            Map<String, ?> properties,
+            RouteExpression route,
+            List<String> dependOn,
             List<? extends Task> tasks
         ) {
             return new ThrowingTask(
@@ -704,7 +701,7 @@ class Uc04ExternalTaskResumeTest {
                 inputs,
                 outputs,
                 route,
-                properties,
+                dependOn,
                 tasks
             );
         }
@@ -715,8 +712,8 @@ class Uc04ExternalTaskResumeTest {
             String key,
             List<? extends Input> inputs,
             List<? extends Output> outputs,
-            String route,
-            Map<String, ?> properties,
+            RouteExpression route,
+            List<String> dependOn,
             List<? extends Task> tasks
         ) {
             return new ThrowingTask(
@@ -726,7 +723,7 @@ class Uc04ExternalTaskResumeTest {
                 inputs,
                 outputs,
                 route,
-                properties,
+                dependOn,
                 tasks
             );
         }
@@ -748,7 +745,8 @@ class Uc04ExternalTaskResumeTest {
             String key,
             List<Input> inputs,
             List<Output> outputs,
-            String route,
+            RouteExpression route,
+            List<String> dependOn,
             Map<String, ?> properties,
             List<? extends Task> tasks
         ) {
@@ -759,7 +757,7 @@ class Uc04ExternalTaskResumeTest {
                 inputs,
                 outputs,
                 route,
-                properties,
+                dependOn,
                 tasks
             );
         }
@@ -771,7 +769,8 @@ class Uc04ExternalTaskResumeTest {
             String key,
             List<Input> inputs,
             List<Output> outputs,
-            String route,
+            RouteExpression route,
+            List<String> dependOn,
             Map<String, ?> properties,
             List<? extends Task> tasks
         ) {
@@ -782,9 +781,19 @@ class Uc04ExternalTaskResumeTest {
                 inputs,
                 outputs,
                 route,
-                properties,
+                dependOn,
                 tasks
             );
+        }
+
+        @Override
+        public Map<String, Object> properties(Task task) {
+            if (!(task instanceof ThrowingTask)) {
+                throw new IllegalArgumentException(
+                    "TEST_THROW plugin requires ThrowingTask"
+                );
+            }
+            return Map.of();
         }
     }
 

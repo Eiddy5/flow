@@ -49,24 +49,35 @@ public final class ExecutionHandler {
         // The new aggregate is inserted before handleNext creates and flushes
         // its first TaskRun for Task-owned foreign keys.
         executionRepository.save(context.dsl(), context.execution());
-        return drive(context);
+        return drive(context, false);
     }
 
     private <S extends Session<U>, U extends User>
-        Execution drive(ExecutorContext<S, U> context) {
+        Execution drive(
+            ExecutorContext<S, U> context,
+            boolean initiallyDirty
+        ) {
+
+        boolean dirty = initiallyDirty;
         while (true) {
+            Execution beforeNext = context.execution().copy();
             Optional<NextTask> next = executorService.handleNext(context);
+            dirty = dirty
+                || !sameState(beforeNext, context.execution());
             if (next.isEmpty()) {
-                executionRepository.save(
-                    context.dsl(),
-                    context.execution()
-                );
+                if (dirty) {
+                    executionRepository.save(
+                        context.dsl(),
+                        context.execution()
+                    );
+                }
                 return context.execution().copy();
             }
 
             NextTask nextTask = next.orElseThrow();
             executorService.dispatch(context, nextTask);
             executionRepository.save(context.dsl(), context.execution());
+            dirty = false;
 
             WorkerTaskResult result = workerDispatcher.dispatch(
                 workerContext(context, nextTask.task(), nextTask.taskRun())
@@ -79,6 +90,9 @@ public final class ExecutionHandler {
                     context.execution()
                 );
                 return context.execution().copy();
+            }
+            if (result.outcome() == WorkerTaskOutcome.COMPLETED) {
+                dirty = true;
             }
         }
     }
@@ -113,13 +127,42 @@ public final class ExecutionHandler {
         ) {
 
         executorService.resume(context, taskRunId, outputs);
-        return drive(context);
+        return drive(context, true);
     }
 
     public <S extends Session<U>, U extends User>
         Execution continueExecution(ExecutorContext<S, U> context) {
 
-        return drive(context);
+        return drive(context, false);
+    }
+
+    private static boolean sameState(
+        Execution left,
+        Execution right
+    ) {
+        if (left.status() != right.status()
+            || left.lockVersion() != right.lockVersion()) {
+            return false;
+        }
+        java.util.List<TaskRun> leftRuns = left.taskRuns();
+        java.util.List<TaskRun> rightRuns = right.taskRuns();
+        if (leftRuns.size() != rightRuns.size()) {
+            return false;
+        }
+        for (int index = 0; index < leftRuns.size(); index++) {
+            TaskRun first = leftRuns.get(index);
+            TaskRun second = rightRuns.get(index);
+            if (!first.id().equals(second.id())
+                || !first.taskId().equals(second.taskId())
+                || !first.parentId().equals(second.parentId())
+                || !first.inputs().equals(second.inputs())
+                || first.status() != second.status()
+                || !first.outputs().equals(second.outputs())
+                || !first.error().equals(second.error())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static <S extends Session<U>, U extends User>

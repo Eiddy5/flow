@@ -4,6 +4,9 @@
 
 Accepted
 
+其中 Java 时间表示条款已由
+[`ADR 0015`](0015-use-long-millisecond-java-time.md) 取代。
+
 ## 背景
 
 ADR 0008 已将唯一可编辑来源定义为 `FlowWithSource`，将每次成功部署定义为一个
@@ -59,6 +62,10 @@ ADR 0008 已将唯一可编辑来源定义为 `FlowWithSource`，将每次成功
   `Instant`；不退回旧 bigint 时间格式。
 - 项目继续不建立数据库外键，跨表归属由带租户条件的 Repository、同一事务写入
   和聚合重建校验保证。
+
+其中“Java Entry 统一转换为 `Instant`”是本 ADR 当时采用的约定，后续已由
+ADR 0015 调整为项目自有 Java 业务类型使用 Epoch 毫秒 `long`；PostgreSQL
+继续使用 `timestamptz` 的决定不变。
 
 ```mermaid
 erDiagram

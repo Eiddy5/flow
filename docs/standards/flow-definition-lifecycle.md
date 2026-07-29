@@ -9,10 +9,13 @@
 [`CONTEXT.md`](../../CONTEXT.md)、
 [`ADR 0008`](../decisions/0008-separate-flow-source-from-deployed-flow.md)
 、[`ADR 0013`](../decisions/0013-centralize-yaml-parsing-and-flow-materialization.md)
+、[`ADR 0014`](../decisions/0014-complete-flow-source-and-reversion-migration.md)
+、[`ADR 0015`](../decisions/0015-use-long-millisecond-java-time.md)
 以及
 [`domain-object-modeling.md`](domain-object-modeling.md)
-已经确认的领域语义。现有 Java 代码和 UC 测试尚未完成该模型的迁移；冲突时，
-本规范表示目标设计，不能以旧实现反向修改领域定义。
+已经确认的领域语义。Java、PostgreSQL 映射和 UC 测试已经完成本模型的主链路
+迁移；本规范同时记录仍待确认的运行值规则，不能用基础设施结构反向修改领域
+定义。
 
 本领域统一使用字段名 `reversion` 表达一次成功部署产生的业务版本。旧文档和
 现有代码中的 `version`、`flowVersion` 需要在对应迁移链路中改为
@@ -27,22 +30,27 @@ direction LR
 class FlowWithSource {
     <<aggregateRoot>>
     -String id
+    -String companyId
     -String raw
     -ActorRef creator
     -ActorRef updater
     -ActorRef deleter
-    -Instant createdAt
-    -Instant updatedAt
-    -Instant deletedAt
-    +create(raw, creator, createdAt) FlowWithSource$
+    -long createdAt
+    -long updatedAt
+    -Long deletedAt
+    -long lockVersion
+    +create(companyId, raw, creator, createdAt) FlowWithSource$
     +revise(raw, updater, updatedAt) void
     +discard(deleter, deletedAt) void
+    +requireLockVersion(expectedLockVersion) void
     -ensureEditable() void
 }
 
 class Flow {
     <<aggregateRoot>>
     -String id
+    -String companyId
+    -String key
     -long reversion
     -String description
     -List~Input~ inputs
@@ -51,16 +59,23 @@ class Flow {
     -ActorRef creator
     -ActorRef updater
     -ActorRef deleter
-    -Instant createdAt
-    -Instant updatedAt
-    -Instant deletedAt
+    -long createdAt
+    -long updatedAt
+    -Long deletedAt
     -FlowStatus status
-    +deploy(id, definition, latest, taskDispatcher, actor, deployedAt) Flow$
+    +deploy(companyId, id, definition, latest, taskDispatcher, actor, deployedAt) Flow$
     +close(deleter, deletedAt) void
     +findTask(taskId) Optional~Task~
     +allTasks() List~Task~
     -nextReversion(latest) long
     -validateDefinition(definition) void
+}
+
+class ActorRef {
+    <<valueObject>>
+    -String id
+    -String name
+    +create(id, name) ActorRef$
 }
 
 class FlowStatus {
@@ -102,6 +117,8 @@ class Task {
 }
 
 FlowWithSource "0..1" ..> "0..*" Flow : deploy maps, shares id
+FlowWithSource *-- ActorRef : audit
+Flow *-- ActorRef : audit
 Flow --> FlowStatus
 Data <|.. Input
 Data <|.. Output
@@ -119,7 +136,9 @@ Flow *-- Task
 
 图中的 `ActorRef` 表示操作者身份这一领域概念，具体 Java 类型需要在实现迁移前
 结合现有 Session 和用户模型确认。Java 字段使用 `createdAt` 等 camelCase
-名称，数据库列可以映射为 `created_at` 等 snake_case 名称。
+名称，时间值统一使用 Epoch 毫秒 `long`；只有尚未删除时允许为空的
+`deletedAt` 使用 `Long`。数据库列可以映射为 `created_at` 等 snake_case
+名称，并由 Repository Entry 完成数据库时间类型与 `long` 的转换。
 
 ## 解析映射边界
 
@@ -148,6 +167,7 @@ tasks，也没有正式 `reversion`。
 | 字段 | 含义 | 规则 |
 | --- | --- | --- |
 | `id` | 逻辑 Flow 的稳定技术身份 | 首次创建时生成，后续部署复用 |
+| `companyId` | 所属公司身份 | 非空；Repository 查询和写入必须共同参与租户隔离 |
 | `raw` | 未解析的原始 YAML | 创建和编辑时不做完整领域解析 |
 | `creator` | 创建来源草稿的操作者 | 创建后不变 |
 | `updater` | 最后修改原始 YAML 的操作者 | 每次 `revise` 更新 |
@@ -155,6 +175,7 @@ tasks，也没有正式 `reversion`。
 | `createdAt` | 来源草稿创建时间 | 创建后不变 |
 | `updatedAt` | 原始 YAML 最后修改时间 | 每次 `revise` 更新 |
 | `deletedAt` | 来源草稿丢弃时间 | 未丢弃时为空 |
+| `lockVersion` | 来源草稿技术并发版本 | 从 0 开始；每次成功 `revise` 或 `discard` 加一，不等于业务 `reversion` |
 
 `FlowWithSource` 不包含以下字段：
 
@@ -190,13 +211,15 @@ Flow 的定义字段在构造后保持不可变。生命周期和审计字段可
 | 字段 | 含义 | 规则 |
 | --- | --- | --- |
 | `id` | 逻辑 Flow 的稳定技术身份 | 与来源草稿及其他部署版本共享 |
+| `companyId` | 所属公司身份 | 非空；与来源和 Repository 租户条件一致 |
+| `key` | YAML 声明的稳定业务标识 | 非空；同一逻辑 `id` 的后续 reversion 不得修改 |
 | `reversion` | 成功部署产生的业务版本 | 正整数，只在 `deploy` 时生成 |
 | `description` | 完整 Flow 描述 | 部署后不可变 |
 | `inputs` | Flow 输入契约 | 部署时完成解析和校验，之后不可变 |
 | `outputs` | Flow 输出契约 | 部署时完成解析和校验，之后不可变 |
 | `tasks` | 完整 Task 定义集合 | 部署时完成解析和校验，之后不可变 |
 | `creator` | 创建本次部署版本的操作者 | 部署成功时写入 |
-| `updater` | 最后改变生命周期元数据的操作者 | 没有变化时可以为空 |
+| `updater` | 最后改变生命周期元数据的操作者 | 部署时等于 creator；关闭时更新为关闭操作者 |
 | `deleter` | 关闭 Flow 的操作者 | `DEPLOYED` 时为空 |
 | `createdAt` | 本次部署版本创建时间 | 部署成功时写入 |
 | `updatedAt` | 生命周期元数据最后更新时间 | 发生允许的变化时更新 |
@@ -360,9 +383,10 @@ FlowService.deploy
 `YamlParser` 是格式边界，不理解 Flow 或 Task。通用只读映射只服务于本次部署，
 由现有 Flow 直接消费，不独立持久化，也不作为另一套 Flow 模型公开。
 
-部署成功后是保留 `FlowWithSource` 作为下一轮编辑基线，还是将其清除并在下次
-编辑时重新创建，目前尚未确认。实现该行为前必须补充决策；无论采用哪种策略，
-它都不能获得 `reversion`，也不能就地变成 Flow。
+部署成功后保留 `FlowWithSource` 作为下一轮编辑基线。部署只读取来源并新增
+Flow Reversion，不修改来源的 `raw`、审计或 `lockVersion`；后续编辑继续调用
+`revise`。关闭逻辑 Flow 时，在同一事务中关闭最新 Flow 并丢弃仍存在的来源。
+该规则由 ADR 0014 确认，来源始终不能获得 `reversion`，也不能就地变成 Flow。
 
 ## 创建、编辑与关闭调用链
 
@@ -459,23 +483,20 @@ Flow 业务版本。
 
 ## 当前实现迁移差距
 
-以下现有类型和调用链仍表达旧模型，不代表本规范已经实现：
+以下主链路已经落地：
 
-- `Flow` 同时持有 Draft 和版本集合。
-- `FlowDefinition` 同时表达 DRAFT、DEPLOYED 和 CLOSE。
-- `FlowStatus` 仍包含 `DRAFT/CLOSE`。
-- `CreateUpgradeDraftCommand` 和 `createUpgradeDraft()` 仍然存在。
-- `SaveFlowDraft` 在保存时提前解析 YAML。
-- 当前单聚合实现通过 `Flow.createDraft/saveDraft` 直接消费通用只读映射；
-  完成 `FlowWithSource` 迁移后，同一转换入口必须移动到 `Flow.deploy`，不能
-  重新引入 Reader、输入模型或外部 Assembler。
-- 查询仍使用 `id + version + status`。
-- Execution 字段仍命名为 `flowVersion`。
-- UC-01 的现有测试仍验证旧模型。
+- `FlowWithSource` 独立保存未解析 YAML，并使用 `lockVersion` 保护并发编辑。
+- `Flow.deploy` 是唯一物化入口；`Flow` 每个对象只表示一个完整
+  `id + reversion`，`FlowStatus` 只包含 `DEPLOYED/CLOSED`。
+- Upgrade Draft、`FlowDefinition`、publish 和 `id + version + status` 旧契约
+  已删除；Execution 已改为 `flowReversion`。
+- Flow 与 Task 的 inputs、outputs 已使用 `Input`、`Output` 对象；Task 通过注册
+  插件物化和重建。
+- PostgreSQL 已分离来源与部署快照，Entry 在 `timestamptz` 与 Epoch 毫秒
+  `long` 之间转换；UC-01 至 UC-07 已迁移到新契约。
 
-迁移必须以 Flow 定义链路为一个最小完整单元，同时修改 Domain、Command、
-Handler、Service、Repository、数据库映射、UC 和测试，不能只新增
-`FlowWithSource` 后保留旧 Draft 逻辑。
+剩余差距不在定义生命周期本身：Flow Input 的实际启动值、Data type 校验和
+TaskRun 运行值映射仍待业务规则确认，详见 Data 与 Execution 规范。
 
 ## 场景校验
 
@@ -487,15 +508,15 @@ Handler、Service、Repository、数据库映射、UC 和测试，不能只新�
   身份，架构测试和 Flow 物化测试必须失败。
 - 身份：相同逻辑 Flow 的相同 Task key 在多次定义转换中复用 id；新增 key
   生成新 id。
-- 版本：映射转换失败不产生业务 reversion；当前旧模型中的草稿 revision
-  也不得增加。
+- 版本：映射转换失败不产生业务 `reversion`，也不得改变来源
+  `lockVersion`。
 - 恢复：Repository 只重建完整 Flow/Task，不保存或重建解析映射。
 - 并发：旧 expected revision 的定义保存被拒绝，不能覆盖已经提交的定义。
 
 ## 尚待业务规则确认
 
-- 部署成功后是否保留 FlowWithSource 作为下一轮编辑基线仍待确认；该选择不改变
-  YamlParser、通用只读映射和 Flow 物化边界。
+本领域生命周期暂无未确认规则。部署后保留来源、关闭时丢弃来源已经由
+ADR 0014 确认；Data type 和实际运行值规则属于相邻领域。
 
 ## 相关文档
 
@@ -506,5 +527,7 @@ Handler、Service、Repository、数据库映射、UC 和测试，不能只新�
 - [`Execution 与 TaskRun 领域模型规范`](execution-domain-model.md)
 - [`ADR 0008：分离 FlowWithSource 与已部署 Flow`](../decisions/0008-separate-flow-source-from-deployed-flow.md)
 - [`ADR 0013：集中 YAML 解析与 Flow 领域转换`](../decisions/0013-centralize-yaml-parsing-and-flow-materialization.md)
+- [`ADR 0014：完成 Flow 来源与 Reversion 迁移`](../decisions/0014-complete-flow-source-and-reversion-migration.md)
+- [`ADR 0015：Java 时间统一使用 Epoch 毫秒 long`](../decisions/0015-use-long-millisecond-java-time.md)
 - [`工作流核心 Java 模型规范`](workflow-core-java-model.md)
 - [`UC-01 Flow 草稿生命周期与多租户管理`](../uc/flow/UC-01%20Flow%20草稿生命周期与多租户管理.md)
