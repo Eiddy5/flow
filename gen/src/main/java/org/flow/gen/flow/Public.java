@@ -7,8 +7,8 @@ package org.flow.gen.flow;
 import java.util.Arrays;
 import java.util.List;
 
-import org.flow.gen.flow.tables.AssignmentTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
+import org.flow.gen.flow.tables.ExternalTaskTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -33,14 +33,14 @@ public class Public extends SchemaImpl {
     public static final Public PUBLIC = new Public();
 
     /**
-     * The table <code>public.assignment</code>.
-     */
-    public final AssignmentTable ASSIGNMENT = AssignmentTable.ASSIGNMENT;
-
-    /**
      * The table <code>public.executions</code>.
      */
     public final ExecutionsTable EXECUTIONS = ExecutionsTable.EXECUTIONS;
+
+    /**
+     * The table <code>public.external_task</code>.
+     */
+    public final ExternalTaskTable EXTERNAL_TASK = ExternalTaskTable.EXTERNAL_TASK;
 
     /**
      * The table <code>public.flow_drafts</code>.
@@ -78,8 +78,8 @@ public class Public extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
-            AssignmentTable.ASSIGNMENT,
             ExecutionsTable.EXECUTIONS,
+            ExternalTaskTable.EXTERNAL_TASK,
             FlowDraftsTable.FLOW_DRAFTS,
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,

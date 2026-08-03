@@ -1,16 +1,14 @@
 package org.cses.flow.core.services.executions;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.domains.flows.FlowWithSource;
+import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -35,8 +33,8 @@ class Uc07NestedTaskFlowTest {
         "receive-request",
         "prepare-release",
         "backend-build",
-        "backend-review",
         "frontend-build",
+        "backend-review",
         "frontend-review"
     );
 
@@ -44,8 +42,8 @@ class Uc07NestedTaskFlowTest {
         "receive-request",
         "prepare-release",
         "backend-build",
-        "backend-review",
         "frontend-build",
+        "backend-review",
         "frontend-review",
         "integrate-results",
         "security-stage",
@@ -85,7 +83,7 @@ class Uc07NestedTaskFlowTest {
             );
             assertEquals(flow.id(), execution.flowId());
             assertEquals(flow.reversion(), execution.flowReversion());
-            assertEquals(ExecutionStatus.RUNNING, execution.status());
+            assertEquals(State.Type.WAITING, execution.state().current());
             assertEquals(INITIAL_RUN_ORDER, taskKeys(execution, flow));
             assertEquals(6, execution.taskRuns().size());
 
@@ -109,8 +107,8 @@ class Uc07NestedTaskFlowTest {
             assertCompleted(execution, tasks, "prepare-release");
             assertCompleted(execution, tasks, "backend-build");
             assertCompleted(execution, tasks, "frontend-build");
-            assertEquals(TaskRunStatus.RUNNING, backendReview.status());
-            assertEquals(TaskRunStatus.RUNNING, frontendReview.status());
+            assertEquals(State.Type.WAITING, backendReview.state().current());
+            assertEquals(State.Type.WAITING, frontendReview.state().current());
             assertEquals(ExternalTaskStatus.WAITING, backendExternal.status());
             assertEquals(ExternalTaskStatus.WAITING, frontendExternal.status());
             assertNotEquals(backendExternal.id(), frontendExternal.id());
@@ -158,11 +156,11 @@ class Uc07NestedTaskFlowTest {
                     Map.of("securityDecision", "APPROVED")
                 );
             // PASS-S1-06
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(12, completed.taskRuns().size());
             assertTrue(completed.taskRuns().stream()
                 .allMatch(run ->
-                    run.status() == TaskRunStatus.COMPLETED
+                    run.state().current() == State.Type.COMPLETED
                 ));
             assertEquals(COMPLETE_RUN_ORDER, taskKeys(completed, flow));
             tasks.values().forEach(task ->
@@ -213,8 +211,8 @@ class Uc07NestedTaskFlowTest {
                 run(afterBackend, tasks.get("backend-review")).outputs()
             );
             assertEquals(
-                TaskRunStatus.RUNNING,
-                run(afterBackend, tasks.get("frontend-review")).status()
+                State.Type.WAITING,
+                run(afterBackend, tasks.get("frontend-review")).state().current()
             );
             assertEquals(
                 ExternalTaskStatus.WAITING,
@@ -241,7 +239,7 @@ class Uc07NestedTaskFlowTest {
                 afterFrontend,
                 tasks.get("integrate-results")
             ));
-            assertEquals(TaskRunStatus.COMPLETED, integration.status());
+            assertEquals(State.Type.COMPLETED, integration.state().current());
             assertEquals(
                 Map.of(
                     "dependOnOutputs",
@@ -270,8 +268,8 @@ class Uc07NestedTaskFlowTest {
             );
 
             assertCompleted(afterFrontend, tasks, "security-stage");
-            assertEquals(TaskRunStatus.COMPLETED, securityCheck.status());
-            assertEquals(TaskRunStatus.RUNNING, securityApprove.status());
+            assertEquals(State.Type.COMPLETED, securityCheck.state().current());
+            assertEquals(State.Type.WAITING, securityApprove.state().current());
             assertEquals(
                 securityCheck.id(),
                 securityApprove.parentId().orElseThrow()
@@ -302,7 +300,7 @@ class Uc07NestedTaskFlowTest {
                 tasks.get("notify-result")
             ));
             // PASS-S2-03
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(COMPLETE_RUN_ORDER, taskKeys(completed, flow));
             assertEquals(12, completed.taskRuns().size());
             assertEquals(
@@ -313,7 +311,7 @@ class Uc07NestedTaskFlowTest {
                     .count()
             );
             assertTrue(completed.taskRuns().stream().allMatch(
-                taskRun -> taskRun.status() == TaskRunStatus.COMPLETED
+                taskRun -> taskRun.state().current() == State.Type.COMPLETED
             ));
             assertRuntimeTopology(completed, tasks);
             assertEquals(
@@ -341,7 +339,7 @@ class Uc07NestedTaskFlowTest {
     @Test
     void s3RejectsDuplicateKeyAcrossNestedBranchesAtomically() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            FlowWithSource draft = fixture.flowService().saveDraft(
+            FlowDraft draft = fixture.flowService().saveDraft(
                 fixture.session(),
                 duplicateNestedKeyYaml("uc07-s3-flow")
             );
@@ -362,7 +360,7 @@ class Uc07NestedTaskFlowTest {
                 "Duplicate Task key: backend-review"
             ));
 
-            FlowWithSource reloaded = fixture.flowService().source(
+            FlowDraft reloaded = fixture.flowService().draft(
                 fixture.session(),
                 draft.id()
             ).orElseThrow();
@@ -421,14 +419,14 @@ class Uc07NestedTaskFlowTest {
             );
 
             // PASS-S4-01
-            assertEquals(ExecutionStatus.CANCELED, canceled.status());
+            assertEquals(State.Type.TERMINATED, canceled.state().current());
             assertEquals(
-                TaskRunStatus.CANCELED,
-                run(canceled, tasks.get("backend-review")).status()
+                State.Type.TERMINATED,
+                run(canceled, tasks.get("backend-review")).state().current()
             );
             assertEquals(
-                TaskRunStatus.CANCELED,
-                run(canceled, tasks.get("frontend-review")).status()
+                State.Type.TERMINATED,
+                run(canceled, tasks.get("frontend-review")).state().current()
             );
             assertEquals(
                 ExternalTaskStatus.CANCELED,
@@ -629,8 +627,8 @@ class Uc07NestedTaskFlowTest {
                 run(secondCompleted, tasks.get("integrate-results")).inputs()
             );
             // PASS-S5-03
-            assertEquals(ExecutionStatus.COMPLETED, firstCompleted.status());
-            assertEquals(ExecutionStatus.COMPLETED, secondCompleted.status());
+            assertEquals(State.Type.COMPLETED, firstCompleted.state().current());
+            assertEquals(State.Type.COMPLETED, secondCompleted.state().current());
             assertNotEquals(firstCompleted.id(), secondCompleted.id());
             assertTrue(disjointIds(
                 firstCompleted.taskRuns().stream().map(TaskRun::id).toList(),
@@ -760,10 +758,61 @@ class Uc07NestedTaskFlowTest {
                 );
 
             // PASS-S6-03
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             tasks.values().forEach(task ->
                 assertEquals(1, countRuns(completed, task))
             );
+            assertTrue(fixture.externalTaskService().waitingTasks(
+                fixture.session()
+            ).isEmpty());
+        }
+    }
+
+    @Test
+    void s7OrdinaryChildrenWaitForPreviousSubtreeToSettle() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow flow = fixture.deploy(
+                serialApprovalYaml("uc07-s7-flow")
+            );
+            Map<String, Task> tasks = tasksByKey(flow);
+            Execution waiting = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+
+            assertEquals(State.Type.WAITING, waiting.state().current());
+            assertEquals(
+                List.of("start", "approval"),
+                taskKeys(waiting, flow)
+            );
+            assertNoRun(waiting, tasks.get("approved"));
+            assertNoRun(waiting, tasks.get("approved-finish"));
+            assertNoRun(waiting, tasks.get("rejected"));
+            assertNoRun(waiting, tasks.get("serial-finish"));
+
+            fixture.restartServer();
+            ExternalTask approval = fixture.waitingForOutput(
+                waiting.id(),
+                "decision"
+            );
+            Execution completed = fixture.externalTaskService().complete(
+                fixture.session(),
+                approval.id(),
+                Map.of("decision", "APPROVED")
+            );
+
+            assertEquals(State.Type.COMPLETED, completed.state().current());
+            assertEquals(
+                List.of(
+                    "start",
+                    "approval",
+                    "approved",
+                    "approved-finish",
+                    "serial-finish"
+                ),
+                taskKeys(completed, flow)
+            );
+            assertNoRun(completed, tasks.get("rejected"));
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -861,8 +910,8 @@ class Uc07NestedTaskFlowTest {
             run(execution, tasks.get(completedKey)).outputs()
         );
         assertEquals(
-            TaskRunStatus.RUNNING,
-            run(execution, tasks.get(waitingKey)).status()
+            State.Type.WAITING,
+            run(execution, tasks.get(waitingKey)).state().current()
         );
         assertEquals(
             ExternalTaskStatus.WAITING,
@@ -899,8 +948,8 @@ class Uc07NestedTaskFlowTest {
         String taskKey
     ) {
         assertEquals(
-            TaskRunStatus.COMPLETED,
-            run(execution, tasks.get(taskKey)).status()
+            State.Type.COMPLETED,
+            run(execution, tasks.get(taskKey)).state().current()
         );
     }
 
@@ -908,14 +957,14 @@ class Uc07NestedTaskFlowTest {
         Execution expected,
         Execution actual
     ) {
-        assertEquals(expected.status(), actual.status());
+        assertEquals(expected.state().current(), actual.state().current());
         assertEquals(expected.lockVersion(), actual.lockVersion());
         assertEquals(expected.taskRuns().size(), actual.taskRuns().size());
         for (int index = 0; index < expected.taskRuns().size(); index++) {
             TaskRun expectedRun = expected.taskRuns().get(index);
             TaskRun actualRun = actual.taskRuns().get(index);
             assertEquals(expectedRun.id(), actualRun.id());
-            assertEquals(expectedRun.status(), actualRun.status());
+            assertEquals(expectedRun.state().current(), actualRun.state().current());
             assertEquals(expectedRun.inputs(), actualRun.inputs());
             assertEquals(expectedRun.outputs(), actualRun.outputs());
         }
@@ -1042,7 +1091,7 @@ class Uc07NestedTaskFlowTest {
                 type: AUTO
 
               - key: prepare-release
-                type: AUTO
+                type: PARALLEL
                 tasks:
                   - key: backend-build
                     type: AUTO
@@ -1097,7 +1146,7 @@ class Uc07NestedTaskFlowTest {
                 type: AUTO
 
               - key: prepare-release
-                type: AUTO
+                type: PARALLEL
                 tasks:
                   - key: backend-build
                     type: AUTO
@@ -1140,6 +1189,34 @@ class Uc07NestedTaskFlowTest {
 
               - key: notify-result
                 type: AUTO
+            """.formatted(key);
+    }
+
+    private static String serialApprovalYaml(String key) {
+        return """
+            key: %s
+            description: 普通同级子任务默认串行
+            tasks:
+              - key: start
+                type: AUTO
+                tasks:
+                  - key: approval
+                    type: PAUSE
+                    outputs:
+                      - key: decision
+                        type: STRING
+                    tasks:
+                      - key: approved
+                        type: AUTO
+                        route: outputs.decision == "APPROVED"
+                        tasks:
+                          - key: approved-finish
+                            type: AUTO
+                      - key: rejected
+                        type: AUTO
+                        route: outputs.decision == "REJECTED"
+                  - key: serial-finish
+                    type: AUTO
             """.formatted(key);
     }
 }

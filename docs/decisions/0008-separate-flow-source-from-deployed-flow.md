@@ -1,8 +1,10 @@
-# ADR 0008：分离 FlowWithSource 与已部署 Flow
+# ADR 0008：分离 FlowDraft 与已部署 Flow
 
 ## 状态
 
-Accepted（部署后保留来源、完整存储迁移和旧契约删除由 ADR 0014 补充）
+Accepted（部署后保留来源、完整存储迁移和旧契约删除由 ADR 0014 补充；
+`Flow.close` 与定义状态枚举已由 ADR 0018 取代，来源聚合命名和固定 `draft`
+字段又由 ADR 0022 收敛为 FlowDraft 与 `deleted`）
 
 ## 背景
 
@@ -21,32 +23,33 @@ Accepted（部署后保留来源、完整存储迁移和旧契约删除由 ADR 0
 使用 `DRAFT/DEPLOYED/CLOSE` 和可空版本区分生命周期。类型较少，但一个对象
 需要同时容纳原始 YAML 和解析后的定义，并允许不同状态拥有完全不同的不变量。
 
-### 方案二：FlowWithSource 继承 Flow
+### 方案二：FlowDraft 继承 Flow
 
 可以复用身份和审计字段，但未解析、可能暂时无效的来源对象无法满足 Flow
 必须完整且可执行的不变量，不符合可替换关系。
 
 ### 方案三：使用独立来源聚合并在部署时映射
 
-`FlowWithSource` 保存唯一可编辑草稿，`Flow` 只保存成功部署后的完整定义。
+`FlowDraft` 保存唯一可编辑草稿，`Flow` 只保存成功部署后的完整定义。
 部署边界负责解析、校验、版本计算和映射。
 
 ## 决策
 
 采用方案三：
 
-- `FlowWithSource` 是独立的来源聚合，只保存原始 YAML 业务内容以及必要的
+- `FlowDraft` 是独立的来源聚合，只保存原始 YAML 业务内容以及必要的
   身份和审计信息。
-- 同一逻辑 Flow 最多存在一个 `FlowWithSource`，它没有正式 `reversion`。
+- 同一逻辑 Flow 最多存在一个 `FlowDraft`，它没有正式 `reversion`。
 - `Flow` 只表示已经完成解析、校验并成功部署的完整定义。
-- `FlowWithSource` 与 `Flow` 是映射关系，不是继承关系。
-- `FlowWithSource.create()` 是草稿的普通创建入口。
+- `FlowDraft` 与 `Flow` 是映射关系，不是继承关系。
+- `FlowDraft.create()` 是草稿的普通创建入口。
 - `deploy` 是产生 `Flow` 的唯一入口，同时完成解析、校验和版本计算。
 - 首次成功部署生成 `reversion = 1`；后续成功部署使用当前最大值加一。
 - 解析、校验或保存失败时，不产生 Flow，也不占用 `reversion`。
 - `Flow.close()` 将已部署 Flow 变为 `CLOSED`，保留已有 `reversion`，
   不生成新版本。
-- `FlowStatus` 不包含 `DRAFT`；Draft 是 `FlowWithSource` 的生命周期角色。
+- `FlowDefinitionStatus` 不包含 `DRAFT`；Draft 是 `FlowDraft` 的生命周期
+  角色。
 - Execution 使用 `flowId + flowReversion` 绑定确定的已部署 Flow。
 
 本 ADR 替代 ADR 0001、ADR 0004 和 ADR 0005 中以下旧结论：

@@ -1,0 +1,13 @@
+micronaut:
+  config-client:
+    enabled: false
+
+consul:
+  client:
+    registration:
+      enabled: false
+    config:
+      enabled: false
+    watch:
+      service:
+        enabled: false

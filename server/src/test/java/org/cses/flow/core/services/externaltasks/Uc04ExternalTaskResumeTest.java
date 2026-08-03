@@ -1,22 +1,21 @@
 package org.cses.flow.core.services.externaltasks;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.domains.tasks.RunContext;
+import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.RouteExpression;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.domains.tasks.RunnableTask;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
-import org.cses.flow.core.domains.tasks.TaskPlugin;
-import org.cses.flow.worker.WorkerContext;
-import org.cses.flow.worker.WorkerTaskHandler;
-import org.cses.flow.worker.WorkerTaskResult;
+import org.cses.flow.core.plugins.TaskExtension;
 import org.junit.jupiter.api.Test;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
@@ -51,10 +50,10 @@ class Uc04ExternalTaskResumeTest {
             );
 
             // PASS-S1-01
-            assertEquals(ExecutionStatus.RUNNING, started.status());
+            assertEquals(State.Type.WAITING, started.state().current());
             assertEquals(
-                TaskRunStatus.RUNNING,
-                started.taskRuns().getFirst().status()
+                State.Type.WAITING,
+                started.taskRuns().getFirst().state().current()
             );
             assertEquals(1, started.taskRuns().size());
 
@@ -74,10 +73,10 @@ class Uc04ExternalTaskResumeTest {
                     Map.of("decision", "APPROVED")
                 );
             // PASS-S1-02
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(completed.taskRuns().stream()
                 .allMatch(run ->
-                    run.status() == TaskRunStatus.COMPLETED
+                    run.state().current() == State.Type.COMPLETED
                 ));
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
@@ -104,7 +103,7 @@ class Uc04ExternalTaskResumeTest {
                 flow.id()
             );
 
-            assertEquals(ExecutionStatus.RUNNING, started.status());
+            assertEquals(State.Type.WAITING, started.state().current());
             assertEquals(
                 1,
                 starter.externalTaskService().waitingTasks(starter.session())
@@ -128,14 +127,14 @@ class Uc04ExternalTaskResumeTest {
                 Map.of("decision", "APPROVED")
             );
 
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(
                 List.of(
-                    TaskRunStatus.COMPLETED,
-                    TaskRunStatus.COMPLETED
+                    State.Type.COMPLETED,
+                    State.Type.COMPLETED
                 ),
                 completed.taskRuns().stream()
-                    .map(TaskRun::status)
+                    .map(taskRun -> taskRun.state().current())
                     .toList()
             );
             assertTrue(
@@ -147,7 +146,7 @@ class Uc04ExternalTaskResumeTest {
                 session,
                 executionId
             ).orElseThrow();
-            assertEquals(ExecutionStatus.COMPLETED, persisted.status());
+            assertEquals(State.Type.COMPLETED, persisted.state().current());
             assertEquals(2, persisted.taskRuns().size());
             assertTrue(
                 verifier.externalTaskService().waitingTasks(session).isEmpty()
@@ -205,13 +204,13 @@ class Uc04ExternalTaskResumeTest {
             );
             assertEquals(
                 List.of(
-                    TaskRunStatus.COMPLETED,
-                    TaskRunStatus.COMPLETED
+                    State.Type.COMPLETED,
+                    State.Type.COMPLETED
                 ),
-                completed.taskRuns().stream().map(TaskRun::status).toList()
+                completed.taskRuns().stream().map(taskRun -> taskRun.state().current()).toList()
             );
             assertEquals(started.id(), completed.id());
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(1L, completed.lockVersion());
             // 重复完成由 S4 独立覆盖。
             assertThrows(
@@ -268,7 +267,7 @@ class Uc04ExternalTaskResumeTest {
                 () -> fixture.externalTaskService().complete(
                     fixture.session(),
                     externalTask.id(),
-                    Map.of()
+                    null
                 )
             );
 
@@ -282,12 +281,12 @@ class Uc04ExternalTaskResumeTest {
                     externalTask.id()
                 ).orElseThrow();
             // PASS-S3-02
-            assertEquals(ExecutionStatus.RUNNING, reloaded.status());
+            assertEquals(State.Type.WAITING, reloaded.state().current());
             assertEquals(started.lockVersion(), reloaded.lockVersion());
             assertEquals(1, reloaded.taskRuns().size());
             assertEquals(
-                TaskRunStatus.RUNNING,
-                reloaded.taskRuns().getFirst().status()
+                State.Type.WAITING,
+                reloaded.taskRuns().getFirst().state().current()
             );
             assertEquals(Map.of(), reloaded.taskRuns().getFirst().outputs());
             assertEquals(ExternalTaskStatus.WAITING, externalReloaded.status());
@@ -303,7 +302,7 @@ class Uc04ExternalTaskResumeTest {
                     externalTask.id(),
                     Map.of("decision", "APPROVED")
                 );
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -359,7 +358,7 @@ class Uc04ExternalTaskResumeTest {
                     externalTask.id()
                 ).orElseThrow();
             // PASS-S4-02
-            assertEquals(ExecutionStatus.COMPLETED, reloaded.status());
+            assertEquals(State.Type.COMPLETED, reloaded.state().current());
             assertEquals(completed.lockVersion(), reloaded.lockVersion());
             assertEquals(2, reloaded.taskRuns().size());
             assertEquals(
@@ -437,8 +436,8 @@ class Uc04ExternalTaskResumeTest {
                 );
             // PASS-S5-02
             assertEquals(
-                ExecutionStatus.COMPLETED,
-                completed.status()
+                State.Type.COMPLETED,
+                completed.state().current()
             );
             assertEquals(
                 ExternalTaskStatus.COMPLETED,
@@ -486,14 +485,14 @@ class Uc04ExternalTaskResumeTest {
 
             // PASS-S6-01
             assertEquals(second.id(), completed.id());
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             // PASS-S6-02
             assertEquals(
-                ExecutionStatus.RUNNING,
+                State.Type.WAITING,
                 fixture.executionService().execution(
                     fixture.session(),
                     first.id()
-                ).orElseThrow().status()
+                ).orElseThrow().state().current()
             );
             assertEquals(
                 ExternalTaskStatus.WAITING,
@@ -512,13 +511,13 @@ class Uc04ExternalTaskResumeTest {
                     remaining.id(),
                     Map.of("decision", "APPROVED")
                 );
-            assertEquals(ExecutionStatus.COMPLETED, firstCompleted.status());
+            assertEquals(State.Type.COMPLETED, firstCompleted.state().current());
             assertEquals(
-                ExecutionStatus.COMPLETED,
+                State.Type.COMPLETED,
                 fixture.executionService().execution(
                     fixture.session(),
                     second.id()
-                ).orElseThrow().status()
+                ).orElseThrow().state().current()
             );
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
@@ -568,11 +567,11 @@ class Uc04ExternalTaskResumeTest {
                     externalTask.id()
                 ).orElseThrow();
             // PASS-S7-02
-            assertEquals(ExecutionStatus.CANCELED, canceled.status());
+            assertEquals(State.Type.TERMINATED, canceled.state().current());
             assertEquals(1, canceled.taskRuns().size());
             assertEquals(
-                TaskRunStatus.CANCELED,
-                canceled.taskRuns().getFirst().status()
+                State.Type.TERMINATED,
+                canceled.taskRuns().getFirst().state().current()
             );
             assertEquals(
                 ExternalTaskStatus.CANCELED,
@@ -588,8 +587,7 @@ class Uc04ExternalTaskResumeTest {
     void s8ResumeFailureRollsBackExternalTaskAndExecution() {
         try (WorkflowUcFixture fixture =
                  WorkflowUcFixture.openWithSingletons(
-                     new ThrowingTaskPlugin(),
-                     new ThrowingTaskHandler()
+                     new ThrowingTaskPlugin()
                  )) {
             Flow flow = fixture.deploy("""
                 key: uc04-s8-flow
@@ -632,11 +630,11 @@ class Uc04ExternalTaskResumeTest {
                     externalTask.id()
                 ).orElseThrow();
             // PASS-S8-02
-            assertEquals(ExecutionStatus.RUNNING, reloaded.status());
+            assertEquals(State.Type.WAITING, reloaded.state().current());
             assertEquals(1, reloaded.taskRuns().size());
             assertEquals(
-                TaskRunStatus.RUNNING,
-                reloaded.taskRuns().getFirst().status()
+                State.Type.WAITING,
+                reloaded.taskRuns().getFirst().state().current()
             );
             assertEquals(
                 ExternalTaskStatus.WAITING,
@@ -648,10 +646,10 @@ class Uc04ExternalTaskResumeTest {
                 fixture.session(),
                 started.id()
             );
-            assertEquals(ExecutionStatus.CANCELED, canceled.status());
+            assertEquals(State.Type.TERMINATED, canceled.state().current());
             assertEquals(
-                TaskRunStatus.CANCELED,
-                canceled.taskRuns().getFirst().status()
+                State.Type.TERMINATED,
+                canceled.taskRuns().getFirst().state().current()
             );
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
@@ -659,13 +657,14 @@ class Uc04ExternalTaskResumeTest {
         }
     }
 
-    private static final class ThrowingTask extends Task {
+    private static final class ThrowingTask
+        extends Task implements RunnableTask {
 
         private ThrowingTask(
             String id,
             String parentId,
             String key,
-            List<? extends Input> inputs,
+            List<? extends Input<?>> inputs,
             List<? extends Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -688,7 +687,7 @@ class Uc04ExternalTaskResumeTest {
             String id,
             String parentId,
             String key,
-            List<? extends Input> inputs,
+            List<? extends Input<?>> inputs,
             List<? extends Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -710,7 +709,7 @@ class Uc04ExternalTaskResumeTest {
             String id,
             String parentId,
             String key,
-            List<? extends Input> inputs,
+            List<? extends Input<?>> inputs,
             List<? extends Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -727,9 +726,14 @@ class Uc04ExternalTaskResumeTest {
                 tasks
             );
         }
+
+        @Override
+        public RunResult run(RunContext context) {
+            throw new IllegalStateException("uc04-s8-worker-failure");
+        }
     }
 
-    private static final class ThrowingTaskPlugin implements TaskPlugin {
+    private static final class ThrowingTaskPlugin implements TaskExtension {
 
         private static final String TYPE = "TEST_THROW";
 
@@ -743,7 +747,7 @@ class Uc04ExternalTaskResumeTest {
             String id,
             String parentId,
             String key,
-            List<Input> inputs,
+            List<Input<?>> inputs,
             List<Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -767,7 +771,7 @@ class Uc04ExternalTaskResumeTest {
             String id,
             String parentId,
             String key,
-            List<Input> inputs,
+            List<Input<?>> inputs,
             List<Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -797,19 +801,4 @@ class Uc04ExternalTaskResumeTest {
         }
     }
 
-    private static final class ThrowingTaskHandler
-        implements WorkerTaskHandler {
-
-        @Override
-        public boolean supports(Task task) {
-            return task instanceof ThrowingTask;
-        }
-
-        @Override
-        public <S extends Session<U>, U extends User>
-            WorkerTaskResult execute(WorkerContext<S, U> context) {
-
-            throw new IllegalStateException("uc04-s8-worker-failure");
-        }
-    }
 }

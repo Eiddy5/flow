@@ -4,8 +4,8 @@
 package org.flow.gen.flow;
 
 
-import org.flow.gen.flow.tables.AssignmentTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
+import org.flow.gen.flow.tables.ExternalTaskTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -19,14 +19,14 @@ import org.flow.gen.flow.tables.TaskRunTable;
 public class Tables {
 
     /**
-     * The table <code>public.assignment</code>.
-     */
-    public static final AssignmentTable ASSIGNMENT = AssignmentTable.ASSIGNMENT;
-
-    /**
      * The table <code>public.executions</code>.
      */
     public static final ExecutionsTable EXECUTIONS = ExecutionsTable.EXECUTIONS;
+
+    /**
+     * The table <code>public.external_task</code>.
+     */
+    public static final ExternalTaskTable EXTERNAL_TASK = ExternalTaskTable.EXTERNAL_TASK;
 
     /**
      * The table <code>public.flow_drafts</code>.

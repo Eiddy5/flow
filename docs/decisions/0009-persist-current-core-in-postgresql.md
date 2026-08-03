@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted（过渡性）
+Accepted（过渡性；ExternalTask 持久化边界已由 ADR 0016 取代）
 
 ## 背景
 
@@ -15,7 +15,7 @@ Flow Core 已定义 `FlowRepository`、`ExecutionRepository` 和
 - `flow_tasks` 缺少 inputs、outputs 和类型扩展 properties。
 - `flow_tasks` 的旧主键不允许相同 Task id 跨 Flow version 复用。
 
-ADR 0008 已确定 Flow 定义域后续迁移到 `FlowWithSource + Flow Reversion`。
+ADR 0008 已确定 Flow 定义域后续迁移到 `FlowDraft + Flow Reversion`。
 本决策不替代该目标模型，只解决迁移完成前当前 Core 无生产 Repository 的问题。
 
 ## 决策
@@ -28,10 +28,11 @@ ADR 0008 已确定 Flow 定义域后续迁移到 `FlowWithSource + Flow Reversio
   properties，并把主键调整为 `company_id + flow_id + flow_version + id`。
 - `flow_drafts.content` 暂存当前 Draft 的结构化 JSON 快照。当前 Service 在进入
   Repository 前已经丢失原始 YAML，因此不能伪造原始来源；完成 ADR 0008 迁移
-  时由 `FlowWithSource.raw` 替换该过渡格式。
+  时由 `FlowDraft.raw` 替换该过渡格式。
 - `executions` 增加 `lock_version`。首次保存为 0，修改已有聚合时必须恰好加一。
   同一命令事务内允许同一版本多次 flush，以支持 Worker 外键记录的中间保存。
-- `assignment.lock_version` 使用严格 compare-and-set，一次更新必须恰好加一。
+- 迁移遗留的 `external_task.lock_version` 使用严格 compare-and-set，一次更新
+  必须恰好加一；新 PAUSE 恢复不再依赖该表。
 - 写操作从当前 `DSLContext` 的事务数据读取 Session，生成 creator/updater 审计；
   `CommandExecutor` 负责在命令事务期间绑定并在结束后恢复 Session。
 - 审计检索列使用 varchar，与 PAAS Session 的 String 用户 id 契约一致，不在
@@ -50,4 +51,7 @@ ADR 0008 的最终存储模型。
 - PostgreSQL Repository 的集成测试需要真实 PostgreSQL，以验证 JSONB、复合键、
   部分唯一索引和 CAS。
 - 完成 ADR 0008 的领域迁移时，需要同时替换 Flow Repository 契约、Draft 内容
-  格式和 `version` 术语；Execution 与 ExternalTask 的持久化边界可以继续复用。
+  格式和 `version` 术语。
+- ExternalTask Repository 与表只服务迁移遗留，目标 PAUSE 等待由
+  ExecutionRepository 持久化的 WAITING TaskRun 表达，后续删除遗留表时不得影响
+  Execution Resume。

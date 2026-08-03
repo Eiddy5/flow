@@ -5,7 +5,7 @@ import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskPlugin;
+import org.cses.flow.core.plugins.TaskExtension;
 
 import java.util.List;
 import java.util.Map;
@@ -14,7 +14,7 @@ import java.util.Map;
  * Registers and materializes the AUTO Task type.
  */
 @Singleton
-public final class AutomaticTaskPlugin implements TaskPlugin {
+public final class AutomaticTaskPlugin implements TaskExtension {
 
     @Override
     public String type() {
@@ -26,7 +26,7 @@ public final class AutomaticTaskPlugin implements TaskPlugin {
         String id,
         String parentId,
         String key,
-        List<Input> inputs,
+        List<Input<?>> inputs,
         List<Output> outputs,
         RouteExpression route,
         List<String> dependOn,
@@ -51,7 +51,7 @@ public final class AutomaticTaskPlugin implements TaskPlugin {
         String id,
         String parentId,
         String key,
-        List<Input> inputs,
+        List<Input<?>> inputs,
         List<Output> outputs,
         RouteExpression route,
         List<String> dependOn,

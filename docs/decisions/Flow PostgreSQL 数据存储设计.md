@@ -2,7 +2,7 @@
 
 > 修订说明：本文使用 `key + version`、数据库自增 Flow id 和 `CLOSE` 的结构
 > 早于 ADR 0008，当前仅保留为历史存储方案，不能直接作为目标领域模型的建表
-> 依据。`FlowWithSource`、稳定 String `id`、`reversion`、`CLOSED` 以及两类
+> 依据。`FlowDraft`、稳定 String `id`、`reversion`、`deleted` 以及两类
 > Repository 的目标边界以
 > [Flow 定义域模型与生命周期规范](../standards/flow-definition-lifecycle.md)
 > 为准；正式迁移数据库前必须重新形成存储 ADR 和迁移方案。

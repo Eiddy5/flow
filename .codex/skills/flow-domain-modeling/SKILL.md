@@ -13,7 +13,7 @@ description: 为 Flow 项目统一梳理、修订并落地领域对象。当用�
 开始任何建模动作前，完整读取：
 
 1. `../../../docs/project-structure.md`
-2. `../../../docs/standards/development-basics.md`
+2. `../../../docs/standards/project-development.md`
 3. `../../../docs/standards/domain-object-modeling.md`
 4. `../../../CONTEXT.md`
 

@@ -15,7 +15,7 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
 
 1. 阅读 `AGENTS.md`。
 2. 阅读 `docs/project-structure.md` 和
-   `docs/standards/development-basics.md`。
+   `docs/standards/project-development.md`。
 3. 阅读 `docs/standards/`、`docs/decisions/` 和 `docs/uc/` 中与当前领域、
    数据库、JOOQ、生命周期及架构有关的资料。
 4. 在确定目录和序号前，检查 `gen/sql/production-release/` 下已有的 SQL。

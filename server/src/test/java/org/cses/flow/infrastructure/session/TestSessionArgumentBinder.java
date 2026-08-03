@@ -1,6 +1,7 @@
 package org.cses.flow.infrastructure.session;
 
 import io.micronaut.context.annotation.Replaces;
+import io.micronaut.context.annotation.Requires;
 import io.micronaut.core.bind.ArgumentBinder;
 import io.micronaut.core.convert.ArgumentConversionContext;
 import io.micronaut.http.HttpRequest;
@@ -22,6 +23,10 @@ import java.util.Optional;
  */
 @Singleton
 @Replaces(SessionArgumentBinder.class)
+@Requires(
+    property = "flow.studio.session-binder.enabled",
+    notEquals = "true"
+)
 public final class TestSessionArgumentBinder
     implements AnnotatedRequestArgumentBinder<
         UserSession,

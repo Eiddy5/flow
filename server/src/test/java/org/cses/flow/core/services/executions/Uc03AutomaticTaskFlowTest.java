@@ -1,9 +1,8 @@
 package org.cses.flow.core.services.executions;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
 import org.junit.jupiter.api.Test;
@@ -20,13 +19,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Uc03AutomaticTaskFlowTest {
 
-    private static final Map<String, Object> AUTO_HANDLER =
-        Map.of("flow.uc03.auto-handler", true);
+    private static final Map<String, Object> AUTO_TASK =
+        Map.of("flow.uc03.auto-task", true);
 
     @Test
     void s1TargetAutomaticTaskConsumesInputAndPassesOutputOnce() {
         try (WorkflowUcFixture fixture =
-                 WorkflowUcFixture.openWithProperties(AUTO_HANDLER)) {
+                 WorkflowUcFixture.openWithProperties(AUTO_TASK)) {
             Flow flow = fixture.deploy("""
                 key: uc03-s1-flow
                 description: automatic input and output
@@ -62,7 +61,7 @@ class Uc03AutomaticTaskFlowTest {
             Task target = task(flow, "target-success");
             Task observe = task(flow, "observe-output");
 
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(
                 List.of(prepare.id(), target.id(), observe.id()),
                 completed.taskRuns().stream().map(TaskRun::taskId).toList()
@@ -105,7 +104,7 @@ class Uc03AutomaticTaskFlowTest {
     @Test
     void s2ExplicitAutomaticTaskFailureStopsFollowingTask() {
         try (WorkflowUcFixture fixture =
-                 WorkflowUcFixture.openWithProperties(AUTO_HANDLER)) {
+                 WorkflowUcFixture.openWithProperties(AUTO_TASK)) {
             Flow flow = fixture.deploy("""
                 key: uc03-s2-flow
                 description: explicit automatic failure
@@ -135,9 +134,9 @@ class Uc03AutomaticTaskFlowTest {
             Task target = task(flow, "target-fail");
             Task following = task(flow, "never-run");
 
-            assertEquals(ExecutionStatus.FAILED, failed.status());
-            assertEquals(TaskRunStatus.COMPLETED, run(failed, prepare).status());
-            assertEquals(TaskRunStatus.FAILED, run(failed, target).status());
+            assertEquals(State.Type.TERMINATED, failed.state().current());
+            assertEquals(State.Type.COMPLETED, run(failed, prepare).state().current());
+            assertEquals(State.Type.TERMINATED, run(failed, target).state().current());
             assertEquals(
                 "uc03-explicit-failure",
                 run(failed, target).error().orElseThrow()
@@ -154,7 +153,7 @@ class Uc03AutomaticTaskFlowTest {
     @Test
     void s3UnexpectedAutomaticTaskExceptionRollsBackTheStart() {
         try (WorkflowUcFixture fixture =
-                 WorkflowUcFixture.openWithProperties(AUTO_HANDLER)) {
+                 WorkflowUcFixture.openWithProperties(AUTO_TASK)) {
             Flow flow = fixture.deploy("""
                 key: uc03-s3-flow
                 description: unexpected automatic exception

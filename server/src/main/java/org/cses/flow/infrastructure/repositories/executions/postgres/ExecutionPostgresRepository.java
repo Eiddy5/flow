@@ -4,8 +4,8 @@ import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.commands.shared.CommandContext;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.commands.CommandContext;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.infrastructure.repositories.executions.postgres.entries.ExecutionEntry;
 import org.cses.flow.infrastructure.repositories.executions.postgres.entries.TaskRunEntry;
@@ -47,6 +47,29 @@ public final class ExecutionPostgresRepository
             .and(EXECUTIONS.ID.eq(executionId))
             .and(EXECUTIONS.DELETED_AT.isNull())
             .fetchOne(ExecutionEntry::fromRecord);
+        return toDomain(dsl, executionId, entry);
+    }
+
+    @Override
+    public Optional<Execution> lockById(
+        DSLContext dsl,
+        String companyId,
+        String executionId
+    ) {
+        ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
+            .where(EXECUTIONS.COMPANY_ID.eq(companyId))
+            .and(EXECUTIONS.ID.eq(executionId))
+            .and(EXECUTIONS.DELETED_AT.isNull())
+            .forUpdate()
+            .fetchOne(ExecutionEntry::fromRecord);
+        return toDomain(dsl, executionId, entry);
+    }
+
+    private static Optional<Execution> toDomain(
+        DSLContext dsl,
+        String executionId,
+        ExecutionEntry entry
+    ) {
         if (entry == null) {
             return Optional.empty();
         }

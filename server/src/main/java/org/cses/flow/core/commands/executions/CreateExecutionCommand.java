@@ -1,7 +1,7 @@
 package org.cses.flow.core.commands.executions;
 
-import org.cses.flow.core.commands.shared.Command;
-import org.cses.flow.core.commands.shared.FlowCommandValidation;
+import org.cses.flow.core.commands.Command;
+import org.cses.flow.core.commands.FlowCommandValidation;
 import org.cses.flow.core.domains.executions.Execution;
 
 public final class CreateExecutionCommand implements Command<Execution> {

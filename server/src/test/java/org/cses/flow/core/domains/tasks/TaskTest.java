@@ -1,10 +1,16 @@
 package org.cses.flow.core.domains.tasks;
 
+import io.micronaut.json.JsonMapper;
+import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.tasks.PauseTask;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.paas.json.JsonFactory;
+import org.paas.json.JsonObject;
 
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
@@ -12,19 +18,25 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskTest {
 
+    @BeforeAll
+    static void initializeJsonMapper() {
+        JsonFactory.instance = JsonMapper.createDefault();
+    }
+
     @Test
     void normalizesAndProtectsDefinitionState() {
-        List<Input> inputs = new ArrayList<>(
-            List.of(Input.create("request", "JSON"))
+        List<Input<?>> inputs = new ArrayList<>(
+            List.of(input("request", DataType.STRING))
         );
         List<Output> outputs = new ArrayList<>(
-            List.of(Output.create("result", "STRING"))
+            List.of(Output.create("result", DataType.STRING))
         );
         List<String> dependOn = new ArrayList<>(List.of("prepare"));
         List<Task> children = new ArrayList<>(
@@ -58,11 +70,11 @@ class TaskTest {
         assertEquals("task", task.key());
         assertEquals("AUTO", task.type());
         assertEquals(
-            List.of(Input.create("request", "JSON")),
+            List.of(input("request", DataType.STRING)),
             task.inputs()
         );
         assertEquals(
-            List.of(Output.create("result", "STRING")),
+            List.of(Output.create("result", DataType.STRING)),
             task.outputs()
         );
         assertTrue(task.declaresOutput("result"));
@@ -73,7 +85,7 @@ class TaskTest {
             .toList());
         assertThrows(
             UnsupportedOperationException.class,
-            () -> task.inputs().add(Input.create("other", "STRING"))
+            () -> task.inputs().add(input("other", DataType.STRING))
         );
         assertThrows(
             UnsupportedOperationException.class,
@@ -87,8 +99,8 @@ class TaskTest {
             "task-1",
             "parent-1",
             "approval",
-            List.of(Input.create("request", "JSON")),
-            List.of(Output.create("decision", "STRING")),
+            List.of(input("request", DataType.STRING)),
+            List.of(Output.create("decision", DataType.STRING)),
             RouteExpression.parse(
                 "outputs.decision == \"approved\""
             ),
@@ -99,8 +111,8 @@ class TaskTest {
             "task-1",
             "parent-1",
             "approval",
-            List.of(Input.rehydrate("request", "JSON")),
-            List.of(Output.rehydrate("decision", "STRING")),
+            List.of(input("request", DataType.STRING)),
+            List.of(Output.rehydrate("decision", DataType.STRING)),
             RouteExpression.parse(
                 "outputs.decision == \"approved\""
             ),
@@ -121,8 +133,8 @@ class TaskTest {
                 null,
                 "approval",
                 List.of(
-                    Input.create("request", "JSON"),
-                    Input.create("request", "STRING")
+                    input("request", DataType.STRING),
+                    input("request", DataType.INTEGER)
                 ),
                 List.of(),
                 RouteExpression.direct(),
@@ -151,8 +163,8 @@ class TaskTest {
             "task-1",
             null,
             "transform",
-            List.of(Input.create("payload", "JSON")),
-            List.of(Output.create("payload", "JSON")),
+            List.of(input("payload", DataType.STRING)),
+            List.of(Output.create("payload", DataType.STRING)),
             RouteExpression.direct(),
             List.of(),
             List.of()
@@ -160,6 +172,61 @@ class TaskTest {
 
         assertEquals("payload", task.inputs().getFirst().getKey());
         assertEquals("payload", task.outputs().getFirst().getKey());
+    }
+
+    @Test
+    void validatesProvidedAndDeclaredRuntimeOutputs() {
+        Task task = PauseTask.create(
+            "task-1",
+            null,
+            "wait",
+            List.of(),
+            List.of(Output.create("decision", DataType.STRING)),
+            RouteExpression.direct(),
+            List.of(),
+            List.of()
+        );
+
+        assertDoesNotThrow(() ->
+            task.validateOutputs(Map.of("decision", "approved"))
+        );
+        assertDoesNotThrow(() -> task.validateOutputs(Map.of()));
+        assertThrows(
+            WorkflowException.class,
+            () -> task.validateOutputs(null)
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> task.validateOutputs(Map.of(
+                "decision",
+                "approved",
+                "comment",
+                "extra"
+            ))
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> task.validateOutputs(Map.of("decision", true))
+        );
+
+        Task numericTask = PauseTask.create(
+            "task-2",
+            null,
+            "numeric-wait",
+            List.of(),
+            List.of(Output.create("count", DataType.LONG)),
+            RouteExpression.direct(),
+            List.of(),
+            List.of()
+        );
+        assertEquals(
+            1L,
+            numericTask.validateOutputs(Map.of("count", 1)).get("count")
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> numericTask.validateOutputs(Map.of("count", 1.5))
+        );
     }
 
     @Test
@@ -182,5 +249,16 @@ class TaskTest {
                 List.of()
             )
         );
+    }
+
+    private static Input<?> input(String key, DataType type) {
+        return JsonObject.FromMap(
+            Map.of(
+                "key", key,
+                "type", type.name(),
+                "displayName", key,
+                "required", false
+            )
+        ).asObject(Input.class);
     }
 }

@@ -1,13 +1,19 @@
 package org.cses.flow.core.services.externaltasks;
 
 import io.micronaut.context.ApplicationContext;
+import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
+import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.services.executions.ExecutionService;
+import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.paas.session.Session;
 import org.paas.session.User;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -46,12 +52,21 @@ public final class PostgresExternalTriggerRunner {
 
             ExternalTaskService service =
                 context.getBean(ExternalTaskService.class);
+            ExecutionService executionService =
+                context.getBean(ExecutionService.class);
+            FlowService flowService = context.getBean(FlowService.class);
             for (int round = 0; round < MAX_TRIGGER_ROUNDS; round++) {
                 boolean completedAny = false;
                 for (String companyId : companyIds) {
                     Session<User> session = session(companyId);
                     for (ExternalTask task : service.waitingTasks(session)) {
-                        complete(service, session, task);
+                        complete(
+                            service,
+                            executionService,
+                            flowService,
+                            session,
+                            task
+                        );
                         completedAny = true;
                     }
                 }
@@ -70,6 +85,8 @@ public final class PostgresExternalTriggerRunner {
 
     private static void complete(
         ExternalTaskService service,
+        ExecutionService executionService,
+        FlowService flowService,
         Session<User> session,
         ExternalTask task
     ) {
@@ -79,15 +96,56 @@ public final class PostgresExternalTriggerRunner {
         service.complete(
             session,
             task.id(),
-            outputsFor(task.allowedOutputs())
+            outputsFor(
+                taskOutputKeys(
+                    executionService,
+                    flowService,
+                    session,
+                    task
+                )
+            )
         );
     }
 
+    private static List<String> taskOutputKeys(
+        ExecutionService executionService,
+        FlowService flowService,
+        Session<User> session,
+        ExternalTask externalTask
+    ) {
+        Execution execution = executionService.execution(
+            session,
+            externalTask.executionId()
+        ).orElseThrow(() -> new IllegalStateException(
+            "ExternalTask references a missing Execution: "
+                + externalTask.id()
+        ));
+        Flow flow = flowService.flow(
+            session,
+            execution.flowId(),
+            execution.flowReversion()
+        ).orElseThrow(() -> new IllegalStateException(
+            "Execution references a missing Flow reversion: "
+                + execution.id()
+        ));
+        String taskId = execution.requireTaskRun(
+            externalTask.taskRunId()
+        ).taskId();
+        return flow.findTask(taskId)
+            .orElseThrow(() -> new IllegalStateException(
+                "TaskRun references a missing Task: " + taskId
+            ))
+            .outputs()
+            .stream()
+            .map(Output::getKey)
+            .toList();
+    }
+
     private static Map<String, Object> outputsFor(
-        Set<String> allowedOutputs
+        List<String> outputKeys
     ) {
         Map<String, Object> outputs = new LinkedHashMap<>();
-        for (String output : allowedOutputs) {
+        for (String output : outputKeys) {
             String value = output.toLowerCase().contains("decision")
                 ? "APPROVED"
                 : "PASS";

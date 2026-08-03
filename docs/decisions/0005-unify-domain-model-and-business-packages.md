@@ -3,7 +3,8 @@
 ## 状态
 
 Accepted（单一 `FlowDefinition` 生命周期模型由 ADR 0008 修订，并由
-ADR 0014 的 `FlowWithSource + Flow Reversion` 模型取代）
+ADR 0014 的 `FlowDraft + Flow Reversion` 模型取代；ExternalTask 目标
+领域边界由 ADR 0016 移除）
 
 ## 背景
 
@@ -38,14 +39,19 @@ Snapshot 映射。
 - `core/domains` 只放领域对象和领域状态枚举。
 - `FlowDefinition` 是 DRAFT、DEPLOYED 和 CLOSE 定义的唯一领域对象；
   生命周期差异由 `status + version` 表达。
-- FlowDefinition 直接持有不可变 Task；Execution、TaskRun 和 ExternalTask
-  查询直接复用领域对象。
+- FlowDefinition 直接持有不可变 Task；Execution 和 TaskRun 查询直接复用
+  领域对象。
 - 删除 Snapshot、Reference 及与领域对象重复的生命周期类型。
 - Repository 保存和返回聚合副本，调用方必须通过领域方法改变状态。
-- Core 的技术目录继续使用 `flows`、`executions`、`externaltasks` 和必要的
-  `shared` 业务子包。
-- 技术 ID 统一为 `String`，由 `StringUtil.newId()` 生成；禁止 Java
-  `record`。
+- Core 的技术目录使用 `flows`、`executions` 和必要的 `shared` 业务子包；
+  现存 `externaltasks` 仅为迁移遗留。
+- 技术 ID 统一为 `String`，由 `StringUtil.newId()` 生成；领域对象使用
+  `class` 保护构造和行为。
+
+本 ADR 当时对 Java `record` 的全面限制由
+[`ADR 0025`](0025-allow-records-for-simple-boundary-contracts.md) 修订：Domain、
+持久化映射和需要框架代理的类型继续使用 `class`，简单不可变边界协议可以选择
+`record`。
 
 ## 理由
 

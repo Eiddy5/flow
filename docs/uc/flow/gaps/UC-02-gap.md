@@ -19,7 +19,7 @@
 ## 项目现有能力
 
 - `Execution` 保存 lockVersion，修改已有实例前由 `beginModification` 增加一次。
-- 领域方法拒绝修改终态 Execution 和非 RUNNING TaskRun。
+- 领域方法拒绝修改终态 Execution 和不符合当前动作前置状态的 TaskRun。
 - 取消会委托 Worker 取消等待触发器，再取消运行中的 TaskRun。
 - companyId 参与 Execution、Flow 和 ExternalTask 查询。
 

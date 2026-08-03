@@ -1,13 +1,12 @@
 package org.cses.flow.core.services.externaltasks;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowWithSource;
+import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.Test;
@@ -42,12 +41,12 @@ class Uc06ConditionalRouteTest {
             );
             // PASS-S1-02
             assertEquals(
-                TaskRunStatus.COMPLETED,
-                run(completed, task(scenario.flow(), "approve")).status()
+                State.Type.COMPLETED,
+                run(completed, task(scenario.flow(), "approve")).state().current()
             );
             // PASS-S1-03
             assertNoRun(completed, task(scenario.flow(), "reject"));
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -72,11 +71,11 @@ class Uc06ConditionalRouteTest {
             );
             // PASS-S2-02
             assertEquals(
-                TaskRunStatus.COMPLETED,
-                run(completed, task(scenario.flow(), "reject")).status()
+                State.Type.COMPLETED,
+                run(completed, task(scenario.flow(), "reject")).state().current()
             );
             assertNoRun(completed, task(scenario.flow(), "approve"));
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -97,7 +96,7 @@ class Uc06ConditionalRouteTest {
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
             // PASS-S3-02
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(1, completed.taskRuns().size());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
@@ -109,7 +108,7 @@ class Uc06ConditionalRouteTest {
     void s4RejectsInvalidRouteWhenDeployingFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             // PASS-S4-01
-            FlowWithSource source = fixture.flowService().saveDraft(
+            FlowDraft draft = fixture.flowService().saveDraft(
                 fixture.session(),
                 routeYaml(
                     "uc06-s4-flow",
@@ -120,13 +119,13 @@ class Uc06ConditionalRouteTest {
                 IllegalArgumentException.class,
                 () -> fixture.flowService().deploy(
                     fixture.session(),
-                    source.id()
+                    draft.id()
                 )
             );
             assertTrue(failure.getMessage().contains("route expression"));
             assertTrue(
                 fixture.flowService()
-                    .latestFlow(fixture.session(), source.id())
+                    .latestFlow(fixture.session(), draft.id())
                     .isEmpty()
             );
             assertTrue(
@@ -157,7 +156,7 @@ class Uc06ConditionalRouteTest {
                 run(completed, task(scenario.flow(), "approval-decision"))
                     .outputs().isEmpty()
             );
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -183,7 +182,7 @@ class Uc06ConditionalRouteTest {
             // PASS-S6-02
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -218,18 +217,18 @@ class Uc06ConditionalRouteTest {
             // PASS-S7-01
             assertEquals(second.id(), selected.id());
             assertEquals(
-                TaskRunStatus.COMPLETED,
-                run(selected, task(flow, "approve")).status()
+                State.Type.COMPLETED,
+                run(selected, task(flow, "approve")).state().current()
             );
             // PASS-S7-02
             Execution untouched = fixture.executionService().execution(
                 fixture.session(),
                 first.id()
             ).orElseThrow();
-            assertEquals(ExecutionStatus.RUNNING, untouched.status());
+            assertEquals(State.Type.WAITING, untouched.state().current());
             assertEquals(
-                TaskRunStatus.RUNNING,
-                untouched.taskRuns().getFirst().status()
+                State.Type.WAITING,
+                untouched.taskRuns().getFirst().state().current()
             );
             assertTrue(untouched.taskRuns().getFirst().outputs().isEmpty());
             assertEquals(
@@ -249,8 +248,8 @@ class Uc06ConditionalRouteTest {
                     remaining.id(),
                     Map.of("decision", "APPROVED")
             );
-            assertEquals(ExecutionStatus.COMPLETED, firstCompleted.status());
-            assertEquals(ExecutionStatus.COMPLETED, selected.status());
+            assertEquals(State.Type.COMPLETED, firstCompleted.state().current());
+            assertEquals(State.Type.COMPLETED, selected.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());

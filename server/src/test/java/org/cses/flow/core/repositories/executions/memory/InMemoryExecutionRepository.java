@@ -49,6 +49,15 @@ public final class InMemoryExecutionRepository
     }
 
     @Override
+    public Optional<Execution> lockById(
+        DSLContext dsl,
+        String companyId,
+        String executionId
+    ) {
+        return findById(dsl, companyId, executionId);
+    }
+
+    @Override
     public List<Execution> findAll(
         DSLContext dsl,
         String companyId

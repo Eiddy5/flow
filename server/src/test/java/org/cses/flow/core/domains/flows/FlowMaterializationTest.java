@@ -1,18 +1,25 @@
 package org.cses.flow.core.domains.flows;
 
+import io.micronaut.json.JsonMapper;
+import org.cses.flow.core.domains.tasks.RunContext;
+import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RouteExpression;
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskPlugin;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.TaskExtension;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.paas.json.JsonFactory;
+import org.paas.json.JsonObject;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.cses.flow.extensions.tasks.TaskPluginTestSupport.builtInDispatcher;
-import static org.cses.flow.extensions.tasks.TaskPluginTestSupport.withPlugins;
+import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
+import static org.cses.flow.core.plugins.TaskExtensionTestSupport.withPlugins;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -27,6 +34,11 @@ class FlowMaterializationTest {
 
     private final TaskTypeDispatcher dispatcher = builtInDispatcher();
 
+    @BeforeAll
+    static void initializeJsonMapper() {
+        JsonFactory.instance = JsonMapper.createDefault();
+    }
+
     @Test
     void materializesACompleteReversionWithExplicitDataObjects() {
         Flow flow = deploy(
@@ -36,7 +48,9 @@ class FlowMaterializationTest {
                 "description", "first",
                 "inputs", List.of(Map.of(
                     "key", "request",
-                    "type", "JSON"
+                    "type", " string ",
+                    "displayName", "请求",
+                    "required", true
                 )),
                 "outputs", List.of(Map.of(
                     "key", "result",
@@ -61,13 +75,13 @@ class FlowMaterializationTest {
         );
 
         assertEquals(1L, flow.reversion());
-        assertEquals(FlowStatus.DEPLOYED, flow.status());
+        assertTrue(!flow.isDeleted());
         assertEquals(
-            List.of(Input.create("request", "JSON")),
+            List.of(input("request", "请求", true)),
             flow.inputs()
         );
         assertEquals(
-            List.of(Output.create("result", "STRING")),
+            List.of(Output.create("result", DataType.STRING)),
             flow.outputs()
         );
         Task parent = flow.tasks().getFirst();
@@ -178,6 +192,34 @@ class FlowMaterializationTest {
             "references undeclared parent output"
         ));
 
+        WorkflowException typedRoute = assertThrows(
+            WorkflowException.class,
+            () -> deploy(
+                "flow-1",
+                Map.of(
+                    "key", "invalid-route-type",
+                    "tasks", List.of(Map.of(
+                        "key", "parent",
+                        "type", "AUTO",
+                        "outputs", List.of(Map.of(
+                            "key", "approved",
+                            "type", "BOOLEAN"
+                        )),
+                        "tasks", List.of(Map.of(
+                            "key", "child",
+                            "type", "AUTO",
+                            "route", "outputs.approved == \"yes\""
+                        ))
+                    ))
+                ),
+                null,
+                dispatcher
+            )
+        );
+        assertTrue(typedRoute.getMessage().contains(
+            "requires a STRING parent output"
+        ));
+
         WorkflowException dependency = assertThrows(
             WorkflowException.class,
             () -> deploy(
@@ -231,15 +273,17 @@ class FlowMaterializationTest {
     }
 
     @Test
-    void closedLatestReversionBlocksAnotherDeployment() {
+    void deletedLatestReversionBlocksAnotherDeployment() {
         Flow first = deploy(
             "flow-1",
             definition("first", "prepare"),
             null,
             dispatcher
         );
-        first.close(ACTOR, DEPLOYED_AT + 10_000L);
+        first.delete(ACTOR, DEPLOYED_AT + 10_000L);
 
+        assertTrue(first.isDeleted());
+        assertEquals(1L, first.reversion());
         assertThrows(
             WorkflowException.class,
             () -> deploy(
@@ -286,7 +330,8 @@ class FlowMaterializationTest {
         );
     }
 
-    private static final class NotificationTask extends Task {
+    private static final class NotificationTask
+        extends Task implements RunnableTask {
 
         private static final String TYPE = "NOTIFICATION";
         private final String channel;
@@ -295,7 +340,7 @@ class FlowMaterializationTest {
             String id,
             String parentId,
             String key,
-            List<? extends Input> inputs,
+            List<? extends Input<?>> inputs,
             List<? extends Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -326,13 +371,18 @@ class FlowMaterializationTest {
         }
 
         @Override
+        public RunResult run(RunContext context) {
+            return RunResult.completed(Map.of());
+        }
+
+        @Override
         protected Object typeSpecificEqualityState() {
             return channel;
         }
     }
 
     private static final class NotificationTaskPlugin
-        implements TaskPlugin {
+        implements TaskExtension {
 
         @Override
         public String type() {
@@ -344,7 +394,7 @@ class FlowMaterializationTest {
             String id,
             String parentId,
             String key,
-            List<Input> inputs,
+            List<Input<?>> inputs,
             List<Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -369,7 +419,7 @@ class FlowMaterializationTest {
             String id,
             String parentId,
             String key,
-            List<Input> inputs,
+            List<Input<?>> inputs,
             List<Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -403,7 +453,7 @@ class FlowMaterializationTest {
             String id,
             String parentId,
             String key,
-            List<Input> inputs,
+            List<Input<?>> inputs,
             List<Output> outputs,
             RouteExpression route,
             List<String> dependOn,
@@ -430,5 +480,20 @@ class FlowMaterializationTest {
                 tasks
             );
         }
+    }
+
+    private static Input<?> input(
+        String key,
+        String displayName,
+        boolean required
+    ) {
+        return JsonObject.FromMap(
+            Map.of(
+                "key", key,
+                "type", "STRING",
+                "displayName", displayName,
+                "required", required
+            )
+        ).asObject(Input.class);
     }
 }

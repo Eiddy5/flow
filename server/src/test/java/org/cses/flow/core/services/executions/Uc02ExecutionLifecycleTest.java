@@ -1,15 +1,13 @@
 package org.cses.flow.core.services.executions;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.domains.flows.FlowWithSource;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -54,7 +52,7 @@ class Uc02ExecutionLifecycleTest {
             );
             assertEquals(flow.id(), started.flowId());
             assertEquals(1L, started.flowReversion());
-            assertEquals(ExecutionStatus.RUNNING, started.status());
+            assertEquals(State.Type.WAITING, started.state().current());
 
             fixture.restartServer();
             ExternalTask externalTask =
@@ -80,15 +78,15 @@ class Uc02ExecutionLifecycleTest {
                 flow.tasks().getFirst().id(),
                 reloaded.taskRuns().getFirst().taskId()
             );
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
-            assertEquals(ExecutionStatus.COMPLETED, reloaded.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
+            assertEquals(State.Type.COMPLETED, reloaded.state().current());
             assertEquals(
                 java.util.List.of(
-                    TaskRunStatus.COMPLETED,
-                    TaskRunStatus.COMPLETED
+                    State.Type.COMPLETED,
+                    State.Type.COMPLETED
                 ),
                 reloaded.taskRuns().stream()
-                    .map(taskRun -> taskRun.status())
+                    .map(taskRun -> taskRun.state().current())
                     .toList()
             );
             assertEquals(
@@ -162,8 +160,8 @@ class Uc02ExecutionLifecycleTest {
             assertEquals(1L, firstCompleted.flowReversion());
             assertEquals(2L, secondCompleted.flowReversion());
             // PASS-S2-02
-            assertEquals(ExecutionStatus.COMPLETED, firstCompleted.status());
-            assertEquals(ExecutionStatus.COMPLETED, secondCompleted.status());
+            assertEquals(State.Type.COMPLETED, firstCompleted.state().current());
+            assertEquals(State.Type.COMPLETED, secondCompleted.state().current());
             // PASS-S2-03
             assertNotEquals(first.id(), second.id());
             assertTrue(firstCompleted.taskRuns().stream()
@@ -172,14 +170,12 @@ class Uc02ExecutionLifecycleTest {
                     .map(taskRun -> taskRun.id())
                     .collect(java.util.stream.Collectors.toSet())::contains));
             assertEquals(firstTaskId, reversion2.tasks().getFirst().id());
-            assertEquals(
-                FlowStatus.DEPLOYED,
-                fixture.flowService().flow(
-                    fixture.session(),
-                    reversion1.id(),
-                    1L
-                ).orElseThrow().status()
-            );
+            Flow storedReversion1 = fixture.flowService().flow(
+                fixture.session(),
+                reversion1.id(),
+                1L
+            ).orElseThrow();
+            assertTrue(!storedReversion1.isDeleted());
             assertEquals(
                 reversion2,
                 fixture.flowService().flow(
@@ -224,10 +220,10 @@ class Uc02ExecutionLifecycleTest {
             );
 
             // PASS-S3-01
-            assertEquals(ExecutionStatus.CANCELED, canceled.status());
+            assertEquals(State.Type.TERMINATED, canceled.state().current());
             assertEquals(
-                TaskRunStatus.CANCELED,
-                canceled.taskRuns().getFirst().status()
+                State.Type.TERMINATED,
+                canceled.taskRuns().getFirst().state().current()
             );
             assertEquals(
                 ExternalTaskStatus.CANCELED,
@@ -242,8 +238,8 @@ class Uc02ExecutionLifecycleTest {
                 Map.of("decision", "APPROVED")
             );
             assertEquals(
-                ExecutionStatus.COMPLETED,
-                controlCompleted.status()
+                State.Type.COMPLETED,
+                controlCompleted.state().current()
             );
             assertEquals(
                 ExternalTaskStatus.COMPLETED,
@@ -267,9 +263,9 @@ class Uc02ExecutionLifecycleTest {
     }
 
     @Test
-    void s4RejectsDraftClosedMissingAndCrossTenantFlows() {
+    void s4RejectsDraftDeletedMissingAndCrossTenantFlows() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            FlowWithSource draft = fixture.flowService().saveDraft(
+            FlowDraft draft = fixture.flowService().saveDraft(
                 fixture.session(),
                 WorkflowUcFixture.pauseYaml(
                     "uc02-s4-draft",
@@ -287,12 +283,12 @@ class Uc02ExecutionLifecycleTest {
 
             Flow deployed = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc02-s4-closed",
-                    "已关闭 Flow",
+                    "uc02-s4-deleted",
+                    "已删除 Flow",
                     false
                 )
             );
-            fixture.flowService().close(
+            fixture.flowService().delete(
                 fixture.session(),
                 deployed.id()
             );
@@ -313,7 +309,7 @@ class Uc02ExecutionLifecycleTest {
 
             Session<User> otherCompany =
                 fixture.sessionFor("company-2");
-            FlowWithSource otherDraft = fixture.flowService().saveDraft(
+            FlowDraft otherDraft = fixture.flowService().saveDraft(
                 otherCompany,
                 WorkflowUcFixture.pauseYaml(
                     "uc02-s4-other-company",
@@ -336,18 +332,22 @@ class Uc02ExecutionLifecycleTest {
             // PASS-S4-01
             assertEquals(
                 draft.raw(),
-                fixture.flowService().source(
+                fixture.flowService().draft(
                     fixture.session(),
                     draft.id()
                 ).orElseThrow().raw()
             );
-            assertEquals(
-                FlowStatus.CLOSED,
-                fixture.flowService().flow(
+            Flow deletedFlow = fixture.flowService().flow(
+                fixture.session(),
+                deployed.id(),
+                1L
+            ).orElseThrow();
+            assertTrue(deletedFlow.isDeleted());
+            assertTrue(
+                fixture.flowService().latestFlow(
                     fixture.session(),
-                    deployed.id(),
-                    1L
-                ).orElseThrow().status()
+                    deployed.id()
+                ).isEmpty()
             );
             // PASS-S4-02
             assertTrue(
@@ -395,7 +395,7 @@ class Uc02ExecutionLifecycleTest {
                     fixture.session(),
                     running.id()
                 ).orElseThrow();
-            assertEquals(ExecutionStatus.RUNNING, afterRejectedCancel.status());
+            assertEquals(State.Type.WAITING, afterRejectedCancel.state().current());
             assertEquals(
                 originalLockVersion,
                 afterRejectedCancel.lockVersion()
@@ -417,7 +417,7 @@ class Uc02ExecutionLifecycleTest {
                     fixture.session(),
                     running.id()
                 ).orElseThrow();
-            assertEquals(ExecutionStatus.CANCELED, canceledReloaded.status());
+            assertEquals(State.Type.TERMINATED, canceledReloaded.state().current());
             assertEquals(canceled.lockVersion(), canceledReloaded.lockVersion());
 
             Flow automaticFlow = fixture.deploy("""
@@ -444,7 +444,7 @@ class Uc02ExecutionLifecycleTest {
                 ).orElseThrow();
 
             // PASS-S5-01 and PASS-S5-02
-            assertEquals(ExecutionStatus.COMPLETED, completedReloaded.status());
+            assertEquals(State.Type.COMPLETED, completedReloaded.state().current());
             assertEquals(
                 completed.lockVersion(),
                 completedReloaded.lockVersion()
@@ -492,7 +492,7 @@ class Uc02ExecutionLifecycleTest {
             // PASS-S6-01
             assertEquals(1L, completed.flowReversion());
             assertEquals(started.id(), completed.id());
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(1, completed.taskRuns().size());
             assertEquals(
                 reversion1.tasks().getFirst().id(),
@@ -509,7 +509,7 @@ class Uc02ExecutionLifecycleTest {
             );
             // PASS-S6-02
             assertEquals(2L, newCompleted.flowReversion());
-            assertEquals(ExecutionStatus.COMPLETED, newCompleted.status());
+            assertEquals(State.Type.COMPLETED, newCompleted.state().current());
             assertEquals(2, newCompleted.taskRuns().size());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
@@ -583,20 +583,20 @@ class Uc02ExecutionLifecycleTest {
                     externalTask.id()
                 ).orElseThrow();
             // PASS-S7-02
-            if (reloaded.status() == ExecutionStatus.COMPLETED) {
+            if (reloaded.state().current() == State.Type.COMPLETED) {
                 assertEquals(
-                    TaskRunStatus.COMPLETED,
-                    reloaded.taskRuns().getFirst().status()
+                    State.Type.COMPLETED,
+                    reloaded.taskRuns().getFirst().state().current()
                 );
                 assertEquals(
                     ExternalTaskStatus.COMPLETED,
                     externalReloaded.status()
                 );
             } else {
-                assertEquals(ExecutionStatus.CANCELED, reloaded.status());
+                assertEquals(State.Type.TERMINATED, reloaded.state().current());
                 assertEquals(
-                    TaskRunStatus.CANCELED,
-                    reloaded.taskRuns().getFirst().status()
+                    State.Type.TERMINATED,
+                    reloaded.taskRuns().getFirst().state().current()
                 );
                 assertEquals(
                     ExternalTaskStatus.CANCELED,
@@ -607,8 +607,9 @@ class Uc02ExecutionLifecycleTest {
             assertEquals(1, reloaded.taskRuns().size());
             assertTrue(reloaded.taskRuns().stream()
                 .allMatch(taskRun ->
-                    taskRun.status() != TaskRunStatus.RUNNING
-                        && taskRun.status() != TaskRunStatus.CREATED
+                    taskRun.state().current() != State.Type.WAITING
+                        && taskRun.state().current() != State.Type.CREATED
+                        && taskRun.state().current() != State.Type.RUNNING
                 ));
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
@@ -651,8 +652,8 @@ class Uc02ExecutionLifecycleTest {
             ).orElseThrow();
 
             assertNotEquals(first.id(), second.id());
-            assertEquals(ExecutionStatus.COMPLETED, first.status());
-            assertEquals(ExecutionStatus.COMPLETED, second.status());
+            assertEquals(State.Type.COMPLETED, first.state().current());
+            assertEquals(State.Type.COMPLETED, second.state().current());
             assertEquals(flow.id(), first.flowId());
             assertEquals(flow.id(), second.flowId());
             assertEquals(1L, first.flowReversion());
@@ -666,12 +667,12 @@ class Uc02ExecutionLifecycleTest {
                 second.taskRuns().stream().map(TaskRun::taskId).toList()
             );
             assertTrue(first.taskRuns().stream().allMatch(taskRun ->
-                taskRun.status() == TaskRunStatus.COMPLETED
+                taskRun.state().current() == State.Type.COMPLETED
                     && taskRun.inputs().isEmpty()
                     && taskRun.outputs().isEmpty()
             ));
             assertTrue(second.taskRuns().stream().allMatch(taskRun ->
-                taskRun.status() == TaskRunStatus.COMPLETED
+                taskRun.state().current() == State.Type.COMPLETED
                     && taskRun.inputs().isEmpty()
                     && taskRun.outputs().isEmpty()
             ));
@@ -722,7 +723,7 @@ class Uc02ExecutionLifecycleTest {
 
             assertEquals(flowId, persisted.id());
             assertEquals(1L, persisted.reversion());
-            assertEquals(ExecutionStatus.COMPLETED, reloaded.status());
+            assertEquals(State.Type.COMPLETED, reloaded.state().current());
             assertEquals(
                 taskIds,
                 reloaded.taskRuns().stream().map(TaskRun::taskId).toList()
@@ -736,7 +737,7 @@ class Uc02ExecutionLifecycleTest {
                     .count()
             );
             assertTrue(reloaded.taskRuns().stream().allMatch(taskRun ->
-                taskRun.status() == TaskRunStatus.COMPLETED
+                taskRun.state().current() == State.Type.COMPLETED
             ));
             assertTrue(reloaded.activeTaskRuns().isEmpty());
             assertTrue(fixture.externalTaskService().waitingTasks(

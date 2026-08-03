@@ -1,8 +1,8 @@
 package org.cses.flow.infrastructure.repositories.executions.postgres.entries;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
 import org.cses.flow.core.domains.executions.TaskRun;
+import org.cses.flow.core.domains.flows.State;
 import org.flow.gen.flow.pojos.ExecutionsObject;
 import org.flow.gen.flow.records.ExecutionsRecord;
 import org.jooq.JSONB;
@@ -19,6 +19,7 @@ public final class ExecutionEntry extends ExecutionsObject {
         entry.flowId = record.getFlowId();
         entry.flowReversion = record.getFlowReversion();
         entry.status = record.getStatus();
+        entry.stateHistory = record.getStateHistory();
         entry.lockVersion = record.getLockVersion();
         entry.creator = record.getCreator();
         entry.updater = record.getUpdater();
@@ -41,7 +42,8 @@ public final class ExecutionEntry extends ExecutionsObject {
         entry.companyId = execution.companyId();
         entry.flowId = execution.flowId();
         entry.flowReversion = execution.flowReversion();
-        entry.status = execution.status().name();
+        entry.status = execution.state().current().name();
+        entry.stateHistory = StateHistoryJsonCodec.encode(execution.state());
         entry.lockVersion = execution.lockVersion();
         entry.creator = creator;
         entry.updater = updater;
@@ -61,7 +63,7 @@ public final class ExecutionEntry extends ExecutionsObject {
             companyId,
             flowId,
             flowReversion,
-            ExecutionStatus.valueOf(status),
+            StateHistoryJsonCodec.decode(status, stateHistory),
             lockVersion == null ? 0 : lockVersion,
             taskRuns
         );

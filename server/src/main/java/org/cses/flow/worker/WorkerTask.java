@@ -1,14 +1,19 @@
 package org.cses.flow.worker;
 
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 
 import java.util.Map;
+import java.util.Objects;
 
+/**
+ * Immutable Executor-to-Worker envelope for one RunnableTask invocation.
+ */
 public final class WorkerTask {
 
     private final String executionId;
     private final String taskRunId;
-    private final Task task;
+    private final RunnableTask runnableTask;
     private final Map<String, Object> inputs;
 
     public WorkerTask(
@@ -19,7 +24,14 @@ public final class WorkerTask {
     ) {
         this.executionId = requireText(executionId, "Execution id");
         this.taskRunId = requireText(taskRunId, "TaskRun id");
-        this.task = java.util.Objects.requireNonNull(task, "task");
+        Task taskDefinition = Objects.requireNonNull(task, "task");
+        if (!(taskDefinition instanceof RunnableTask capability)) {
+            throw new IllegalArgumentException(
+                "WorkerTask requires a RunnableTask: "
+                    + taskDefinition.type()
+            );
+        }
+        this.runnableTask = capability;
         this.inputs = inputs == null ? Map.of() : Map.copyOf(inputs);
     }
 
@@ -31,8 +43,8 @@ public final class WorkerTask {
         return taskRunId;
     }
 
-    public Task task() {
-        return task;
+    public RunnableTask runnableTask() {
+        return runnableTask;
     }
 
     public Map<String, Object> inputs() {

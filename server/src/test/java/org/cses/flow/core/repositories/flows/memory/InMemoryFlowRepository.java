@@ -4,8 +4,7 @@ import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.infrastructure.memory.InMemoryTransactionManager;
 import org.cses.flow.infrastructure.memory.InMemoryTransactionalResource;
@@ -88,13 +87,7 @@ public final class InMemoryFlowRepository
         );
         Flow existing = flows.get(identity);
         if (existing != null) {
-            if (existing.status() != FlowStatus.DEPLOYED
-                || flow.status() != FlowStatus.CLOSED) {
-                throw new WorkflowException(
-                    "Existing Flow reversion may only be closed: "
-                        + flow.id() + ":" + flow.reversion()
-                );
-            }
+            requireDeleteOnlyChange(existing, flow);
             flows.put(identity, flow.copy());
             return;
         }
@@ -111,7 +104,54 @@ public final class InMemoryFlowRepository
                     + ", attempted " + flow.reversion()
             );
         }
+        Flow latestFlow = latest == 0
+            ? null
+            : flows.get(new FlowIdentity(
+                flow.companyId(),
+                flow.id(),
+                latest
+            ));
+        if (flow.isDeleted()
+            || (
+                latestFlow != null
+                    && latestFlow.isDeleted()
+            )) {
+            throw new WorkflowException(
+                "A new Flow reversion must be undeleted and follow an "
+                    + "undeleted latest Flow: " + flow.id()
+            );
+        }
         flows.put(identity, flow.copy());
+    }
+
+    private static void requireDeleteOnlyChange(
+        Flow stored,
+        Flow attempted
+    ) {
+        if (stored.isDeleted() || !attempted.isDeleted()) {
+            throw new WorkflowException(
+                "Existing Flow reversion may only transition from "
+                    + "deleted=false to deleted=true: " + attempted.id()
+                    + ":" + attempted.reversion()
+            );
+        }
+        boolean immutableStateMatches =
+            stored.id().equals(attempted.id())
+                && stored.companyId().equals(attempted.companyId())
+                && stored.key().equals(attempted.key())
+                && stored.reversion() == attempted.reversion()
+                && stored.description().equals(attempted.description())
+                && stored.inputs().equals(attempted.inputs())
+                && stored.outputs().equals(attempted.outputs())
+                && stored.tasks().equals(attempted.tasks())
+                && stored.creator().equals(attempted.creator())
+                && stored.createdAt() == attempted.createdAt();
+        if (!immutableStateMatches) {
+            throw new WorkflowException(
+                "Deleting a Flow must not change its deployed definition: "
+                    + attempted.id() + ":" + attempted.reversion()
+            );
+        }
     }
 
     @Override

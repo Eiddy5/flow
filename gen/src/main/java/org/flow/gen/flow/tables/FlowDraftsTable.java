@@ -121,6 +121,11 @@ public class FlowDraftsTable extends TableImpl<FlowDraftsRecord> {
      */
     public final TableField<FlowDraftsRecord, Long> LOCK_VERSION = createField(DSL.name("lock_version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
 
+    /**
+     * The column <code>public.flow_drafts.deleted</code>.
+     */
+    public final TableField<FlowDraftsRecord, Boolean> DELETED = createField(DSL.name("deleted"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+
     private FlowDraftsTable(Name alias, Table<FlowDraftsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -157,7 +162,7 @@ public class FlowDraftsTable extends TableImpl<FlowDraftsRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_FLOW_DRAFTS_ACTIVE, Indexes.IDX_FLOW_DRAFTS_CREATOR_ID, Indexes.IDX_FLOW_DRAFTS_DELETER_ID, Indexes.IDX_FLOW_DRAFTS_UPDATER_ID);
+        return Arrays.asList(Indexes.IDX_FLOW_DRAFTS_CREATOR_ID, Indexes.IDX_FLOW_DRAFTS_CURRENT, Indexes.IDX_FLOW_DRAFTS_DELETER_ID, Indexes.IDX_FLOW_DRAFTS_UPDATER_ID);
     }
 
     @Override
@@ -169,7 +174,7 @@ public class FlowDraftsTable extends TableImpl<FlowDraftsRecord> {
     public List<Check<FlowDraftsRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_flow_drafts_creator"), "(((jsonb_typeof(creator) = 'object'::text) AND (creator ? 'id'::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_drafts_deleted"), "((((deleter IS NULL) AND (deleted_at IS NULL)) OR ((deleter IS NOT NULL) AND (deleted_at IS NOT NULL))))", true),
+            Internal.createCheck(this, DSL.name("ck_flow_drafts_deleted"), "((((deleted IS FALSE) AND (deleter IS NULL) AND (deleted_at IS NULL)) OR ((deleted IS TRUE) AND (deleter IS NOT NULL) AND (deleted_at IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_deleter"), "(((deleter IS NULL) OR ((jsonb_typeof(deleter) = 'object'::text) AND (deleter ? 'id'::text))))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_id"), "((length(btrim((id)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_lock_version"), "((lock_version >= 0))", true),

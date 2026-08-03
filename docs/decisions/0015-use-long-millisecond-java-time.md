@@ -1,4 +1,4 @@
-# ADR 0015：Java 时间统一使用 Epoch 毫秒 long
+# ADR 0015：Java 时间统一使用 Unix timestamp 毫秒值
 
 ## 状态
 
@@ -28,7 +28,8 @@ JOOQ 生成代码边界。
 
 ### 方案三：业务 Java 使用 long，数据库边界负责转换
 
-项目自有 Java 业务类型使用 Epoch 毫秒 `long`，PostgreSQL 继续使用
+项目自有 Java 业务类型使用 Unix timestamp（Epoch）毫秒值 `long`，PostgreSQL
+继续使用
 `timestamptz`，JOOQ 生成类型继续使用 `OffsetDateTime`，由 Entry 或 Repository
 在基础设施边界集中转换。
 
@@ -37,7 +38,7 @@ JOOQ 生成代码边界。
 采用方案三：
 
 - 项目自有 Java 业务类型中的必填时间点统一使用原始类型 `long`。
-- 时间点统一表示 UTC Unix Epoch 毫秒。
+- 时间点统一表示 UTC Unix timestamp 毫秒值。
 - 只有确有“尚未发生”或“未知”语义的时间才使用可空 `Long`，不得用魔法数字
   表示不存在。
 - 时长、超时和间隔使用 `long` 毫秒，名称必须包含 `Millis` 单位。
@@ -56,7 +57,7 @@ ADR 0014 关于 Flow 来源、Reversion 和 PostgreSQL `timestamptz` 的其他�
 ## 理由
 
 - 所有项目自有 Java 接口使用同一种数值类型和单位，减少跨层类型转换。
-- Epoch 毫秒不携带本地时区，能够稳定表达同一个绝对时间点。
+- Unix timestamp 毫秒值不携带本地时区，能够稳定表达同一个绝对时间点。
 - 保留 `timestamptz`，无需为 Java 类型约定改变数据库 Schema。
 - 把日期时间对象限制在基础设施边界，避免数据库和框架类型泄漏到 Core。
 - 固定毫秒精度后，序列化、比较和测试断言使用同一尺度。
@@ -70,5 +71,5 @@ ADR 0014 关于 Flow 来源、Reversion 和 PostgreSQL `timestamptz` 的其他�
   精度断言。
 - 可空时间迁移为 `Long` 时，必须同时验证对应状态和审计字段的一致性。
 - 具体编码规则以
-  [`development-basics.md`](../standards/development-basics.md)
+  [`project-development.md`](../standards/project-development.md)
   为准。

@@ -102,17 +102,43 @@ class CoreArchitectureStandardTest {
 
     @Test
     void executorAndWorkerAreTopLevelPeersOfCore() throws IOException {
+        Path taskDomain = CORE.resolve("domains/tasks");
         assertTrue(
             Files.isRegularFile(FLOW.resolve(
                 "executor/ExecutorService.java"
-            )),
-            "ExecutorService must be in the top-level executor package"
+            ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/DefaultExecutor.java"
+                )),
+            "ExecutorService and DefaultExecutor must be in the top-level "
+                + "executor package"
         );
         assertTrue(
             Files.isRegularFile(FLOW.resolve(
                 "worker/WorkerDispatcher.java"
-            )),
-            "WorkerDispatcher must be in the top-level worker package"
+            ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "worker/WorkerTask.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "worker/WorkerTaskResult.java"
+                )),
+            "Worker runtime components must remain in the top-level worker "
+                + "package"
+        );
+        assertTrue(
+            Files.isRegularFile(taskDomain.resolve("RunnableTask.java"))
+                && Files.isRegularFile(taskDomain.resolve(
+                    "BranchTask.java"
+                ))
+                && Files.isRegularFile(taskDomain.resolve(
+                    "RunContext.java"
+                ))
+                && Files.isRegularFile(taskDomain.resolve(
+                    "RunResult.java"
+                )),
+            "Task capabilities and their direct invocation contract must "
+                + "be owned by the Task domain"
         );
 
         List<String> misplaced = new ArrayList<>();
@@ -132,15 +158,191 @@ class CoreArchitectureStandardTest {
             misplaced.isEmpty(),
             () -> "Executor/Worker sources found inside Core: " + misplaced
         );
+
+        Path executorContext = FLOW.resolve(
+            "executor/ExecutorContext.java"
+        );
+        String contextSource = Files.readString(executorContext);
+        assertTrue(
+            contextSource.contains(
+                "private final List<TaskRun> nexts;"
+            )
+                && contextSource.contains(
+                    "private final List<TaskRun> branchTaskRuns;"
+                )
+                && !contextSource.contains("DSLContext")
+                && !contextSource.contains("Session<")
+                && Files.notExists(FLOW.resolve(
+                    "executor/NextTask.java"
+                ))
+                && Files.notExists(CORE.resolve(
+                    "handlers/executions/ExecutionHandler.java"
+                )),
+            "ExecutorContext must expose TaskRun nexts directly and "
+                + "DefaultExecutor must be the only runtime coordinator"
+        );
+
+        for (String handler : List.of(
+            "ContinueExecutionHandler.java",
+            "ResumeExecutionHandler.java",
+            "CancelExecutionHandler.java"
+        )) {
+            String source = Files.readString(CORE.resolve(
+                "handlers/executions/" + handler
+            ));
+            assertTrue(
+                source.contains("executionRepository.lockById("),
+                () -> handler
+                    + " must lock the Execution before mutation"
+            );
+        }
     }
 
     @Test
-    void javaSourcesDoNotUseRecordsOrNumericTechnicalIds()
+    void taskCapabilitiesKeepBranchesOutOfWorkers() throws IOException {
+        Path taskDomain = CORE.resolve("domains/tasks");
+        Path worker = FLOW.resolve("worker");
+        Path executor = FLOW.resolve("executor");
+        Path extensionWorkers = FLOW.resolve("extensions/workers");
+        String runContext = Files.readString(taskDomain.resolve(
+            "RunContext.java"
+        ));
+        String dispatcher = Files.readString(worker.resolve(
+            "WorkerDispatcher.java"
+        ));
+        String workerTask = Files.readString(worker.resolve(
+            "WorkerTask.java"
+        ));
+        String workerResult = Files.readString(worker.resolve(
+            "WorkerTaskResult.java"
+        ));
+        String branchTask = Files.readString(taskDomain.resolve(
+            "BranchTask.java"
+        ));
+        String automatic = Files.readString(FLOW.resolve(
+            "extensions/tasks/AutomaticTask.java"
+        ));
+        String pause = Files.readString(FLOW.resolve(
+            "extensions/tasks/PauseTask.java"
+        ));
+        String parallel = Files.readString(FLOW.resolve(
+            "extensions/tasks/ParallelTask.java"
+        ));
+        String executorService = Files.readString(executor.resolve(
+            "ExecutorService.java"
+        ));
+
+        assertTrue(
+            Files.notExists(worker.resolve("WorkerContext.java"))
+                && Files.notExists(worker.resolve(
+                    "WorkerTaskHandler.java"
+                ))
+                && Files.notExists(worker.resolve("RunnableTask.java"))
+                && Files.notExists(worker.resolve("RunContext.java"))
+                && Files.notExists(worker.resolve("RunResult.java"))
+                && Files.notExists(executor.resolve("BranchTask.java"))
+                && (!Files.isDirectory(extensionWorkers)
+                    || directJavaFiles(extensionWorkers).isEmpty()),
+            "Task capabilities cannot be owned by Worker or Executor, and "
+                + "Worker handlers must remain removed"
+        );
+        assertTrue(
+            runContext.contains("private final Map<String, Object> inputs;")
+                && !runContext.contains("private final WorkerTask")
+                && !runContext.contains("private final TaskRun")
+                && !runContext.contains("private final Execution")
+                && !runContext.contains("String taskRunId"),
+            "RunContext must remain scoped to one RunnableTask invocation"
+        );
+        assertTrue(
+            dispatcher.contains("workerTask.runnableTask().run(context)")
+                && workerTask.contains(
+                    "private final RunnableTask runnableTask;"
+                )
+                && !workerTask.contains("private final Task task;")
+                && !dispatcher.contains("PluginLoader")
+                && !dispatcher.contains("WorkerTaskHandler")
+                && !workerResult.contains("State.Type.WAITING")
+                && !branchTask.contains("RunResult run("),
+            "Worker must directly run RunnableTask and cannot return WAITING"
+        );
+        assertTrue(
+            automatic.contains("implements RunnableTask")
+                && automatic.contains("RunResult run(RunContext context)")
+                && pause.contains("implements BranchTask")
+                && parallel.contains("implements BranchTask")
+                && executorService.contains("dispatchBranch(")
+                && executorService.contains("runnable == branch"),
+            "Concrete Tasks must declare one capability and Executor must "
+                + "handle branches directly"
+        );
+    }
+
+    @Test
+    void workflowRuntimeStateIsOwnedByTheFlowDomain() throws IOException {
+        Path flows = CORE.resolve("domains/flows");
+        Path executions = CORE.resolve("domains/executions");
+
+        assertTrue(
+            Files.isRegularFile(flows.resolve("State.java"))
+                && Files.notExists(
+                    flows.resolve("FlowDefinitionStatus.java")
+                ),
+            "Flow domain must own runtime State without a definition "
+                + "status enum"
+        );
+        assertTrue(
+            Files.notExists(executions.resolve("ExecutionStatus.java"))
+                && Files.notExists(
+                    executions.resolve("TaskRunStatus.java")
+                )
+                && Files.notExists(
+                    FLOW.resolve("worker/WorkerTaskOutcome.java")
+                )
+                && Files.notExists(flows.resolve("FlowStatus.java")),
+            "Workflow components must not restore duplicate state types"
+        );
+
+        String state = Files.readString(flows.resolve("State.java"));
+        String execution = Files.readString(
+            executions.resolve("Execution.java")
+        );
+        String taskRun = Files.readString(
+            executions.resolve("TaskRun.java")
+        );
+        String workerResult = Files.readString(
+            FLOW.resolve("worker/WorkerTaskResult.java")
+        );
+        assertTrue(
+            state.contains("private final Type current;")
+                && state.contains("private final List<History> history;")
+                && state.contains("public Type current()")
+                && state.contains("public List<History> history()")
+                && execution.contains("private State state;")
+                && taskRun.contains("private State state;")
+                && workerResult.contains(
+                    "private final State.Type targetState;"
+                )
+                && !execution.contains("public State.Type status()")
+                && !taskRun.contains("public State.Type status()"),
+            "Lifecycle owners must use State while Worker returns its target "
+                + "from the shared State.Type vocabulary"
+        );
+    }
+
+    @Test
+    void javaSourcesFollowRecordAndTechnicalIdRules()
         throws IOException {
 
         List<String> invalid = new ArrayList<>();
         inspectSources(MAIN_JAVA, invalid);
         inspectSources(TEST_JAVA, invalid);
+        inspectRecordDeclarations(CORE.resolve("domains"), invalid);
+        inspectRecordDeclarations(
+            TEST_JAVA.resolve("org/cses/flow/core/domains"),
+            invalid
+        );
+        inspectEntryRecordDeclarations(invalid);
 
         assertTrue(
             invalid.isEmpty(),
@@ -240,21 +442,63 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
-    void taskMaterializationUsesAPluginRegistryWithoutTypeBranches()
+    void taskMaterializationUsesTheGenericPluginRegistryWithoutTypeBranches()
         throws IOException {
 
-        Path taskSpi = CORE.resolve("domains/tasks/TaskPlugin.java");
+        Path plugins = CORE.resolve("plugins");
+        Path pluginSpi = plugins.resolve("Plugin.java");
+        Path taskExtension = plugins.resolve("TaskExtension.java");
+        Path dispatcherPort = plugins.resolve("TaskTypeDispatcher.java");
         Path extensions = FLOW.resolve("extensions/tasks");
-        Path registry = extensions.resolve("TaskPluginRegistry.java");
-        Path dispatcher = extensions.resolve(
+        Path extensionTests = TEST_JAVA.resolve(
+            "org/cses/flow/extensions/tasks"
+        );
+        Path loader = plugins.resolve("PluginLoader.java");
+        Path registry = plugins.resolve("PluginRegistry.java");
+        Path dispatcher = plugins.resolve(
             "RegisteredTaskTypeDispatcher.java"
         );
 
         assertTrue(
-            Files.isRegularFile(taskSpi)
+            Files.isRegularFile(pluginSpi)
+                && Files.isRegularFile(taskExtension)
+                && Files.isRegularFile(dispatcherPort)
+                && Files.isRegularFile(loader)
                 && Files.isRegularFile(registry)
                 && Files.isRegularFile(dispatcher),
-            "Task plugin SPI, registry, and dispatcher must exist"
+            "Core plugin SPI, loader, registry, and dispatcher must exist"
+        );
+        assertTrue(
+            List.of(
+                "PluginLoader.java",
+                "Plugin.java",
+                "PluginRegistry.java",
+                "TaskExtension.java",
+                "TaskTypeDispatcher.java",
+                "RegisteredTaskTypeDispatcher.java"
+            ).stream()
+                .map(extensions::resolve)
+                .allMatch(Files::notExists),
+            "Extensions must contain implementations, not plugin runtime"
+        );
+        assertTrue(
+            Files.notExists(plugins.resolve("TaskPlugin.java"))
+                && Files.notExists(plugins.resolve(
+                    "TaskPluginRegistry.java"
+                )),
+            "Task-only plugin root and registry must not be restored"
+        );
+        assertTrue(
+            Files.notExists(CORE.resolve(
+                "domains/tasks/TaskTypeDispatcher.java"
+            )),
+            "TaskTypeDispatcher must be owned by core/plugins, not domains"
+        );
+        assertTrue(
+            Files.notExists(extensionTests.resolve(
+                "TaskExtensionTestSupport.java"
+            )),
+            "Plugin runtime test support must not be owned by extensions"
         );
         assertTrue(
             Files.notExists(extensions.resolve(
@@ -272,12 +516,27 @@ class CoreArchitectureStandardTest {
         );
 
         String registrySource = Files.readString(registry);
+        String taskExtensionSource = Files.readString(taskExtension);
         assertTrue(
-            registrySource.contains("Collection<TaskPlugin>")
+            registrySource.contains("Collection<Plugin>")
                 && registrySource.contains("@Context")
                 && registrySource.contains("putIfAbsent")
-                && registrySource.contains("Locale.ROOT"),
-            "Task plugins must be eagerly registered by unique type"
+                && registrySource.contains("Locale.ROOT")
+                && registrySource.contains("PluginLoader.load(Plugin.class)"),
+            "Plugins must be discovered and registered by extension point"
+        );
+        assertTrue(
+            taskExtensionSource.contains("extends Plugin")
+                && taskExtensionSource.contains(
+                    "return TaskExtension.class"
+                ),
+            "Task materialization must use a specialized Plugin extension point"
+        );
+
+        String loaderSource = Files.readString(loader);
+        assertTrue(
+            loaderSource.contains("ServiceLoader.load"),
+            "Classpath plugin discovery must be owned by core/plugins"
         );
     }
 
@@ -316,9 +575,6 @@ class CoreArchitectureStandardTest {
                 .toList()) {
 
                 String source = Files.readString(path);
-                if (RECORD_DECLARATION.matcher(source).find()) {
-                    invalid.add(path + " declares record");
-                }
                 if (NUMERIC_TECHNICAL_ID.matcher(source).find()) {
                     invalid.add(path + " declares numeric technical id");
                 }
@@ -327,5 +583,49 @@ class CoreArchitectureStandardTest {
                 }
             }
         }
+    }
+
+    private static void inspectRecordDeclarations(
+        Path sourceRoot,
+        List<String> invalid
+    ) throws IOException {
+        try (var paths = Files.walk(sourceRoot)) {
+            for (Path path : paths
+                .filter(file -> file.toString().endsWith(".java"))
+                .toList()) {
+
+                String source = Files.readString(path);
+                if (RECORD_DECLARATION.matcher(source).find()) {
+                    invalid.add(path + " declares record in a class-only area");
+                }
+            }
+        }
+    }
+
+    private static void inspectEntryRecordDeclarations(
+        List<String> invalid
+    ) throws IOException {
+        Path repositories = FLOW.resolve("infrastructure/repositories");
+        try (var paths = Files.walk(repositories)) {
+            for (Path path : paths
+                .filter(file -> file.toString().endsWith(".java"))
+                .filter(file -> hasPathSegment(file, "entries"))
+                .toList()) {
+
+                String source = Files.readString(path);
+                if (RECORD_DECLARATION.matcher(source).find()) {
+                    invalid.add(path + " declares record in a class-only area");
+                }
+            }
+        }
+    }
+
+    private static boolean hasPathSegment(Path path, String segment) {
+        for (Path element : path) {
+            if (segment.equals(element.toString())) {
+                return true;
+            }
+        }
+        return false;
     }
 }

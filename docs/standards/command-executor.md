@@ -53,8 +53,9 @@ Controller（Core 外）
 ## Command 规则
 
 - Command 只保存调用方能够决定的参数。
-- Command 必须使用不可变 `class`，不得使用 Java `record`。具体类型定义规则见
-  `docs/standards/development-basics.md`。
+- Command 必须不可变。简单数据协议可以使用 `record`；需要隐藏构造、复杂校验、
+  继承或框架代理时使用 `final class`。具体选择规则见
+  [`project-development.md`](project-development.md)。
 - `validate()` 只校验 Command 自身字段，不访问 Repository。
 - Command 不注入 Service、Repository、Handler 或具体 Task 扩展。
 
@@ -63,7 +64,7 @@ Controller（Core 外）
 - 具体 Handler 统一放在
   `org.cses.flow.core.handlers.<业务模块>`，例如 Flow Handler 放在
   `org.cses.flow.core.handlers.flows`。业务模块分包规则见
-  `docs/standards/development-basics.md`。
+  [`workflow-core-java-model.md`](workflow-core-java-model.md)。
 - Handler 名称必须包含动作和领域，例如 `DeployFlowHandler`。
 - 一个 Command 必须且只能注册一个 Handler。
 - Handler 按“加载聚合、调用领域行为、保存聚合、返回结果”的顺序编排。

@@ -3,13 +3,13 @@ package org.cses.flow.core.handlers.flows;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.commands.flows.DeployFlowCommand;
-import org.cses.flow.core.commands.shared.CommandContext;
-import org.cses.flow.core.commands.shared.CommandHandler;
+import org.cses.flow.core.commands.CommandContext;
+import org.cses.flow.core.commands.CommandHandler;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowWithSource;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
+import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.repositories.flows.FlowRepository;
-import org.cses.flow.core.repositories.flows.FlowWithSourceRepository;
+import org.cses.flow.core.repositories.flows.FlowDraftRepository;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
@@ -23,19 +23,19 @@ public final class DeployFlowHandler implements CommandHandler<
     DeployFlowCommand
 > {
 
-    private final FlowWithSourceRepository sourceRepository;
+    private final FlowDraftRepository draftRepository;
     private final FlowRepository flowRepository;
     private final TaskTypeDispatcher taskTypeDispatcher;
     private final YamlParser yamlParser;
 
     @Inject
     public DeployFlowHandler(
-        FlowWithSourceRepository sourceRepository,
+        FlowDraftRepository draftRepository,
         FlowRepository flowRepository,
         TaskTypeDispatcher taskTypeDispatcher,
         YamlParser yamlParser
     ) {
-        this.sourceRepository = sourceRepository;
+        this.draftRepository = draftRepository;
         this.flowRepository = flowRepository;
         this.taskTypeDispatcher = taskTypeDispatcher;
         this.yamlParser = yamlParser;
@@ -59,8 +59,8 @@ public final class DeployFlowHandler implements CommandHandler<
             context.getSession()
         );
         String flowId = context.getCommand().id();
-        FlowWithSource source = FlowHandlerSupport.requireSource(
-            sourceRepository,
+        FlowDraft draft = FlowHandlerSupport.requireDraft(
+            draftRepository,
             context.getDsl(),
             companyId,
             flowId
@@ -73,7 +73,7 @@ public final class DeployFlowHandler implements CommandHandler<
         Flow deployed = Flow.deploy(
             companyId,
             flowId,
-            yamlParser.parse(source.raw()),
+            yamlParser.parse(draft.raw()),
             latest,
             taskTypeDispatcher,
             FlowHandlerSupport.actor(context.getSession()),

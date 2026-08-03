@@ -3,7 +3,10 @@
 ## 状态
 
 Accepted（其中过渡期 `FlowDefinition`、Draft 创建入口和迁移差距描述由
-ADR 0014 取代；集中 YAML 解析与 Task 插件注册决定继续生效）
+ADR 0014 取代；classpath 插件发现以及包括 `TaskTypeDispatcher` 在内的
+`core/plugins` 目录归属由 ADR 0023
+补充；Input 定义片段的多态物化方式由 ADR 0019 的 2026-08-03 修订取代，集中
+YAML 解析与 Task 扩展注册决定继续生效）
 
 ## 背景
 
@@ -21,7 +24,7 @@ Flow 之间。
 - Flow 聚合负责把中间态转换为具有完整 Task 身份和父子关系的完整定义。
 
 该决定只调整解析与领域构造职责，不改变 ADR 0008 已确认的
-`FlowWithSource`、部署和 `reversion` 目标生命周期。
+`FlowDraft`、部署和 `reversion` 目标生命周期。
 
 ## 备选方案
 
@@ -56,17 +59,21 @@ Flow 之间。
 - 现有 `Flow.createDraft(...)`、`Flow.saveDraft(...)` 以及目标模型中的
   `Flow.deploy(...)` 直接接收该映射。Flow 解释自身字段和递归 Task 节点，
   统一复用或生成 Task ID、计算 `parentId`、校验系统字段，并保护 Flow key 与
-  Task 树不变量。
+  Task 树不变量。Input 定义片段是窄化例外：Flow 在当前物化调用内使用 PAAS
+  JSON，以 `Input.class` 和 `type` 多态元数据直接形成具体 Input，不再通过项目
+  私有 Mapper 选择类型。
 - 现有 `FlowDefinition` 继续只表达已经物化的完整定义，不兼任解析半成品；
   本次迭代复用并增强 `Flow`，不新增同义定义模型。
-- `TaskTypeDispatcher` 是 Flow 面向 Task 类型扩展的稳定协议。Flow 向它传递
+- `TaskTypeDispatcher` 是 `core/plugins` 面向 Flow 提供的内部运行 Interface。
+  Flow 向它传递
   已经提取的完整创建参数；Dispatcher 不包含具体类型分支，而是按 `type` 从
-  `TaskPluginRegistry` 解析唯一 `TaskPlugin`。
-- 每个 `TaskPlugin` Bean 只声明一个稳定类型，并直接调用对应 Task 子类型的
+  `PluginRegistry` 的 `TaskExtension` 扩展点解析唯一实现。
+- 每个 `TaskExtension` Bean 只声明一个稳定类型，并直接调用对应 Task 子类型的
   `create(...)` 或 `rehydrate(...)`。插件不生成身份、不解析 YAML，也不拥有
   Flow 聚合规则。
-- Micronaut 在应用启动时收集 classpath 中的 `TaskPlugin` Bean。类型经过
-  `trim + Locale.ROOT` 大写规范化后必须唯一，重复注册使应用装配失败。
+- `PluginRegistry` 在应用启动时收集 classpath 中的 `Plugin` Bean；TaskExtension
+  扩展点内的类型经过 `trim + Locale.ROOT` 大写规范化后必须唯一，重复注册使
+  应用装配失败。
 - 删除 `FlowDefinitionReader`、`YamlFlowDefinitionReader` 和
   `TaskDefinitionAssembler`，不保留兼容别名。
 - 不新增或恢复 `FlowDefinitionInput`、`TaskDefinitionInput`。
@@ -97,16 +104,19 @@ Flow 之间。
 4. 将未知类型、未知字段和语法错误关联到定义路径，避免只返回无上下文的转换
    失败。
 
-Flow 项目采用相同的两阶段思路，但不直接复制 Kestra 的 Jackson POJO 绑定：
+Flow 项目采用相同的两阶段思路，但不把整棵 Flow/Task 交给 Jackson POJO 绑定：
 
 - Kestra 的领域类型使用 Jackson Builder 和插件反序列化器完成对象构造；本项目
   的领域对象必须通过静态 `create(...)` 保护身份生成和聚合不变量。
+- ADR 0019 确认的 Input 定义子类是局部例外：PAAS JSON 只负责依据 `type`
+  多态实例化具体 Input，构造器仍负责 Input 自身不变量；Flow 身份、版本、Task
+  树和插件类型仍由领域入口及注册表控制。
 - Kestra 的“标识解析、注册表查找、具体类型物化”被保留为独立步骤；本项目用
-  `TaskPluginRegistry` 查找 `TaskPlugin`，Dispatcher 只隐藏这条装配链路，Flow
-  仍负责稳定 ID、`parentId` 和完整 Task 树校验。
-- 当前只收集 Micronaut classpath Bean，不复制 Kestra 的插件目录扫描、独立
-  ClassLoader、安装卸载和版本选择。需要这些能力时应在注册表之外增加插件包
-  管理层，而不是改变 Flow 的 YAML 物化协议。
+  `PluginRegistry` 在 TaskExtension 扩展点查找实现，Dispatcher 只隐藏这条装配
+  链路，Flow 仍负责稳定 ID、`parentId` 和完整 Task 树校验。
+- ADR 0023 在 Micronaut classpath Bean 之外增加了 `ServiceLoader<Plugin>`，但
+  仍不复制 Kestra 的插件目录扫描、独立 ClassLoader、安装卸载和版本选择。需要
+  这些能力时应在注册表之外增加插件包管理层，而不是改变 Flow 的 YAML 物化协议。
 - 当前项目没有插件版本注入和历史定义宽松读取需求，因此只保留严格解析链路，
   不增加 strict/lenient 双模式。
 - YAML 语法错误保留行列位置，Flow/Task 物化错误保留映射路径；两类错误不混为
@@ -118,7 +128,7 @@ Flow 项目采用相同的两阶段思路，但不直接复制 Kestra 的 Jackso
 - Flow 成为 Task 身份、父子关系和完整聚合构造的唯一业务入口。
 - 解析中间结果只是通用只读映射，不再制造与现有 Flow、FlowDefinition 或 Task
   重复的输入模型。
-- 新增 Task 类型只需提供具体 Task、TaskPlugin 和执行 Handler，不要求 Flow、
+- 新增 Task 类型只需提供具体 Task、TaskExtension 和执行 Handler，不要求 Flow、
   Parser 或 Dispatcher 依赖具体扩展类，也不修改中心分支。
 - Reader 与 Assembler 两层转发被移除，调用链更短且职责可以分别测试。
 
@@ -129,7 +139,7 @@ Flow 项目采用相同的两阶段思路，但不直接复制 Kestra 的 Jackso
 - Command 只携带 Parser 返回的通用只读映射，不再重复拆分 Flow 字段和 Task
   列表，也不新增输入对象。
 - 保存草稿时提前解析的当前实现仍是 ADR 0008 目标生命周期的迁移差距；完成
-  `FlowWithSource` 后，同一链路应移动到部署命令中，而不重新引入 Reader 或
+  `FlowDraft` 后，同一链路应移动到部署命令中，而不重新引入 Reader 或
   Assembler。
 - PostgreSQL 重建继续使用 `TaskTypeDispatcher.rehydrate(...)`，不经过 YAML
   映射链路。

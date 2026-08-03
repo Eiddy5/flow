@@ -11,7 +11,7 @@ public interface Data {
     String getKey();
 
     /**
-     * Returns the code that identifies this data definition's type.
+     * Returns the stable value type of this data definition.
      */
-    String getType();
+    DataType getType();
 }

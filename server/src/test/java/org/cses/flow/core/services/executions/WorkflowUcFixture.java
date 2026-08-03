@@ -4,7 +4,7 @@ import io.micronaut.context.ApplicationContext;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowWithSource;
+import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.services.externaltasks.ExternalTaskService;
 import org.cses.flow.core.services.externaltasks.PostgresExternalTriggerRunner;
 import org.cses.flow.core.services.flows.FlowService;
@@ -149,8 +149,8 @@ public final class WorkflowUcFixture implements AutoCloseable {
     }
 
     public Flow deploy(String yaml) {
-        FlowWithSource source = flowService.saveDraft(session, yaml);
-        return flowService.deploy(session, source.id());
+        FlowDraft draft = flowService.saveDraft(session, yaml);
+        return flowService.deploy(session, draft.id());
     }
 
     public ExternalTask waiting(Execution execution) {
@@ -179,7 +179,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
     ) {
         return externalTaskService.waitingTasks(session).stream()
             .filter(task -> task.executionId().equals(executionId))
-            .filter(task -> task.allowedOutputs().contains(output))
+            .filter(task -> declaresOutput(task, output))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException(
                 "No WAITING ExternalTask for Execution "
@@ -187,6 +187,35 @@ public final class WorkflowUcFixture implements AutoCloseable {
                     + " and output "
                     + output
             ));
+    }
+
+    private boolean declaresOutput(
+        ExternalTask externalTask,
+        String output
+    ) {
+        Execution execution = executionService.execution(
+            session,
+            externalTask.executionId()
+        ).orElseThrow(() -> new IllegalStateException(
+            "ExternalTask references a missing Execution: "
+                + externalTask.id()
+        ));
+        Flow flow = flowService.flow(
+            session,
+            execution.flowId(),
+            execution.flowReversion()
+        ).orElseThrow(() -> new IllegalStateException(
+            "Execution references a missing Flow reversion: "
+                + execution.id()
+        ));
+        String taskId = execution.requireTaskRun(
+            externalTask.taskRunId()
+        ).taskId();
+        return flow.findTask(taskId)
+            .orElseThrow(() -> new IllegalStateException(
+                "TaskRun references a missing Task: " + taskId
+            ))
+            .declaresOutput(output);
     }
 
     public Execution completeAfterRestart(

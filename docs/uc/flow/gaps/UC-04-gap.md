@@ -19,12 +19,13 @@ ExternalTask 已完成后如果恢复 Execution 或后续 Worker 失败，调用
 
 ## 项目现有能力
 
-- ExternalTask 保存 companyId、executionId、taskRunId、allowedOutputs 和
-  lockVersion。
-- `CompleteExternalTaskHandler` 通过 ExternalTask 的服务端关联恢复 Execution，
-  外部调用方不能指定下一 Task。
-- `ExecutionService.resume` 再次校验 companyId、RUNNING TaskRun、PAUSE 类型和
-  声明 outputs。
+- ExternalTask 只保存 companyId、executionId、taskRunId、状态、结果和
+  lockVersion，不复制 PauseTask outputs 契约。
+- `CompleteExternalTaskHandler` 通过 ExternalTask 的服务端关联加载 Execution
+  绑定的确定 Flow Reversion，校验 WAITING PAUSE TaskRun、结果对象存在且字段
+  均已声明；外部调用方不能指定下一 Task。
+- 完成 Handler 在同一命令事务中完成 ExternalTask、原 PAUSE TaskRun 并委托
+  Executor 继续推进。
 - PAUSE Worker 和取消 Worker 能分别创建及取消触发器。
 
 ## 原不满足项与证据（已修复）
@@ -39,7 +40,7 @@ ExternalTask 已完成后如果恢复 Execution 或后续 Worker 失败，调用
 
 ## 风险
 
-- ExternalTask 变为 COMPLETED，但 PAUSE TaskRun 和 Execution 仍为 RUNNING。
+- ExternalTask 变为 COMPLETED，但 PAUSE TaskRun 和 Execution 仍为 WAITING。
 - 重试会因 ExternalTask 已终态而被拒绝，导致 Execution 永久无法恢复。
 - complete/cancel 竞争可能产生跨聚合不一致或重复后续 TaskRun。
 
@@ -54,7 +55,8 @@ ExternalTask 已完成后如果恢复 Execution 或后续 Worker 失败，调用
 
 - 状态：`RESOLVED`
 - 处理结论：ExternalTask 完成、PAUSE TaskRun 完成、Execution 推进和后续 Worker
-  位于同一个可回滚内存命令事务；complete/cancel 由同一写锁隔离。
+  位于同一个可回滚 PostgreSQL 命令事务；complete/cancel 由 lockVersion 和事务
+  写入隔离。
 - 复验证据：
   `Uc04ExternalTaskResumeTest#s8ResumeFailureRollsBackExternalTaskAndExecution`
   以及 UC-02 S7 竞争测试。

@@ -3,15 +3,15 @@ package org.cses.flow.core.handlers.executions;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.commands.executions.CreateExecutionCommand;
-import org.cses.flow.core.commands.shared.CommandContext;
-import org.cses.flow.core.commands.shared.CommandHandler;
+import org.cses.flow.core.commands.CommandContext;
+import org.cses.flow.core.commands.CommandHandler;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
+import org.cses.flow.executor.DefaultExecutor;
 import org.cses.flow.executor.ExecutorContext;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -25,15 +25,15 @@ public final class CreateExecutionHandler implements CommandHandler<
 > {
 
     private final FlowRepository flowRepository;
-    private final ExecutionHandler executionHandler;
+    private final DefaultExecutor defaultExecutor;
 
     @Inject
     public CreateExecutionHandler(
         FlowRepository flowRepository,
-        ExecutionHandler executionHandler
+        DefaultExecutor defaultExecutor
     ) {
         this.flowRepository = flowRepository;
-        this.executionHandler = executionHandler;
+        this.defaultExecutor = defaultExecutor;
     }
 
     @Override
@@ -59,9 +59,9 @@ public final class CreateExecutionHandler implements CommandHandler<
             companyId,
             context.getCommand().flowId()
         );
-        if (flow.status() != FlowStatus.DEPLOYED) {
+        if (flow.isDeleted()) {
             throw new WorkflowException(
-                "Only the latest DEPLOYED Flow can start an Execution: "
+                "Only the latest undeleted Flow can start an Execution: "
                     + flow.id()
             );
         }
@@ -70,11 +70,10 @@ public final class CreateExecutionHandler implements CommandHandler<
             flow.id(),
             flow.reversion()
         );
-        return executionHandler.handle(new ExecutorContext<>(
+        return defaultExecutor.execute(
             context.getSession(),
             context.getDsl(),
-            flow,
-            execution
-        ));
+            new ExecutorContext(flow, execution)
+        );
     }
 }

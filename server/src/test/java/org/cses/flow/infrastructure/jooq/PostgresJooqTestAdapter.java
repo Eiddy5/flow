@@ -12,8 +12,8 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
 
-import static org.flow.gen.flow.Tables.ASSIGNMENT;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
+import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
@@ -97,8 +97,8 @@ public final class PostgresJooqTestAdapter extends JOOQ {
 
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
-            dsl.deleteFrom(ASSIGNMENT)
-                .where(ASSIGNMENT.COMPANY_ID.eq(companyId))
+            dsl.deleteFrom(EXTERNAL_TASK)
+                .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
                 .execute();
             dsl.deleteFrom(TASK_RUN)
                 .where(TASK_RUN.EXECUTION_ID.in(

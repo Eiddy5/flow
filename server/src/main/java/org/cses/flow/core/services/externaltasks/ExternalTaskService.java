@@ -3,7 +3,7 @@ package org.cses.flow.core.services.externaltasks;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.commands.externaltasks.CompleteExternalTaskCommand;
-import org.cses.flow.core.commands.shared.CommandExecutor;
+import org.cses.flow.core.commands.CommandExecutor;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.queries.externaltasks.ExternalTaskQueryHandler;
@@ -61,7 +61,11 @@ public final class ExternalTaskService {
     }
 
     /**
-     * Returns the current user's tenant-visible WAITING external tasks.
+     * Returns tenant-visible WAITING records from Flow Core.
+     *
+     * <p>This is a generic orchestration query, not a user assignment or inbox
+     * query. External business capabilities own assignee and permission
+     * filtering.</p>
      */
     public <S extends Session<U>, U extends User>
         List<ExternalTask> waitingTasks(S session) {

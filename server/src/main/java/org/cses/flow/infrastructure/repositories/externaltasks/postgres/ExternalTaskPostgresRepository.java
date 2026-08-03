@@ -4,7 +4,7 @@ import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.externaltasks.ExternalTaskRepository;
 import org.cses.flow.infrastructure.repositories.externaltasks.postgres.entries.ExternalTaskEntry;
 import org.cses.flow.infrastructure.repositories.shared.postgres.PostgresAudit;
@@ -14,7 +14,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import static org.flow.gen.flow.Tables.ASSIGNMENT;
+import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
 
 @Singleton
 @Requires(
@@ -31,9 +31,9 @@ public final class ExternalTaskPostgresRepository
         String companyId,
         String externalTaskId
     ) {
-        ExternalTaskEntry entry = dsl.selectFrom(ASSIGNMENT)
-            .where(ASSIGNMENT.COMPANY_ID.eq(companyId))
-            .and(ASSIGNMENT.ID.eq(externalTaskId))
+        ExternalTaskEntry entry = dsl.selectFrom(EXTERNAL_TASK)
+            .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
+            .and(EXTERNAL_TASK.ID.eq(externalTaskId))
             .fetchOne(ExternalTaskEntry::fromRecord);
         return entry == null
             ? Optional.empty()
@@ -46,10 +46,10 @@ public final class ExternalTaskPostgresRepository
         String companyId,
         String taskRunId
     ) {
-        ExternalTaskEntry entry = dsl.selectFrom(ASSIGNMENT)
-            .where(ASSIGNMENT.COMPANY_ID.eq(companyId))
-            .and(ASSIGNMENT.TASK_RUN_ID.eq(taskRunId))
-            .and(ASSIGNMENT.STATUS.eq(ExternalTaskStatus.WAITING.name()))
+        ExternalTaskEntry entry = dsl.selectFrom(EXTERNAL_TASK)
+            .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
+            .and(EXTERNAL_TASK.TASK_RUN_ID.eq(taskRunId))
+            .and(EXTERNAL_TASK.STATUS.eq(ExternalTaskStatus.WAITING.name()))
             .fetchOne(ExternalTaskEntry::fromRecord);
         return entry == null
             ? Optional.empty()
@@ -61,12 +61,12 @@ public final class ExternalTaskPostgresRepository
         DSLContext dsl,
         String companyId
     ) {
-        return dsl.selectFrom(ASSIGNMENT)
-            .where(ASSIGNMENT.COMPANY_ID.eq(companyId))
-            .and(ASSIGNMENT.STATUS.eq(ExternalTaskStatus.WAITING.name()))
+        return dsl.selectFrom(EXTERNAL_TASK)
+            .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
+            .and(EXTERNAL_TASK.STATUS.eq(ExternalTaskStatus.WAITING.name()))
             .orderBy(
-                ASSIGNMENT.CREATED_AT.asc(),
-                ASSIGNMENT.ID.asc()
+                EXTERNAL_TASK.CREATED_AT.asc(),
+                EXTERNAL_TASK.ID.asc()
             )
             .fetch(ExternalTaskEntry::fromRecord)
             .stream()
@@ -76,9 +76,9 @@ public final class ExternalTaskPostgresRepository
 
     @Override
     public void save(DSLContext dsl, ExternalTask externalTask) {
-        ExternalTaskEntry stored = dsl.selectFrom(ASSIGNMENT)
-            .where(ASSIGNMENT.COMPANY_ID.eq(externalTask.companyId()))
-            .and(ASSIGNMENT.ID.eq(externalTask.id()))
+        ExternalTaskEntry stored = dsl.selectFrom(EXTERNAL_TASK)
+            .where(EXTERNAL_TASK.COMPANY_ID.eq(externalTask.companyId()))
+            .and(EXTERNAL_TASK.ID.eq(externalTask.id()))
             .forUpdate()
             .fetchOne(ExternalTaskEntry::fromRecord);
         OffsetDateTime now = PostgresAudit.now();
@@ -91,7 +91,7 @@ public final class ExternalTaskPostgresRepository
                 now,
                 now
             );
-            dsl.insertInto(ASSIGNMENT)
+            dsl.insertInto(EXTERNAL_TASK)
                 .set(entry.buildInsertMap())
                 .execute();
             return;
@@ -106,11 +106,11 @@ public final class ExternalTaskPostgresRepository
             stored.createdAt,
             now
         );
-        int updated = dsl.update(ASSIGNMENT)
+        int updated = dsl.update(EXTERNAL_TASK)
             .set(entry.buildUpdateMap())
-            .where(ASSIGNMENT.COMPANY_ID.eq(externalTask.companyId()))
-            .and(ASSIGNMENT.ID.eq(externalTask.id()))
-            .and(ASSIGNMENT.LOCK_VERSION.eq(expected))
+            .where(EXTERNAL_TASK.COMPANY_ID.eq(externalTask.companyId()))
+            .and(EXTERNAL_TASK.ID.eq(externalTask.id()))
+            .and(EXTERNAL_TASK.LOCK_VERSION.eq(expected))
             .execute();
         if (updated != 1) {
             throw conflict(externalTask, expected);

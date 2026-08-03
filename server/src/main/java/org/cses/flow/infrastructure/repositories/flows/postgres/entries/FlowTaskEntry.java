@@ -2,7 +2,7 @@ package org.cses.flow.infrastructure.repositories.flows.postgres.entries;
 
 import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.flow.gen.flow.pojos.FlowTasksObject;
 import org.flow.gen.flow.records.FlowTasksRecord;
 import org.paas.json.JsonObject;

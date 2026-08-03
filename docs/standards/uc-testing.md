@@ -36,7 +36,7 @@ UC 测试不是技术架构符合性测试。ADR、模块依赖、领域内部�
 
 ## 开始前必读
 
-1. `docs/standards/development-basics.md`。
+1. `docs/standards/project-development.md`。
 2. 本规范。
 3. 目标 UC。
 4. 用户实际使用的公开入口和测试环境说明。

@@ -3,9 +3,13 @@ package org.cses.flow.core.domains.tasks;
 import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.exceptions.WorkflowException;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -21,7 +25,7 @@ public abstract class Task {
     private final String parentId;
     private final String key;
     private final String type;
-    private final List<Input> inputs;
+    private final List<Input<?>> inputs;
     private final List<Output> outputs;
     private final RouteExpression route;
     private final List<String> dependOn;
@@ -32,7 +36,7 @@ public abstract class Task {
         String parentId,
         String key,
         String type,
-        List<? extends Input> inputs,
+        List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
         RouteExpression route,
         List<String> dependOn,
@@ -72,7 +76,7 @@ public abstract class Task {
         return type;
     }
 
-    public final List<Input> inputs() {
+    public final List<Input<?>> inputs() {
         return inputs;
     }
 
@@ -104,6 +108,57 @@ public abstract class Task {
         return outputs.stream().anyMatch(output ->
             output.getKey().equals(outputKey)
         );
+    }
+
+    /**
+     * Validates runtime outputs against this immutable Task definition.
+     *
+     * <p>A result object must be submitted, and every submitted key must be
+     * declared. Declared outputs may be absent so route expressions can
+     * distinguish a missing value from a matching value. Every submitted
+     * value is safely normalized to the exact wrapper represented by the
+     * declared DataType.</p>
+     */
+    public final Map<String, Object> validateOutputs(
+        Map<String, ?> actualOutputs
+    ) {
+        if (actualOutputs == null) {
+            throw new WorkflowException(
+                "Task outputs must be provided"
+            );
+        }
+        LinkedHashSet<String> declared = outputs.stream()
+            .map(Output::getKey)
+            .collect(java.util.stream.Collectors.toCollection(
+                LinkedHashSet::new
+            ));
+        LinkedHashSet<String> unsupported = new LinkedHashSet<>(
+            actualOutputs.keySet()
+        );
+        unsupported.removeAll(declared);
+        if (!unsupported.isEmpty()) {
+            throw new WorkflowException(
+                "Task outputs were not declared: " + unsupported
+            );
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Map.Entry<String, ?> entry : actualOutputs.entrySet()) {
+            Output output = outputs.stream()
+                .filter(candidate ->
+                    candidate.getKey().equals(entry.getKey())
+                )
+                .findFirst()
+                .orElseThrow();
+            try {
+                normalized.put(
+                    entry.getKey(),
+                    output.normalized(entry.getValue())
+                );
+            } catch (IllegalArgumentException exception) {
+                throw new WorkflowException(exception.getMessage());
+            }
+        }
+        return Collections.unmodifiableMap(normalized);
     }
 
     public final boolean dependsOn(String taskKey) {

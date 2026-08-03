@@ -111,11 +111,11 @@ server/src/main/java/org/cses/flow/
 org/cses/flow/
 ├── Application.java  # Micronaut 应用启动入口和组合根
 ├── controller/       # HTTP/Web 入站接口
-├── core/             # 工作流领域、用例和持久化端口
-├── executor/         # Execution 状态机和下一任务计算
+├── core/             # 工作流领域、Task 能力、用例和持久化端口
+├── executor/         # 单轮调度、BranchTask 解释、状态机、保存与 Worker 投递协调
 ├── extensions/       # 可插拔的工作流能力扩展
 ├── infrastructure/   # 数据库及外部技术适配
-└── worker/           # Task Worker 调度协议、输入和执行结果
+└── worker/           # RunnableTask 调用、Worker 投递与关联结果信封
 ```
 
 ### `Application.java`
@@ -136,9 +136,9 @@ Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务�
 
 ### `core/`
 
-工作流核心。它保存与 HTTP、数据库产品和外部中间件无关的业务模型、状态规则、
-用例入口、事务内 Handler 和持久化端口。Execution 状态机与 Worker 调度不放在
-`core`，分别由同级的 `executor` 和 `worker` 包负责。
+工作流核心。它保存与 HTTP、数据库产品和外部中间件无关的业务模型、统一 State
+及迁移规则、用例入口、事务内 Handler 和持久化端口。Execution 的编排推进计算
+与 Worker 调度不放在 `core`，分别由同级的 `executor` 和 `worker` 包负责。
 
 外部调用方优先通过 `core/services` 使用核心能力，不能越过 Service 直接组合
 Handler、Repository 或领域内部状态。
@@ -151,6 +151,7 @@ core/
 ├── domains/        # 领域对象、聚合和值域状态
 ├── exceptions/     # 核心业务异常
 ├── handlers/       # Command 处理及运行生命周期协调
+├── plugins/        # 插件 SPI、发现、注册与 Task 类型分派全部运行机制
 ├── queries/        # 只读查询处理
 ├── repositories/   # 核心定义的持久化端口
 ├── serializers/    # YAML 等定义格式的通用序列化能力，保持扁平
@@ -162,17 +163,19 @@ core/
 | 目录 | 职责 | 不应放入 |
 | --- | --- | --- |
 | `commands` | 表达一次写操作的意图和参数 | 查询实现、领域状态修改逻辑 |
-| `domains` | 保存 Flow、Execution、TaskRun 等领域对象及状态规则 | DTO、数据库 Record、Controller 模型 |
+| `domains` | 保存 Flow、Execution、TaskRun 等领域对象、Task 能力及状态规则 | DTO、数据库 Record、Controller 模型 |
 | `exceptions` | 保存稳定的核心业务异常 | HTTP 响应和数据库厂商异常 |
 | `handlers` | 执行 Command，协调领域、Repository 和事务内运行流程 | HTTP 协议处理 |
+| `plugins` | 提供插件 SPI、classpath 发现、唯一注册及 Task 类型分派 Interface 与实现；目录保持扁平 | 具体 Task、RunnableTask 执行逻辑、BranchTask 编排逻辑 |
 | `queries` | 执行只读查询并维护查询边界 | 写状态和推进 Execution |
 | `repositories` | 定义 Core 所需的持久化接口 | DataPilot/JOOQ Record 等具体技术实现 |
 | `serializers` | 提供与业务类型解耦的 YAML 等格式解析能力；目录保持扁平 | Flow 字段映射、Task 类型分派、领域对象创建 |
 | `services` | 提供稳定、少量的公开业务入口 | 具体 HTTP 或数据库代码 |
 
-`serializers` 是 Core 技术目录中的明确例外，不继续按业务模块分子目录。
-当前 YAML 唯一入口是 `serializers/YamlParser.java`；它只返回通用只读映射，
-现有 Flow 聚合直接消费该映射并解释 Flow 字段和递归 Task 定义。
+`serializers` 与 `plugins` 是 Core 技术目录中的明确例外，不继续按业务模块分
+子目录。当前 YAML 唯一入口是 `serializers/YamlParser.java`；它只返回通用只读
+映射，现有 Flow 聚合直接消费该映射并解释 Flow 字段和递归 Task 定义。
+`plugins` 保存宿主侧插件运行机制，具体扩展实现仍位于 `extensions`。
 
 #### Core 业务模块
 
@@ -206,10 +209,10 @@ core/
 
 | 业务模块 | 负责内容 |
 | --- | --- |
-| `flows` | Flow 定义、DRAFT、发布、升级、关闭和版本读取 |
-| `executions` | Execution 创建、推进、恢复、取消和 TaskRun 历史 |
-| `externaltasks` | PAUSE 对应的外部任务等待、完成和查询 |
-| `tasks` | Task 抽象定义、具体类型创建约束及类型分派协议 |
+| `flows` | FlowDraft、Flow 定义、统一运行 `State`、`deleted` 生命周期事实、草稿、发布、升级、删除和版本读取 |
+| `executions` | 使用统一 State 的 Execution 创建、推进、恢复、取消和 TaskRun 历史 |
+| `externaltasks` | PAUSE 旧恢复方案的迁移遗留；新代码使用 `executions` 下的统一 Resume 用例 |
+| `tasks` | Task 抽象定义、RunnableTask/BranchTask 能力及其直接调用契约 |
 | `shared` | 被多个业务模块稳定复用的核心协议，不作为兜底目录 |
 
 同一条业务链路在不同技术目录中必须使用相同模块名。例如：
@@ -222,22 +225,33 @@ repositories/flows/FlowRepository.java
 ```
 
 详细分包约束见
-[`docs/standards/development-basics.md`](standards/development-basics.md)。
+[`docs/standards/workflow-core-java-model.md`](standards/workflow-core-java-model.md)，
+类型归属判断见
+[`docs/standards/domain-object-modeling.md`](standards/domain-object-modeling.md)。
 
 ### `executor/`
 
-Execution 运行状态机。它与 `core` 平级，负责：
+Execution 编排推进组件。它与 `core` 平级，负责：
 
-- 使用 `ExecutorContext` 组合当前命令的 Session、DSLContext、Flow 和
-  Execution。
-- 根据不可变 Flow 定义和 TaskRun 事实计算下一项可运行 Task。
-- 创建、开始、完成、失败、恢复或取消 TaskRun，并判断 Execution 是否收敛。
+- 使用 `ExecutorContext` 组合 Execution、精确 Flow、nexts、workerTasks、
+  branchTaskRuns 与本轮 states；Session 和 DSLContext 不进入 Context。
+- 由 `ExecutorService.advance` 在模块内部依次调用 `handleNext` 与 `onNexts`：
+  前者根据不可变 Flow 定义和 TaskRun 事实暂存下一批可运行 TaskRun，后者原子
+  应用该批次。
+- 创建、开始、完成、失败、恢复或取消 TaskRun，并判断 Execution 是否收敛；
+  `handleNext` 本身不改变 Execution。
+- 校验每个具体 Task 恰好实现 RunnableTask 或 BranchTask；BranchTask 直接在
+  Executor 内完成等待、结构节点完成和并行展开，不形成 WorkerTask。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
+- 由 `DefaultExecutor` 统一保存已更新聚合并投递 WorkerTask，持续推进到稳定点。
 
-`executor` 可以依赖 Core 的领域对象，也可以依赖 Worker 的稳定结果协议；它不
-访问 Repository/JOOQ，不执行具体 Task，也不保存可持久化状态。Repository 加载、
-同事务中间保存和 Worker 派发仍由 `core/handlers/executions/ExecutionHandler`
-协调。
+`ExecutorService` 可以依赖 Core 领域对象与 Worker 稳定结果协议，但不定义第二
+套状态类型、不直接修改 State、不访问 Repository/JOOQ，也不执行 RunnableTask。
+`DefaultExecutor` 额外依赖 ExecutionRepository 端口、当前 DSLContext 和
+WorkerDispatcher，以形成唯一提交边界；Context 自身仍不保存任何可持久化状态。
+Core CommandHandler 负责用例校验和加载精确 Flow Reversion，不再保留
+ExecutionHandler；推进、恢复或取消已有 Execution 时，Handler 先通过
+ExecutionRepository 锁定读取聚合。
 
 ### `worker/`
 
@@ -245,55 +259,74 @@ Task Worker 调度边界。它与 `core` 平级，保存：
 
 ```text
 worker/
-├── WorkerContext.java
 ├── WorkerDispatcher.java
 ├── WorkerTask.java
-├── WorkerTaskHandler.java
-├── WorkerTaskOutcome.java
 └── WorkerTaskResult.java
 ```
 
-Worker 只接收一个不可变 `WorkerTask`，通过 `WorkerContext` 使用当前命令上下文，
-并返回 `WorkerTaskResult`。它不能直接读取或修改 Execution、TaskRun，也不能决定
-下一项 Task。AUTO、PAUSE 等具体 `WorkerTaskHandler` 仍放在
-`extensions/workers`。
+`RunnableTask`、`BranchTask` 及 Runnable 的直接调用契约 `RunContext`、
+`RunResult` 归属于 `core/domains/tasks`；它们离开 Task 定义没有独立意义。
+Worker 只消费这些能力：接收包装 RunnableTask 的不可变 `WorkerTask`，为一次
+调用创建只包含 Session、DSLContext 与只读 inputs 的 `RunContext`，直接调用具体 Task 的
+`run(RunContext)`，再返回使用统一 `State.Type targetState` 的
+`WorkerTaskResult`。结果只允许 COMPLETED 或 TERMINATED；WAITING 只由 Executor
+处理 BranchTask 时产生。Worker 不发现或选择 WorkerTaskHandler，也不能读取或
+修改 Execution、TaskRun、决定下一项 Task 或伪造 State History。
 
 ### `extensions/`
 
-工作流能力扩展层。它实现 Core 预留的 Task 类型扩展协议和顶层 Worker 包定义的
-执行协议：
+工作流能力扩展层。它实现 Core 预留的 Task 类型扩展协议，并让具体 Task 实现
+Task 领域定义的一种能力：
 
 ```text
 extensions/
-├── tasks/    # 具体 Task、TaskPlugin、注册表与类型分派
-└── workers/  # 各 Task 类型对应的 WorkerTaskHandler
+└── tasks/    # 具体 Task 子类型及其 TaskExtension 实现
 ```
 
 适合放入：
 
-- 新 Task 类型及其 `TaskPlugin`。
-- Task Plugin 注册和类型分派；最终调用具体 Task 类型的静态 `create(...)`
-  或 `rehydrate(...)`。
-- Task 的具体执行、暂停或取消行为。
+- 新 Task 类型及其 `TaskExtension`。
+- RunnableTask 的具体 `run(RunContext)` 执行逻辑。
+- BranchTask 的固定编排特征；实际状态推进仍由 Executor 完成。
 
 不适合放入：
 
 - Flow、Execution 等核心状态机规则。
+- 插件发现、注册和 Task 类型分派运行机制；这些能力统一位于 `core/plugins`。
 - HTTP Controller。
 - 数据库、消息队列或第三方 SDK 的通用连接适配。
 
-扩展可以依赖 Core 与 Worker 提供的稳定扩展接口；Core、Executor 和 Worker
-调度器不能依赖某个具体扩展实现。
+当前 PauseTask 和实现 `TaskExtension` 的 PauseTaskPlugin
+是 Flow Core 自带的 PAUSE BranchTask
+编排能力；位于 `extensions` 表示它们通过 Task 扩展协议装配，不表示审批或其他
+外部业务对象属于 Flow Core。外部业务能力只通过公开
+`ExecutionService.resume(...)` 与 PAUSE 对接，不能直接调用 Worker、Executor
+或 Handler。
+
+当前 ParallelTask 和 ParallelTaskPlugin 是 Flow Core 自带的显式并行
+BranchTask 能力。
+普通 Task 的直接子任务默认串行；只有 ParallelTask 的直接子任务由 Executor
+组成同一批次。Executor 直接完成结构节点本身，不投递 Worker。
+
+扩展可以依赖 Core 提供的插件 SPI 与 Task 能力接口，不应为了声明 Task 能力而
+依赖 Worker 或 Executor；Core、Executor 和 Worker 调度器不能依赖某个具体扩展实现。
 
 领域对象的创建入口属于领域类型自身。`core/factories` 不属于项目目录结构，
-不得新增或恢复。每个 Task 类型在 `extensions/tasks` 中同时提供具体 Task
-子类型和一个 `TaskPlugin` Bean；Micronaut 在启动时收集插件并按规范化后的
-`type` 建立唯一注册表。类型分派通过注册表找到插件，再由插件直接调用具体 Task
+不得新增或恢复。通用 `Plugin` SPI、`PluginLoader`、`PluginRegistry`、Task
+扩展点 `TaskExtension`、`TaskTypeDispatcher` 和注册式类型分派实现统一位于
+`core/plugins`。每个 Task
+类型在 `extensions/tasks` 中只提供
+具体 Task 子类型和对应 `TaskExtension` 实现；内置实现由 Micronaut Bean 装配，
+普通外部 JAR 可由 classpath `ServiceLoader<Plugin>` 装配。启动时所有来源按
+“扩展点 Interface + 规范化 type”建立唯一注册表。Task 类型分派通过注册表找到
+TaskExtension，再由扩展直接调用具体 Task
 的静态 `create(...)` 或 `rehydrate(...)`。新增类型不得修改 Flow、中心枚举或
 中心 `switch`。
 
-当前插件装配范围是应用 classpath 中的 Micronaut Bean。运行时安装、卸载、插件
-版本选择和独立 ClassLoader 扫描尚未纳入本目录职责，若引入应单独记录架构决策。
+外部 Runnable Task 的具体类直接实现 `run(RunContext)`，不提供第二个 Service
+Loader 文件。运行时安装、卸载、插件版本选择和独立 ClassLoader 扫描尚未纳入本目录职责，若
+引入应单独记录架构决策。接入步骤见
+[`docs/harness/task-plugin-classpath.md`](harness/task-plugin-classpath.md)。
 
 ### `infrastructure/`
 
@@ -302,6 +335,7 @@ extensions/
 ```text
 infrastructure/
 ├── datapilot/       # 当前 DataPilot/JOOQ 数据源接线
+├── session/         # PAAS Session 的环境级适配
 └── repositories/    # Repository 的具体生产实现
     └── <业务模块>/
         └── postgres/
@@ -333,10 +367,13 @@ Bean 放入 `src/main`。相关决策见
 
 ```text
 server/src/main/resources/
-├── application.yml  # Micronaut 应用配置
-├── bootstrap.yaml   # 配置中心、Consul 等早期启动配置
-├── logback.xml      # 日志配置
-└── jiguang.json     # 当前业务资源配置
+├── application.yml       # Micronaut 应用配置
+├── application-demo.yml  # 独立用户 Demo 的应用覆盖配置
+├── bootstrap.yaml        # 配置中心、Consul 等早期启动配置
+├── bootstrap-demo.yml    # Demo 的早期启动覆盖配置
+├── flow-demo/            # 由同一 Flow 服务托管的 Demo 页面静态资源
+├── logback.xml           # 日志配置
+└── jiguang.json          # 当前业务资源配置
 ```
 
 密钥、Token 和环境专属凭证不能提交到资源目录，应通过环境变量或部署配置提供。
@@ -379,15 +416,16 @@ HTTP 请求
   -> worker
 
 executor
-  -> core/domains
+  -> core/domains（包括 BranchTask 能力）
   -> worker 的结果协议
 
 worker
-  -> core 的 Task 定义
+  -> core/domains/tasks 的 RunnableTask、RunContext、RunResult
+  -> core 的 Task 定义与统一 State 词汇
 
 extensions
-  -> core 的 Task 扩展协议
-  -> worker 的 WorkerTaskHandler 协议
+  -> core/plugins 的 Task 扩展协议
+  -> core/domains/tasks 的 RunnableTask 与 BranchTask 能力
 
 infrastructure
   -> core/repositories 等核心端口
@@ -400,6 +438,8 @@ infrastructure
   `core`。
 - `core/services` 可以调用 `core/serializers`，再通过 Command 把通用只读映射
   交给 Flow 聚合一次性消费；`core/serializers` 不反向依赖任何业务模块。
+- `core/plugins` 可以依赖 Task 领域类型；具体扩展实现依赖其公开 SPI，
+  `core/plugins` 不能反向依赖 `extensions`。
 - `core` 不能依赖 `controller` 或具体基础设施实现。
 - `core` 内不能重新建立 `executors` 或 `workers` 技术目录。
 - 具体扩展实现和 Worker 不能接管 Executor 的 Execution 状态推进。
@@ -417,13 +457,17 @@ infrastructure
 | 查询处理 | `core/queries/<业务模块>/` |
 | 持久化接口 | `core/repositories/<业务模块>/` |
 | YAML 等通用格式解析 | `core/serializers/`，保持扁平 |
-| Execution 状态机、上下文或下一任务模型 | `executor/` |
-| Worker 调度协议、输入或结果模型 | `worker/` |
+| 插件 SPI、发现、注册和 Task 类型分派 Interface 与实现 | `core/plugins/`，保持扁平 |
+| 工作流统一运行 State 与迁移规则 | `core/domains/flows/State.java` |
+| Flow 草稿聚合与删除生命周期事实 | `core/domains/flows/FlowDraft.java` 与 `Flow.java` 的 `deleted` 字段 |
+| Task 能力接口及 RunnableTask 直接调用契约 | `core/domains/tasks/` |
+| Execution 编排推进、单轮上下文或 nexts 批次逻辑 | `executor/` |
+| Worker 调度器、投递信封或关联结果信封 | `worker/` |
 | PostgreSQL Repository 实现 | `infrastructure/repositories/<业务模块>/postgres/` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
 | DataPilot 接线 | `infrastructure/datapilot/` |
-| 新 Task 类型及其 `TaskPlugin` | `extensions/tasks/` |
-| Task Worker 实现 | `extensions/workers/` |
+| 新 Task 类型及其 `TaskExtension` | `extensions/tasks/` |
+| RunnableTask 具体执行逻辑 | 对应的 `extensions/tasks/<Task>.java` |
 | 生产配置 | `server/src/main/resources/` |
 | 对应测试 | 与生产包一致的 `server/src/test/java/` |
 | 数据库变更脚本 | `gen/sql/production-release/` |
@@ -443,7 +487,7 @@ infrastructure
 AI Agent 接到开发、测试、审查或文档任务后：
 
 1. 先用本文确定目标模块、公开入口和允许修改的目录。
-2. 再读取 `docs/standards/development-basics.md`。
+2. 再读取 `docs/standards/project-development.md`。
 3. 根据任务读取对应 `docs/agents/`、`docs/standards/`、`docs/decisions/` 和
    `docs/uc/`。
 4. 修改后检查新增文件是否位于本文规定的目录，并检查测试包是否镜像生产包。

@@ -4,10 +4,9 @@ import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.infrastructure.repositories.flows.postgres.entries.FlowEntry;
 import org.cses.flow.infrastructure.repositories.flows.postgres.entries.FlowTaskEntry;
@@ -88,7 +87,7 @@ public final class FlowPostgresRepository implements FlowRepository {
             insertReversion(dsl, flow);
             return;
         }
-        closeReversion(dsl, storedEntry, flow);
+        deleteReversion(dsl, storedEntry, flow);
     }
 
     private void insertReversion(DSLContext dsl, Flow flow) {
@@ -103,15 +102,14 @@ public final class FlowPostgresRepository implements FlowRepository {
         if (flow.reversion() != latestReversion + 1) {
             throw reversionConflict(flow, latestReversion);
         }
-        if (latest != null
-            && FlowStatus.valueOf(latest.status) == FlowStatus.CLOSED) {
+        if (latest != null && Boolean.TRUE.equals(latest.deleted)) {
             throw new WorkflowException(
-                "Closed Flow cannot receive a new reversion: " + flow.id()
+                "Deleted Flow cannot receive a new reversion: " + flow.id()
             );
         }
-        if (flow.status() != FlowStatus.DEPLOYED) {
+        if (flow.isDeleted()) {
             throw new WorkflowException(
-                "A new Flow reversion must be DEPLOYED: "
+                "A new Flow reversion must be undeleted: "
                     + flow.id() + ":" + flow.reversion()
             );
         }
@@ -131,7 +129,7 @@ public final class FlowPostgresRepository implements FlowRepository {
         }
     }
 
-    private void closeReversion(
+    private void deleteReversion(
         DSLContext dsl,
         FlowEntry storedEntry,
         Flow flow
@@ -142,18 +140,18 @@ public final class FlowPostgresRepository implements FlowRepository {
             flow.id(),
             flow.reversion()
         ));
-        requireCloseOnlyChange(stored, flow);
+        requireDeleteOnlyChange(stored, flow);
         FlowEntry entry = FlowEntry.fromDomain(flow);
         int updated = dsl.update(FLOWS)
             .set(entry.buildUpdateMap())
             .where(FLOWS.COMPANY_ID.eq(flow.companyId()))
             .and(FLOWS.ID.eq(flow.id()))
             .and(FLOWS.REVERSION.eq(flow.reversion()))
-            .and(FLOWS.STATUS.eq(FlowStatus.DEPLOYED.name()))
+            .and(FLOWS.DELETED.eq(false))
             .execute();
         if (updated != 1) {
             throw new WorkflowException(
-                "Flow close conflict for "
+                "Flow delete conflict for "
                     + flow.id() + ":" + flow.reversion()
             );
         }
@@ -256,15 +254,14 @@ public final class FlowPostgresRepository implements FlowRepository {
         }
     }
 
-    private static void requireCloseOnlyChange(
+    private static void requireDeleteOnlyChange(
         Flow stored,
         Flow attempted
     ) {
-        if (stored.status() != FlowStatus.DEPLOYED
-            || attempted.status() != FlowStatus.CLOSED) {
+        if (stored.isDeleted() || !attempted.isDeleted()) {
             throw new WorkflowException(
-                "Existing Flow reversion may only transition from DEPLOYED "
-                    + "to CLOSED: " + attempted.id()
+                "Existing Flow reversion may only transition from "
+                    + "deleted=false to deleted=true: " + attempted.id()
                     + ":" + attempted.reversion()
             );
         }
@@ -281,7 +278,7 @@ public final class FlowPostgresRepository implements FlowRepository {
                 && stored.createdAt() == attempted.createdAt();
         if (!immutableStateMatches) {
             throw new WorkflowException(
-                "Closing a Flow must not change its deployed definition: "
+                "Deleting a Flow must not change its deployed definition: "
                     + attempted.id() + ":" + attempted.reversion()
             );
         }

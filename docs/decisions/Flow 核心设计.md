@@ -11,12 +11,20 @@
 > [ADR 0008](0008-separate-flow-source-from-deployed-flow.md) 取代。当前
 > Flow 定义域以
 > [Flow 定义域模型与生命周期规范](../standards/flow-definition-lifecycle.md)
-> 为准：草稿使用 `FlowWithSource`，已部署定义使用 `Flow`，业务版本字段为
-> `reversion`。
+> 为准：草稿使用 `FlowDraft`，已部署定义使用 `Flow`，业务版本字段为
+> `reversion`；草稿由 FlowDraft 类型表达，删除使用 `deleted` 布尔事实，不使用
+> 定义状态枚举。
 >
 > Task 定义域说明：本文第 3 章的通用 properties、dependOn 类型归属和旧运行
 > 术语不再作为目标类模型依据。Task 的身份、字段、方法、路由、依赖和递归结构
 > 以 [Task 领域模型规范](../standards/task-domain-model.md) 为准。
+>
+> PAUSE 边界说明：本文示例中的审批、表单和人工操作仅用于展示业务场景，不表示
+> 这些能力属于 Flow Core。当前设计中，WAITING PAUSE TaskRun 表达等待事实，
+> 外部能力通过 `ExecutionService.resume(...)` 提交结果；审批、表单、工单等
+> 业务对象由外部能力持有。边界以
+> [ADR 0016](0016-separate-pause-from-external-business-capabilities.md) 和
+> [PAUSE 领域模型规范](../standards/pause-domain-model.md) 为准。
 >
 > Data 定义说明：本文 Input、Output 示例中的 Map、字符串列表和旧字段说明不再
 > 作为目标类模型依据。Data 基础接口及 Input、Output 具体对象以
@@ -487,7 +495,8 @@ dependOn 遵循以下规则：
 - dependOn 是 Task key 数组，每个元素引用同一个 Flow version 内的 `Task.key`。
 - 多个依赖默认全部满足，不区分轮次，也不要求依赖 Task 在同一轮执行。
 - 依赖满足范围限定在同一 Main Execution 树内。
-- 只有依赖 Task 的 `COMPLETED` TaskRun 可以满足依赖；`RUNNING`、`WAITING`、`TIMED_OUT`、`FAILED` 和 `CANCELED` 均不满足。
+- 只有依赖 Task 的 `COMPLETED` TaskRun 可以满足依赖；`CREATED`、`RUNNING`、
+  `WAITING` 和 `TERMINATED` 均不满足。
 - 同一依赖 Task 因回跳产生多个 `COMPLETED` TaskRun 时，使用 sequence 最大的最新记录及其真实 outputs。
 - 依赖完成事实和线路到达事实是两个条件：即使依赖 Task 已经完成，只要应参与本次汇合的 Execution 线路尚未全部到达，当前 Task 仍不能开始。
 - Execution 到达但依赖尚未全部满足时，只记录线路当前位置和依赖到达状态，不创建当前 Task 的 TaskRun。
@@ -535,7 +544,11 @@ Execution 按照以下过程推进：
 7. Task 完成后，将其真实 outputs 作为当前 Execution 的下一跳流动上下文。
 8. 计算有效后续 Task，更新 Execution 线路位置并继续推进。
 
-当前 Task 完成数据交接后，本次 TaskRun 生命周期结束。需要外部触发的 Task 在派发外部任务后以 `WAITING` TaskRun 进入稳定态并提交；外部结果到达后，仍由原 Execution 和原 TaskRun 继续。
+当前 Task 完成数据交接后，本次 TaskRun 生命周期结束。PAUSE Task 的 Worker
+返回 `WAITING` 后，原 TaskRun 进入 `WAITING`；没有其他可运行工作时，Execution
+也以 `WAITING` 进入稳定态并提交。
+外部能力随后通过 `ExecutionService.resume(...)` 提交结果，仍由 Flow Core
+完成原 TaskRun，并继续同一 Execution。
 
 存在多个有效后续 Task 时，原 Execution 沿第一条有效线路继续，其他有效线路分别创建 Child Execution。每个 Execution 始终只跟随一条线路，Main Execution 不会被分叉替换。
 
@@ -568,32 +581,35 @@ Flow 的运行过程通过 Execution 和 TaskRun 两类互补记录保存。
 
 TaskRun 不是按 Task 定义维度的单例。同一 Task 因不同 Execution、回跳或再次经过可以产生多个 TaskRun；每次新的经过获得新的 id 和 sequence。同一 Execution 在任意时刻最多只有一个非终态 TaskRun。超时重试不代表再次经过 Task，因此复用原 TaskRun 并增加 attempt。
 
-TaskRun 状态机为：
+Execution 与 TaskRun 不各自定义状态枚举；它们统一使用 Flow 定义域的
+`State` 值对象和 `State.Type`。State 保存 `Type current` 和从 CREATED 开始的
+有序 `History(state, date)`；Execution 与 TaskRun 各自持有完整 State，不直接
+保存或投影 Type。五个具体状态归入四个大类：
 
-- 非终态：`RUNNING`、`WAITING`、`TIMED_OUT`。
-- 终态：`COMPLETED`、`FAILED`、`CANCELED`。
-- `RUNNING` 可以进入 `COMPLETED`、`WAITING`、`TIMED_OUT` 或 `CANCELED`。
-- `WAITING` 可以恢复到 `RUNNING`、完成为 `COMPLETED`，或进入 `TIMED_OUT`、`CANCELED`。
-- `TIMED_OUT` 不是终态；仍有重试次数时回到 `RUNNING`，没有重试配置或重试耗尽时进入 `FAILED`，也可以在竞争中进入 `CANCELED`。
+- 创建和运行：`CREATED`、`RUNNING`。
+- 等待：`WAITING`。
+- 正常终止：`COMPLETED`。
+- 异常终止：`TERMINATED`。
+- `CREATED` 可以进入 `RUNNING` 或 `TERMINATED`。
+- `RUNNING` 可以进入 `WAITING`、`COMPLETED` 或 `TERMINATED`。
+- `WAITING` 可以恢复为 `RUNNING`，或进入 `COMPLETED`、`TERMINATED`。
+- PAUSE TaskRun 等待期间为 `WAITING`；没有其他 CREATED/RUNNING 工作时
+  Execution 也为 `WAITING`。
+- 第一阶段不定义 `TIMED_OUT` 或重试状态。
 - 不定义 `SKIPPED`；Execution 没有经过的 Task 不产生 TaskRun。
 
 ```mermaid
 stateDiagram-v2
-    [*] --> RUNNING
+    [*] --> CREATED
+    CREATED --> RUNNING
+    CREATED --> TERMINATED
     RUNNING --> WAITING
-    RUNNING --> COMPLETED
-    RUNNING --> TIMED_OUT
-    RUNNING --> CANCELED
     WAITING --> RUNNING
-    WAITING --> COMPLETED
-    WAITING --> TIMED_OUT
-    WAITING --> CANCELED
-    TIMED_OUT --> RUNNING: 仍有重试
-    TIMED_OUT --> FAILED: 无重试或重试耗尽
-    TIMED_OUT --> CANCELED
+    RUNNING --> COMPLETED
+    RUNNING --> TERMINATED
+    WAITING --> TERMINATED
     COMPLETED --> [*]
-    FAILED --> [*]
-    CANCELED --> [*]
+    TERMINATED --> [*]
 ```
 
 所有状态转换都必须携带预期状态和 lockVersion；状态或版本不匹配时拒绝更新，不能重复推进 Execution。
@@ -601,8 +617,8 @@ stateDiagram-v2
 运行过程中按照以下时机更新记录：
 
 - Flow 启动时创建主 Execution。
-- Task 真正开始执行时创建新的 `RUNNING` TaskRun；RUNNING 可以作为稳定态事务的一部分提交。
-- Task 派发外部任务时保存当前 TaskRun 的 `WAITING` 状态。
+- Task 可运行时创建新的 `CREATED` TaskRun；派发 Worker 前进入 `RUNNING`。
+- PAUSE Worker 返回 WAITING 时保存当前 PAUSE TaskRun 的 `WAITING` 状态。
 - Task 完成时更新 TaskRun 的真实 inputs、outputs 和完成状态。
 - Task 数据交接完成时更新 Execution 的一跳流动上下文和线路位置。
 - 创建分支时记录主 Execution 与子 Execution 的关系。
@@ -611,22 +627,27 @@ stateDiagram-v2
 
 Execution 具有以下通用状态：
 
-- **RUNNING**：Flow 正在推进或等待当前 Task 完成。
+- **CREATED**：Flow 运行实例已创建但尚未启动。
+- **RUNNING**：Flow 正在推进。
+- **WAITING**：Flow 正在等待外部结果。
 - **COMPLETED**：所有有效执行线路已经完成。
-- **FAILED**：重试耗尽或被框架明确转化为可持久化失败结果后，Execution 无法继续推进。未处理异常仍遵循稳定态事务回滚，不直接留下 FAILED 记录。
-- **CANCELED**：Execution 在运行过程中被取消。
+- **TERMINATED**：Execution 因明确失败或主动取消异常终止。明确失败原因由
+  TaskRun error 保存；未处理异常仍遵循稳定态事务回滚，不直接留下终止记录。
 
 ### 4.5 稳定态事务与并发
 
 一次运行命令从当前稳定态推进到下一个稳定态，整个推进过程属于一个数据库事务。稳定态包括等待外部完成、等待依赖到齐以及 Execution 树进入最终状态。
 
-- 启动后连续执行多个自动 Task，直到遇到外部等待或流程结束，这一整段只提交一次。任一步出现框架异常，Execution、TaskRun 和派生记录全部回滚，不留下本次推进产生的 `FAILED` TaskRun。
-- 外部完成从上一个等待稳定态启动新事务，完成原 TaskRun，并继续执行后续自动 Task，直到下一个稳定态后统一提交；失败时回滚到外部完成前的稳定态。
-- `RUNNING` 可以提交，例如 Task 已启动并将等待独立工作节点继续处理时。
-- 超时是可提交的业务运行事实，先进入 `TIMED_OUT`；随后依据重试配置回到 `RUNNING` 或转为 `FAILED`。
+- 启动后连续执行多个自动 Task，直到遇到外部等待或流程结束，这一整段只提交一次。任一步出现框架异常，Execution、TaskRun 和派生记录全部回滚，不留下本次推进产生的 `TERMINATED` TaskRun。
+- `ExecutionService.resume(...)` 从上一个 PAUSE 等待稳定态启动新事务，完成原 TaskRun，并继续执行后续自动 Task，直到下一个稳定态后统一提交；失败时回滚到 Resume 前的稳定态。
+- `WAITING` 是外部等待的稳定提交状态；`RUNNING` 只在仍有运行工作或异常恢复边界
+  下提交。
+- 超时与重试策略不在第一阶段状态机中；引入时必须另行决策，不能复用 PAUSE Resume 表达。
 - dependOn 的最后一次到达、参与线路合并、唯一 TaskRun 创建以及 Main Execution 推进到下一稳定态必须原子完成。
-- 完成 External Task 与取消 Execution 使用状态和版本号进行乐观锁竞争。完成操作必须以 TaskRun/Execution 仍处于允许完成的运行态为前置条件，因此两者只能有一个提交成功。
-- 同一个 External Task 被重复提交时，只有第一次满足预期状态与版本号的更新可以成功，后续提交不能重复推进 Execution。
+- Resume 与取消 Execution 使用状态和版本号进行乐观锁竞争。Resume 必须以
+  TaskRun/Execution 仍处于允许恢复的运行态为前置条件，因此两者只能有一个提交成功。
+- 同一个 PAUSE TaskRun 被重复恢复时，只有第一次满足状态与版本条件的更新可以
+  成功，后续请求不能重复推进 Execution。
 - 同一 Execution 在架构上只允许一个工作节点拥有并推进，不设计多个工作节点同时恢复同一 Execution 的竞争路径。
 - 启动命令每次创建新的 Main Execution，并立即返回实例信息；第一阶段不为启动提供幂等或自动重试。
 - 远程副作用的幂等由远端协议处理，不纳入本阶段数据库事务的一致性承诺。
@@ -655,4 +676,7 @@ Execution 具有以下通用状态：
 6. 校验同一 Execution 最多存在一个非终态 TaskRun，并将它与 Execution 的当前位置关联；没有 TaskRun 的依赖等待线路直接从 Execution 保存的位置恢复。
 7. 从上次已提交的稳定态继续推进。
 
-已经完成的 Task 使用保存的 TaskRun 事实，不再重新执行。正在等待外部触发的 Task 恢复等待状态，并在外部结果到达后继续推进。CANCELED 状态不能恢复运行，取消 Execution 时同步取消已经派发且仍在等待的外部任务。
+已经完成的 Task 使用保存的 TaskRun 事实，不再重新执行。处于 PAUSE 的
+Execution 恢复为 `WAITING Execution + WAITING PAUSE TaskRun`，外部能力提交
+`executionId + taskRunId + outputs` 后，由 `ExecutionService.resume(...)`
+继续推进。TERMINATED 状态不能恢复运行；外部业务对象如何关闭由对应能力负责。

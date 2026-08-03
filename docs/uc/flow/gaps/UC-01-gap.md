@@ -10,11 +10,13 @@
 
 目标模型已经改为：
 
-- `FlowWithSource` 单独保存未解析原始 YAML，没有 `reversion`。
+- `FlowDraft` 单独保存未解析原始 YAML，没有 `reversion`。
 - `Flow` 只表示解析、校验并部署成功的完整定义。
 - `deploy` 同时负责解析、校验和 `reversion` 递增。
-- `close` 不产生新版本，旧版本不会因为升级而进入 `CLOSED`。
-- `FlowStatus` 不包含 `DRAFT`。
+- `FlowDraft` 与 `Flow` 由类型表达草稿和正式定义角色，不保存 `draft`；
+  两者新建时均为 `deleted=false`。
+- `delete` 不产生新版本，且删除最大 Reversion 后不能回退旧 Reversion。
+- 定义生命周期不使用 `FlowDefinitionStatus` 或其他状态枚举。
 
 迁移前的生产代码使用一个 `Flow` 聚合持有 Draft 和版本集合，并存在
 `FlowDefinition`、`createUpgradeDraft()`、`PublishFlowCommand` 和
@@ -34,10 +36,10 @@
 
 ## 已落地的最小能力
 
-- 独立 `FlowWithSource` 聚合及 Repository。
+- 独立 `FlowDraft` 聚合及 Repository。
 - 只接收完整解析结果的 `Flow.deploy` 创建入口。
 - 原子完成解析、校验、`reversion` 计算和 Flow 保存的部署命令。
-- 不产生新 `reversion` 的关闭行为。
+- 不产生新 `reversion`、只允许 `deleted=false → true` 的逻辑删除行为。
 - 按 `id + reversion` 查询 Flow、按 `id` 查询来源草稿的独立契约。
 - 重写 UC-01 场景和唯一主测试类，覆盖新模型的正向、反向和变异场景。
 
@@ -83,12 +85,13 @@
 
 - 目标模型迁移状态：`RESOLVED`
 - 历史 S7 缺口状态：`RESOLVED`
-- 最终处理结论：以 `FlowWithSource.lockVersion` 保护来源编辑，以
+- 最终处理结论：以 `FlowDraft.lockVersion` 保护来源编辑，以
   `Flow.id + reversion` 保存不可变部署快照；部署时才解析 YAML，部署后保留
-  来源，关闭时在同一事务丢弃来源。生产 PostgreSQL Repository 和测试内存
+  来源，删除逻辑 Flow 时在同一事务标记最新 Flow 与来源为 `deleted=true`。
+  生产 PostgreSQL Repository 和测试内存
   Repository 都拒绝陈旧写入。
 - 复验证据：`Uc01FlowLifecycleTest` 按当前 ACCEPTED UC 覆盖 S1～S13，包括
-  无效 YAML、部署回滚、多租户、陈旧写、并发部署、来源保留和关闭语义。
+  无效 YAML、部署回滚、多租户、陈旧写、并发部署、来源保留和删除语义。
 - UC Agent：保留 S7 和通过规范，不把静态证据写成运行 FAIL。
 - 开发角色：已完成领域、命令、仓储、Schema、JOOQ、UC 和测试的完整迁移。
 - Test Agent：旧模型复验报告继续保留；本轮结果写入新的历史测试报告，不覆盖

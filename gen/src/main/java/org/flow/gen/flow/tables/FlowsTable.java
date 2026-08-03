@@ -72,11 +72,6 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, String> COMPANY_ID = createField(DSL.name("company_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
 
     /**
-     * The column <code>public.flows.status</code>.
-     */
-    public final TableField<FlowsRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
-
-    /**
      * The column <code>public.flows.reversion</code>.
      */
     public final TableField<FlowsRecord, Long> REVERSION = createField(DSL.name("reversion"), SQLDataType.BIGINT.nullable(false), this, "");
@@ -141,6 +136,11 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
      */
     public final TableField<FlowsRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
 
+    /**
+     * The column <code>public.flows.deleted</code>.
+     */
+    public final TableField<FlowsRecord, Boolean> DELETED = createField(DSL.name("deleted"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+
     private FlowsTable(Name alias, Table<FlowsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -194,14 +194,13 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public List<Check<FlowsRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_flows_creator"), "(((jsonb_typeof(creator) = 'object'::text) AND (creator ? 'id'::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_flows_deleted"), "((((deleter IS NULL) AND (deleted_at IS NULL)) OR ((deleter IS NOT NULL) AND (deleted_at IS NOT NULL))))", true),
+            Internal.createCheck(this, DSL.name("ck_flows_deleted"), "((((deleted IS FALSE) AND (deleter IS NULL) AND (deleted_at IS NULL)) OR ((deleted IS TRUE) AND (deleter IS NOT NULL) AND (deleted_at IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_flows_deleter"), "(((deleter IS NULL) OR ((jsonb_typeof(deleter) = 'object'::text) AND (deleter ? 'id'::text))))", true),
             Internal.createCheck(this, DSL.name("ck_flows_id"), "((length(btrim((id)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_flows_inputs"), "((jsonb_typeof(inputs) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_flows_key"), "(((length(btrim((key)::text)) >= 1) AND (length(btrim((key)::text)) <= 128)))", true),
             Internal.createCheck(this, DSL.name("ck_flows_outputs"), "((jsonb_typeof(outputs) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_flows_reversion"), "((reversion > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_flows_status"), "(((status)::text = ANY ((ARRAY['DEPLOYED'::character varying, 'CLOSED'::character varying])::text[])))", true),
             Internal.createCheck(this, DSL.name("ck_flows_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true)
         );
     }

@@ -1,13 +1,14 @@
 package org.cses.flow.core;
 
 import io.micronaut.context.ApplicationContext;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
+import org.cses.flow.core.plugins.PluginRegistry;
+import org.cses.flow.core.plugins.RegisteredTaskTypeDispatcher;
+import org.cses.flow.core.plugins.TaskExtension;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.extensions.tasks.AutomaticTaskPlugin;
+import org.cses.flow.extensions.tasks.ParallelTaskPlugin;
 import org.cses.flow.extensions.tasks.PauseTaskPlugin;
-import org.cses.flow.extensions.tasks.RegisteredTaskTypeDispatcher;
-import org.cses.flow.extensions.tasks.TaskPluginRegistry;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -35,8 +36,8 @@ class FlowCoreWiringTest {
         try (ApplicationContext context =
                  ApplicationContext.run(properties)) {
             FlowService service = context.getBean(FlowService.class);
-            TaskPluginRegistry registry = context.getBean(
-                TaskPluginRegistry.class
+            PluginRegistry registry = context.getBean(
+                PluginRegistry.class
             );
             assertInstanceOf(
                 RegisteredTaskTypeDispatcher.class,
@@ -44,11 +45,18 @@ class FlowCoreWiringTest {
             );
             assertInstanceOf(
                 AutomaticTaskPlugin.class,
-                registry.find("AUTO").orElseThrow()
+                registry.find(TaskExtension.class, "AUTO").orElseThrow()
             );
             assertInstanceOf(
                 PauseTaskPlugin.class,
-                registry.find("pause").orElseThrow()
+                registry.find(TaskExtension.class, "pause").orElseThrow()
+            );
+            assertInstanceOf(
+                ParallelTaskPlugin.class,
+                registry.find(
+                    TaskExtension.class,
+                    "parallel"
+                ).orElseThrow()
             );
             Session<User> session = session("wiring-company");
 
@@ -72,12 +80,12 @@ class FlowCoreWiringTest {
                 draft.id(),
                 1L
             ).orElseThrow();
-            assertEquals(FlowStatus.DEPLOYED, current.status());
+            assertTrue(!current.isDeleted());
             assertEquals(1L, current.reversion());
             assertEquals("AUTO", current.tasks().getFirst().type());
             assertEquals(
                 draft.raw(),
-                service.source(session, draft.id()).orElseThrow().raw()
+                service.draft(session, draft.id()).orElseThrow().raw()
             );
         }
     }

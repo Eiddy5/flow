@@ -4,7 +4,9 @@
 
 Accepted（生产内存实现部分由 ADR 0007 修订；Execution 的 Flow 引用名称及
 定义类型由 ADR 0008 修订；领域对象创建方式由 ADR 0010 修订；
-Executor/Worker 包边界由 ADR 0012 修订）
+Executor/Worker 包边界由 ADR 0012 修订；PAUSE 与外部业务能力边界由
+ADR 0016 补充；运行状态类型与状态机由 ADR 0017 修订；单轮上下文、nexts
+两阶段应用与提交协调边界由 ADR 0020 修订）
 
 ## 背景
 
@@ -39,19 +41,21 @@ TaskRun 集合表达。
 
 ### 状态
 
-第一阶段状态固定为：
+工作流运行统一使用 Flow 定义域的 `State`，其状态类型固定为：
 
 ```text
-ExecutionStatus: CREATED, RUNNING, COMPLETED, FAILED, CANCELED
-TaskRunStatus:   CREATED, RUNNING, COMPLETED, FAILED, CANCELED
+State.Type: CREATED, RUNNING, WAITING, COMPLETED, TERMINATED
 ```
+
+Execution 与 TaskRun 各自持有包含 `current + history` 的完整 State；Worker
+结果只报告目标 `State.Type`。通用迁移与历史追加由 State 集中管理，聚合自己的
+具体路线和业务前置条件仍由 Execution、TaskRun 管理。完整决策见 ADR 0017。
 
 `PAUSE` 是 Task 类型，不是状态。等待外部触发时：
 
 ```text
-Execution = RUNNING
-TaskRun   = RUNNING
-ExternalTask = WAITING
+Execution = WAITING
+TaskRun   = WAITING
 ```
 
 ### 调用链
@@ -61,20 +65,22 @@ ExecutionService
   -> CommandExecutor
   -> CreateExecutionHandler
   -> Execution.create(...)
-  -> ExecutionHandler
-  -> ExecutorService
+  -> DefaultExecutor
+  -> ExecutorService.handleNext/onNexts
   -> WorkerDispatcher
   -> WorkerTaskHandler
 ```
 
 - Controller 位于 Core 外。
 - `CreateExecutionHandler` 加载最新已部署 Flow，并调用
-  `Execution.create(...)` 创建 `CREATED` Execution。
-- `ExecutionHandler` 建立可恢复的 `ExecutorContext`，管理中间聚合保存和
-  Worker 调用。
+  `Execution.create(...)` 创建 CREATED Execution。
+- `ExecutorContext` 只保存精确 Flow、Execution 和本轮增量；
+  `DefaultExecutor` 管理中间聚合保存和 Worker 调用。
 - `ExecutorService` 只管理状态与编排，不访问 Repository，不执行 Task。
-- 只有 `ExecutorService.handleNext()` 可以创建 TaskRun。
-- TaskRun 先创建为 `CREATED`，派发 Worker 前通过领域方法进入 `RUNNING`。
+- `handleNext()` 只暂存下一批 TaskRun 计划；`onNexts()` 才启动首次 Execution、
+  把批次并入聚合并形成 WorkerTask。
+- TaskRun 创建时为 CREATED，派发 Worker 前进入 RUNNING；两者属于同一个运行
+  大类，但保留两个具体状态及各自 History。
 
 ### Worker
 
@@ -83,24 +89,28 @@ ExecutionService
 - Worker 接收不可变 `WorkerTask`，通过 `WorkerContext` 使用当前命令的
   Session 和 DSLContext，返回 `WorkerTaskResult`。
 - `DefaultTaskHandler` 处理普通 `AUTO` Task。
-- `PauseTaskHandler` 处理 `PAUSE` Task，并直接保存 Task 自己拥有的
-  ExternalTask 记录。
-- Worker 的明确失败结果使 TaskRun 和 Execution 进入 `FAILED` 并正常提交；
+- `PauseTaskHandler` 处理 `PAUSE` Task，并返回 `WAITING` 使原 TaskRun 成为
+  持久化等待事实。
+- Worker 的明确失败结果使 TaskRun 和 Execution 进入 `TERMINATED` 并正常提交；
   框架异常继续抛出并回滚命令。
 
 ### PAUSE 与恢复
 
-- PAUSE Worker 创建 ExternalTask 后返回 `RUNNING`，当前命令生命周期停止。
-- ExternalTask 可以代表用户处理、服务回调、定时器或信号；第一阶段实现
-  ExternalTask 一对一触发器。
-- 触发器完成自己的记录后，在同一命令事务内调用
-  `ExecutionService.resume(...)`。
-- resume 直接完成原 RUNNING PAUSE TaskRun，不能再次执行 PAUSE Worker。
+- PAUSE Worker 返回 `WAITING`；当无其他 CREATED/RUNNING 工作后当前命令生命
+  周期停止，WAITING TaskRun 自身
+  表达持久化等待事实。
+- 审批、表单、工单等外部能力保存 executionId 和 taskRunId，并通过
+  `ExecutionService.resume(...)` 提交结果。
+- `ResumeExecutionHandler` 在同一命令事务内加载绑定的 Execution 与确定
+  Flow Reversion，校验 PauseTask 契约后调用 `DefaultExecutor.resume(...)`。
+- resume 直接完成原 WAITING PAUSE TaskRun，不能再次执行 PAUSE Worker。
 - TaskRun 完成后，`ExecutorService` 自动调用下一轮 `handleNext()`。
+- 外部能力不能直接修改 Execution、TaskRun、路由或下一 Task。
 
 ### 取消
 
-- 取消 Execution 时，所有当前 `CREATED/RUNNING` TaskRun 一并取消。
+- 取消 Execution 时，所有当前 `CREATED/RUNNING/WAITING` TaskRun 一并进入
+  `TERMINATED`。
 - Task 自己拥有的等待资源由对应 WorkerTaskHandler 取消。
 - 任一取消动作失败时，整个取消命令回滚。
 
@@ -108,7 +118,7 @@ ExecutionService
 
 - JOOQ DSLContext 由 `CommandExecutor` 建立，命令是事务边界。
 - 一个命令可以连续执行多个同步 Task，直到遇到 PAUSE、失败或终态。
-- `ExecutionHandler` 可以在同一事务内中间保存 Execution/TaskRun，使
+- `DefaultExecutor` 可以在同一事务内中间保存 Execution/TaskRun，使
   Worker 保存带外键的 Task 业务记录。
 - 中间保存不等于提交。
 - Execution 聚合只持有一个 `lockVersion`；修改已有 Execution 的命令最多
@@ -121,7 +131,7 @@ ExecutionService
 
 - 顶层 Task 严格顺序执行。
 - AUTO 同步 Worker。
-- PAUSE、ExternalTask 完成与自动恢复。
+- PAUSE、ExecutionService 统一 resume 与自动恢复。
 - Execution 取消。
 - 测试源码中的内存 Repository 和 Micronaut 自动装配。
 

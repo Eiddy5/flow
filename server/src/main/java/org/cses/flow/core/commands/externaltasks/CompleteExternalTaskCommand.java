@@ -1,6 +1,6 @@
 package org.cses.flow.core.commands.externaltasks;
 
-import org.cses.flow.core.commands.shared.Command;
+import org.cses.flow.core.commands.Command;
 import org.cses.flow.core.domains.executions.Execution;
 
 import java.util.Map;
@@ -16,7 +16,7 @@ public final class CompleteExternalTaskCommand
         Map<String, Object> outputs
     ) {
         this.externalTaskId = externalTaskId;
-        this.outputs = outputs == null ? Map.of() : Map.copyOf(outputs);
+        this.outputs = outputs == null ? null : Map.copyOf(outputs);
     }
 
     public String externalTaskId() {

@@ -3,7 +3,9 @@
 ## 状态
 
 Accepted（生产内存实现部分由 ADR 0007 修订；绑定的 Flow 定义类型由
-ADR 0008 修订）
+ADR 0008 修订；PAUSE 恢复入口由 ADR 0016 修订；可运行批次的计划与应用边界
+由 ADR 0020 修订；普通子任务默认串行和显式 PARALLEL 语义由 ADR 0021
+修订）
 
 ## 背景
 
@@ -24,7 +26,7 @@ ADR 0001 已确定一次 Flow 启动只创建一个 Execution，真实路径由�
 ### 方案二：增加并行、等待或跳过状态
 
 能够显式保存调度过程，但会把推导状态写入数据模型，并与当前
-`CREATED/RUNNING/COMPLETED/FAILED/CANCELED` 状态集合冲突。
+`CREATED/RUNNING/WAITING/COMPLETED/TERMINATED` 统一运行状态冲突。
 
 ### 方案三：在单 Execution 中按定义和 TaskRun 事实重建可运行集合
 
@@ -45,16 +47,18 @@ TaskRun、活动 TaskRun 和输出重新计算下一批可运行 Task。
   Task 声明。
 - 所有匹配的直接子 Task 都进入可运行集合；多个匹配形成同一 Execution 内的
   并行线路。
+- 同一时刻满足条件的直接子 Task 由 `handleNext` 形成一个有序 nexts 批次；
+  `handleNext` 不改变 Execution，`onNexts` 完整校验后一次并入全部 TaskRun。
 - 没有 route 匹配时不创建候选 TaskRun，该子树视为已收敛；若没有后续顶层
   Task，Execution 正常进入 `COMPLETED`。
 - 未选择分支不创建 TaskRun，也不引入 `SKIPPED`。
 
 ### 并行 TaskRun
 
-- Execution 可以同时拥有多个 `CREATED` 或 `RUNNING` TaskRun。
+- Execution 可以同时拥有多个 `CREATED`、`RUNNING` 或 `WAITING` TaskRun。
 - 子 TaskRun 的 `parentId` 指向直接父 TaskRun id。
 - 同一不可循环定义 Task 在一次 Execution 中最多创建一个 TaskRun。
-- Worker 仍逐个同步派发；PAUSE 返回 RUNNING 后，状态机继续创建其他已经可运行
+- Worker 仍逐个同步派发；PAUSE 返回 WAITING 后，状态机继续创建其他已经可运行
   的并行分支，直到没有新的可运行 Task。
 
 ### `dependOn` 与汇合
@@ -71,9 +75,10 @@ TaskRun、活动 TaskRun 和输出重新计算下一批可运行 Task。
 ### 取消、失败和恢复
 
 - 取消遍历并取消同一 Execution 中全部活动 TaskRun 及其 Worker 所有等待资源。
-- 任一 TaskRun 明确失败时 Execution 进入 `FAILED`，不再创建分支或汇合。
+- 任一 TaskRun 明确失败时 Execution 和全部未完成 TaskRun 进入 `TERMINATED`，
+  不再创建分支或汇合。
 - PAUSE 恢复只完成原 TaskRun，然后重新计算可运行集合；不会再次派发原 PAUSE。
-- 测试中的 Execution、ExternalTask 和内存仓储写入共享一个命令事务；异常
+- 测试中的 Execution 与 TaskRun 写入共享一个命令事务；Resume 后续推进异常时
   回滚到命令开始前快照。生产环境由 PostgreSQL 事务提供等价原子性。
 
 ## 理由

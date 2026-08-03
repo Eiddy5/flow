@@ -26,7 +26,7 @@
 
 ## 原不满足项与证据（已修复）
 
-- `Execution.createTaskRun` 在已有 CREATED/RUNNING TaskRun 时直接拒绝新增运行记录。
+- `Execution.createTaskRun` 在已有 ACTIVE/WAITING TaskRun 时直接拒绝新增运行记录。
 - `Execution.currentTaskRun` 和当前状态机按单一当前 TaskRun 设计。
 - `ExecutorService.handleNext` 只遍历 `flow.tasks(version)` 顶层列表，不调度
   `Task.tasks()`。

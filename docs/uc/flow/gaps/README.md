@@ -13,7 +13,7 @@
 
 | 文档 | 原主要缺口 | 状态 |
 | --- | --- | --- |
-| [UC-01-gap.md](UC-01-gap.md) | FlowWithSource/Flow 目标模型迁移与并发写协议 | RESOLVED |
+| [UC-01-gap.md](UC-01-gap.md) | FlowDraft/Flow 目标模型迁移与并发写协议 | RESOLVED |
 | [UC-02-gap.md](UC-02-gap.md) | Execution 状态竞争保护 | RESOLVED |
 | [UC-03-gap.md](UC-03-gap.md) | 内存存储事务回滚 | RESOLVED |
 | [UC-04-gap.md](UC-04-gap.md) | 外部完成与恢复原子性 | RESOLVED |

@@ -189,6 +189,20 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         return (OffsetDateTime) get(11);
     }
 
+    /**
+     * Setter for <code>public.executions.state_history</code>.
+     */
+    public void setStateHistory(JSONB value) {
+        set(12, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.state_history</code>.
+     */
+    public JSONB getStateHistory() {
+        return (JSONB) get(12);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -212,7 +226,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowId, Long flowReversion, String status, Long lockVersion, JSONB creator, JSONB updater, JSONB deleter, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt) {
+    public ExecutionsRecord(String id, String companyId, String flowId, Long flowReversion, String status, Long lockVersion, JSONB creator, JSONB updater, JSONB deleter, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JSONB stateHistory) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
@@ -227,6 +241,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setDeletedAt(deletedAt);
+        setStateHistory(stateHistory);
     }
 
 
@@ -250,6 +265,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setCreatedAt(value.createdAt);
             setUpdatedAt(value.updatedAt);
             setDeletedAt(value.deletedAt);
+            setStateHistory(value.stateHistory);
         }
     }
 
@@ -267,6 +283,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.createdAt = getCreatedAt();
         object.updatedAt = getUpdatedAt();
         object.deletedAt = getDeletedAt();
+        object.stateHistory = getStateHistory();
         return object;
     }
 
@@ -289,6 +306,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.createdAt = getCreatedAt();
         pojo.updatedAt = getUpdatedAt();
         pojo.deletedAt = getDeletedAt();
+        pojo.stateHistory = getStateHistory();
         return pojo;
     }
 }

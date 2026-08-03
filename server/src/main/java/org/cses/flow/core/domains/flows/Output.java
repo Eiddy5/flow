@@ -8,18 +8,18 @@ import java.util.Objects;
 public final class Output implements Data {
 
     private final String key;
-    private final String type;
+    private final DataType type;
 
-    private Output(String key, String type) {
+    private Output(String key, DataType type) {
         this.key = requireText(key, "Output key");
-        this.type = requireText(type, "Output type");
+        this.type = Objects.requireNonNull(type, "Output type");
     }
 
-    public static Output create(String key, String type) {
+    public static Output create(String key, DataType type) {
         return new Output(key, type);
     }
 
-    public static Output rehydrate(String key, String type) {
+    public static Output rehydrate(String key, DataType type) {
         return new Output(key, type);
     }
 
@@ -29,8 +29,23 @@ public final class Output implements Data {
     }
 
     @Override
-    public String getType() {
+    public DataType getType() {
         return type;
+    }
+
+    public void valid(Object value) {
+        normalized(value);
+    }
+
+    public Object normalized(Object value) {
+        try {
+            return type.normalize(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(
+                "Output " + key + " must be " + type.name(),
+                exception
+            );
+        }
     }
 
     @Override
@@ -54,7 +69,7 @@ public final class Output implements Data {
     public String toString() {
         return "Output{"
             + "key='" + key + '\''
-            + ", type='" + type + '\''
+            + ", type=" + type
             + '}';
     }
 

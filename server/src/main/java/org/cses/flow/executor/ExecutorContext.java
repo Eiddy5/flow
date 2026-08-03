@@ -1,34 +1,32 @@
 package org.cses.flow.executor;
 
 import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.jooq.DSLContext;
-import org.paas.session.Session;
-import org.paas.session.User;
+import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.worker.WorkerTask;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 /**
- * Rebuildable transaction-scoped context for the Execution state machine.
+ * Mutable work unit for one recoverable executor scheduling cycle.
+ *
+ * <p>The exact deployed Flow and its Execution are the authoritative inputs.
+ * All other fields are transient deltas produced during this cycle; the
+ * context itself is never persisted.</p>
  */
-public final class ExecutorContext<
-    S extends Session<U>,
-    U extends User
-> {
+public final class ExecutorContext {
 
-    private final S session;
-    private final DSLContext dsl;
-    private final Flow flow;
     private final Execution execution;
+    private final Flow flow;
+    private final List<TaskRun> nexts;
+    private final List<WorkerTask> workerTasks;
+    private final List<TaskRun> branchTaskRuns;
+    private final List<State.Type> states;
 
-    public ExecutorContext(
-        S session,
-        DSLContext dsl,
-        Flow flow,
-        Execution execution
-    ) {
-        this.session = Objects.requireNonNull(session, "session");
-        this.dsl = Objects.requireNonNull(dsl, "dsl");
+    public ExecutorContext(Flow flow, Execution execution) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.execution = Objects.requireNonNull(execution, "execution");
         if (!flow.id().equals(execution.flowId())
@@ -38,14 +36,11 @@ public final class ExecutorContext<
                 "Execution does not belong to the exact Flow reversion"
             );
         }
-    }
-
-    public S session() {
-        return session;
-    }
-
-    public DSLContext dsl() {
-        return dsl;
+        this.nexts = new ArrayList<>();
+        this.workerTasks = new ArrayList<>();
+        this.branchTaskRuns = new ArrayList<>();
+        this.states = new ArrayList<>();
+        this.states.add(execution.state().current());
     }
 
     public Flow flow() {
@@ -54,5 +49,66 @@ public final class ExecutorContext<
 
     public Execution execution() {
         return execution;
+    }
+
+    public List<State.Type> states() {
+        return List.copyOf(states);
+    }
+
+    public List<TaskRun> nexts() {
+        return List.copyOf(nexts);
+    }
+
+    public List<WorkerTask> workerTasks() {
+        return List.copyOf(workerTasks);
+    }
+
+    public List<TaskRun> branchTaskRuns() {
+        return List.copyOf(branchTaskRuns);
+    }
+
+    void stageNexts(List<TaskRun> plannedNexts) {
+        Objects.requireNonNull(plannedNexts, "plannedNexts");
+        nexts.clear();
+        nexts.addAll(plannedNexts);
+    }
+
+    List<TaskRun> takeNexts() {
+        List<TaskRun> staged = List.copyOf(nexts);
+        nexts.clear();
+        return staged;
+    }
+
+    void stageWorkerTask(WorkerTask workerTask) {
+        workerTasks.add(Objects.requireNonNull(
+            workerTask,
+            "workerTask"
+        ));
+    }
+
+    List<WorkerTask> takeWorkerTasks() {
+        List<WorkerTask> staged = List.copyOf(workerTasks);
+        workerTasks.clear();
+        return staged;
+    }
+
+    void stageBranchTaskRun(TaskRun taskRun) {
+        branchTaskRuns.add(Objects.requireNonNull(
+            taskRun,
+            "taskRun"
+        ));
+    }
+
+    List<TaskRun> takeBranchTaskRuns() {
+        List<TaskRun> staged = List.copyOf(branchTaskRuns);
+        branchTaskRuns.clear();
+        return staged;
+    }
+
+    void captureState() {
+        State.Type current = execution.state().current();
+        if (states.getLast() != current) {
+            states.add(current);
+        }
     }
 }

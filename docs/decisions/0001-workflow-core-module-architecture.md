@@ -4,11 +4,14 @@
 
 Accepted（生产内存实现部分由 ADR 0007 修订；Flow 定义生命周期部分由
 ADR 0008 修订，并由 ADR 0014 完成来源与 Reversion 迁移；Executor/Worker
-包边界由 ADR 0012 修订）
+包边界由 ADR 0012 修订；PAUSE 恢复入口由 ADR 0016 修订；普通子任务与显式
+并行语义由 ADR 0021 修订）
 
 ## 背景
 
-`Flow 核心设计.md` 已确定定义模型使用 `Flow/Task`，运行模型使用 `Execution/TaskRun`，并要求支持版本绑定、外部任务等待、条件分支、并行线路和汇合。
+`Flow 核心设计.md` 已确定定义模型使用 `Flow/Task`，运行模型使用
+`Execution/TaskRun`，并要求支持版本绑定、PAUSE 外部等待、条件分支、并行线路
+和汇合。
 
 仓库曾经存在另一套 `Node/Edge/Process/Executor/Activity` 模型。该模型已经从生产代码中删除，但部分 Agent 文档仍然引用旧术语。继续混用两套模型会使接口、持久化结构和验收对象失去唯一含义。
 
@@ -39,7 +42,7 @@ ADR 0008 修订，并由 ADR 0014 完成来源与 Reversion 迁移；Executor/Wo
 
 - 定义层只使用 `Flow`、`FlowDefinition` 和 `Task`；Flow Version 与 Draft
   是 FlowDefinition 的生命周期语义，不再各自建立重复类型。
-- 运行层只使用 `Execution`、`TaskRun` 和 `External Task`。
+- 运行层只使用 `Execution` 和 `TaskRun`；PAUSE 等待也是 TaskRun 运行事实。
 - `Node/Edge/Process/Executor/Activity` 不进入新核心接口和实现。
 
 ### 模块与接口
@@ -48,8 +51,8 @@ Core 按领域提供 Service 外部接口：
 
 - 定义生命周期由 `FlowService` 提供 YAML Draft 保存、基于当前版本创建升级
   Draft、发布、关闭，以及按 `id + version + status` 精确读取。
-- 运行生命周期由 `ExecutionService` 提供启动、取消和 Execution 查询；
-  触发器 Service 完成自己的记录后调用内部 resume。
+- 运行生命周期由 `ExecutionService` 提供启动、resume、取消和 Execution
+  查询；外部能力只能调用公开 resume。
 - 写操作统一经过 `CommandExecutor` 和精确类型 Handler；复杂查询经过
   QueryHandler。Controller 位于 Core 外部。
 
@@ -90,10 +93,11 @@ Core 按领域提供 Service 外部接口：
 - 变量拆分为单线路的一跳流动上下文、按 Task key 隔离的 `dependOnOutputs` 和第一阶段只读的全局上下文。汇合时不做字段名扁平合并。
 - 恢复时同时使用 Execution 的编排状态和 TaskRun 的执行事实，不能用其中一方替代另一方。
 - 一次运行命令从一个稳定态推进到下一个稳定态；期间连续自动 Task、分叉或最后一次依赖汇合属于同一事务。
-- Execution 和 TaskRun 第一阶段统一使用 `CREATED`、`RUNNING`、
-  `COMPLETED`、`FAILED` 和 `CANCELED`。PAUSE 是 Task 类型，不是状态。
+- Execution 和 TaskRun 使用 ADR 0017 定义的统一 State：
+  `CREATED/RUNNING/WAITING/COMPLETED/TERMINATED` 五个具体状态、四个运行大类，
+  并各自保存状态历史。PAUSE 是 Task 类型，到达该类型会进入 WAITING。
 - 完成与取消通过运行状态和版本号的乐观锁原子竞争。
-- 同一个 External Task 的重复完成也通过状态和版本号拒绝重复推进。
+- 同一个 PAUSE TaskRun 的重复 resume 通过状态和版本号拒绝重复推进。
 
 ### 第一阶段范围
 

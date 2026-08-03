@@ -1,6 +1,8 @@
 package org.cses.flow.core.domains.executions;
 
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.exceptions.WorkflowException;
+import org.paas.common.util.StringUtil;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -9,7 +11,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * One real execution occurrence of a Task definition.
+ * One Task execution occurrence, transient until accepted by Execution.
  */
 public final class TaskRun {
 
@@ -17,11 +19,11 @@ public final class TaskRun {
     private final String taskId;
     private final String parentId;
     private final Map<String, Object> inputs;
-    private TaskRunStatus status;
+    private State state;
     private Map<String, Object> outputs;
     private String error;
 
-    TaskRun(
+    private TaskRun(
         String id,
         String taskId,
         String parentId,
@@ -31,8 +33,29 @@ public final class TaskRun {
         this.taskId = requireText(taskId, "Task id");
         this.parentId = normalizeOptionalText(parentId);
         this.inputs = immutableMap(inputs);
-        this.status = TaskRunStatus.CREATED;
+        this.state = State.created();
         this.outputs = Map.of();
+    }
+
+    /**
+     * Creates a transient TaskRun that may be staged by one executor cycle.
+     *
+     * <p>The TaskRun does not belong to an Execution until the aggregate
+     * accepts it through
+     * {@link Execution#startWithTaskRuns(java.util.List)} or
+     * {@link Execution#addTaskRuns(java.util.List)}.</p>
+     */
+    public static TaskRun create(
+        String taskId,
+        String parentId,
+        Map<String, ?> inputs
+    ) {
+        return new TaskRun(
+            StringUtil.newId(),
+            taskId,
+            parentId,
+            inputs
+        );
     }
 
     private TaskRun(
@@ -40,7 +63,7 @@ public final class TaskRun {
         String taskId,
         String parentId,
         Map<String, ?> inputs,
-        TaskRunStatus status,
+        State state,
         Map<String, ?> outputs,
         String error
     ) {
@@ -48,14 +71,15 @@ public final class TaskRun {
         this.taskId = requireText(taskId, "Task id");
         this.parentId = normalizeOptionalText(parentId);
         this.inputs = immutableMap(inputs);
-        this.status = Objects.requireNonNull(status, "TaskRun status");
+        this.state = Objects.requireNonNull(state, "TaskRun state");
         this.outputs = immutableMap(outputs);
         this.error = normalizeOptionalText(error);
-        if (status == TaskRunStatus.FAILED && this.error == null) {
+        if (!state.is(State.Type.TERMINATED) && this.error != null) {
             throw new IllegalArgumentException(
-                "Failed TaskRun must have an error"
+                "Only a terminated TaskRun may have an error"
             );
         }
+        validateStateRoute(state);
     }
 
     /**
@@ -66,7 +90,7 @@ public final class TaskRun {
         String taskId,
         String parentId,
         Map<String, ?> inputs,
-        TaskRunStatus status,
+        State state,
         Map<String, ?> outputs,
         String error
     ) {
@@ -75,7 +99,7 @@ public final class TaskRun {
             taskId,
             parentId,
             inputs,
-            status,
+            state,
             outputs,
             error
         );
@@ -89,7 +113,7 @@ public final class TaskRun {
         this.taskId = new String(source.taskId);
         this.parentId = source.parentId;
         this.inputs = source.inputs;
-        this.status = source.status;
+        this.state = source.state;
         this.outputs = source.outputs;
         this.error = source.error;
     }
@@ -110,8 +134,8 @@ public final class TaskRun {
         return inputs;
     }
 
-    public TaskRunStatus status() {
-        return status;
+    public State state() {
+        return state;
     }
 
     public Map<String, Object> outputs() {
@@ -123,50 +147,96 @@ public final class TaskRun {
     }
 
     public boolean isActive() {
-        return status == TaskRunStatus.CREATED
-            || status == TaskRunStatus.RUNNING;
+        return state.isActive();
+    }
+
+    public boolean isWaiting() {
+        return state.isWaiting();
+    }
+
+    public boolean isUnfinished() {
+        return state.isActive() || state.isWaiting();
     }
 
     void start() {
-        requireStatus(TaskRunStatus.CREATED);
-        status = TaskRunStatus.RUNNING;
+        requireState(State.Type.CREATED);
+        state = state.running();
+    }
+
+    void waitForResult() {
+        requireState(State.Type.RUNNING);
+        state = state.waiting();
     }
 
     void complete(Map<String, ?> completedOutputs) {
-        requireStatus(TaskRunStatus.RUNNING);
+        requireState(State.Type.RUNNING);
         outputs = immutableMap(completedOutputs);
         error = null;
-        status = TaskRunStatus.COMPLETED;
+        state = state.complete();
+    }
+
+    void resume(Map<String, ?> completedOutputs) {
+        requireState(State.Type.WAITING);
+        outputs = immutableMap(completedOutputs);
+        error = null;
+        state = state.complete();
     }
 
     void fail(String failure) {
-        requireStatus(TaskRunStatus.RUNNING);
+        requireState(State.Type.RUNNING);
         if (failure == null || failure.isBlank()) {
             throw new IllegalArgumentException("TaskRun error must not be blank");
         }
         error = failure.trim();
-        status = TaskRunStatus.FAILED;
+        state = state.fail();
     }
 
-    void cancel() {
-        if (status != TaskRunStatus.CREATED
-            && status != TaskRunStatus.RUNNING) {
+    void terminate() {
+        if (!isUnfinished()) {
             throw new WorkflowException(
-                "TaskRun cannot be canceled from " + status + ": " + id
+                "TaskRun cannot be terminated from " + state + ": " + id
             );
         }
-        status = TaskRunStatus.CANCELED;
+        error = null;
+        state = state.terminate();
     }
 
     TaskRun copy() {
         return new TaskRun(this);
     }
 
-    private void requireStatus(TaskRunStatus expected) {
-        if (status != expected) {
+    private void requireState(State.Type expected) {
+        if (!state.is(expected)) {
             throw new WorkflowException(
-                "TaskRun " + id + " must be " + expected + " but was " + status
+                "TaskRun " + id + " must be " + expected + " but was " + state
             );
+        }
+    }
+
+    private static void validateStateRoute(State state) {
+        java.util.List<State.History> history = state.history();
+        for (int index = 1; index < history.size(); index++) {
+            State.Type source = history.get(index - 1).state();
+            State.Type target = history.get(index).state();
+            boolean valid = switch (source) {
+                case CREATED ->
+                    target == State.Type.RUNNING
+                        || target == State.Type.TERMINATED;
+                case RUNNING ->
+                    target == State.Type.WAITING
+                        || target == State.Type.COMPLETED
+                        || target == State.Type.TERMINATED;
+                case WAITING ->
+                    target == State.Type.COMPLETED
+                        || target == State.Type.TERMINATED;
+                case COMPLETED, TERMINATED -> false;
+            };
+            if (!valid) {
+                throw new IllegalArgumentException(
+                    "Invalid TaskRun state transition from "
+                        + source + " to " + target
+                );
+            }
         }
     }
 

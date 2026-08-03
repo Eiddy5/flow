@@ -52,7 +52,7 @@ Java 类、数据库表或接口结构。
 
 如果两个对象的有效性条件不同，即使字段相似，也应使用不同术语。例如：
 
-- `FlowWithSource` 是只保存原始 YAML、尚未解析的可编辑草稿。
+- `FlowDraft` 是只保存原始 YAML、尚未解析的可编辑草稿。
 - `Flow` 是部署时完成解析和校验后形成的完整工作流定义。
 
 两者不能因为共享 `id` 或部分审计字段就被视为同一种对象。
@@ -63,19 +63,19 @@ Java 类、数据库表或接口结构。
 
 | 角色 | 判断标准 | 项目示例 |
 | --- | --- | --- |
-| 聚合根 | 有独立身份和生命周期，是事务一致性与 Repository 的入口 | `FlowWithSource`、`Flow`、`Execution`、`ExternalTask` |
+| 聚合根 | 有独立身份和生命周期，是事务一致性与 Repository 的入口 | `FlowDraft`、`Flow`、`Execution` |
 | 聚合内实体 | 有稳定身份，但生命周期完全由所属聚合管理 | `Task`、`TaskRun`、`Input`、`Output` |
 | 值对象 | 没有独立身份，按值表达业务含义，创建后不可变 | 路由表达式 |
 | 领域服务 | 一条纯业务规则跨越多个聚合，且无法自然归属其中一个对象 | 跨聚合部署规则或策略 |
 | 边界能力 | 负责解析、序列化、外部调用或技术转换，不代表领域事实 | `YamlParser` |
-| 状态枚举 | 表达一个对象允许出现的有限业务状态 | `FlowStatus`、`ExecutionStatus` |
+| 状态值对象/枚举 | 统一表达有限业务状态、迁移与必要历史；只读生命周期可直接使用枚举 | `State`/`State.Type`/`State.History` |
 
 只有聚合根建立独立 Repository。聚合内实体必须通过聚合根创建、查询和改变，
 不能为了 CRUD 方便建立独立 Service 或 Repository。
 
 原始输入、Command、DTO、数据库 Record、查询 Projection 和解析器不是领域对象。
 如果原始输入本身具有可编辑、审计和独立保存的业务生命周期，它可以成为独立
-的来源聚合，例如 `FlowWithSource`；但它仍不能冒充解析后的 `Flow`。
+的来源聚合，例如 `FlowDraft`；但它仍不能冒充解析后的 `Flow`。
 
 ### 4. 划定聚合边界
 
@@ -126,15 +126,16 @@ Java 类、数据库表或接口结构。
 状态不能用于掩盖两个有效性条件完全不同的对象。如果某个状态下大量业务字段
 必然为空，或者该状态允许保存无法满足其他状态约束的数据，应优先拆成不同对象。
 
-当前 Flow 生命周期是该规则的基准示例：
+当前 Flow 生命周期使用 `FlowDraft` 与 `Flow` 两种聚合表达角色，只保存会发生
+变化的 `deleted` 布尔事实，不建立定义状态枚举。它是该规则的基准示例：
 
 | 动作 | 输入对象 | 结果 | `reversion` |
 | --- | --- | --- | --- |
-| `create` | 原始 YAML | 创建 `FlowWithSource` | 不存在 |
-| `revise` | `FlowWithSource` | 替换草稿原始 YAML | 不存在 |
-| `deploy` | `FlowWithSource` | 解析、校验并生成 `DEPLOYED Flow` | 首次为 1，之后递增 |
-| `close` | 已部署 `Flow` | 状态变为 `CLOSED` | 保留原值，不递增 |
-| `discard` | `FlowWithSource` | 删除或软删除草稿 | 不存在 |
+| `create` | 原始 YAML | 创建 `deleted=false` 的 `FlowDraft` | 不存在 |
+| `revise` | 未删除 `FlowDraft` | 替换原始 YAML，删除事实不变 | 不存在 |
+| `deploy` | 未删除 `FlowDraft` | 解析、校验并生成 `deleted=false` 的 Flow | 首次为 1，之后递增 |
+| `delete` | 未删除 `Flow` | `deleted` 变为 true | 保留原值，不递增 |
+| `delete` | 未删除 `FlowDraft` | `deleted` 变为 true | 不存在 |
 
 解析或校验失败时，`deploy` 不产生 `Flow`、不占用 `reversion`，也不改变原始
 草稿。这些结果必须位于同一个命令事务边界内。
@@ -148,7 +149,7 @@ Java 类、数据库表或接口结构。
 | 身份字段 | `id`、所属租户 ID、稳定业务标识 |
 | 业务字段 | 对象为了履行业务职责必须保存的事实 |
 | 关系字段 | 所属聚合内实体或其他聚合的稳定 ID |
-| 生命周期字段 | `status`、业务 `reversion` |
+| 生命周期字段 | `deleted`、业务 `reversion` 或确有有限迁移语义的状态 |
 | 审计字段 | `creator`、`updater`、`deleter`、创建/更新/删除时间 |
 | 并发字段 | `lockVersion` 等纯技术并发信息 |
 
@@ -170,7 +171,7 @@ Java 类、数据库表或接口结构。
 方法分为四类：
 
 1. 创建方法：类型自身的静态 `create(...)`，作为普通业务创建的唯一合法入口。
-2. 行为方法：`revise`、`start`、`complete`、`fail`、`cancel`、`close`。
+2. 行为方法：`revise`、`delete`、`start`、`complete`、`fail`、`cancel`。
 3. 查询方法：`findTask`、`findTaskRun`、`activeTaskRuns`。
 4. 重建方法：`rehydrate`，只供可信 Repository Adapter 恢复持久化状态。
 
@@ -178,16 +179,22 @@ Java 类、数据库表或接口结构。
 
 - 一个生命周期只有一个 `public static create(...)` 方法，并始终产生同一种
   合法初始形态。
+- ADR 0019 确认的 Data `Input<T>` 及具体输入定义子类不提供业务调用方主动
+  `create(...)`，而由 PAAS JSON 在定义反序列化边界根据 `type` 多态元数据一次
+  形成完整对象；这是已记录的局部例外，不得扩展为其他领域对象的通用反序列化
+  创建方式。
 - 构造方法必须为 `private` 或 `protected`；领域类型以外的代码不得直接
   `new` 领域对象。
 - 另一种有效性条件应使用不同领域类型或语义明确的静态业务转换方法，不能增加
   含义模糊的 `create(...)` 重载。
-- 不得使用 `XxxFactory` 或工厂接口创建领域对象。解析器、类型分派器和 Adapter
-  只负责边界转换或类型选择，最终调用具体领域类型的静态 `create(...)`。
-- 方法名使用业务命令的现在时动词，例如 `deploy`；状态使用结果形式，例如
-  `DEPLOYED`。
+- 不得使用 Factory 复制、隐藏或绕过具体领域类型的创建规则。除 ADR 0019 的
+  Input 定义子类外，解析器、类型分派器和 Adapter 只负责边界转换或类型选择，
+  最终调用具体领域类型的静态 `create(...)`。
+- 方法名使用业务命令的现在时动词，例如 `deploy` 或 `delete`；确有状态枚举时
+  使用结果形式，例如 `COMPLETED`。
 - 状态校验、字段校验和业务副作用必须在同一个领域方法内完成。
-- 不暴露 `setStatus`、`setVersion`、`setOutputs` 等公共 Setter。
+- 不暴露 `setStatus`、`setDraft`、`setDeleted`、`setVersion`、
+  `setOutputs` 等公共 Setter。
 - 子实体的变更方法应限制可见性，只允许聚合根调用。
 - `rehydrate` 是独立的静态重建入口，不是业务创建方法，不生成 ID、不触发业务
   状态转换。
@@ -220,7 +227,7 @@ Java 类、数据库表或接口结构。
 两者应使用“解析并映射”关系，不能使用继承关系。只有子类型在任何场景下都满足
 父类型全部不变量时才允许继承。
 
-`FlowWithSource -> YamlParser -> Flow.deploy` 是当前标准示例。
+`FlowDraft -> YamlParser -> Flow.deploy` 是当前标准示例。
 `YamlParser` 只产生通用只读映射；Flow 在一次完整部署调用中直接解释该映射，
 但不把 Map 保存为聚合字段，也不再为解析中间结果建立平行领域类型。
 
@@ -229,14 +236,14 @@ Java 类、数据库表或接口结构。
 三个概念必须分别设计：
 
 - 业务版本：领域内容成功发布后产生，例如 `Flow.reversion`。
-- 审计变化：记录谁在何时创建、修改或关闭对象。
+- 审计变化：记录谁在何时创建、修改或删除对象。
 - 并发版本：Repository 用于乐观锁，例如 `lockVersion`。
 
 规则如下：
 
 - 只有产生新的、可独立读取的业务事实快照时才递增 `reversion`。
 - 草稿没有正式 `reversion`。
-- 关闭、软删除或取消不自动生成业务版本，除非业务明确要求保存新定义快照。
+- 删除或取消不自动生成业务版本，除非业务明确要求保存新定义快照。
 - 失败的业务操作不占用业务版本。
 - 审计操作者和时间由调用链显式传入，领域对象不直接读取 Session 或系统时钟。
 - 并发冲突不能伪装成业务版本冲突。
@@ -278,7 +285,52 @@ Service -> CommandExecutor -> CommandHandler -> Repository/Domain -> Repository.
 UC 必须包含验证方法、通过条件和实际反例。实现及验证时继续遵守
 `docs/standards/uc-testing.md`。
 
-## 二、统一建模产物
+## 二、模型语义所有权与代码归属
+
+领域模型、Interface 及其直接契约的代码归属由语义、不变量和演进规则决定，不能
+由当前谁创建、调用、执行、实现或持久化决定。
+
+### 语义所有权
+
+- 类型应归入负责定义其含义、合法形态、失败语义和兼容性规则的 Module。调用或
+  实现它的其他 Module 是消费者或 Adapter，不因此获得所有权。
+- 必须区分定义职责与执行职责：定义职责决定类型归属，执行职责决定运行代码归属。
+- 描述某个业务概念可拥有能力的 Interface 归属于该业务概念所在 Module；删除该
+  业务概念后 Interface 随即失去意义时，不能把它放入当前调用它的运行时 Module。
+- 表达策略 Module 所需外部能力的端口 Interface 归属于提出需求并定义契约的
+  Module；数据库、远程调用或其他技术实现作为 Adapter 位于对应技术 Module。
+
+### Interface 与直接契约
+
+- Interface 是 Module 对调用方公开的完整使用契约，包括方法、输入输出、不变量、
+  调用顺序和失败语义，不只指 Java `interface` 关键字。
+- 仅服务于某个 Interface，且离开它就没有独立语义的输入、输出、Context、Result
+  和专用异常，跟随 Interface 归入同一 Module。
+- 具有独立业务身份、生命周期或不变量的类型不能为了就近调用而并入 Interface
+  所在 Module，应通过稳定 ID 或明确 Interface 协作。
+- Adapter 专有请求响应、数据库 Entry、框架配置和传输信封归 Adapter 或运行时
+  Module，不能反向成为上游业务 Interface 的定义来源。
+- 消费者依赖语义所有者，不得为就近调用建立反向依赖，也不得在多个消费者中复制
+  同义 Interface 或直接契约。
+
+### 落包前检查
+
+新增或移动领域类型及其契约前必须完成：
+
+1. **语义检查**：用一句话说明类型描述什么，哪个 Module 定义其含义和不变量。
+2. **删除检查**：分别假设删除候选所有者和当前调用者；类型随谁失去意义，谁才是
+   语义所有者。
+3. **替换检查**：替换当前执行器、数据库、消息系统或其他 Adapter 后，类型若仍然
+   成立，就不能归属于被替换的实现 Module。
+4. **依赖检查**：最小依赖方向必须是“消费者或 Adapter -> 语义所有者”，不能
+   出现反向依赖或循环依赖。
+
+无法明确回答时，不得先创建临时 `common`、`shared`、`support` 或同义 Interface
+继续编码。新增 Interface 或调整包结构时，任务说明和代码审查应记录语义所有者、
+消费者或 Adapter、直接契约及依赖方向。重要边界通过架构测试保护；达到架构决策
+条件时更新或新增 ADR。
+
+## 三、统一建模产物
 
 每个新领域在编码前必须形成以下产物：
 
@@ -295,7 +347,7 @@ UC 必须包含验证方法、通过条件和实际反例。实现及验证时�
 
 没有完成以上产物时，不应直接建立数据库表、Controller、Command 或 Service。
 
-## 三、领域设计卡模板
+## 四、领域设计卡模板
 
 新增领域时复制以下模板并填写：
 
@@ -349,18 +401,17 @@ Repository 边界：
 与现有代码的差距：
 ```
 
-## 四、当前领域对象基准
+## 五、当前领域对象基准
 
 后续领域应参照以下职责划分，而不是复制其字段：
 
 | 领域对象 | 角色 | 主要创建/行为 | 核心边界 |
 | --- | --- | --- | --- |
-| `FlowWithSource` | 来源聚合根 | `create`、`revise`、`discard` | 只保存原始 YAML，无正式 `reversion` |
-| `Flow` | 已部署定义聚合根 | `deploy`、`close` | 始终是已解析且完整的定义 |
+| `FlowDraft` | 草稿聚合根 | `create`、`revise`、`delete` | 只保存原始 YAML 和删除事实，无正式 `reversion` |
+| `Flow` | 已部署定义聚合根 | `deploy`、`delete` | 始终是已解析且完整的定义，不保存可由类型推导的 `draft` |
 | `Task` | `Flow` 聚合内实体 | 由 `Flow.deploy` 完整构建 | 不存在无 id 的半成品，不独立保存生命周期 |
 | `Execution` | 运行聚合根 | `create`、推进、完成、取消 | 绑定确定的 `flowId + flowReversion` |
 | `TaskRun` | `Execution` 聚合内实体 | 创建、开始、完成、失败、取消 | 只记录真实执行事实 |
-| `ExternalTask` | 外部恢复聚合根 | `create`、`complete`、`cancel` | 管理一次外部等待触发 |
 | `Input`、`Output` | `Flow` 或 `Task` 聚合内实体 | 随 `Flow.deploy` 完整构建 | 直接实现 Data，拥有 key、type，不保存运行值 |
 
 该基准表达统一的构建思想：
@@ -368,18 +419,19 @@ Repository 边界：
 - 原始来源与有效对象分开。
 - 定义事实与运行事实分开。
 - 聚合根控制内部实体。
-- 创建入口唯一，状态变化通过业务方法完成。
+- 创建入口唯一，生命周期事实变化通过业务方法完成。
 - 业务版本只由产生新业务快照的动作生成。
-- 具体序列化库、事务和持久化不侵入领域对象；Flow 只瞬时消费通用只读映射，
-  不为解析中间结果建立领域类型。
+- 具体序列化库、事务和持久化不成为领域状态或公共契约；Flow 只瞬时消费通用
+  只读映射，Input 仅通过 ADR 0019 确认的 PAAS JSON 多态元数据完成具体子类
+  实例化，不为解析中间结果建立领域类型。
 
-## 五、完成检查清单
+## 六、完成检查清单
 
 - [ ] 新术语已写入 `CONTEXT.md`，且没有同义对象并存。
 - [ ] 已确认对象角色、聚合边界和 Repository 边界。
 - [ ] 已确认技术 ID、业务标识、业务版本和并发版本。
 - [ ] 已画出包含字段和方法名的类图。
-- [ ] 已列出完整状态机、终态和非法转换。
+- [ ] 已列出完整生命周期、终态和非法转换。
 - [ ] 每条不变量都有唯一负责的领域方法。
 - [ ] 没有公共 Setter，也没有 Service 直接修改领域字段。
 - [ ] 原始或未校验输入没有冒充有效领域对象。
@@ -391,11 +443,13 @@ Repository 边界：
 ## 相关文档
 
 - [`CONTEXT.md`](../../CONTEXT.md)：项目统一语言。
-- [`development-basics.md`](development-basics.md)：ID、Java 类型和 Core 分包
-  基础规则。
+- [`project-development.md`](project-development.md)：技术 ID、Java 类型、
+  timestamp 毫秒值、复用与重构规则。
 - [`uc-testing.md`](uc-testing.md)：UC 场景与验证标准。
 - [`0008-separate-flow-source-from-deployed-flow.md`](../decisions/0008-separate-flow-source-from-deployed-flow.md)：
-  `FlowWithSource` 与 `Flow` 的边界决策。
+  `FlowDraft` 与 `Flow` 的边界决策。
+- [`0022-model-flow-draft-as-separate-aggregate.md`](../decisions/0022-model-flow-draft-as-separate-aggregate.md)：
+  FlowDraft 独立聚合与 `deleted` 生命周期事实。
 - [`task-domain-model.md`](task-domain-model.md)：Task 的身份、字段、方法、递归
   结构以及 TaskRun 边界。
 - [`data-domain-model.md`](data-domain-model.md)：Data 基础接口、Input/Output

@@ -203,6 +203,20 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         return (Long) get(12);
     }
 
+    /**
+     * Setter for <code>public.flow_drafts.deleted</code>.
+     */
+    public void setDeleted(Boolean value) {
+        set(13, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_drafts.deleted</code>.
+     */
+    public Boolean getDeleted() {
+        return (Boolean) get(13);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -226,7 +240,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
     /**
      * Create a detached, initialised FlowDraftsRecord
      */
-    public FlowDraftsRecord(String id, String companyId, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, String raw, Long lockVersion) {
+    public FlowDraftsRecord(String id, String companyId, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, String raw, Long lockVersion, Boolean deleted) {
         super(FlowDraftsTable.FLOW_DRAFTS);
 
         setId(id);
@@ -242,6 +256,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         setDeletedAt(deletedAt);
         setRaw(raw);
         setLockVersion(lockVersion);
+        setDeleted(deleted);
     }
 
 
@@ -266,6 +281,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
             setDeletedAt(value.deletedAt);
             setRaw(value.raw);
             setLockVersion(value.lockVersion);
+            setDeleted(value.deleted);
         }
     }
 
@@ -284,6 +300,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         object.deletedAt = getDeletedAt();
         object.raw = getRaw();
         object.lockVersion = getLockVersion();
+        object.deleted = getDeleted();
         return object;
     }
 
@@ -307,6 +324,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         pojo.deletedAt = getDeletedAt();
         pojo.raw = getRaw();
         pojo.lockVersion = getLockVersion();
+        pojo.deleted = getDeleted();
         return pojo;
     }
 }

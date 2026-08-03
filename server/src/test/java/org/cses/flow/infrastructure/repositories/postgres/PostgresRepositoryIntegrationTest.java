@@ -4,17 +4,17 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
+import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
-import org.cses.flow.core.domains.flows.FlowWithSource;
+import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.flows.ActorRef;
 import org.cses.flow.core.domains.flows.Output;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.repositories.executions.postgres.ExecutionPostgresRepository;
 import org.cses.flow.infrastructure.repositories.externaltasks.postgres.ExternalTaskPostgresRepository;
 import org.cses.flow.infrastructure.repositories.flows.postgres.FlowPostgresRepository;
-import org.cses.flow.infrastructure.repositories.flows.postgres.FlowWithSourcePostgresRepository;
+import org.cses.flow.infrastructure.repositories.flows.postgres.FlowDraftPostgresRepository;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -32,15 +32,15 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.cses.flow.extensions.tasks.TaskPluginTestSupport.builtInDispatcher;
-import static org.flow.gen.flow.Tables.ASSIGNMENT;
+import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
+import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
@@ -56,8 +56,8 @@ final class PostgresRepositoryIntegrationTest {
         builtInDispatcher();
     private final FlowPostgresRepository flowRepository =
         new FlowPostgresRepository(taskTypeDispatcher);
-    private final FlowWithSourcePostgresRepository sourceRepository =
-        new FlowWithSourcePostgresRepository();
+    private final FlowDraftPostgresRepository draftRepository =
+        new FlowDraftPostgresRepository();
     private final ExecutionPostgresRepository executionRepository =
         new ExecutionPostgresRepository();
     private final ExternalTaskPostgresRepository externalTaskRepository =
@@ -72,8 +72,8 @@ final class PostgresRepositoryIntegrationTest {
     @AfterEach
     void removeTestTenant() {
         write(dsl -> {
-            dsl.deleteFrom(ASSIGNMENT)
-                .where(ASSIGNMENT.COMPANY_ID.eq(companyId))
+            dsl.deleteFrom(EXTERNAL_TASK)
+                .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
                 .execute();
             dsl.deleteFrom(TASK_RUN)
                 .where(TASK_RUN.EXECUTION_ID.in(
@@ -105,37 +105,37 @@ final class PostgresRepositoryIntegrationTest {
             "Repository Test"
         );
         long createdAt = 1_785_312_000_000L;
-        FlowWithSource source = FlowWithSource.create(
+        FlowDraft draft = FlowDraft.create(
             companyId,
             "key: postgres-flow",
             actor,
             createdAt
         );
         write(dsl -> {
-            sourceRepository.save(dsl, source);
+            draftRepository.save(dsl, draft);
             return null;
         });
-        source.revise(
+        draft.revise(
             "key: postgres-flow\ndescription: revised",
             actor,
             createdAt + 1_000L
         );
         write(dsl -> {
-            sourceRepository.save(dsl, source);
+            draftRepository.save(dsl, draft);
             return null;
         });
-        FlowWithSource restoredSource = read(dsl ->
-            sourceRepository.findById(
+        FlowDraft restoredDraft = read(dsl ->
+            draftRepository.findById(
                 dsl,
                 companyId,
-                source.id()
+                draft.id()
             ).orElseThrow()
         );
-        assertEquals(source, restoredSource);
+        assertEquals(draft, restoredDraft);
 
         Flow first = Flow.deploy(
             companyId,
-            source.id(),
+            draft.id(),
             definition("postgres-flow", "first", "prepare"),
             null,
             taskTypeDispatcher,
@@ -150,7 +150,7 @@ final class PostgresRepositoryIntegrationTest {
 
         Flow second = Flow.deploy(
             companyId,
-            source.id(),
+            draft.id(),
             definition("postgres-flow", "second", "prepare"),
             first,
             taskTypeDispatcher,
@@ -165,9 +165,9 @@ final class PostgresRepositoryIntegrationTest {
         Flow restoredFlow = read(dsl -> flowRepository.findLatest(
             dsl,
             companyId,
-            source.id()
+            draft.id()
         ).orElseThrow());
-        assertEquals(FlowStatus.DEPLOYED, restoredFlow.status());
+        assertTrue(!restoredFlow.isDeleted());
         assertEquals(2, restoredFlow.reversion());
         assertEquals(
             stableTaskId,
@@ -178,22 +178,20 @@ final class PostgresRepositoryIntegrationTest {
             restoredFlow.tasks().getFirst().id()
         );
         assertEquals(
-            List.of(Output.create("approved", "STRING")),
+            List.of(Output.create("approved", DataType.STRING)),
             restoredFlow.tasks().getFirst().outputs()
         );
         assertEquals(
             "PAUSE",
             restoredFlow.tasks().getFirst().tasks().getFirst().type()
         );
-        assertEquals(
-            FlowStatus.DEPLOYED,
-            read(dsl -> flowRepository.findById(
-                dsl,
-                companyId,
-                source.id(),
-                1
-            ).orElseThrow()).status()
-        );
+        Flow restoredFirst = read(dsl -> flowRepository.findById(
+            dsl,
+            companyId,
+            draft.id(),
+            1
+        ).orElseThrow());
+        assertTrue(!restoredFirst.isDeleted());
 
         Execution execution = write(dsl -> {
             Execution created = Execution.create(
@@ -201,6 +199,7 @@ final class PostgresRepositoryIntegrationTest {
                 restoredFlow.id(),
                 2
             );
+            created.start();
             executionRepository.save(dsl, created);
             TaskRun createdTaskRun = created.createTaskRun(
                 stableTaskId,
@@ -227,6 +226,11 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(
             execution.taskRuns().getFirst().id(),
             restoredExecution.taskRuns().getFirst().id()
+        );
+        assertEquals(execution.state(), restoredExecution.state());
+        assertEquals(
+            execution.taskRuns().getFirst().state(),
+            restoredExecution.taskRuns().getFirst().state()
         );
         long executionCount = read(dsl ->
             executionRepository.count(dsl, companyId)
@@ -261,8 +265,7 @@ final class PostgresRepositoryIntegrationTest {
         ExternalTask externalTask = ExternalTask.create(
             companyId,
             execution.id(),
-            execution.taskRuns().getFirst().id(),
-            Set.of("approved")
+            execution.taskRuns().getFirst().id()
         );
         write(dsl -> {
             externalTaskRepository.save(dsl, externalTask);
@@ -292,6 +295,126 @@ final class PostgresRepositoryIntegrationTest {
         assertTrue(completed.lockVersion() > 0);
     }
 
+    @Test
+    void schemaUsesAggregateTypesInsteadOfDraftColumns() {
+        var columns = DSL.table(DSL.name(
+            "information_schema",
+            "columns"
+        ));
+        var tableSchema = DSL.field(
+            DSL.name("table_schema"),
+            String.class
+        );
+        var tableName = DSL.field(
+            DSL.name("table_name"),
+            String.class
+        );
+        var columnName = DSL.field(
+            DSL.name("column_name"),
+            String.class
+        );
+
+        int draftColumnCount = read(dsl -> dsl.fetchCount(
+            columns,
+            tableSchema.eq("public")
+                .and(tableName.in("flow_drafts", "flows"))
+                .and(columnName.eq("draft"))
+        ));
+
+        assertEquals(0, draftColumnCount);
+    }
+
+    @Test
+    void persistsDeletionFactsWithoutFallingBackFromDeletedLatest() {
+        ActorRef actor = ActorRef.create(
+            "lifecycle-user",
+            "Lifecycle Test"
+        );
+        long createdAt = 1_785_312_000_000L;
+        FlowDraft draft = FlowDraft.create(
+            companyId,
+            "key: lifecycle-flow",
+            actor,
+            createdAt
+        );
+        write(dsl -> {
+            draftRepository.save(dsl, draft);
+            return null;
+        });
+
+        Flow first = Flow.deploy(
+            companyId,
+            draft.id(),
+            definition("lifecycle-flow", "first", "prepare"),
+            null,
+            taskTypeDispatcher,
+            actor,
+            createdAt + 1_000L
+        );
+        write(dsl -> {
+            flowRepository.save(dsl, first);
+            return null;
+        });
+        Flow second = Flow.deploy(
+            companyId,
+            draft.id(),
+            definition("lifecycle-flow", "second", "prepare"),
+            first,
+            taskTypeDispatcher,
+            actor,
+            createdAt + 2_000L
+        );
+        write(dsl -> {
+            flowRepository.save(dsl, second);
+            return null;
+        });
+
+        draft.delete(actor, createdAt + 3_000L);
+        second.delete(actor, createdAt + 3_000L);
+        write(dsl -> {
+            draftRepository.save(dsl, draft);
+            flowRepository.save(dsl, second);
+            return null;
+        });
+
+        FlowDraft deletedDraft = read(dsl ->
+            draftRepository.findById(
+                dsl,
+                companyId,
+                draft.id()
+            ).orElseThrow()
+        );
+        assertTrue(deletedDraft.isDeleted());
+        assertTrue(read(dsl -> draftRepository.lockById(
+            dsl,
+            companyId,
+            draft.id()
+        )).isEmpty());
+        Flow latest = read(dsl -> flowRepository.findLatest(
+            dsl,
+            companyId,
+            draft.id()
+        ).orElseThrow());
+        assertEquals(2L, latest.reversion());
+        assertTrue(latest.isDeleted());
+
+        Flow historical = read(dsl -> flowRepository.findById(
+            dsl,
+            companyId,
+            draft.id(),
+            1L
+        ).orElseThrow());
+        assertFalse(historical.isDeleted());
+        assertEquals(
+            Boolean.TRUE,
+            read(dsl -> dsl.select(FLOW_DRAFTS.DELETED)
+                .from(FLOW_DRAFTS)
+                .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
+                .and(FLOW_DRAFTS.ID.eq(draft.id()))
+                .fetchOne(FLOW_DRAFTS.DELETED))
+        );
+    }
+
     private static Map<String, Object> definition(
         String flowKey,
         String description,
@@ -305,7 +428,9 @@ final class PostgresRepositoryIntegrationTest {
                 "type", "AUTO",
                 "inputs", List.of(Map.of(
                     "key", "request",
-                    "type", "STRING"
+                    "type", "STRING",
+                    "displayName", "Request",
+                    "required", false
                 )),
                 "outputs", List.of(Map.of(
                     "key", "approved",

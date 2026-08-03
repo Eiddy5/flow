@@ -2,6 +2,7 @@ package org.cses.flow.extensions.tasks;
 
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.domains.tasks.BranchTask;
 import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.Task;
 
@@ -10,7 +11,7 @@ import java.util.List;
 /**
  * A Task whose TaskRun remains running until an external trigger resumes it.
  */
-public final class PauseTask extends Task {
+public final class PauseTask extends Task implements BranchTask {
 
     public static final String TYPE = "PAUSE";
 
@@ -18,7 +19,7 @@ public final class PauseTask extends Task {
         String id,
         String parentId,
         String key,
-        List<? extends Input> inputs,
+        List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
         RouteExpression route,
         List<String> dependOn,
@@ -41,7 +42,7 @@ public final class PauseTask extends Task {
         String id,
         String parentId,
         String key,
-        List<? extends Input> inputs,
+        List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
         RouteExpression route,
         List<String> dependOn,
@@ -63,7 +64,7 @@ public final class PauseTask extends Task {
         String id,
         String parentId,
         String key,
-        List<? extends Input> inputs,
+        List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
         RouteExpression route,
         List<String> dependOn,
@@ -79,5 +80,10 @@ public final class PauseTask extends Task {
             dependOn,
             tasks
         );
+    }
+
+    @Override
+    public boolean waitsForResume() {
+        return true;
     }
 }

@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（Data Input 定义子类的局部例外由 ADR 0019 修订）
 
 ## 背景
 
@@ -36,16 +36,21 @@ Accepted
   `new`。
 - `create(...)` 一次完成参数校验、不变量保护、防御性复制、技术 ID 生成和
   初始状态设置。
-- Handler、Service 和领域编排代码直接调用目标领域类型的 `create(...)`，
-  不再新增或依赖 `XxxFactory`、`XxxDomainFactory` 等领域工厂。
+- Handler、Service 和领域编排代码直接调用目标领域类型的 `create(...)`；不得
+  使用 Factory 复制、隐藏或绕过具体领域类型的创建规则。
 - 具体领域子类型分别提供静态 `create(...)`。解析器和类型分派器可以选择具体
   类型，但必须调用该类型的 `create(...)`，不能复制构造规则。
+- ADR 0019 确认的 `Input<T>` 及具体 Input 定义子类不向业务调用方提供主动
+  `create(...)`，由 Flow 定义反序列化边界根据独立 DataType 一次形成完整对象。
+  该例外不允许公共 Setter、半成品对象或调用方直接构造，也不扩展到 Task、
+  Execution 等其他领域对象。
 - Repository Adapter 使用静态 `rehydrate(...)` 恢复持久化状态。
   `rehydrate(...)` 沿用已有 ID、状态和版本，不触发首次创建规则。
 - `deploy`、`parse` 等领域动词用于表达明确的业务转换，不作为通用领域对象
   工厂，也不能绕过目标类型的构造约束。
-- `core/factories` 不再属于目标 Core 目录结构；现有 Factory 在相关业务链路
-  迁移时删除。
+- `core/factories` 不再属于目标 Core 目录结构；复制领域创建规则的现有 Factory
+  在相关业务链路迁移时删除。第三方客户端、连接或序列化等不创建领域对象的技术
+  Factory 继续归对应 Adapter 或基础设施 Module 管理。
 
 本 ADR 修订 ADR 0002 中通过 `ExecutionFactory` 创建 Execution 的调用链。
 

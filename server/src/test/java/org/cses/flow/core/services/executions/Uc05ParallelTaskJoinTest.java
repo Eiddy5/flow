@@ -1,14 +1,13 @@
 package org.cses.flow.core.services.executions;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -39,10 +38,10 @@ class Uc05ParallelTaskJoinTest {
 
             // PASS-S1-01
             assertNotNull(execution.id());
-            assertEquals(ExecutionStatus.RUNNING, execution.status());
-            assertEquals(TaskRunStatus.COMPLETED, fork.status());
-            assertEquals(TaskRunStatus.RUNNING, backend.status());
-            assertEquals(TaskRunStatus.RUNNING, frontend.status());
+            assertEquals(State.Type.WAITING, execution.state().current());
+            assertEquals(State.Type.COMPLETED, fork.state().current());
+            assertEquals(State.Type.WAITING, backend.state().current());
+            assertEquals(State.Type.WAITING, frontend.state().current());
             assertEquals(fork.id(), backend.parentId().orElseThrow());
             assertEquals(fork.id(), frontend.parentId().orElseThrow());
 
@@ -75,7 +74,7 @@ class Uc05ParallelTaskJoinTest {
                 );
 
             // PASS-S1-03
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(1, countRuns(
                 completed,
                 task(flow, "join-checks")
@@ -131,7 +130,7 @@ class Uc05ParallelTaskJoinTest {
             );
             // PASS-S2-03
             assertEquals(1, countRuns(completed, task(flow, "finish")));
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -169,8 +168,8 @@ class Uc05ParallelTaskJoinTest {
 
             // PASS-S3-01
             assertEquals(
-                TaskRunStatus.RUNNING,
-                run(current, task(flow, "frontend-check")).status()
+                State.Type.WAITING,
+                run(current, task(flow, "frontend-check")).state().current()
             );
             assertNoRun(current, task(flow, "join-checks"));
             assertNoRun(current, task(flow, "finish"));
@@ -187,7 +186,7 @@ class Uc05ParallelTaskJoinTest {
                     Map.of("frontendResult", "PASS")
                 );
             // PASS-S3-02
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(1, countRuns(completed, task(flow, "join-checks")));
             assertEquals(1, countRuns(completed, task(flow, "finish")));
             assertTrue(fixture.externalTaskService().waitingTasks(
@@ -229,8 +228,8 @@ class Uc05ParallelTaskJoinTest {
                 started.id()
             ).orElseThrow();
             assertEquals(
-                TaskRunStatus.COMPLETED,
-                run(reloaded, task(flow, "backend-check")).status()
+                State.Type.COMPLETED,
+                run(reloaded, task(flow, "backend-check")).state().current()
             );
             assertNoRun(reloaded, task(flow, "join-checks"));
             assertNoRun(reloaded, task(flow, "finish"));
@@ -247,7 +246,7 @@ class Uc05ParallelTaskJoinTest {
                     Map.of("frontendResult", "PASS")
             );
             // PASS-S4-02
-            assertEquals(ExecutionStatus.COMPLETED, completed.status());
+            assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(1, countRuns(completed, task(flow, "join-checks")));
             assertEquals(1, countRuns(completed, task(flow, "finish")));
             assertTrue(fixture.externalTaskService().waitingTasks(
@@ -268,8 +267,8 @@ class Uc05ParallelTaskJoinTest {
                 first.taskRuns().stream().map(TaskRun::taskId).toList(),
                 second.taskRuns().stream().map(TaskRun::taskId).toList()
             );
-            assertEquals(ExecutionStatus.COMPLETED, first.status());
-            assertEquals(ExecutionStatus.COMPLETED, second.status());
+            assertEquals(State.Type.COMPLETED, first.state().current());
+            assertEquals(State.Type.COMPLETED, second.state().current());
             // PASS-S5-02
             assertEquals(1, countRuns(first, task(flow, "join-checks")));
             assertEquals(1, countRuns(second, task(flow, "join-checks")));
@@ -312,10 +311,10 @@ class Uc05ParallelTaskJoinTest {
             );
 
             // PASS-S6-01
-            assertEquals(ExecutionStatus.CANCELED, canceled.status());
+            assertEquals(State.Type.TERMINATED, canceled.state().current());
             assertEquals(
-                TaskRunStatus.CANCELED,
-                run(canceled, task(flow, "frontend-check")).status()
+                State.Type.TERMINATED,
+                run(canceled, task(flow, "frontend-check")).state().current()
             );
             assertEquals(
                 ExternalTaskStatus.CANCELED,
@@ -460,7 +459,7 @@ class Uc05ParallelTaskJoinTest {
             description: parallel checks
             tasks:
               - key: start-checks
-                type: AUTO
+                type: PARALLEL
                 tasks:
                   - key: backend-check
                     type: PAUSE

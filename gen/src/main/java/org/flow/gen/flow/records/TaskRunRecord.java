@@ -8,6 +8,7 @@ import java.time.OffsetDateTime;
 
 import org.flow.gen.flow.pojos.TaskRunObject;
 import org.flow.gen.flow.tables.TaskRunTable;
+import org.jooq.JSONB;
 import org.jooq.Record1;
 import org.jooq.impl.UpdatableRecordImpl;
 import org.paas.json.JsonObject;
@@ -217,6 +218,20 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         return (OffsetDateTime) get(13);
     }
 
+    /**
+     * Setter for <code>public.task_run.state_history</code>.
+     */
+    public void setStateHistory(JSONB value) {
+        set(14, value);
+    }
+
+    /**
+     * Getter for <code>public.task_run.state_history</code>.
+     */
+    public JSONB getStateHistory() {
+        return (JSONB) get(14);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -240,7 +255,7 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
     /**
      * Create a detached, initialised TaskRunRecord
      */
-    public TaskRunRecord(String id, String executionId, String taskId, String parentId, String status, OffsetDateTime startAt, OffsetDateTime endAt, JsonObject inputs, JsonObject outputs, String error, Integer order, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt) {
+    public TaskRunRecord(String id, String executionId, String taskId, String parentId, String status, OffsetDateTime startAt, OffsetDateTime endAt, JsonObject inputs, JsonObject outputs, String error, Integer order, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JSONB stateHistory) {
         super(TaskRunTable.TASK_RUN);
 
         setId(id);
@@ -257,6 +272,7 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setDeletedAt(deletedAt);
+        setStateHistory(stateHistory);
     }
 
 
@@ -282,6 +298,7 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
             setCreatedAt(value.createdAt);
             setUpdatedAt(value.updatedAt);
             setDeletedAt(value.deletedAt);
+            setStateHistory(value.stateHistory);
         }
     }
 
@@ -301,6 +318,7 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         object.createdAt = getCreatedAt();
         object.updatedAt = getUpdatedAt();
         object.deletedAt = getDeletedAt();
+        object.stateHistory = getStateHistory();
         return object;
     }
 
@@ -325,6 +343,7 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         pojo.createdAt = getCreatedAt();
         pojo.updatedAt = getUpdatedAt();
         pojo.deletedAt = getDeletedAt();
+        pojo.stateHistory = getStateHistory();
         return pojo;
     }
 }

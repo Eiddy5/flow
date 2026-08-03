@@ -1,10 +1,13 @@
 package org.cses.flow.core.domains.flows;
 
+import lombok.Getter;
+import org.cses.flow.core.domains.Deletable;
 import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskTypeDispatcher;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.paas.common.util.StringUtil;
+import org.paas.json.JsonObject;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -22,7 +25,7 @@ import java.util.stream.Stream;
 /**
  * One complete, deployed Flow reversion.
  */
-public final class Flow {
+public final class Flow implements Deletable<Flow> {
 
     private static final Set<String> FLOW_DEFINITION_FIELDS = Set.of(
         "key",
@@ -45,7 +48,7 @@ public final class Flow {
         "parentId",
         "taskId"
     );
-    private static final Set<String> DATA_DEFINITION_FIELDS = Set.of(
+    private static final Set<String> OUTPUT_DEFINITION_FIELDS = Set.of(
         "key",
         "type"
     );
@@ -55,12 +58,13 @@ public final class Flow {
     private final String key;
     private final long reversion;
     private final String description;
-    private final List<Input> inputs;
+    private final List<Input<?>> inputs;
     private final List<Output> outputs;
     private final List<Task> tasks;
     private final ActorRef creator;
     private final long createdAt;
-    private FlowStatus status;
+    @Getter
+    private boolean deleted;
     private ActorRef updater;
     private ActorRef deleter;
     private long updatedAt;
@@ -72,16 +76,16 @@ public final class Flow {
         String key,
         long reversion,
         String description,
-        List<? extends Input> inputs,
+        List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
         List<? extends Task> tasks,
+        boolean deleted,
         ActorRef creator,
         ActorRef updater,
         ActorRef deleter,
         long createdAt,
         long updatedAt,
-        Long deletedAt,
-        FlowStatus status
+        Long deletedAt
     ) {
         this.id = requireText(id, "Flow id");
         this.companyId = requireText(companyId, "Company id");
@@ -101,23 +105,22 @@ public final class Flow {
         this.updater = Objects.requireNonNull(updater, "Flow updater");
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
-        this.status = Objects.requireNonNull(status, "Flow status");
+        this.deleted = deleted;
         this.deleter = deleter;
         this.deletedAt = deletedAt;
-        boolean deleted = deleter != null && deletedAt != null;
         if ((deleter == null) != (deletedAt == null)) {
             throw new IllegalArgumentException(
                 "Flow deleter and deletedAt must both be empty or present"
             );
         }
-        if (status == FlowStatus.DEPLOYED && deleted) {
+        if (!deleted && deleter != null) {
             throw new IllegalArgumentException(
-                "Deployed Flow must not have deletion audit"
+                "Undeleted Flow must not have deletion audit"
             );
         }
-        if (status == FlowStatus.CLOSED && !deleted) {
+        if (deleted && deleter == null) {
             throw new IllegalArgumentException(
-                "Closed Flow requires deletion audit"
+                "Deleted Flow requires deletion audit"
             );
         }
     }
@@ -154,9 +157,9 @@ public final class Flow {
                     "Latest Flow belongs to another logical Flow"
                 );
             }
-            if (latest.status == FlowStatus.CLOSED) {
+            if (latest.deleted) {
                 throw new WorkflowException(
-                    "Closed Flow cannot be deployed: " + normalizedId
+                    "Deleted Flow cannot be deployed: " + normalizedId
                 );
             }
             if (!latest.key.equals(key)) {
@@ -171,7 +174,7 @@ public final class Flow {
             reversion = latest.reversion + 1;
         }
 
-        List<Input> inputs = inputList(
+        List<Input<?>> inputs = inputList(
             source.get("inputs"),
             "Flow.inputs"
         );
@@ -200,13 +203,13 @@ public final class Flow {
             inputs,
             outputs,
             tasks,
+            false,
             actor,
             actor,
             null,
             deployedAt,
             deployedAt,
-            null,
-            FlowStatus.DEPLOYED
+            null
         );
     }
 
@@ -219,16 +222,16 @@ public final class Flow {
         String key,
         long reversion,
         String description,
-        List<? extends Input> inputs,
+        List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
         List<? extends Task> tasks,
+        boolean deleted,
         ActorRef creator,
         ActorRef updater,
         ActorRef deleter,
         long createdAt,
         long updatedAt,
-        Long deletedAt,
-        FlowStatus status
+        Long deletedAt
     ) {
         return new Flow(
             id,
@@ -239,25 +242,25 @@ public final class Flow {
             inputs,
             outputs,
             tasks,
+            deleted,
             creator,
             updater,
             deleter,
             createdAt,
             updatedAt,
-            deletedAt,
-            status
+            deletedAt
         );
     }
 
-    public void close(ActorRef closedBy, long closedAt) {
-        if (status == FlowStatus.CLOSED) {
-            throw new WorkflowException("Flow is already closed: " + id);
+    public void delete(ActorRef deletedBy, long deletionTime) {
+        if (deleted) {
+            throw new WorkflowException("Flow is already deleted: " + id);
         }
-        updater = Objects.requireNonNull(closedBy, "Flow updater");
-        deleter = closedBy;
-        updatedAt = closedAt;
-        deletedAt = closedAt;
-        status = FlowStatus.CLOSED;
+        updater = Objects.requireNonNull(deletedBy, "Flow updater");
+        deleter = deletedBy;
+        updatedAt = deletionTime;
+        deletedAt = deletionTime;
+        deleted = true;
     }
 
     public String id() {
@@ -280,7 +283,7 @@ public final class Flow {
         return description;
     }
 
-    public List<Input> inputs() {
+    public List<Input<?>> inputs() {
         return inputs;
     }
 
@@ -316,10 +319,6 @@ public final class Flow {
         return Optional.ofNullable(deletedAt);
     }
 
-    public FlowStatus status() {
-        return status;
-    }
-
     public Optional<Task> findTask(String taskId) {
         return allTasks().stream()
             .filter(task -> task.id().equals(taskId))
@@ -345,13 +344,13 @@ public final class Flow {
             inputs,
             outputs,
             tasks,
+            deleted,
             creator,
             updater,
             deleter,
             createdAt,
             updatedAt,
-            deletedAt,
-            status
+            deletedAt
         );
     }
 
@@ -364,6 +363,7 @@ public final class Flow {
             return false;
         }
         return reversion == other.reversion
+            && deleted == other.deleted
             && Objects.equals(id, other.id)
             && Objects.equals(companyId, other.companyId)
             && Objects.equals(key, other.key)
@@ -376,8 +376,7 @@ public final class Flow {
             && Objects.equals(deleter, other.deleter)
             && Objects.equals(createdAt, other.createdAt)
             && Objects.equals(updatedAt, other.updatedAt)
-            && Objects.equals(deletedAt, other.deletedAt)
-            && status == other.status;
+            && Objects.equals(deletedAt, other.deletedAt);
     }
 
     @Override
@@ -391,13 +390,13 @@ public final class Flow {
             inputs,
             outputs,
             tasks,
+            deleted,
             creator,
             updater,
             deleter,
             createdAt,
             updatedAt,
-            deletedAt,
-            status
+            deletedAt
         );
     }
 
@@ -428,7 +427,7 @@ public final class Flow {
                 "type",
                 taskPath
             ).toUpperCase(Locale.ROOT);
-            List<Input> inputs = inputList(
+            List<Input<?>> inputs = inputList(
                 definition.get("inputs"),
                 taskPath + ".inputs"
             );
@@ -560,24 +559,55 @@ public final class Flow {
         return Map.copyOf(properties);
     }
 
-    private static List<Input> inputList(Object value, String path) {
+    private static List<Input<?>> inputList(Object value, String path) {
         if (value == null) {
             return List.of();
         }
         if (!(value instanceof List<?> source)) {
             throw new IllegalArgumentException(path + " must be a list");
         }
-        List<Input> result = new ArrayList<>(source.size());
+        List<Input<?>> result = new ArrayList<>(source.size());
         for (int index = 0; index < source.size(); index++) {
             String itemPath = path + "[" + index + "]";
-            Map<String, Object> definition = dataDefinitionMap(
+            Map<String, Object> definition = stringMap(
                 source.get(index),
                 itemPath
             );
-            result.add(Input.create(
-                requiredText(definition, "key", itemPath),
-                requiredText(definition, "type", itemPath)
-            ));
+            String key = requiredText(definition, "key", itemPath);
+            DataType type;
+            try {
+                type = DataType.parse(
+                    requiredText(definition, "type", itemPath)
+                );
+            } catch (IllegalArgumentException exception) {
+                throw materializationFailure(itemPath, exception);
+            }
+            Map<String, Object> normalized = new LinkedHashMap<>(definition);
+            normalized.put("type", type.name());
+            Object defaultValue = normalized.get("defaultValue");
+            if (defaultValue != null) {
+                try {
+                    normalized.put(
+                        "defaultValue",
+                        type.normalize(defaultValue)
+                    );
+                } catch (IllegalArgumentException exception) {
+                    throw materializationFailure(itemPath, exception);
+                }
+            }
+            if (!normalized.containsKey("displayName")) {
+                normalized.put("displayName", key);
+            }
+            if (!normalized.containsKey("required")) {
+                normalized.put("required", false);
+            }
+            try {
+                result.add(
+                    JsonObject.FromMap(normalized).asObject(Input.class)
+                );
+            } catch (RuntimeException exception) {
+                throw materializationFailure(itemPath, exception);
+            }
         }
         return List.copyOf(result);
     }
@@ -592,25 +622,33 @@ public final class Flow {
         List<Output> result = new ArrayList<>(source.size());
         for (int index = 0; index < source.size(); index++) {
             String itemPath = path + "[" + index + "]";
-            Map<String, Object> definition = dataDefinitionMap(
+            Map<String, Object> definition = outputDefinitionMap(
                 source.get(index),
                 itemPath
             );
+            DataType type;
+            try {
+                type = DataType.parse(
+                    requiredText(definition, "type", itemPath)
+                );
+            } catch (IllegalArgumentException exception) {
+                throw materializationFailure(itemPath, exception);
+            }
             result.add(Output.create(
                 requiredText(definition, "key", itemPath),
-                requiredText(definition, "type", itemPath)
+                type
             ));
         }
         return List.copyOf(result);
     }
 
-    private static Map<String, Object> dataDefinitionMap(
+    private static Map<String, Object> outputDefinitionMap(
         Object value,
         String path
     ) {
         Map<String, Object> definition = stringMap(value, path);
         Set<String> unknown = new LinkedHashSet<>(definition.keySet());
-        unknown.removeAll(DATA_DEFINITION_FIELDS);
+        unknown.removeAll(OUTPUT_DEFINITION_FIELDS);
         if (!unknown.isEmpty()) {
             throw new IllegalArgumentException(
                 path + " contains unsupported fields: " + unknown
@@ -740,6 +778,16 @@ public final class Flow {
                             + outputKey + ": " + task.key()
                     );
                 }
+                Output routeOutput = parent.outputs().stream()
+                    .filter(output -> output.getKey().equals(outputKey))
+                    .findFirst()
+                    .orElseThrow();
+                if (routeOutput.getType() != DataType.STRING) {
+                    throw new WorkflowException(
+                        "Task route requires a STRING parent output "
+                            + outputKey + ": " + task.key()
+                    );
+                }
             });
             validateTasks(task.tasks(), keys, ids, task);
         }
@@ -832,5 +880,10 @@ public final class Flow {
             throw new IllegalArgumentException(field + " must not be blank");
         }
         return value.trim();
+    }
+
+    @Override
+    public Flow delete() {
+        return null;
     }
 }

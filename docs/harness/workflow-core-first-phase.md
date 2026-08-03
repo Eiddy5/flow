@@ -46,7 +46,8 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
 - 查询只接受 `FlowService.flow(session, id, version, status)` 的精确条件，
   错误 version 或 status 不会回退到其他 Flow。
 - Micronaut 能真实装配写链路和读链路，并完成一次保存、发布和查询。
-- Core 领域目录、业务分包、禁用 record 和 String 技术 ID 规则通过结构测试。
+- Core 领域目录、业务分包、Domain 禁用 record、边界协议允许按职责选择 record，
+  以及 String 技术 ID 规则通过结构测试。
 - 没有编译错误或失败断言。
 
 Execution 测试必须覆盖启动版本绑定、PAUSE 卡点、外部恢复、取消隔离、

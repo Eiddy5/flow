@@ -2,14 +2,16 @@
 
 ## 状态
 
-Accepted
+Accepted（`Flow.close`、`CLOSED` 与 `flows.status` 已由 ADR 0018 的
+`delete/deleted` 取代；来源聚合已由 ADR 0022 命名为 FlowDraft 并移除固定
+`draft` 字段，来源与 Reversion 分离等其余决策继续有效）
 
 其中 Java 时间表示条款已由
 [`ADR 0015`](0015-use-long-millisecond-java-time.md) 取代。
 
 ## 背景
 
-ADR 0008 已将唯一可编辑来源定义为 `FlowWithSource`，将每次成功部署定义为一个
+ADR 0008 已将唯一可编辑来源定义为 `FlowDraft`，将每次成功部署定义为一个
 完整 `Flow Reversion`；ADR 0013 已要求 YAML 只在部署时解析，并要求 Flow
 保护业务 key、Task 稳定身份和插件物化规则。当前实现和 PostgreSQL Schema
 仍沿用过渡性的单 Flow 聚合：
@@ -35,7 +37,7 @@ ADR 0008 已将唯一可编辑来源定义为 `FlowWithSource`，将每次成功
 ### 方案二：部署后保留来源
 
 部署只读取来源并新增 Flow Reversion，不改变来源。后续编辑继续调用
-`FlowWithSource.revise`，关闭逻辑 Flow 时同时丢弃来源。
+`FlowDraft.revise`，关闭逻辑 Flow 时同时丢弃来源。
 
 ### 方案三：继续使用单 Flow 聚合
 
@@ -46,17 +48,17 @@ ADR 0008 已将唯一可编辑来源定义为 `FlowWithSource`，将每次成功
 
 采用方案二，并完成以下模型与存储迁移：
 
-- 部署成功后保留 `FlowWithSource`，作为下一轮编辑基线。
-- `FlowWithSource` 使用稳定 `id`、`companyId`、原始 `raw`、审计字段和纯技术
+- 部署成功后保留 `FlowDraft`，作为下一轮编辑基线。
+- `FlowDraft` 使用稳定 `id`、`companyId`、原始 `raw`、审计字段和纯技术
   `lockVersion`；它没有业务 `reversion`、状态、description、inputs、outputs
   或 tasks。
 - `Flow` 每个对象和每行记录只表达一个 `id + reversion`。它保存 ADR 0013
   已确认的业务 `key`；同一逻辑 Flow 后续部署不得修改 key。
-- `Flow` 和 `FlowWithSource` 的操作者使用不可变 `ActorRef`，当前快照只包含
+- `Flow` 和 `FlowDraft` 的操作者使用不可变 `ActorRef`，当前快照只包含
   Session 可稳定提供的字符串 `id` 和可选 `name`。
 - Flow 顶层和 Task 的 inputs、outputs 均显式持久化 `{key, type}`。
 - Task `dependOn` 使用独立结构化字段；Task 不再拥有通用 properties。
-- `flow_tasks.properties` 仅作为 Task Plugin 对具体子类型字段的持久化快照，
+- `flow_tasks.properties` 仅作为 TaskExtension 对具体子类型字段的持久化快照，
   由插件显式编码和恢复，不能直接暴露为 Task 基类字段。
 - PostgreSQL 沿用项目已经生效的 `timestamptz`，Java Entry 统一转换为
   `Instant`；不退回旧 bigint 时间格式。

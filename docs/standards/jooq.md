@@ -108,11 +108,15 @@ public final class FlowEntry extends FlowsObject {
 FlowsObject       -> FlowEntry
 ExecutionsObject  -> ExecutionEntry
 TaskRunObject     -> TaskRunEntry
-AssignmentObject  -> ExternalTaskEntry
+ExternalTaskObject -> ExternalTaskEntry
 ```
 
 `XxxObject` 的名称来自数据库表，`XxxEntry` 的名称应表达项目中的持久化语义，不
 要求机械保留表名的单复数形式。
+
+`ExternalTaskObject -> ExternalTaskEntry` 只记录当前迁移遗留的映射实例。ADR
+0016 已移除 ExternalTask 的目标领域地位；新 PAUSE/Resume 代码不得以该示例新增
+依赖。
 
 ### 禁止直接使用
 
@@ -146,10 +150,10 @@ server/src/main/java/org/cses/flow/infrastructure/
     └── flows/
         └── postgres/
             ├── FlowPostgresRepository.java
-            ├── FlowWithSourcePostgresRepository.java
+            ├── FlowDraftPostgresRepository.java
             └── entries/
                 ├── FlowEntry.java
-                ├── FlowWithSourceEntry.java
+                ├── FlowDraftEntry.java
                 └── FlowTaskEntry.java
 ```
 
@@ -217,6 +221,10 @@ Database
 - 同一张表特有的持久化字段组合方法。
 - 只服务于该 Repository 的读取辅助方法。
 
+Entry 和专用 Codec 中的 JSON/JSONB 转换必须同时遵守
+[`json.md`](json.md)，统一使用 PAAS JSON 公共能力，不得直接使用 Jackson
+`ObjectMapper`。
+
 示例：
 
 ```java
@@ -224,14 +232,12 @@ package org.cses.flow.infrastructure.repositories.externaltasks.postgres.entries
 
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
-import org.flow.gen.flow.pojos.AssignmentObject;
+import org.flow.gen.flow.pojos.ExternalTaskObject;
 import org.paas.json.JsonObject;
-import org.paas.json.JsonObjects;
 
 import java.util.Map;
-import java.util.Set;
 
-public final class ExternalTaskEntry extends AssignmentObject {
+public final class ExternalTaskEntry extends ExternalTaskObject {
 
     public static ExternalTaskEntry fromDomain(ExternalTask task) {
         ExternalTaskEntry entry = new ExternalTaskEntry();
@@ -239,7 +245,6 @@ public final class ExternalTaskEntry extends AssignmentObject {
         entry.id = task.id();
         entry.executionId = task.executionId();
         entry.taskRunId = task.taskRunId();
-        entry.allowedOutputs = JsonObjects.FromSet(task.allowedOutputs());
         entry.status = task.status().name();
         entry.outputs = JsonObject.FromMap(task.outputs());
         entry.lockVersion = task.lockVersion();
@@ -247,9 +252,6 @@ public final class ExternalTaskEntry extends AssignmentObject {
     }
 
     public ExternalTask toDomain() {
-        Set<String> restoredAllowedOutputs = allowedOutputs == null
-            ? Set.of()
-            : Set.copyOf(allowedOutputs.asStrings());
         Map<String, Object> restoredOutputs = outputs == null
             ? Map.of()
             : outputs.asMap();
@@ -258,7 +260,6 @@ public final class ExternalTaskEntry extends AssignmentObject {
             companyId,
             executionId,
             taskRunId,
-            restoredAllowedOutputs,
             ExternalTaskStatus.valueOf(status),
             restoredOutputs,
             lockVersion == null ? 0 : lockVersion
@@ -272,7 +273,8 @@ public final class ExternalTaskEntry extends AssignmentObject {
 私有字段绕过领域约束。如果领域对象尚无必要的重建入口，应先补充领域持久化
 契约。
 
-项目自有 Java 类型的时间点统一为 Epoch 毫秒 `long/Long`。PostgreSQL
+项目自有 Java 类型的时间点统一为 Unix timestamp 毫秒值 `long/Long`，完整规则
+见 [`project-development.md`](project-development.md)。PostgreSQL
 `timestamptz` 对应的 `OffsetDateTime` 只允许出现在生成代码和 Entry/Repository
 转换边界；Entry 写入时使用 `Instant.ofEpochMilli(...)` 转换，重建时使用
 `toInstant().toEpochMilli()`，不得把日期时间对象返回给 Core。
@@ -518,3 +520,4 @@ Entry 列表暴露给 Core 调用方。
 12. 查询、更新和删除是否包含租户、主键及并发条件。
 13. 是否复用了传入的 `DSLContext` 和已有事务。
 14. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。
+15. JSON/JSONB 转换是否遵守 `json.md` 并统一使用 PAAS JSON。

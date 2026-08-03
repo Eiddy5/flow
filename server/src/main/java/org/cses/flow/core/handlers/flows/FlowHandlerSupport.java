@@ -2,10 +2,10 @@ package org.cses.flow.core.handlers.flows;
 
 import org.cses.flow.core.domains.flows.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowWithSource;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
-import org.cses.flow.core.repositories.flows.FlowWithSourceRepository;
+import org.cses.flow.core.repositories.flows.FlowDraftRepository;
 import org.jooq.DSLContext;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -47,8 +47,8 @@ public final class FlowHandlerSupport {
         );
     }
 
-    public static FlowWithSource requireSource(
-        FlowWithSourceRepository repository,
+    public static FlowDraft requireDraft(
+        FlowDraftRepository repository,
         DSLContext dsl,
         String companyId,
         String flowId
@@ -56,7 +56,7 @@ public final class FlowHandlerSupport {
         return repository.lockById(dsl, companyId, flowId)
             .orElseThrow(() ->
                 new WorkflowException(
-                    "FlowWithSource does not exist: " + flowId
+                    "FlowDraft does not exist: " + flowId
                 )
             );
     }

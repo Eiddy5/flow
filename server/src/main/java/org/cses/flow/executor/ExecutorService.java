@@ -2,115 +2,312 @@ package org.cses.flow.executor;
 
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.ExecutionStatus;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
+import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.domains.tasks.BranchTask;
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.worker.WorkerTask;
 import org.cses.flow.worker.WorkerTaskResult;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * Execution-level state machine.
+ * Internal state-machine implementation for one {@link ExecutorContext}.
  *
- * <p>This service calculates state and orchestration only. It performs no
- * repository access and never executes a Task implementation.</p>
+ * <p>{@link #advance(ExecutorContext)} owns the plan-and-apply order. Planning
+ * only stages the next batch; applying attaches newly planned TaskRuns to the
+ * Execution and reports whether the aggregate changed.</p>
  */
 @Singleton
 public final class ExecutorService {
 
-    /**
-     * Calculates and creates one TaskRun from the current runnable set. This is
-     * the only method allowed to create TaskRuns.
-     */
-    public Optional<NextTask> handleNext(ExecutorContext<?, ?> context) {
-        Execution execution = context.execution();
-        if (execution.status() == ExecutionStatus.COMPLETED
-            || execution.status() == ExecutionStatus.FAILED
-            || execution.status() == ExecutionStatus.CANCELED) {
-            return Optional.empty();
-        }
+    boolean advance(ExecutorContext context) {
+        handleNext(context);
+        return onNexts(context);
+    }
 
-        List<Task> tasks = context.flow().tasks();
-        SearchResult result = searchTopLevel(context, tasks);
-        if (result.candidate() != null) {
-            Candidate candidate = result.candidate();
-            TaskRun taskRun = execution.createTaskRun(
-                candidate.task().id(),
-                candidate.parentTaskRunId(),
-                candidate.inputs()
-            );
-            return Optional.of(new NextTask(candidate.task(), taskRun));
+    /**
+     * Reconstructs and stages the next runnable TaskRun batch without
+     * changing the Execution aggregate.
+     */
+    void handleNext(ExecutorContext context) {
+        Execution execution = context.execution();
+        if (execution.state().isTerminal()
+            || execution.state().isWaiting()) {
+            context.stageNexts(List.of());
+            return;
         }
-        if (result.settled()) {
-            execution.complete();
-            return Optional.empty();
-        }
-        if (execution.activeTaskRuns().isEmpty()) {
+        if (!execution.state().is(State.Type.CREATED)
+            && !execution.state().is(State.Type.RUNNING)) {
             throw new WorkflowException(
-                "Execution has no runnable Task but the Flow is not settled: "
+                "Execution cannot plan work from "
+                    + execution.state().current()
+                    + ": "
                     + execution.id()
             );
         }
-        return Optional.empty();
+
+        SearchResult result = searchTopLevel(
+            context,
+            context.flow().tasks()
+        );
+        context.stageNexts(result.nexts());
     }
 
-    public void dispatch(
-        ExecutorContext<?, ?> context,
-        NextTask nextTask
-    ) {
-        context.execution().startTaskRun(nextTask.taskRun().id());
-    }
-
-    public void applyResult(
-        ExecutorContext<?, ?> context,
-        WorkerTaskResult result
-    ) {
+    /**
+     * Consumes the staged next batch exactly once and applies its effects.
+     */
+    boolean onNexts(ExecutorContext context) {
+        List<TaskRun> nexts = context.takeNexts();
         Execution execution = context.execution();
-        if (!execution.id().equals(result.executionId())) {
-            throw new IllegalArgumentException(
-                "Worker result belongs to another Execution"
+        if (execution.state().isTerminal()
+            || execution.state().isWaiting()) {
+            if (!nexts.isEmpty()) {
+                throw new IllegalStateException(
+                    "A terminal or waiting Execution cannot accept nexts"
+                );
+            }
+            return false;
+        }
+
+        WorkPlan workPlan = workPlan(
+            context,
+            nexts
+        );
+        List<TaskRun> unattached = nexts.stream()
+            .filter(taskRun ->
+                execution.findTaskRun(taskRun.id()).isEmpty()
+            )
+            .toList();
+
+        boolean updated = false;
+        if (execution.state().is(State.Type.CREATED)
+            && !unattached.isEmpty()) {
+            if (unattached.size() != nexts.size()) {
+                throw new IllegalStateException(
+                    "A CREATED Execution cannot contain TaskRuns"
+                );
+            }
+            execution.startWithTaskRuns(unattached);
+            updated = true;
+        } else if (execution.state().is(State.Type.CREATED)) {
+            requireStartableEmptyPlan(context);
+            execution.start();
+            updated = true;
+        } else if (!unattached.isEmpty()) {
+            execution.addTaskRuns(unattached);
+            updated = true;
+        }
+        if (updated) {
+            context.captureState();
+        }
+
+        if (!nexts.isEmpty()) {
+            for (WorkerTask workerTask : workPlan.workerTasks()) {
+                context.stageWorkerTask(workerTask);
+            }
+            for (TaskRun branchTaskRun : workPlan.branchTaskRuns()) {
+                context.stageBranchTaskRun(branchTaskRun);
+            }
+            return updated;
+        }
+
+        return settle(context) || updated;
+    }
+
+    void dispatch(
+        ExecutorContext context,
+        WorkerTask workerTask
+    ) {
+        requireExecution(context, workerTask.executionId());
+        context.execution().startTaskRun(workerTask.taskRunId());
+        context.captureState();
+    }
+
+    void dispatchBranch(
+        ExecutorContext context,
+        TaskRun plannedTaskRun
+    ) {
+        TaskRun taskRun = context.execution().requireTaskRun(
+            plannedTaskRun.id()
+        );
+        if (!taskRun.state().is(State.Type.CREATED)) {
+            throw new IllegalStateException(
+                "Only a CREATED Branch TaskRun can be handled: "
+                    + taskRun.id()
             );
         }
+        Task task = context.flow().findTask(taskRun.taskId())
+            .orElseThrow(() -> new IllegalStateException(
+                "TaskRun references a missing Task: " + taskRun.taskId()
+            ));
+        if (!(task instanceof BranchTask branchTask)
+            || task instanceof RunnableTask) {
+            throw new IllegalStateException(
+                "Branch dispatch requires only the BranchTask capability: "
+                    + task.type()
+            );
+        }
+
+        Execution execution = context.execution();
+        execution.startTaskRun(taskRun.id());
+        if (branchTask.waitsForResume()) {
+            execution.waitTaskRun(taskRun.id());
+        } else {
+            execution.completeTaskRun(
+                taskRun.id(),
+                task.validateOutputs(Map.of())
+            );
+        }
+        context.captureState();
+    }
+
+    void applyResult(
+        ExecutorContext context,
+        WorkerTaskResult result
+    ) {
+        requireExecution(context, result.executionId());
+        Execution execution = context.execution();
         TaskRun taskRun = execution.requireTaskRun(result.taskRunId());
-        if (taskRun.status() != TaskRunStatus.RUNNING) {
+        if (!taskRun.state().is(State.Type.RUNNING)) {
             throw new IllegalStateException(
                 "Worker result requires a RUNNING TaskRun"
             );
         }
-        switch (result.outcome()) {
+        Task task = context.flow().findTask(taskRun.taskId())
+            .orElseThrow(() -> new WorkflowException(
+                "Task definition does not exist: " + taskRun.taskId()
+            ));
+        switch (result.targetState()) {
             case COMPLETED -> execution.completeTaskRun(
                 taskRun.id(),
-                result.outputs()
+                task.validateOutputs(result.outputs())
             );
-            case RUNNING -> {
-                // A PAUSE-style Task stays RUNNING until a trigger resumes it.
-            }
-            case FAILED -> execution.failTaskRun(
+            case TERMINATED -> execution.failTaskRun(
                 taskRun.id(),
                 result.error()
+            );
+            case CREATED, RUNNING, WAITING -> throw new IllegalStateException(
+                "Worker cannot return " + result.targetState()
+            );
+        }
+        context.captureState();
+    }
+
+    void resume(
+        ExecutorContext context,
+        String taskRunId,
+        Map<String, ?> outputs
+    ) {
+        context.execution().resumeTaskRun(taskRunId, outputs);
+        context.captureState();
+    }
+
+    void cancel(ExecutorContext context) {
+        context.execution().cancel();
+        context.captureState();
+    }
+
+    private static boolean settle(ExecutorContext context) {
+        Execution execution = context.execution();
+        SearchResult current = searchTopLevel(
+            context,
+            context.flow().tasks()
+        );
+        if (!current.nexts().isEmpty()) {
+            throw new IllegalStateException(
+                "The staged next-task plan is stale"
+            );
+        }
+        if (current.settled()) {
+            execution.complete();
+            context.captureState();
+            return true;
+        }
+        if (execution.activeTaskRuns().isEmpty()
+            && !execution.waitingTaskRuns().isEmpty()) {
+            execution.enterWaiting();
+            context.captureState();
+            return true;
+        }
+        if (execution.unfinishedTaskRuns().isEmpty()) {
+            throw new WorkflowException(
+                "Execution has no runnable Task but the Flow is not settled: "
+                + execution.id()
+            );
+        }
+        return false;
+    }
+
+    private static void requireStartableEmptyPlan(
+        ExecutorContext context
+    ) {
+        SearchResult current = searchTopLevel(
+            context,
+            context.flow().tasks()
+        );
+        if (!current.nexts().isEmpty()) {
+            throw new IllegalStateException(
+                "The staged next-task plan is stale"
+            );
+        }
+        if (!current.settled()
+            && context.execution().unfinishedTaskRuns().isEmpty()) {
+            throw new WorkflowException(
+                "Execution has no runnable Task but the Flow is not settled: "
+                    + context.execution().id()
             );
         }
     }
 
-    public void resume(
-        ExecutorContext<?, ?> context,
-        String taskRunId,
-        Map<String, ?> outputs
+    private static WorkPlan workPlan(
+        ExecutorContext context,
+        List<TaskRun> nexts
     ) {
-        context.execution().completeTaskRun(taskRunId, outputs);
-    }
-
-    public void cancel(ExecutorContext<?, ?> context) {
-        context.execution().cancel();
+        List<WorkerTask> workerTasks = new ArrayList<>(nexts.size());
+        List<TaskRun> branchTaskRuns = new ArrayList<>(nexts.size());
+        for (TaskRun taskRun : nexts) {
+            if (!taskRun.state().is(State.Type.CREATED)) {
+                throw new IllegalStateException(
+                    "Only a CREATED TaskRun can be dispatched: "
+                        + taskRun.id()
+                );
+            }
+            Task task = context.flow()
+                .findTask(taskRun.taskId())
+                .orElseThrow(() -> new IllegalStateException(
+                    "TaskRun references a missing Task: " + taskRun.taskId()
+                ));
+            boolean runnable = task instanceof RunnableTask;
+            boolean branch = task instanceof BranchTask;
+            if (runnable == branch) {
+                throw new IllegalStateException(
+                    "Task must implement exactly one runtime capability: "
+                        + task.type()
+                );
+            }
+            if (runnable) {
+                workerTasks.add(new WorkerTask(
+                    context.execution().id(),
+                    taskRun.id(),
+                    task,
+                    taskRun.inputs()
+                ));
+            } else {
+                branchTaskRuns.add(taskRun);
+            }
+        }
+        return new WorkPlan(workerTasks, branchTaskRuns);
     }
 
     private static SearchResult searchTopLevel(
-        ExecutorContext<?, ?> context,
+        ExecutorContext context,
         List<Task> tasks
     ) {
         Execution execution = context.execution();
@@ -119,14 +316,20 @@ public final class ExecutorService {
                 execution.latestTaskRunForTask(task.id());
             if (taskRun.isEmpty()) {
                 if (dependenciesCompleted(context, task)) {
-                    return SearchResult.candidate(
-                        candidate(context, task, null, Map.of())
-                    );
+                    return SearchResult.nexts(List.of(candidate(
+                        context,
+                        task,
+                        null,
+                        Map.of()
+                    )));
                 }
                 return SearchResult.unsettled();
             }
             TaskRun existing = taskRun.orElseThrow();
-            if (existing.status() != TaskRunStatus.COMPLETED) {
+            if (existing.state().is(State.Type.CREATED)) {
+                return SearchResult.nexts(List.of(existing));
+            }
+            if (!existing.state().is(State.Type.COMPLETED)) {
                 return SearchResult.unsettled();
             }
             SearchResult children = searchChildren(
@@ -134,7 +337,7 @@ public final class ExecutorService {
                 task,
                 existing
             );
-            if (!children.settled() || children.candidate() != null) {
+            if (!children.settled() || !children.nexts().isEmpty()) {
                 return children;
             }
         }
@@ -142,11 +345,66 @@ public final class ExecutorService {
     }
 
     private static SearchResult searchChildren(
-        ExecutorContext<?, ?> context,
+        ExecutorContext context,
+        Task parent,
+        TaskRun parentRun
+    ) {
+        if (parent instanceof BranchTask branchTask
+            && branchTask.startsChildrenInParallel()) {
+            return searchParallelChildren(context, parent, parentRun);
+        }
+        return searchSerialChildren(context, parent, parentRun);
+    }
+
+    private static SearchResult searchSerialChildren(
+        ExecutorContext context,
+        Task parent,
+        TaskRun parentRun
+    ) {
+        for (Task child : parent.tasks()) {
+            if (!child.matchesRoute(parentRun.outputs())) {
+                continue;
+            }
+            Optional<TaskRun> childRun = context.execution()
+                .latestTaskRunForTask(child.id());
+            if (childRun.isEmpty()) {
+                if (!dependenciesCompleted(context, child)) {
+                    return SearchResult.unsettled();
+                }
+                return SearchResult.nexts(List.of(candidate(
+                    context,
+                    child,
+                    parentRun.id(),
+                    parentRun.outputs()
+                )));
+            }
+            TaskRun existing = childRun.orElseThrow();
+            if (existing.state().is(State.Type.CREATED)) {
+                return SearchResult.nexts(List.of(existing));
+            }
+            if (!existing.state().is(State.Type.COMPLETED)) {
+                return SearchResult.unsettled();
+            }
+            SearchResult descendants = searchChildren(
+                context,
+                child,
+                existing
+            );
+            if (!descendants.settled()
+                || !descendants.nexts().isEmpty()) {
+                return descendants;
+            }
+        }
+        return SearchResult.settledResult();
+    }
+
+    private static SearchResult searchParallelChildren(
+        ExecutorContext context,
         Task parent,
         TaskRun parentRun
     ) {
         boolean settled = true;
+        List<TaskRun> nexts = new ArrayList<>();
         for (Task child : parent.tasks()) {
             if (!child.matchesRoute(parentRun.outputs())) {
                 continue;
@@ -156,7 +414,7 @@ public final class ExecutorService {
             if (childRun.isEmpty()) {
                 settled = false;
                 if (dependenciesCompleted(context, child)) {
-                    return SearchResult.candidate(candidate(
+                    nexts.add(candidate(
                         context,
                         child,
                         parentRun.id(),
@@ -166,7 +424,12 @@ public final class ExecutorService {
                 continue;
             }
             TaskRun existing = childRun.orElseThrow();
-            if (existing.status() != TaskRunStatus.COMPLETED) {
+            if (existing.state().is(State.Type.CREATED)) {
+                settled = false;
+                nexts.add(existing);
+                continue;
+            }
+            if (!existing.state().is(State.Type.COMPLETED)) {
                 settled = false;
                 continue;
             }
@@ -175,20 +438,16 @@ public final class ExecutorService {
                 child,
                 existing
             );
-            if (descendants.candidate() != null) {
-                return descendants;
-            }
+            nexts.addAll(descendants.nexts());
             if (!descendants.settled()) {
                 settled = false;
             }
         }
-        return settled
-            ? SearchResult.settledResult()
-            : SearchResult.unsettled();
+        return new SearchResult(nexts, settled);
     }
 
     private static boolean dependenciesCompleted(
-        ExecutorContext<?, ?> context,
+        ExecutorContext context,
         Task task
     ) {
         for (String dependencyKey : task.dependOn()) {
@@ -201,16 +460,16 @@ public final class ExecutorService {
             Optional<TaskRun> dependencyRun = context.execution()
                 .latestTaskRunForTask(dependency.id());
             if (dependencyRun.isEmpty()
-                || dependencyRun.orElseThrow().status()
-                    != TaskRunStatus.COMPLETED) {
+                || !dependencyRun.orElseThrow().state()
+                    .is(State.Type.COMPLETED)) {
                 return false;
             }
         }
         return true;
     }
 
-    private static Candidate candidate(
-        ExecutorContext<?, ?> context,
+    private static TaskRun candidate(
+        ExecutorContext context,
         Task task,
         String parentTaskRunId,
         Map<String, ?> parentOutputs
@@ -234,10 +493,13 @@ public final class ExecutorService {
                     dependencyRun.outputs()
                 );
             }
-            inputs.put("dependOnOutputs", Map.copyOf(dependencyOutputs));
+            inputs.put(
+                "dependOnOutputs",
+                Map.copyOf(dependencyOutputs)
+            );
         }
-        return new Candidate(
-            task,
+        return TaskRun.create(
+            task.id(),
             parentTaskRunId,
             Map.copyOf(inputs)
         );
@@ -252,63 +514,67 @@ public final class ExecutorService {
             .findFirst();
     }
 
-    private static final class Candidate {
-
-        private final Task task;
-        private final String parentTaskRunId;
-        private final Map<String, Object> inputs;
-
-        private Candidate(
-            Task task,
-            String parentTaskRunId,
-            Map<String, Object> inputs
-        ) {
-            this.task = task;
-            this.parentTaskRunId = parentTaskRunId;
-            this.inputs = inputs;
-        }
-
-        private Task task() {
-            return task;
-        }
-
-        private String parentTaskRunId() {
-            return parentTaskRunId;
-        }
-
-        private Map<String, Object> inputs() {
-            return inputs;
+    private static void requireExecution(
+        ExecutorContext context,
+        String executionId
+    ) {
+        if (!context.execution().id().equals(executionId)) {
+            throw new IllegalArgumentException(
+                "Worker message belongs to another Execution"
+            );
         }
     }
 
     private static final class SearchResult {
 
-        private final Candidate candidate;
+        private final List<TaskRun> nexts;
         private final boolean settled;
 
-        private SearchResult(Candidate candidate, boolean settled) {
-            this.candidate = candidate;
+        private SearchResult(List<TaskRun> nexts, boolean settled) {
+            this.nexts = List.copyOf(nexts);
             this.settled = settled;
         }
 
-        private static SearchResult candidate(Candidate candidate) {
-            return new SearchResult(candidate, false);
+        private static SearchResult nexts(List<TaskRun> nexts) {
+            return new SearchResult(nexts, false);
         }
 
         private static SearchResult unsettled() {
-            return new SearchResult(null, false);
+            return new SearchResult(List.of(), false);
         }
 
         private static SearchResult settledResult() {
-            return new SearchResult(null, true);
+            return new SearchResult(List.of(), true);
         }
 
-        private Candidate candidate() {
-            return candidate;
+        private List<TaskRun> nexts() {
+            return nexts;
         }
 
         private boolean settled() {
             return settled;
+        }
+    }
+
+    private static final class WorkPlan {
+
+        private final List<WorkerTask> workerTasks;
+        private final List<TaskRun> branchTaskRuns;
+
+        private WorkPlan(
+            List<WorkerTask> workerTasks,
+            List<TaskRun> branchTaskRuns
+        ) {
+            this.workerTasks = List.copyOf(workerTasks);
+            this.branchTaskRuns = List.copyOf(branchTaskRuns);
+        }
+
+        private List<WorkerTask> workerTasks() {
+            return workerTasks;
+        }
+
+        private List<TaskRun> branchTaskRuns() {
+            return branchTaskRuns;
         }
     }
 }

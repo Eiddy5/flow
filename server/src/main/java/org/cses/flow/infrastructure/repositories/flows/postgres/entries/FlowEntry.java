@@ -1,7 +1,6 @@
 package org.cses.flow.infrastructure.repositories.flows.postgres.entries;
 
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowStatus;
 import org.cses.flow.core.domains.tasks.Task;
 import org.flow.gen.flow.pojos.FlowsObject;
 import org.flow.gen.flow.records.FlowsRecord;
@@ -17,7 +16,7 @@ public final class FlowEntry extends FlowsObject {
         entry.id = record.getId();
         entry.key = record.getKey();
         entry.companyId = record.getCompanyId();
-        entry.status = record.getStatus();
+        entry.deleted = record.getDeleted();
         entry.reversion = record.getReversion();
         entry.description = record.getDescription();
         entry.creator = record.getCreator();
@@ -43,7 +42,7 @@ public final class FlowEntry extends FlowsObject {
         entry.id = flow.id();
         entry.key = flow.key();
         entry.companyId = flow.companyId();
-        entry.status = flow.status().name();
+        entry.deleted = flow.isDeleted();
         entry.reversion = flow.reversion();
         entry.description = flow.description();
         entry.creator = ActorRefJsonCodec.encode(flow.creator());
@@ -51,14 +50,14 @@ public final class FlowEntry extends FlowsObject {
         entry.deleter = flow.deleter()
             .map(ActorRefJsonCodec::encode)
             .orElse(null);
-        entry.createdAt = FlowWithSourceEntry.toOffsetDateTime(
+        entry.createdAt = FlowDraftEntry.toOffsetDateTime(
             flow.createdAt()
         );
-        entry.updatedAt = FlowWithSourceEntry.toOffsetDateTime(
+        entry.updatedAt = FlowDraftEntry.toOffsetDateTime(
             flow.updatedAt()
         );
         entry.deletedAt = flow.deletedAt()
-            .map(FlowWithSourceEntry::toOffsetDateTime)
+            .map(FlowDraftEntry::toOffsetDateTime)
             .orElse(null);
         entry.inputs = DataJsonCodec.encode(flow.inputs());
         entry.outputs = DataJsonCodec.encode(flow.outputs());
@@ -80,21 +79,30 @@ public final class FlowEntry extends FlowsObject {
             DataJsonCodec.decodeInputs(inputs, "Flow.inputs"),
             DataJsonCodec.decodeOutputs(outputs, "Flow.outputs"),
             tasks,
+            requiredBoolean(deleted, "Flow.deleted"),
             ActorRefJsonCodec.decode(creator, "Flow.creator"),
             ActorRefJsonCodec.decode(updater, "Flow.updater"),
             ActorRefJsonCodec.decodeOptional(deleter, "Flow.deleter"),
-            FlowWithSourceEntry.toEpochMillis(
+            FlowDraftEntry.toEpochMillis(
                 createdAt,
                 "Flow.createdAt"
             ),
-            FlowWithSourceEntry.toEpochMillis(
+            FlowDraftEntry.toEpochMillis(
                 updatedAt,
                 "Flow.updatedAt"
             ),
             deletedAt == null
                 ? null
-                : deletedAt.toInstant().toEpochMilli(),
-            FlowStatus.valueOf(status)
+                : deletedAt.toInstant().toEpochMilli()
         );
+    }
+
+    private static boolean requiredBoolean(Boolean value, String field) {
+        if (value == null) {
+            throw new IllegalStateException(
+                "Persisted " + field + " must not be null"
+            );
+        }
+        return value;
     }
 }

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN" data-prototype="true">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex,nofollow">
+    <meta
+        name="description"
+        content="Flow Studio 自上而下流程编排画布设计原型"
+    >
+    <title>Flow Studio 画布设计原型</title>
+    <link rel="stylesheet" href="./prototype.css">
+</head>
+<body>
+    <div id="app"></div>
+    <nav
+        class="prototype-switcher"
+        aria-label="设计方案切换"
+    >
+        <span class="prototype-tag">设计原型</span>
+        <button
+            class="switcher-arrow"
+            id="previous-variant"
+            type="button"
+            aria-label="上一个方案"
+        >←</button>
+        <div class="switcher-current">
+            <strong id="variant-key">A</strong>
+            <span id="variant-name">语义容器</span>
+        </div>
+        <div class="switcher-dots" aria-label="可选方案">
+            <button type="button" data-variant="A" aria-label="方案 A"></button>
+            <button type="button" data-variant="B" aria-label="方案 B"></button>
+            <button type="button" data-variant="C" aria-label="方案 C"></button>
+        </div>
+        <button
+            class="switcher-arrow"
+            id="next-variant"
+            type="button"
+            aria-label="下一个方案"
+        >→</button>
+        <span class="switcher-hint">方向键切换</span>
+    </nav>
+    <script src="./prototype.js"></script>
+</body>
+</html>

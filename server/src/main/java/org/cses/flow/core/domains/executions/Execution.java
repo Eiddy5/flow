@@ -1,6 +1,7 @@
 package org.cses.flow.core.domains.executions;
 
-import org.cses.flow.core.exceptions.shared.WorkflowException;
+import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.paas.common.util.StringUtil;
 
 import java.util.ArrayList;
@@ -21,7 +22,7 @@ public final class Execution {
     private final long flowReversion;
     private final List<TaskRun> taskRuns;
     private final boolean persisted;
-    private ExecutionStatus status;
+    private State state;
     private long lockVersion;
     private boolean modified;
 
@@ -42,7 +43,7 @@ public final class Execution {
         }
         this.flowReversion = flowReversion;
         this.taskRuns = new ArrayList<>();
-        this.status = ExecutionStatus.CREATED;
+        this.state = State.created();
         this.persisted = persisted;
     }
 
@@ -68,7 +69,7 @@ public final class Execution {
         String companyId,
         String flowId,
         long flowReversion,
-        ExecutionStatus status,
+        State state,
         long lockVersion,
         List<TaskRun> taskRuns
     ) {
@@ -84,9 +85,9 @@ public final class Execution {
             flowReversion,
             true
         );
-        execution.status = Objects.requireNonNull(
-            status,
-            "Execution status"
+        execution.state = Objects.requireNonNull(
+            state,
+            "Execution state"
         );
         execution.lockVersion = lockVersion;
         if (taskRuns != null) {
@@ -108,7 +109,7 @@ public final class Execution {
             .collect(java.util.stream.Collectors.toCollection(
                 ArrayList::new
             ));
-        this.status = source.status;
+        this.state = source.state;
         this.lockVersion = source.lockVersion;
         this.persisted = source.persisted;
         this.modified = source.modified;
@@ -130,8 +131,8 @@ public final class Execution {
         return flowReversion;
     }
 
-    public ExecutionStatus status() {
-        return status;
+    public State state() {
+        return state;
     }
 
     public long lockVersion() {
@@ -169,6 +170,18 @@ public final class Execution {
             .toList();
     }
 
+    public List<TaskRun> waitingTaskRuns() {
+        return taskRuns.stream()
+            .filter(TaskRun::isWaiting)
+            .toList();
+    }
+
+    public List<TaskRun> unfinishedTaskRuns() {
+        return taskRuns.stream()
+            .filter(TaskRun::isUnfinished)
+            .toList();
+    }
+
     public Optional<TaskRun> lastTaskRun() {
         return taskRuns.isEmpty()
             ? Optional.empty()
@@ -176,9 +189,29 @@ public final class Execution {
     }
 
     public boolean isTerminal() {
-        return status == ExecutionStatus.COMPLETED
-            || status == ExecutionStatus.FAILED
-            || status == ExecutionStatus.CANCELED;
+        return state.isTerminal();
+    }
+
+    public void start() {
+        requireState(State.Type.CREATED);
+        markModified();
+        state = state.running();
+    }
+
+    /**
+     * Starts a new Execution and accepts its first scheduling batch atomically.
+     */
+    public void startWithTaskRuns(List<TaskRun> nexts) {
+        requireState(State.Type.CREATED);
+        List<TaskRun> accepted = validatedTaskRuns(nexts);
+        if (accepted.isEmpty()) {
+            throw new IllegalArgumentException(
+                "The first TaskRun batch must not be empty"
+            );
+        }
+        markModified();
+        state = state.running();
+        taskRuns.addAll(accepted);
     }
 
     public TaskRun createTaskRun(
@@ -186,46 +219,86 @@ public final class Execution {
         String parentId,
         Map<String, ?> inputs
     ) {
-        if (status != ExecutionStatus.CREATED
-            && status != ExecutionStatus.RUNNING) {
-            throw new WorkflowException(
-                "Execution cannot create TaskRun from " + status + ": " + id
-            );
+        TaskRun taskRun = TaskRun.create(taskId, parentId, inputs);
+        addTaskRuns(List.of(taskRun));
+        return requireTaskRun(taskRun.id());
+    }
+
+    /**
+     * Accepts one validated scheduling batch into this aggregate.
+     *
+     * <p>The complete batch is validated before any TaskRun is appended, so a
+     * rejected batch cannot partially change the Execution.</p>
+     */
+    public void addTaskRuns(List<TaskRun> nexts) {
+        requireRunning();
+        List<TaskRun> accepted = validatedTaskRuns(nexts);
+        if (accepted.isEmpty()) {
+            return;
         }
-        if (latestTaskRunForTask(taskId).isPresent()) {
-            throw new WorkflowException(
-                "Execution already has a TaskRun for Task: " + taskId
-            );
-        }
-        String normalizedParentId =
-            parentId == null || parentId.isBlank()
-                ? null
-                : parentId.trim();
-        if (normalizedParentId != null
-            && findTaskRun(normalizedParentId).isEmpty()) {
-            throw new WorkflowException(
-                "Parent TaskRun does not exist: " + normalizedParentId
-            );
-        }
-        TaskRun taskRun = new TaskRun(
-            StringUtil.newId(),
-            taskId,
-            normalizedParentId,
-            inputs
-        );
         markModified();
-        taskRuns.add(taskRun);
-        return taskRun;
+        taskRuns.addAll(accepted);
+    }
+
+    private List<TaskRun> validatedTaskRuns(List<TaskRun> nexts) {
+        Objects.requireNonNull(nexts, "Next TaskRuns");
+        if (nexts.isEmpty()) {
+            return List.of();
+        }
+
+        HashSet<String> taskRunIds = taskRuns.stream()
+            .map(TaskRun::id)
+            .collect(java.util.stream.Collectors.toCollection(
+                HashSet::new
+            ));
+        HashSet<String> taskIds = taskRuns.stream()
+            .map(TaskRun::taskId)
+            .collect(java.util.stream.Collectors.toCollection(
+                HashSet::new
+            ));
+        List<TaskRun> accepted = new ArrayList<>(nexts.size());
+        for (TaskRun next : nexts) {
+            TaskRun taskRun = Objects.requireNonNull(
+                next,
+                "Next TaskRun"
+            );
+            if (!taskRun.state().is(State.Type.CREATED)
+                || !taskRun.outputs().isEmpty()
+                || taskRun.error().isPresent()) {
+                throw new WorkflowException(
+                    "Only a new CREATED TaskRun can be scheduled: "
+                        + taskRun.id()
+                );
+            }
+            if (taskRunIds.contains(taskRun.id())) {
+                throw new WorkflowException(
+                    "Execution already has TaskRun id: " + taskRun.id()
+                );
+            }
+            if (!taskIds.add(taskRun.taskId())) {
+                throw new WorkflowException(
+                    "Execution already has a TaskRun for Task: "
+                        + taskRun.taskId()
+                );
+            }
+            taskRun.parentId().ifPresent(parentId -> {
+                if (!taskRunIds.contains(parentId)) {
+                    throw new WorkflowException(
+                        "Parent TaskRun does not exist: " + parentId
+                    );
+                }
+            });
+            taskRunIds.add(taskRun.id());
+            accepted.add(taskRun.copy());
+        }
+        return accepted;
     }
 
     public void startTaskRun(String taskRunId) {
+        requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
-        requireTaskRunStatus(taskRun, TaskRunStatus.CREATED);
         markModified();
         taskRun.start();
-        if (status == ExecutionStatus.CREATED) {
-            status = ExecutionStatus.RUNNING;
-        }
     }
 
     public void completeTaskRun(
@@ -234,15 +307,47 @@ public final class Execution {
     ) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
-        requireTaskRunStatus(taskRun, TaskRunStatus.RUNNING);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
         markModified();
         taskRun.complete(outputs);
+    }
+
+    public void waitTaskRun(String taskRunId) {
+        requireRunning();
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
+        markModified();
+        taskRun.waitForResult();
+    }
+
+    public void enterWaiting() {
+        requireRunning();
+        if (!activeTaskRuns().isEmpty() || waitingTaskRuns().isEmpty()) {
+            throw new WorkflowException(
+                "Execution can wait only when all unfinished TaskRuns wait: "
+                    + id
+            );
+        }
+        markModified();
+        state = state.waiting();
+    }
+
+    public void resumeTaskRun(
+        String taskRunId,
+        Map<String, ?> outputs
+    ) {
+        requireWaiting();
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        requireTaskRunState(taskRun, State.Type.WAITING);
+        markModified();
+        taskRun.resume(outputs);
+        state = state.running();
     }
 
     public void failTaskRun(String taskRunId, String error) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
-        requireTaskRunStatus(taskRun, TaskRunStatus.RUNNING);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
         if (error == null || error.isBlank()) {
             throw new IllegalArgumentException(
                 "TaskRun error must not be blank"
@@ -250,27 +355,31 @@ public final class Execution {
         }
         markModified();
         taskRun.fail(error);
-        status = ExecutionStatus.FAILED;
+        taskRuns.stream()
+            .filter(other -> other != taskRun)
+            .filter(TaskRun::isUnfinished)
+            .forEach(TaskRun::terminate);
+        state = state.fail();
     }
 
     public void complete() {
         requireRunning();
-        if (!activeTaskRuns().isEmpty()) {
+        if (!unfinishedTaskRuns().isEmpty()) {
             throw new WorkflowException(
                 "Execution has unfinished TaskRun: " + id
             );
         }
         markModified();
-        status = ExecutionStatus.COMPLETED;
+        state = state.complete();
     }
 
     public void cancel() {
-        requireRunning();
+        requireUnfinished();
         markModified();
         taskRuns.stream()
-            .filter(TaskRun::isActive)
-            .forEach(TaskRun::cancel);
-        status = ExecutionStatus.CANCELED;
+            .filter(TaskRun::isUnfinished)
+            .forEach(TaskRun::terminate);
+        state = state.terminate();
     }
 
     public TaskRun requireTaskRun(String taskRunId) {
@@ -308,30 +417,89 @@ public final class Execution {
                 }
             });
         }
-        if (status == ExecutionStatus.COMPLETED
-            && !activeTaskRuns().isEmpty()) {
+        if (state.is(State.Type.CREATED) && !taskRuns.isEmpty()) {
             throw new IllegalArgumentException(
-                "Completed Execution must not have active TaskRuns"
+                "Created Execution must not have TaskRuns"
             );
+        }
+        if (state.is(State.Type.WAITING)
+            && (!activeTaskRuns().isEmpty() || waitingTaskRuns().isEmpty())) {
+            throw new IllegalArgumentException(
+                "Waiting Execution must have only waiting unfinished TaskRuns"
+            );
+        }
+        if (state.isTerminal() && !unfinishedTaskRuns().isEmpty()) {
+            throw new IllegalArgumentException(
+                "Terminal Execution must not have unfinished TaskRuns"
+            );
+        }
+        validateStateRoute();
+    }
+
+    private void validateStateRoute() {
+        List<State.History> stateHistory = state.history();
+        for (int index = 1; index < stateHistory.size(); index++) {
+            State.Type source = stateHistory.get(index - 1).state();
+            State.Type target = stateHistory.get(index).state();
+            boolean valid = switch (source) {
+                case CREATED ->
+                    target == State.Type.RUNNING
+                        || target == State.Type.TERMINATED;
+                case RUNNING ->
+                    target == State.Type.WAITING
+                        || target == State.Type.COMPLETED
+                        || target == State.Type.TERMINATED;
+                case WAITING ->
+                    target == State.Type.RUNNING
+                        || target == State.Type.TERMINATED;
+                case COMPLETED, TERMINATED -> false;
+            };
+            if (!valid) {
+                throw new IllegalArgumentException(
+                    "Invalid Execution state transition from "
+                        + source + " to " + target
+                );
+            }
         }
     }
 
     private void requireRunning() {
-        if (status != ExecutionStatus.RUNNING) {
+        requireState(State.Type.RUNNING);
+    }
+
+    private void requireState(State.Type expected) {
+        if (!state.is(expected)) {
             throw new WorkflowException(
-                "Execution must be RUNNING but was " + status + ": " + id
+                "Execution must be " + expected + " but was " + state
+                    + ": " + id
             );
         }
     }
 
-    private static void requireTaskRunStatus(
+    private void requireWaiting() {
+        if (!state.is(State.Type.WAITING)) {
+            throw new WorkflowException(
+                "Execution must be WAITING but was " + state + ": " + id
+            );
+        }
+    }
+
+    private void requireUnfinished() {
+        if (state.isTerminal()) {
+            throw new WorkflowException(
+                "Execution must be unfinished but was " + state + ": " + id
+            );
+        }
+    }
+
+    private static void requireTaskRunState(
         TaskRun taskRun,
-        TaskRunStatus expected
+        State.Type expected
     ) {
-        if (taskRun.status() != expected) {
+        if (!taskRun.state().is(expected)) {
             throw new WorkflowException(
                 "TaskRun " + taskRun.id() + " must be " + expected
-                    + " but was " + taskRun.status()
+                    + " but was " + taskRun.state()
             );
         }
     }

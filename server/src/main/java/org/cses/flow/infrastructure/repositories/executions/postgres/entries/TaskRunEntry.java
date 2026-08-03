@@ -1,7 +1,7 @@
 package org.cses.flow.infrastructure.repositories.executions.postgres.entries;
 
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.executions.TaskRunStatus;
+import org.cses.flow.core.domains.flows.State;
 import org.flow.gen.flow.pojos.TaskRunObject;
 import org.flow.gen.flow.records.TaskRunRecord;
 import org.paas.json.JsonObject;
@@ -20,6 +20,7 @@ public final class TaskRunEntry extends TaskRunObject {
         entry.taskId = record.getTaskId();
         entry.parentId = record.getParentId();
         entry.status = record.getStatus();
+        entry.stateHistory = record.getStateHistory();
         entry.startAt = record.getStartAt();
         entry.endAt = record.getEndAt();
         entry.inputs = JsonObject.Parse(
@@ -48,7 +49,8 @@ public final class TaskRunEntry extends TaskRunObject {
         entry.executionId = executionId;
         entry.taskId = taskRun.taskId();
         entry.parentId = taskRun.parentId().orElse(null);
-        entry.status = taskRun.status().name();
+        entry.status = taskRun.state().current().name();
+        entry.stateHistory = StateHistoryJsonCodec.encode(taskRun.state());
         entry.inputs = JsonObject.FromMap(taskRun.inputs());
         entry.outputs = JsonObject.FromMap(taskRun.outputs());
         entry.error = taskRun.error().orElse(null);
@@ -70,7 +72,7 @@ public final class TaskRunEntry extends TaskRunObject {
             taskId,
             parentId,
             restoredInputs,
-            TaskRunStatus.valueOf(status),
+            StateHistoryJsonCodec.decode(status, stateHistory),
             restoredOutputs,
             error
         );

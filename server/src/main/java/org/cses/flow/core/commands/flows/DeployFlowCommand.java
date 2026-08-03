@@ -1,7 +1,7 @@
 package org.cses.flow.core.commands.flows;
 
-import org.cses.flow.core.commands.shared.Command;
-import org.cses.flow.core.commands.shared.FlowCommandValidation;
+import org.cses.flow.core.commands.Command;
+import org.cses.flow.core.commands.FlowCommandValidation;
 import org.cses.flow.core.domains.flows.Flow;
 
 public final class DeployFlowCommand implements Command<Flow> {

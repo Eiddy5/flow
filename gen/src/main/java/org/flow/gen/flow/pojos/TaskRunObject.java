@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import org.flow.gen.flow.Tables;
 import org.flow.gen.flow.records.TaskRunRecord;
 import org.flow.gen.flow.tables.TaskRunTable;
+import org.jooq.JSONB;
 import org.paas.json.JsonObject;
 import org.x9.jooq.common.JooqPojo;
 
@@ -39,6 +40,7 @@ public class TaskRunObject extends JooqPojo implements Serializable {
     public OffsetDateTime createdAt;
     public OffsetDateTime updatedAt;
     public OffsetDateTime deletedAt;
+    public JSONB stateHistory;
 
     public TaskRunObject() {}
 
@@ -57,6 +59,7 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.createdAt = value.createdAt;
         this.updatedAt = value.updatedAt;
         this.deletedAt = value.deletedAt;
+        this.stateHistory = value.stateHistory;
     }
 
     public TaskRunObject(
@@ -73,7 +76,8 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         Integer order,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt
+        OffsetDateTime deletedAt,
+        JSONB stateHistory
     ) {
         this.id = id;
         this.executionId = executionId;
@@ -89,6 +93,7 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
+        this.stateHistory = stateHistory;
     }
 
     /**
@@ -287,6 +292,20 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
     }
 
+    /**
+     * Getter for <code>public.task_run.state_history</code>.
+     */
+    public JSONB getStateHistory() {
+        return this.stateHistory;
+    }
+
+    /**
+     * Setter for <code>public.task_run.state_history</code>.
+     */
+    public void setStateHistory(JSONB stateHistory) {
+        this.stateHistory = stateHistory;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -380,6 +399,12 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         }
         else if (!this.deletedAt.equals(other.deletedAt))
             return false;
+        if (this.stateHistory == null) {
+            if (other.stateHistory != null)
+                return false;
+        }
+        else if (!this.stateHistory.equals(other.stateHistory))
+            return false;
         return true;
     }
 
@@ -401,6 +426,7 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
+        result = prime * result + ((this.stateHistory == null) ? 0 : this.stateHistory.hashCode());
         return result;
     }
 
@@ -439,6 +465,7 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         map.put("created_at", createdAt);
         map.put("updated_at", updatedAt);
         map.put("deleted_at", deletedAt);
+        map.put("state_history", stateHistory);
         return map;
     }
 
