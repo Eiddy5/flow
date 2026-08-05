@@ -7,6 +7,10 @@ const demoUrl =
 const chromeExecutable =
     process.env.FLOW_DEMO_CHROME
     || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+const AUTO_TASK_TYPE =
+    "org.cses.flow.extensions.tasks.AutomaticTask";
+const PAUSE_TASK_TYPE =
+    "org.cses.flow.extensions.flow.Pause";
 
 const definition = {
     key: "并行测试1",
@@ -16,7 +20,7 @@ const definition = {
     tasks: [
         {
             key: "auto-task-1",
-            type: "AUTO",
+            type: AUTO_TASK_TYPE,
             inputs: [],
             outputs: [],
             route: "DIRECT",
@@ -24,7 +28,7 @@ const definition = {
             tasks: [
                 {
                     key: "approval-task-1",
-                    type: "PAUSE",
+                    type: PAUSE_TASK_TYPE,
                     inputs: [],
                     outputs: [
                         { key: "decision", type: "STRING" },
@@ -35,7 +39,7 @@ const definition = {
                     tasks: [
                         {
                             key: "auto-task-2",
-                            type: "AUTO",
+                            type: AUTO_TASK_TYPE,
                             inputs: [],
                             outputs: [],
                             route:
@@ -44,7 +48,7 @@ const definition = {
                             tasks: [
                                 {
                                     key: "auto-task-4",
-                                    type: "AUTO",
+                                    type: AUTO_TASK_TYPE,
                                     inputs: [],
                                     outputs: [],
                                     route: "DIRECT",
@@ -55,7 +59,7 @@ const definition = {
                         },
                         {
                             key: "auto-task-3",
-                            type: "AUTO",
+                            type: AUTO_TASK_TYPE,
                             inputs: [],
                             outputs: [],
                             route:
@@ -64,7 +68,7 @@ const definition = {
                             tasks: [
                                 {
                                     key: "auto-task-5",
-                                    type: "AUTO",
+                                    type: AUTO_TASK_TYPE,
                                     inputs: [],
                                     outputs: [],
                                     route: "DIRECT",
@@ -77,7 +81,7 @@ const definition = {
                 },
                 {
                     key: "auto-task-6",
-                    type: "AUTO",
+                    type: AUTO_TASK_TYPE,
                     inputs: [],
                     outputs: [],
                     route: "DIRECT",
@@ -236,7 +240,10 @@ async function main() {
             { exact: false },
         ).waitFor();
         await page.locator(
-            '[data-action="create-task"][data-task-type="AUTO"]',
+            '[data-modal-field="taskType"]',
+        ).selectOption(AUTO_TASK_TYPE);
+        await page.locator(
+            '[data-action="confirm-create-task"]',
         ).click();
         await page.locator('.flow-node[data-path="1"]').waitFor();
 
@@ -256,7 +263,10 @@ async function main() {
             { exact: false },
         ).waitFor();
         await page.locator(
-            '[data-action="create-task"][data-task-type="PAUSE"]',
+            '[data-modal-field="taskType"]',
+        ).selectOption(PAUSE_TASK_TYPE);
+        await page.locator(
+            '[data-action="confirm-create-task"]',
         ).click();
         await page.locator('.flow-node[data-path="0.2"]').waitFor();
 

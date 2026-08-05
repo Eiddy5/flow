@@ -9,7 +9,6 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.BranchTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
@@ -18,6 +17,7 @@ import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.cses.flow.executor.DefaultExecutor;
 import org.cses.flow.executor.ExecutorContext;
+import org.cses.flow.extensions.flow.Pause;
 import org.jooq.DSLContext;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -94,9 +94,10 @@ public final class ResumeExecutionHandler implements CommandHandler<
         ).orElseThrow(() -> new WorkflowException(
             "Execution does not exist: " + executionId
         ));
-        if (!execution.state().is(State.Type.WAITING)) {
+        if (!execution.state().is(State.Type.RUNNING)) {
             throw new WorkflowException(
-                "Only a WAITING Execution can be resumed: " + execution.id()
+                "Only a RUNNING Execution can resume a Pause TaskRun: "
+                    + execution.id()
             );
         }
         Flow flow = FlowHandlerSupport.requireFlow(
@@ -107,9 +108,9 @@ public final class ResumeExecutionHandler implements CommandHandler<
             execution.flowReversion()
         );
         TaskRun taskRun = execution.requireTaskRun(taskRunId);
-        if (!taskRun.state().is(State.Type.WAITING)) {
+        if (!taskRun.state().is(State.Type.PAUSED)) {
             throw new WorkflowException(
-                "Only a WAITING TaskRun can be resumed: " + taskRun.id()
+                "Only a PAUSED TaskRun can be resumed: " + taskRun.id()
             );
         }
         Task task = flow.findTask(taskRun.taskId()).orElseThrow(() ->
@@ -117,15 +118,13 @@ public final class ResumeExecutionHandler implements CommandHandler<
                 "Task definition does not exist: " + taskRun.taskId()
             )
         );
-        if (!(task instanceof BranchTask branchTask)
-            || !branchTask.waitsForResume()) {
+        if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
             throw new WorkflowException(
-                "Only a waiting Branch TaskRun can be resumed: "
+                "Only a paused Orchestration TaskRun can be resumed: "
                     + taskRun.id()
             );
         }
-        Map<String, Object> normalizedOutputs =
-            task.validateOutputs(outputs);
+        Map<String, Object> normalizedOutputs = pause.validateResume(outputs);
 
         return defaultExecutor.resume(
             session,

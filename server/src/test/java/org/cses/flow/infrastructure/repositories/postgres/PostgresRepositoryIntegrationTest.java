@@ -9,12 +9,14 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.flows.ActorRef;
 import org.cses.flow.core.domains.flows.Output;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
+import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.repositories.executions.postgres.ExecutionPostgresRepository;
 import org.cses.flow.infrastructure.repositories.externaltasks.postgres.ExternalTaskPostgresRepository;
 import org.cses.flow.infrastructure.repositories.flows.postgres.FlowPostgresRepository;
 import org.cses.flow.infrastructure.repositories.flows.postgres.FlowDraftPostgresRepository;
+import org.cses.flow.extensions.flow.Pause;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.paas.common.util.StringUtil;
 import org.paas.json.JsonFactory;
+import org.paas.json.JsonObject;
 import org.paas.session.Session;
 import org.paas.session.User;
 import io.micronaut.json.JsonMapper;
@@ -36,9 +39,10 @@ import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
@@ -52,10 +56,11 @@ import static org.flow.gen.flow.Tables.TASK_RUN;
 )
 final class PostgresRepositoryIntegrationTest {
 
-    private final TaskTypeDispatcher taskTypeDispatcher =
-        builtInDispatcher();
+    private final Context plugins = builtInContext(
+        new TestNotificationTask()
+    );
     private final FlowPostgresRepository flowRepository =
-        new FlowPostgresRepository(taskTypeDispatcher);
+        new FlowPostgresRepository(plugins.jacksonMapper());
     private final FlowDraftPostgresRepository draftRepository =
         new FlowDraftPostgresRepository();
     private final ExecutionPostgresRepository executionRepository =
@@ -133,12 +138,11 @@ final class PostgresRepositoryIntegrationTest {
         );
         assertEquals(draft, restoredDraft);
 
-        Flow first = Flow.deploy(
+        Flow first = plugins.deploy(
             companyId,
             draft.id(),
             definition("postgres-flow", "first", "prepare"),
             null,
-            taskTypeDispatcher,
             actor,
             createdAt + 2_000L
         );
@@ -148,12 +152,11 @@ final class PostgresRepositoryIntegrationTest {
         });
         String stableTaskId = first.tasks().getFirst().id();
 
-        Flow second = Flow.deploy(
+        Flow second = plugins.deploy(
             companyId,
             draft.id(),
             definition("postgres-flow", "second", "prepare"),
             first,
-            taskTypeDispatcher,
             actor,
             createdAt + 3_000L
         );
@@ -182,8 +185,8 @@ final class PostgresRepositoryIntegrationTest {
             restoredFlow.tasks().getFirst().outputs()
         );
         assertEquals(
-            "PAUSE",
-            restoredFlow.tasks().getFirst().tasks().getFirst().type()
+            Pause.class.getName(),
+            restoredFlow.tasks().getFirst().tasks().getFirst().getType()
         );
         Flow restoredFirst = read(dsl -> flowRepository.findById(
             dsl,
@@ -296,7 +299,63 @@ final class PostgresRepositoryIntegrationTest {
     }
 
     @Test
-    void schemaUsesAggregateTypesInsteadOfDraftColumns() {
+    void roundTripsAPluginSpecificFieldWithoutACompanionCodec() {
+        ActorRef actor = ActorRef.create(
+            "plugin-user",
+            "Plugin Repository Test"
+        );
+        String flowId = "plugin-flow-" + StringUtil.newId();
+        Flow flow = plugins.deploy(
+            companyId,
+            flowId,
+            Map.of(
+                "key", "plugin-flow",
+                "tasks", List.of(Map.of(
+                    "key", "notify",
+                    "type", TestNotificationTask.class.getCanonicalName(),
+                    "channel", "operations"
+                ))
+            ),
+            null,
+            actor,
+            1_785_312_000_000L
+        );
+
+        write(dsl -> {
+            flowRepository.save(dsl, flow);
+            return null;
+        });
+
+        Flow restored = read(dsl -> flowRepository.findById(
+            dsl,
+            companyId,
+            flowId,
+            1L
+        ).orElseThrow());
+        TestNotificationTask task = assertInstanceOf(
+            TestNotificationTask.class,
+            restored.tasks().getFirst()
+        );
+        assertEquals("operations", task.channel());
+        assertEquals(
+            TestNotificationTask.class.getCanonicalName(),
+            task.getType()
+        );
+        assertEquals(
+            "operations",
+            read(dsl -> JsonObject.Parse(
+                dsl.select(FLOW_TASKS.PROPERTIES)
+                    .from(FLOW_TASKS)
+                    .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
+                    .and(FLOW_TASKS.FLOW_ID.eq(flowId))
+                    .fetchOne(FLOW_TASKS.PROPERTIES)
+                    .data()
+            ).getString("channel"))
+        );
+    }
+
+    @Test
+    void schemaUsesAggregateAndPluginTypes() {
         var columns = DSL.table(DSL.name(
             "information_schema",
             "columns"
@@ -313,6 +372,10 @@ final class PostgresRepositoryIntegrationTest {
             DSL.name("column_name"),
             String.class
         );
+        var dataType = DSL.field(
+            DSL.name("data_type"),
+            String.class
+        );
 
         int draftColumnCount = read(dsl -> dsl.fetchCount(
             columns,
@@ -322,6 +385,15 @@ final class PostgresRepositoryIntegrationTest {
         ));
 
         assertEquals(0, draftColumnCount);
+        assertEquals(
+            "text",
+            read(dsl -> dsl.select(dataType)
+                .from(columns)
+                .where(tableSchema.eq("public"))
+                .and(tableName.eq("flow_tasks"))
+                .and(columnName.eq("type"))
+                .fetchOne(dataType))
+        );
     }
 
     @Test
@@ -342,12 +414,11 @@ final class PostgresRepositoryIntegrationTest {
             return null;
         });
 
-        Flow first = Flow.deploy(
+        Flow first = plugins.deploy(
             companyId,
             draft.id(),
             definition("lifecycle-flow", "first", "prepare"),
             null,
-            taskTypeDispatcher,
             actor,
             createdAt + 1_000L
         );
@@ -355,12 +426,11 @@ final class PostgresRepositoryIntegrationTest {
             flowRepository.save(dsl, first);
             return null;
         });
-        Flow second = Flow.deploy(
+        Flow second = plugins.deploy(
             companyId,
             draft.id(),
             definition("lifecycle-flow", "second", "prepare"),
             first,
-            taskTypeDispatcher,
             actor,
             createdAt + 2_000L
         );
@@ -425,7 +495,7 @@ final class PostgresRepositoryIntegrationTest {
             "description", description,
             "tasks", List.of(Map.of(
                 "key", taskKey,
-                "type", "AUTO",
+                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
                 "inputs", List.of(Map.of(
                     "key", "request",
                     "type", "STRING",
@@ -439,8 +509,12 @@ final class PostgresRepositoryIntegrationTest {
                 "route", "DIRECT",
                 "tasks", List.of(Map.of(
                     "key", "approval",
-                    "type", "PAUSE",
-                    "outputs", List.of(Map.of(
+                    "type", org.cses.flow.extensions.flow.Pause.class.getName(),
+                    "pause", Map.of(
+                        "key", "create-approval",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    ),
+                    "resume", List.of(Map.of(
                         "key", "approved",
                         "type", "STRING"
                     )),

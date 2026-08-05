@@ -2,34 +2,31 @@
 
 > 运行域说明：本文中的 Flow 定义示例仍可参考；涉及 Main/Child
 > Execution、ExecutionTree、TaskRun WAITING 或 USER_TASK 的运行设计已被
-> ADR 0002 取代，不得作为新代码依据。Execution 与 TaskRun 的目标类模型以
-> [Execution 与 TaskRun 领域模型规范](../standards/execution-domain-model.md)
-> 为准。
+> ADR 0002 取代，不得作为新代码依据。Execution、TaskRun 与运行状态的当前选择
+> 通过 [Flow 架构决策索引](README.md) 查找。
 >
 > 定义域说明：本文第 2 章中使用单一 Flow 表达 DRAFT、创建升级 DRAFT、
 > `version` 以及用 CLOSE 表达版本替换的设计已被
 > [ADR 0008](0008-separate-flow-source-from-deployed-flow.md) 取代。当前
-> Flow 定义域以
-> [Flow 定义域模型与生命周期规范](../standards/flow-definition-lifecycle.md)
-> 为准：草稿使用 `FlowDraft`，已部署定义使用 `Flow`，业务版本字段为
+> Flow 定义域以 ADR 0008、ADR 0014、ADR 0018 和 ADR 0022 为准：草稿使用
+> `FlowDraft`，已部署定义使用 `Flow`，业务版本字段为
 > `reversion`；草稿由 FlowDraft 类型表达，删除使用 `deleted` 布尔事实，不使用
 > 定义状态枚举。
 >
 > Task 定义域说明：本文第 3 章的通用 properties、dependOn 类型归属和旧运行
-> 术语不再作为目标类模型依据。Task 的身份、字段、方法、路由、依赖和递归结构
-> 以 [Task 领域模型规范](../standards/task-domain-model.md) 为准。
+> 术语不再作为目标类模型依据。Task、路由、并行和扩展的当前选择通过
+> [Flow 架构决策索引](README.md) 查找。
 >
 > PAUSE 边界说明：本文示例中的审批、表单和人工操作仅用于展示业务场景，不表示
 > 这些能力属于 Flow Core。当前设计中，WAITING PAUSE TaskRun 表达等待事实，
 > 外部能力通过 `ExecutionService.resume(...)` 提交结果；审批、表单、工单等
 > 业务对象由外部能力持有。边界以
-> [ADR 0016](0016-separate-pause-from-external-business-capabilities.md) 和
-> [PAUSE 领域模型规范](../standards/pause-domain-model.md) 为准。
+> [ADR 0016](0016-separate-pause-from-external-business-capabilities.md)、
+> ADR 0017 和 ADR 0024 为准。
 >
 > Data 定义说明：本文 Input、Output 示例中的 Map、字符串列表和旧字段说明不再
 > 作为目标类模型依据。Data 基础接口及 Input、Output 具体对象以
-> [Data、Input 与 Output 领域模型规范](../standards/data-domain-model.md)
-> 为准。
+> [ADR 0019](0019-establish-basic-data-types.md) 为准。
 
 ## 1. 示例
 

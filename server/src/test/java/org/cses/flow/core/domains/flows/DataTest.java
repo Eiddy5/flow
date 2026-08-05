@@ -2,6 +2,7 @@ package org.cses.flow.core.domains.flows;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
+import org.cses.flow.core.domains.flows.inputs.StringInput;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
@@ -128,6 +129,42 @@ class DataTest {
     }
 
     @Test
+    void superBuilderBuildsInheritedInputFields() {
+        StringInput input = StringInput.builder()
+            .key(" request ")
+            .displayName(" 请求 ")
+            .required(false)
+            .defaultValue("payload")
+            .build();
+
+        input.validateDefinition();
+
+        assertEquals("request", input.getKey());
+        assertEquals("请求", input.getDisplayName());
+        assertEquals("payload", input.getDefaultValue());
+        assertEquals(DataType.STRING, input.getType());
+    }
+
+    @Test
+    void settersSupportFrameworkStylePropertyBinding() {
+        IntegerInput input = new IntegerInput();
+        input.setKey(" retryCount ");
+        input.setDisplayName(" 重试次数 ");
+        input.setRequired(true);
+        input.setDefaultValue(3);
+        input.setMin(0);
+        input.setMax(10);
+
+        input.validateDefinition();
+
+        assertEquals("retryCount", input.getKey());
+        assertEquals("重试次数", input.getDisplayName());
+        assertEquals(3, input.getDefaultValue());
+        assertEquals(0, input.getMin());
+        assertEquals(10, input.getMax());
+    }
+
+    @Test
     void jsonPolymorphismRequiresCompleteCommonFields() {
         assertThrows(
             RuntimeException.class,
@@ -204,6 +241,9 @@ class DataTest {
     }
 
     private static Input<?> jsonInput(Map<String, Object> definition) {
-        return JsonObject.FromMap(definition).asObject(Input.class);
+        Input<?> input = JsonObject.FromMap(definition)
+            .asObject(Input.class);
+        input.validateDefinition();
+        return input;
     }
 }

@@ -2,7 +2,8 @@
 
 ## 适用范围
 
-本规范适用于 `server` 模块中 `org.cses.flow.core` 下的写操作。
+本规范适用于 `server` 模块中 `org.cses.flow.core` 下的写操作。Controller 和其他
+模块内调用方都通过同一份 Core Service/Command 链路使用这些规则。
 
 ## 固定调用链
 
@@ -43,7 +44,10 @@ Controller（Core 外）
 
 ## 事务规则
 
-- 事务只由 `CommandExecutor` 使用 `org.x9.jooq.JOOQ.runReturn` 开启。
+- 事务只由 `CommandExecutor` 使用具名 `@Named("flow")` 的
+  `org.x9.jooq.JOOQ.runReturn` 开启。
+- Flow 事务只允许使用 `datasources.flow`；不得注入或回退到宿主的 `default`、
+  `mattermost` 等 JOOQ Bean。
 - `CommandContext` 保存当前事务派生出的 `DSLContext`。
 - Handler 和 Repository 必须使用 `CommandContext.getDsl()`。
 - Handler、Domain 和 Repository 不得自行开启新事务。
@@ -64,7 +68,7 @@ Controller（Core 外）
 - 具体 Handler 统一放在
   `org.cses.flow.core.handlers.<业务模块>`，例如 Flow Handler 放在
   `org.cses.flow.core.handlers.flows`。业务模块分包规则见
-  [`workflow-core-java-model.md`](workflow-core-java-model.md)。
+  [`../project-structure.md`](../project-structure.md)。
 - Handler 名称必须包含动作和领域，例如 `DeployFlowHandler`。
 - 一个 Command 必须且只能注册一个 Handler。
 - Handler 按“加载聚合、调用领域行为、保存聚合、返回结果”的顺序编排。

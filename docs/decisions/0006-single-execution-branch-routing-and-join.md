@@ -94,6 +94,5 @@ TaskRun、活动 TaskRun 和输出重新计算下一批可运行 Task。
   不能改变本 ADR 下已有 Flow 的解释。
 - `dependOn` 暂不保存独立到达记录；顶层顺序和已完成 TaskRun 是当前收敛证据。
 - 更复杂表达式、类型比较、默认分支、超时与重试需要后续 ADR。
-- 单 Execution 并行 TaskRun 的目标类模型和状态边界由
-  [`execution-domain-model.md`](../standards/execution-domain-model.md)
-  统一规定。
+- 单 Execution、TaskRun 状态和并行调度的后续选择由 ADR 0002、ADR 0017、
+  ADR 0020 和 ADR 0021 共同约束；当前决策链见 [`README.md`](README.md)。

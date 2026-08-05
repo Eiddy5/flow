@@ -168,9 +168,8 @@ erDiagram
   已有 Execution，后者拒绝启动已删除逻辑 Flow。
 - 领域、Repository、Service、UC 和集成测试需要同步验证四种合法组合、删除审计、
   禁止恢复、版本不递增及删除后不回退。
-- 目标字段、方法、不变量和具体实现差距由
-  [`flow-definition-lifecycle.md`](../standards/flow-definition-lifecycle.md)
-  统一维护。
+- FlowDraft 独立聚合和移除 `draft` 字段的后续选择由 ADR 0022 修订；当前 Flow
+  生命周期决策链见 [`README.md`](README.md)。
 
 ## 实施
 

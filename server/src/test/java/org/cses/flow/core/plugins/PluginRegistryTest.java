@@ -1,168 +1,181 @@
 package org.cses.flow.core.plugins;
 
-import org.cses.flow.core.domains.tasks.RouteExpression;
-import org.cses.flow.extensions.tasks.AutomaticTaskPlugin;
+import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.RunnableTask;
+import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.runner.RunContext;
+import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
-import java.net.URLClassLoader;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginRegistryTest {
 
-    @TempDir
-    Path serviceRoot;
-
     @Test
-    void registryNormalizesTypesWithinAnExtensionPoint() {
-        AutomaticTaskPlugin plugin = new AutomaticTaskPlugin();
-        PluginRegistry registry = new PluginRegistry(List.of(plugin));
-
-        assertSame(
-            plugin,
-            registry.find(TaskExtension.class, " auto ").orElseThrow()
-        );
-    }
-
-    @Test
-    void registryKeepsTypeNamespacesSeparateByExtensionPoint() {
-        AutomaticTaskPlugin taskPlugin = new AutomaticTaskPlugin();
-        AuditPlugin auditPlugin = new AuditPlugin();
-        PluginRegistry registry = new PluginRegistry(List.of(
-            taskPlugin,
-            auditPlugin
+    void resolvesTheExactCanonicalClassName() {
+        PluginRegistry registry = new DefaultPluginRegistry(List.of(
+            new AutomaticTask(),
+            new SpecialTask()
         ));
 
         assertSame(
-            taskPlugin,
-            registry.find(TaskExtension.class, "auto").orElseThrow()
+            AutomaticTask.class,
+            registry.resolve(AutomaticTask.class.getName(), Task.class)
         );
         assertSame(
-            auditPlugin,
-            registry.find(AuditExtension.class, "auto").orElseThrow()
+            SpecialTask.class,
+            registry.resolve(
+                SpecialTask.class.getCanonicalName(),
+                SpecialExtension.class
+            )
         );
     }
 
     @Test
-    void registryRejectsDuplicateNormalizedTypes() {
+    void describesTheRegisteredCoreBundleInCanonicalOrder() {
+        PluginRegistry registry = new DefaultPluginRegistry(List.of(
+            new SpecialTask(),
+            new AutomaticTask()
+        ));
+
+        assertEquals(1, registry.plugins().size());
+        RegisteredPlugin core = registry.plugins().getFirst();
+        assertEquals(RegisteredPlugin.CORE_NAME, core.name());
+        assertEquals(
+            List.of(
+                AutomaticTask.class.getCanonicalName(),
+                SpecialTask.class.getCanonicalName()
+            ).stream().sorted().toList(),
+            core.tasks().stream()
+                .map(PluginMetadata::canonicalType)
+                .toList()
+        );
+        PluginMetadata<?> metadata = registry.findMetadata(
+            SpecialTask.class.getCanonicalName()
+        ).orElseThrow();
+        assertEquals("Special task", metadata.title());
+        assertEquals("Used to verify plugin metadata.", metadata.description());
+        assertSame(Task.class, metadata.baseClass());
+    }
+
+    @Test
+    void normalizesOptionalDisplayMetadata() {
+        PluginMetadata<Task> metadata = new PluginMetadata<>(
+            AutomaticTask.class,
+            Task.class,
+            " ",
+            " "
+        );
+
+        assertEquals("AutomaticTask", metadata.title());
+        assertEquals("", metadata.description());
+    }
+
+    @Test
+    void doesNotNormalizeOrAliasTypes() {
+        PluginRegistry registry = new DefaultPluginRegistry(List.of(
+            new AutomaticTask()
+        ));
+
+        IllegalArgumentException shortType = assertThrows(
+            IllegalArgumentException.class,
+            () -> registry.resolve("AUTO", Task.class)
+        );
+        assertEquals(
+            "No plugin registered for type: AUTO",
+            shortType.getMessage()
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> registry.resolve(
+                AutomaticTask.class.getName().toLowerCase(),
+                Task.class
+            )
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> registry.resolve(
+                " " + AutomaticTask.class.getName() + " ",
+                Task.class
+            )
+        );
+    }
+
+    @Test
+    void rejectsDuplicateCanonicalTypes() {
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,
-            () -> new PluginRegistry(List.of(
-                new AutomaticTaskPlugin(),
-                new AutomaticTaskPlugin()
+            () -> new DefaultPluginRegistry(List.of(
+                new AutomaticTask(),
+                new AutomaticTask()
             ))
         );
 
-        assertEquals(
-            "Duplicate plugin type 'AUTO' for extension point '"
-                + TaskExtension.class.getName()
-                + "': "
-                + AutomaticTaskPlugin.class.getName()
-                + " and "
-                + AutomaticTaskPlugin.class.getName(),
-            exception.getMessage()
-        );
+        assertTrue(exception.getMessage().contains(
+            "Duplicate plugin type '" + AutomaticTask.class.getName()
+        ));
     }
 
     @Test
-    void registryDiscoversClasspathServiceProviders() throws Exception {
-        Path serviceFile = serviceRoot.resolve(
-            "META-INF/services/" + Plugin.class.getName()
-        );
-        Files.createDirectories(serviceFile.getParent());
-        Files.writeString(
-            serviceFile,
-            AutomaticTaskPlugin.class.getName() + System.lineSeparator(),
-            StandardCharsets.UTF_8
-        );
+    void checksTheRequestedPluginCapability() {
+        PluginRegistry registry = new DefaultPluginRegistry(List.of(
+            new AutomaticTask(),
+            new SpecialTask()
+        ));
 
-        try (URLClassLoader classLoader = new URLClassLoader(
-            new java.net.URL[]{serviceRoot.toUri().toURL()},
-            getClass().getClassLoader()
-        )) {
-            PluginRegistry registry = new PluginRegistry(
-                List.of(),
-                classLoader
-            );
-
-            assertInstanceOf(
-                AutomaticTaskPlugin.class,
-                registry.find(
-                    TaskExtension.class,
-                    "auto"
-                ).orElseThrow()
-            );
-        }
-    }
-
-    @Test
-    void dispatcherRejectsUnknownDefinitionAndPersistedTypes() {
-        TaskTypeDispatcher dispatcher = builtInDispatcher();
-
-        IllegalArgumentException definitionError = assertThrows(
+        IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class,
-            () -> dispatcher.dispatch(
-                "task-1",
-                null,
-                "unknown",
-                "MISSING",
-                List.of(),
-                List.of(),
-                RouteExpression.direct(),
-                List.of(),
-                Map.of(),
-                List.of()
+            () -> registry.resolve(
+                AutomaticTask.class.getCanonicalName(),
+                SpecialExtension.class
             )
         );
-        assertEquals(
-            "No Task extension registered for type: MISSING",
-            definitionError.getMessage()
-        );
-
-        IllegalStateException persistedError = assertThrows(
-            IllegalStateException.class,
-            () -> dispatcher.restore(
-                "task-1",
-                null,
-                "unknown",
-                "MISSING",
-                List.of(),
-                List.of(),
-                RouteExpression.direct(),
-                List.of(),
-                Map.of(),
-                List.of()
-            )
-        );
-        assertEquals(
-            "No Task extension registered for persisted type: MISSING",
-            persistedError.getMessage()
-        );
+        assertTrue(exception.getMessage().contains("is not a"));
     }
 
-    private interface AuditExtension extends Plugin {
+    @Test
+    void rejectsClassesWithoutTheDiscoveryAnnotation() {
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class,
+            () -> new DefaultPluginRegistry(List.of(
+                new UnannotatedPlugin()
+            ))
+        );
+
+        assertTrue(exception.getMessage().contains("missing @Plugin"));
+    }
+
+    private interface SpecialExtension
+        extends org.cses.flow.core.plugins.Plugin {
+    }
+
+    @Plugin(
+        title = "Special task",
+        description = "Used to verify plugin metadata."
+    )
+    public static final class SpecialTask
+        extends Task implements RunnableTask, SpecialExtension {
+
+        public SpecialTask() {
+        }
 
         @Override
-        default Class<? extends Plugin> extensionPoint() {
-            return AuditExtension.class;
+        public RunResult run(RunContext context) {
+            return RunResult.completed(Map.of());
         }
     }
 
-    private static final class AuditPlugin implements AuditExtension {
+    public static final class UnannotatedPlugin
+        implements org.cses.flow.core.plugins.Plugin {
 
-        @Override
-        public String type() {
-            return "AUTO";
+        public UnannotatedPlugin() {
         }
     }
 }

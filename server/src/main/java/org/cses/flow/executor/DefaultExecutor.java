@@ -6,7 +6,7 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.BranchTask;
+import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.externaltasks.ExternalTaskRepository;
@@ -96,22 +96,21 @@ public final class DefaultExecutor {
         boolean executionChanged
     ) {
         while (true) {
-            boolean advanced = executorService.advance(context);
-            executionChanged = executionChanged || advanced;
-            List<TaskRun> branchTaskRuns = context.takeBranchTaskRuns();
+            boolean handled = executorService.handle(context);
+            executionChanged = executionChanged || handled;
+            List<TaskRun> pausedTaskRuns = context.takePausedTaskRuns();
             List<WorkerTask> workerTasks = context.takeWorkerTasks();
-            if (branchTaskRuns.isEmpty() && workerTasks.isEmpty()) {
-                if (executionChanged) {
-                    persist(dsl, context);
-                }
-                return context.execution().copy();
-            }
-
-            for (TaskRun branchTaskRun : branchTaskRuns) {
-                executorService.dispatchBranch(context, branchTaskRun);
+            if (executionChanged) {
                 persist(dsl, context);
                 executionChanged = false;
-                createWaitingResource(dsl, context, branchTaskRun);
+            }
+
+            for (TaskRun pausedTaskRun : pausedTaskRuns) {
+                createWaitingResource(dsl, context, pausedTaskRun);
+            }
+
+            if (workerTasks.isEmpty()) {
+                return context.execution().copy();
             }
 
             for (WorkerTask workerTask : workerTasks) {
@@ -119,8 +118,8 @@ public final class DefaultExecutor {
                 persist(dsl, context);
                 executionChanged = false;
 
-                List<TaskRun> waitingBeforeResult =
-                    context.execution().waitingTaskRuns();
+                List<TaskRun> pausedBeforeResult =
+                    context.execution().pausedTaskRuns();
                 WorkerTaskResult result = workerDispatcher.dispatch(
                     session,
                     dsl,
@@ -133,7 +132,7 @@ public final class DefaultExecutor {
                     cancelWaitingResources(
                         dsl,
                         context,
-                        waitingBeforeResult
+                        pausedBeforeResult
                     );
                     return context.execution().copy();
                 }
@@ -174,8 +173,8 @@ public final class DefaultExecutor {
             .orElseThrow(() -> new IllegalStateException(
                 "TaskRun references a missing Task: " + taskRun.taskId()
             ));
-        if (!(task instanceof BranchTask branchTask)
-            || !branchTask.waitsForResume()) {
+        if (!(task instanceof OrchestrationTask orchestrationTask)
+            || !orchestrationTask.pausesTaskRun()) {
             return;
         }
         String companyId = context.execution().companyId();
@@ -185,7 +184,7 @@ public final class DefaultExecutor {
             taskRun.id()
         ).isPresent()) {
             throw new IllegalStateException(
-                "Waiting Branch TaskRun already has an ExternalTask: "
+                "Paused Orchestration TaskRun already has an ExternalTask: "
                     + taskRun.id()
             );
         }

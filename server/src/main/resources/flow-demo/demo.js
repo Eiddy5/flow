@@ -2,10 +2,26 @@
     "use strict";
 
     const API = "/api/demo";
+    const PLUGIN_API = "/api/plugins";
+    const TASK_TYPES = Object.freeze({
+        AUTO: "org.cses.flow.extensions.tasks.AutomaticTask",
+        PAUSE: "org.cses.flow.extensions.flow.Pause",
+        PARALLEL: "org.cses.flow.extensions.flow.Parallel",
+    });
+    const COMMON_TASK_FIELDS = new Set([
+        "id",
+        "type",
+        "key",
+        "inputs",
+        "outputs",
+        "route",
+        "dependOn",
+        "tasks",
+    ]);
     const STATE_LABELS = {
         CREATED: "已创建",
         RUNNING: "运行中",
-        WAITING: "等待外部结果",
+        PAUSED: "已暂停",
         COMPLETED: "已完成",
         TERMINATED: "已终止",
     };
@@ -67,6 +83,9 @@
         runCollapsed: false,
         modal: null,
         search: "",
+        pluginBundles: [],
+        pluginDetails: new Map(),
+        pluginDetailRequests: new Map(),
     };
 
     let previewTimer = null;
@@ -92,7 +111,7 @@
         return escapeHtml(value);
     }
 
-    async function api(path, options = {}) {
+    async function requestJson(url, options = {}) {
         const request = {
             method: options.method || "GET",
             headers: {
@@ -103,7 +122,7 @@
             request.headers["Content-Type"] = "application/json";
             request.body = JSON.stringify(options.body);
         }
-        const response = await fetch(`${API}${path}`, request);
+        const response = await fetch(url, request);
         if (!response.ok) {
             let message = `${response.status} ${response.statusText}`;
             try {
@@ -123,18 +142,53 @@
         return response.json();
     }
 
+    async function api(path, options = {}) {
+        return requestJson(`${API}${path}`, options);
+    }
+
+    async function pluginApi(path, options = {}) {
+        return requestJson(`${PLUGIN_API}${path}`, options);
+    }
+
+    async function loadPluginDetails(type) {
+        if (!type || state.pluginDetails.has(type)) {
+            return state.pluginDetails.get(type) || null;
+        }
+        if (state.pluginDetailRequests.has(type)) {
+            return state.pluginDetailRequests.get(type);
+        }
+        const request = pluginApi(`/${encodeURIComponent(type)}`)
+            .then((details) => {
+                state.pluginDetails.set(type, details);
+                return details;
+            })
+            .finally(() => {
+                state.pluginDetailRequests.delete(type);
+            });
+        state.pluginDetailRequests.set(type, request);
+        return request;
+    }
+
     async function initialize() {
         bindGlobalEvents();
         try {
-            const [session, dataTypes, drafts, executions] =
+            const [
+                session,
+                dataTypes,
+                pluginBundles,
+                drafts,
+                executions,
+            ] =
                 await Promise.all([
                 api("/session"),
                 api("/data-types"),
+                pluginApi(""),
                 api("/flows"),
                 api("/executions"),
             ]);
             state.session = session;
             state.dataTypes = dataTypes;
+            state.pluginBundles = pluginBundles;
             state.drafts = drafts;
             state.executions = executions;
             if (drafts.length > 0) {
@@ -468,11 +522,11 @@
 
     function renderCanvasStructureSummary(nodes) {
         const parallelCount = nodes.filter(
-            (node) => node.task.type === "PARALLEL",
+            (node) => node.task.type === TASK_TYPES.PARALLEL,
         ).length;
         const subflowCount = nodes.filter(
             (node) =>
-                node.task.type !== "PARALLEL"
+                node.task.type !== TASK_TYPES.PARALLEL
                 && (node.task.tasks || []).length > 0,
         ).length;
         const routeCount = nodes.filter(
@@ -826,7 +880,7 @@
             !routeMissed
             && (
                 replaying
-                || ["CREATED", "RUNNING", "WAITING"].includes(run?.state)
+                || ["CREATED", "RUNNING", "PAUSED"].includes(run?.state)
             );
         const completed = !routeMissed && run?.state === "COMPLETED";
         const semanticBadges = renderNodeSemanticBadges(node);
@@ -850,7 +904,7 @@
                         <span class="node-copy">
                             <strong>${escapeHtml(node.task.key || "未命名任务")}</strong>
                             <span>
-                                ${escapeHtml(node.task.type || "AUTO")}
+                                ${escapeHtml(taskTypeCode(node.task.type))}
                             </span>
                         </span>
                         <span class="node-menu">${icon("chevron")}</span>
@@ -922,7 +976,7 @@
             (task) =>
                 parseRouteExpression(task.route)?.kind === "condition",
         );
-        if (node.task.type === "PARALLEL") {
+        if (node.task.type === TASK_TYPES.PARALLEL) {
             badges.push(
                 '<span class="node-semantic-badge parallel">PARALLEL · 并行</span>',
             );
@@ -1002,7 +1056,7 @@
     }
 
     function renderExecutionFacts(execution) {
-        const active = ["CREATED", "RUNNING", "WAITING"].includes(
+        const active = ["CREATED", "RUNNING", "PAUSED"].includes(
             execution.state,
         );
         return `
@@ -1047,7 +1101,7 @@
                 <span class="fact-detail" title="${escapeAttribute(detail)}">
                     ${escapeHtml(detail)}
                 </span>
-                ${run.state === "WAITING"
+                ${run.state === "PAUSED"
                     ? `<button
                         class="btn btn-primary"
                         data-action="open-resume"
@@ -1158,17 +1212,10 @@
                 <div class="field">
                     <label>任务类型</label>
                     <select data-field="task-type">
-                        <option value="AUTO" ${task.type === "AUTO" ? "selected" : ""}>
-                            AUTO · 自动完成
-                        </option>
-                        <option value="PAUSE" ${task.type === "PAUSE" ? "selected" : ""}>
-                            PAUSE · 外部审批/等待
-                        </option>
-                        <option value="PARALLEL" ${task.type === "PARALLEL" ? "selected" : ""}>
-                            PARALLEL · 显式并行容器
-                        </option>
+                        ${renderTaskTypeOptions(task.type)}
                     </select>
                 </div>
+                ${renderPluginDefinitionFields(task)}
                 ${renderRouteEditor(task)}
                 ${renderDependencyEditor(task)}
                 ${renderDataListEditor(
@@ -1178,20 +1225,26 @@
                     "每个 Input 使用独立字段定义",
                     "添加输入",
                 )}
-                ${renderDataListEditor(
-                    "Task 输出",
-                    "task-outputs",
-                    task.outputs,
-                    task.type === "PAUSE"
-                        ? "审批表单将根据每个 Output 自动生成控件"
-                        : "每个 Output 使用独立字段定义",
-                    "添加输出",
-                )}
-                ${task.type === "PAUSE"
+                ${task.type === TASK_TYPES.PAUSE
+                    ? renderDataListEditor(
+                        "恢复输入",
+                        "task-resume",
+                        task.resume,
+                        "外部 Resume 表单按 Input 的类型、必填、默认值和约束校验",
+                        "添加恢复输入",
+                    )
+                    : renderDataListEditor(
+                        "Task 输出",
+                        "task-outputs",
+                        task.outputs,
+                        "每个 Output 使用独立字段定义",
+                        "添加输出",
+                    )}
+                ${task.type === TASK_TYPES.PAUSE
                     ? `<div class="approval-template">
                         <div>
                             <strong>审批表单预设</strong>
-                            <span>运行时显示同意、拒绝按钮和审批意见，不要求填写 JSON。</span>
+                            <span>运行时根据 Resume Input 显示同意、拒绝按钮和审批意见。</span>
                         </div>
                         <button
                             class="btn btn-ghost"
@@ -1201,7 +1254,7 @@
                         </button>
                     </div>`
                     : ""}
-                ${task.type === "PARALLEL"
+                ${task.type === TASK_TYPES.PARALLEL
                     ? `<div class="inspector-note parallel-note">
                         PARALLEL 是结构节点：完成自身后同时启动所有可运行的直接
                         子任务，并等待所有分支结束后，外层串行流程才会继续。
@@ -1320,7 +1373,7 @@
                             >${icon("plus")} 添加 decision 输出</button>
                         </div>`
                     : `<small>
-                        ${parent.type === "PARALLEL"
+                        ${parent.type === TASK_TYPES.PARALLEL
                             ? "当前父任务是 PARALLEL，所有可运行的 DIRECT 子任务会作为同一并行批次进入。"
                             : "当前父任务不是 PARALLEL，多个 DIRECT 子任务会按定义顺序逐个进入。"}
                     </small>`}
@@ -1451,7 +1504,10 @@
     }
 
     function renderDataListRow(label, listName, item, index) {
-        if (listName.endsWith("-inputs")) {
+        if (
+            listName.endsWith("-inputs")
+            || listName === "task-resume"
+        ) {
             return renderInputDefinitionRow(
                 label,
                 listName,
@@ -1731,13 +1787,17 @@
 
     function renderTaskPickerModal() {
         const placement = state.modal.placement;
+        const plugins = availableTaskPlugins();
+        const selectedPlugin = taskPluginMetadata(
+            state.modal.taskType,
+        ) || plugins[0] || null;
         const child = placement === "child";
         const after = placement === "after";
         const parent = after
             ? parentTaskForPath(state.selectedPath)
             : null;
         const parallelSibling =
-            after && parent?.type === "PARALLEL";
+            after && parent?.type === TASK_TYPES.PARALLEL;
         const title = child
             ? "添加子 Task"
             : after
@@ -1774,42 +1834,40 @@
                                 : "新 Task 会直接写入 Flow.tasks，与现有顶层 Task 同级，并追加到流程末尾。"}
                         添加后可在右侧设置 key、依赖、Route、输入和输出。
                     </p>
-                    <div class="task-picker-grid">
+                    <div class="task-picker-form">
+                        <div class="field">
+                            <label>已注册 Task</label>
+                            <select
+                                data-modal-field="taskType"
+                                ${plugins.length ? "" : "disabled"}
+                            >
+                                ${renderRegisteredTaskOptions(
+                                    selectedPlugin?.type,
+                                )}
+                            </select>
+                            <small>
+                                来自插件注册表，共 ${plugins.length} 种可用 Task
+                            </small>
+                        </div>
+                        ${selectedPlugin
+                            ? renderSelectedTaskPlugin(selectedPlugin)
+                            : `<div class="task-picker-empty">
+                                当前没有已注册的 Task，无法继续编排。
+                            </div>`}
+                    </div>
+                    <div class="modal-actions">
                         <button
-                            class="task-choice"
-                            data-action="create-task"
-                            data-task-type="AUTO"
+                            class="btn btn-ghost"
+                            data-action="close-modal"
                         >
-                            <span class="task-choice-icon">⚡</span>
-                            <span>
-                                <strong>自动任务</strong>
-                                <small>AUTO</small>
-                            </span>
-                            <em>由 Worker 自动执行并继续后续流程</em>
+                            取消
                         </button>
                         <button
-                            class="task-choice pause"
-                            data-action="create-task"
-                            data-task-type="PAUSE"
+                            class="btn btn-primary"
+                            data-action="confirm-create-task"
+                            ${selectedPlugin ? "" : "disabled"}
                         >
-                            <span class="task-choice-icon">Ⅱ</span>
-                            <span>
-                                <strong>外部审批</strong>
-                                <small>PAUSE</small>
-                            </span>
-                            <em>等待用户通过表单提交同意、拒绝和意见</em>
-                        </button>
-                        <button
-                            class="task-choice parallel"
-                            data-action="create-task"
-                            data-task-type="PARALLEL"
-                        >
-                            <span class="task-choice-icon">⑂</span>
-                            <span>
-                                <strong>并行容器</strong>
-                                <small>PARALLEL</small>
-                            </span>
-                            <em>只有该类型的直接子任务会作为并行分支同时启动</em>
+                            ${icon("plus")} 添加 Task
                         </button>
                     </div>
                 </section>
@@ -1921,7 +1979,7 @@
                     : ""}
                 <div class="builder-note">
                     PARALLEL 表达流程语义上的并行；当前 Worker 仍逐个派发候选任务，
-                    但多个 PAUSE 分支可以同时保持 WAITING，不承诺同一线程物理并发。
+                    但多个 PAUSE 分支可以同时保持 PAUSED，不承诺同一线程物理并发。
                 </div>
             </div>
         `;
@@ -1934,7 +1992,6 @@
         const existingOutput = routeOutputs.find(
             (output) => output.key === modal.outputKey,
         );
-        const needsPause = parent?.type !== "PAUSE";
         const output = existingOutput
             || { key: modal.outputKey, type: "STRING" };
         const controlledValues =
@@ -1964,25 +2021,9 @@
                     <small>
                         ${existingOutput
                             ? "参数来自当前节点声明的 outputs"
-                            : "当前节点没有 STRING 输出，创建时会自动新增 decision"}
+                            : "当前节点没有 STRING 输出，请先声明实际可产生的输出"}
                     </small>
                 </div>
-                ${needsPause
-                    ? `<label class="builder-check warning">
-                        <input
-                            type="checkbox"
-                            data-modal-field="convertParentToPause"
-                            ${modal.convertParentToPause ? "checked" : ""}
-                        >
-                        <span>
-                            <strong>将父任务改为 PAUSE</strong>
-                            <small>
-                                当前内置 AUTO 不产生输出。勾选后可通过运行时表单
-                                提交路由值并验证分支。
-                            </small>
-                        </span>
-                    </label>`
-                    : ""}
                 ${renderRouteBranchRow(
                     "命中值 A",
                     "branchAKey",
@@ -2080,23 +2121,15 @@
                 data-modal-field="${escapeAttribute(field)}"
                 aria-label="${escapeAttribute(label)}任务类型"
             >
-                <option value="AUTO" ${value === "AUTO" ? "selected" : ""}>
-                    AUTO
-                </option>
-                <option value="PAUSE" ${value === "PAUSE" ? "selected" : ""}>
-                    PAUSE
-                </option>
-                <option value="PARALLEL" ${value === "PARALLEL" ? "selected" : ""}>
-                    PARALLEL
-                </option>
+                ${renderTaskTypeOptions(value)}
             </select>
         `;
     }
 
     function renderApprovalModal() {
         const modal = state.modal;
-        const decision = approvalDecisionOutput(modal.outputs);
-        const fields = modal.outputs.filter(
+        const decision = approvalDecisionOutput(modal.inputs);
+        const fields = modal.inputs.filter(
             (output) => output.key !== decision?.key,
         );
         const values = decision ? approvalDecisionValues(decision) : null;
@@ -2120,8 +2153,8 @@
                         >${icon("close")}</button>
                     </div>
                     <p>
-                        填写结果后，Flow 会完成当前 PAUSE TaskRun，并继续执行
-                        后续满足条件的 Task。
+                        填写结果后，PAUSE TaskRun 会先恢复为 RUNNING，再由
+                        Executor 状态机继续推进流程。
                     </p>
                     <div id="approval-form" class="approval-form">
                         ${decision
@@ -2292,6 +2325,14 @@
                 updateSaveState();
                 return;
             }
+            if (event.target.matches("[data-plugin-field]")) {
+                if (event.target.dataset.pluginKind === "json") {
+                    return;
+                }
+                updatePluginDefinitionField(event.target);
+                updateSaveState();
+                return;
+            }
             if (event.target.matches("[data-field]")) {
                 updateDefinitionField(
                     event.target.dataset.field,
@@ -2301,7 +2342,7 @@
             }
         });
 
-        document.addEventListener("change", (event) => {
+        document.addEventListener("change", async (event) => {
             if (event.target.matches("[data-modal-field]")) {
                 updateModalField(event.target);
                 render();
@@ -2329,11 +2370,24 @@
                 render();
                 return;
             }
+            if (event.target.matches("[data-plugin-field]")) {
+                updatePluginDefinitionField(event.target);
+                render();
+                return;
+            }
             if (event.target.matches("[data-field]")) {
                 updateDefinitionField(
                     event.target.dataset.field,
                     event.target.value,
                 );
+                if (event.target.dataset.field === "task-type") {
+                    await loadPluginDetails(event.target.value);
+                    const task = selectedTask();
+                    if (task) {
+                        applyPluginDefaults(task, event.target.value);
+                        markDefinitionChanged(false);
+                    }
+                }
                 render();
             }
         });
@@ -2373,10 +2427,16 @@
                 state.selectedPath = element.dataset.taskPath;
                 openTaskPicker(element.dataset.placement || "child");
                 break;
-            case "create-task": {
+            case "confirm-create-task": {
                 const placement = state.modal?.placement || "flow";
+                const taskType = state.modal?.taskType;
+                if (!taskType) {
+                    showToast("当前没有可用的 Task 插件", true);
+                    break;
+                }
                 state.modal = null;
-                addTask(element.dataset.taskType, placement);
+                await loadPluginDetails(taskType);
+                addTask(taskType, placement);
                 break;
             }
             case "open-branch-builder":
@@ -2418,6 +2478,7 @@
                 break;
             case "select-task":
                 state.selectedPath = element.dataset.path;
+                await loadPluginDetails(selectedTask()?.type);
                 render();
                 break;
             case "add-parent-route-output":
@@ -2589,9 +2650,25 @@
             showToast("请先选择一个 Task", true);
             return;
         }
+        if (
+            target === "child"
+            && selectedTask()?.type === TASK_TYPES.PAUSE
+        ) {
+            showToast(
+                "PAUSE 不使用 tasks；请编辑它的 pause 前置任务，或添加同级后续 Task",
+                true,
+            );
+            return;
+        }
+        const firstPlugin = availableTaskPlugins()[0];
+        if (!firstPlugin) {
+            showToast("当前没有已注册的 Task 插件", true);
+            return;
+        }
         state.modal = {
             kind: "task-picker",
             placement: target,
+            taskType: firstPlugin.type,
         };
         render();
     }
@@ -2606,6 +2683,13 @@
             return;
         }
         const parent = selectedTask();
+        if (parent?.type === TASK_TYPES.PAUSE) {
+            showToast(
+                "PAUSE 不使用 tasks；恢复后的流程由同级后续 Task 和 Executor 推进",
+                true,
+            );
+            return;
+        }
         const reserved = new Set();
         const parallel = mode === "parallel";
         const parallelKey = parallel
@@ -2635,12 +2719,11 @@
             parallelKey,
             branchAKey,
             branchBKey,
-            branchAType: parallel ? "PAUSE" : "AUTO",
-            branchBType: parallel ? "PAUSE" : "AUTO",
+            branchAType: parallel ? TASK_TYPES.PAUSE : TASK_TYPES.AUTO,
+            branchBType: parallel ? TASK_TYPES.PAUSE : TASK_TYPES.AUTO,
             branchAValue: values.approve,
             branchBValue: values.reject,
             outputKey: output.key,
-            convertParentToPause: parent.type !== "PAUSE",
             createJoin: true,
             joinKey: uniqueTaskKey("parallel-join", reserved),
         };
@@ -2718,7 +2801,7 @@
         const firstIndex = children.length;
         if (modal.mode === "parallel") {
             const parallelTask = taskDefinition(
-                "PARALLEL",
+                TASK_TYPES.PARALLEL,
                 parallelKey,
             );
             parallelTask.tasks.push(
@@ -2727,7 +2810,7 @@
             );
             children.push(parallelTask);
             if (joinKey) {
-                const join = taskDefinition("AUTO", joinKey);
+                const join = taskDefinition(TASK_TYPES.AUTO, joinKey);
                 join.dependOn = [branchAKey, branchBKey];
                 children.push(join);
             }
@@ -2755,6 +2838,11 @@
             const existingOutput = (parent.outputs || []).find(
                 (output) => output.key === outputKey,
             );
+            if (!existingOutput) {
+                throw new Error(
+                    `父任务必须先声明实际可产生的 STRING 输出 ${outputKey}`,
+                );
+            }
             if (
                 existingOutput
                 && !isStringOutput(existingOutput)
@@ -2762,23 +2850,6 @@
                 throw new Error(
                     `父任务输出 ${outputKey} 必须是 STRING，当前为 ${existingOutput.type}`,
                 );
-            }
-            if (parent.type !== "PAUSE") {
-                if (!modal.convertParentToPause) {
-                    throw new Error(
-                        "当前内置 AUTO 不产生输出；请勾选“将父任务改为 PAUSE”",
-                    );
-                }
-                parent.type = "PAUSE";
-            }
-            ensureRouteOutput(parent, outputKey);
-            if (
-                outputKey === "decision"
-                && !(parent.outputs || []).some(
-                    (output) => output.key === "comment",
-                )
-            ) {
-                parent.outputs.push({ key: "comment", type: "STRING" });
             }
             const branchA = taskDefinition(
                 modal.branchAType,
@@ -2855,6 +2926,13 @@
         const task = selectedTask();
         const parent = parentTaskForPath(state.selectedPath);
         if (!task || !parent) {
+            return;
+        }
+        if (parent.type === TASK_TYPES.PAUSE) {
+            showToast(
+                "PAUSE 的恢复数据由 resume 定义，不能作为 tasks 的父路由输出",
+                true,
+            );
             return;
         }
         const outputKey = uniqueDataKey(parent.outputs, "decision");
@@ -3013,7 +3091,7 @@
             executionId,
             taskRunId,
             taskKey: task?.key || "外部审批",
-            outputs: task?.outputs || [],
+            inputs: task?.resume || [],
         };
         render();
         setTimeout(() => {
@@ -3050,7 +3128,7 @@
     function collectApprovalOutputs(decisionValue) {
         const modal = state.modal;
         const outputs = {};
-        const decision = approvalDecisionOutput(modal.outputs);
+        const decision = approvalDecisionOutput(modal.inputs);
         if (decision && decisionValue !== undefined) {
             outputs[decision.key] = coerceApprovalValue(
                 decisionValue,
@@ -3113,6 +3191,13 @@
             && state.selectedPath !== null
         ) {
             const selected = selectedTask();
+            if (selected?.type === TASK_TYPES.PAUSE) {
+                showToast(
+                    "PAUSE 不使用 tasks；请添加同级后续 Task",
+                    true,
+                );
+                return;
+            }
             selected.tasks = Array.isArray(selected.tasks)
                 ? selected.tasks
                 : [];
@@ -3149,10 +3234,10 @@
 
     function applyApprovalTemplate() {
         const task = selectedTask();
-        if (!task || task.type !== "PAUSE") {
+        if (!task || task.type !== TASK_TYPES.PAUSE) {
             return;
         }
-        task.outputs = approvalTemplateOutputs();
+        task.resume = approvalTemplateInputs();
         markDefinitionChanged();
         render();
         showToast("已应用审批决定和审批意见字段");
@@ -3222,6 +3307,14 @@
                     ? task.outputs
                     : [];
                 return task.outputs;
+            case "task-resume":
+                if (!task || task.type !== TASK_TYPES.PAUSE) {
+                    return null;
+                }
+                task.resume = Array.isArray(task.resume)
+                    ? task.resume
+                    : [];
+                return task.resume;
             default:
                 return null;
         }
@@ -3309,7 +3402,7 @@
             return;
         }
         items.push(
-            listName.endsWith("-inputs")
+            listName.endsWith("-inputs") || listName === "task-resume"
                 ? {
                     key: "",
                     type: "STRING",
@@ -3343,6 +3436,93 @@
         render();
     }
 
+    function pluginSchemaProperties(type) {
+        return state.pluginDetails.get(type)?.schema?.properties || {};
+    }
+
+    function pluginSpecificPropertyNames(type) {
+        return Object.keys(pluginSchemaProperties(type))
+            .filter((name) => !COMMON_TASK_FIELDS.has(name));
+    }
+
+    function removePluginDefinitionFields(task, type) {
+        pluginSpecificPropertyNames(type).forEach((name) => {
+            delete task[name];
+        });
+    }
+
+    function applyPluginDefaults(task, type) {
+        if (type === TASK_TYPES.PAUSE) {
+            task.outputs = [];
+            task.tasks = [];
+            if (!task.pause || typeof task.pause !== "object") {
+                task.pause = taskDefinition(
+                    TASK_TYPES.AUTO,
+                    uniqueTaskKey(`${task.key || "pause"}-action`),
+                );
+            }
+            if (!Array.isArray(task.resume)) {
+                task.resume = approvalTemplateInputs();
+            }
+        }
+        Object.entries(pluginSchemaProperties(type))
+            .filter(([name]) => !COMMON_TASK_FIELDS.has(name))
+            .forEach(([name, schema]) => {
+                if (
+                    !Object.prototype.hasOwnProperty.call(task, name)
+                    && Object.prototype.hasOwnProperty.call(
+                        schema,
+                        "default",
+                    )
+                ) {
+                    task[name] = cloneDefinitionValue(schema.default);
+                }
+            });
+    }
+
+    function cloneDefinitionValue(value) {
+        if (value === null || typeof value !== "object") {
+            return value;
+        }
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    function updatePluginDefinitionField(control) {
+        const task = selectedTask();
+        if (!task) {
+            return;
+        }
+        const field = control.dataset.pluginField;
+        const kind = control.dataset.pluginKind;
+        const required = control.dataset.pluginRequired === "true";
+        const raw = control.value;
+        if (raw === "" && !required) {
+            delete task[field];
+            markDefinitionChanged(false);
+            return;
+        }
+        if (kind === "boolean") {
+            task[field] = raw === "true";
+        } else if (kind === "integer" || kind === "number") {
+            const value = Number(raw);
+            if (!Number.isFinite(value)) {
+                showToast(`${field} 必须是数字`, true);
+                return;
+            }
+            task[field] = value;
+        } else if (kind === "json") {
+            try {
+                task[field] = JSON.parse(raw);
+            } catch {
+                showToast(`${field} 必须是合法 JSON`, true);
+                return;
+            }
+        } else {
+            task[field] = raw;
+        }
+        markDefinitionChanged(false);
+    }
+
     function updateDefinitionField(field, value) {
         if (!state.definition) {
             return;
@@ -3361,8 +3541,10 @@
                 }
                 break;
             case "task-type":
-                if (task) {
+                if (task && task.type !== value) {
+                    removePluginDefinitionFields(task, task.type);
                     task.type = value;
+                    applyPluginDefaults(task, value);
                 }
                 break;
             case "task-route":
@@ -3522,7 +3704,10 @@
             if (!owner || typeof owner !== "object") {
                 return;
             }
-            (Array.isArray(owner.inputs) ? owner.inputs : [])
+            [
+                ...(Array.isArray(owner.inputs) ? owner.inputs : []),
+                ...(Array.isArray(owner.resume) ? owner.resume : []),
+            ]
                 .forEach((input) => {
                     if (!input || typeof input !== "object") {
                         return;
@@ -3546,6 +3731,9 @@
                         changed = true;
                     }
                 });
+            if (owner.pause && typeof owner.pause === "object") {
+                upgradeOwner(owner.pause);
+            }
             (Array.isArray(owner.tasks) ? owner.tasks : [])
                 .forEach(upgradeOwner);
         };
@@ -3696,7 +3884,7 @@
     }
 
     function taskStructureLabel(node) {
-        if (node.task.type === "PARALLEL") {
+        if (node.task.type === TASK_TYPES.PARALLEL) {
             return "显式并行流程";
         }
         if ((node.task.dependOn || []).length > 1) {
@@ -3715,28 +3903,249 @@
             return `主流程 · 串行 ${node.siblingIndex + 1}`;
         }
         const parent = taskAtPath(node.parentPath);
-        return parent?.type === "PARALLEL"
+        return parent?.type === TASK_TYPES.PARALLEL
             ? `并行分支 ${node.siblingIndex + 1}`
             : `子流程 · 串行 ${node.siblingIndex + 1}`;
     }
 
+    function availableTaskPlugins() {
+        return state.pluginBundles.flatMap((plugin) =>
+            (Array.isArray(plugin.tasks) ? plugin.tasks : []).map(
+                (task) => ({
+                    ...task,
+                    pluginName: plugin.name,
+                    pluginTitle: plugin.title || plugin.name,
+                }),
+            )
+        );
+    }
+
+    function taskPluginMetadata(type) {
+        return availableTaskPlugins().find(
+            (plugin) => plugin.type === type,
+        ) || null;
+    }
+
+    function renderTaskTypeOptions(selectedType) {
+        return availableTaskPlugins().map((plugin) => `
+            <option
+                value="${escapeAttribute(plugin.type)}"
+                ${plugin.type === selectedType ? "selected" : ""}
+            >
+                ${escapeHtml(taskTypeCode(plugin.type))}
+                · ${escapeHtml(plugin.title)}
+            </option>
+        `).join("");
+    }
+
+    function renderRegisteredTaskOptions(selectedType) {
+        const groups = state.pluginBundles.map((plugin) => {
+            const tasks = Array.isArray(plugin.tasks) ? plugin.tasks : [];
+            if (tasks.length === 0) {
+                return "";
+            }
+            return `
+                <optgroup label="${escapeAttribute(
+                    plugin.title || plugin.name,
+                )}">
+                    ${tasks.map((task) => `
+                        <option
+                            value="${escapeAttribute(task.type)}"
+                            ${task.type === selectedType ? "selected" : ""}
+                        >
+                            ${escapeHtml(task.title)}
+                            · ${escapeHtml(taskTypeCode(task.type))}
+                        </option>
+                    `).join("")}
+                </optgroup>
+            `;
+        }).join("");
+        return groups || '<option value="">没有已注册 Task</option>';
+    }
+
+    function renderSelectedTaskPlugin(plugin) {
+        const style = taskTypeClass(plugin.type);
+        return `
+            <div class="task-picker-selection ${style}">
+                <span class="task-picker-selection-icon">
+                    ${taskTypeIcon(plugin.type)}
+                </span>
+                <div>
+                    <strong>${escapeHtml(plugin.title)}</strong>
+                    <small>
+                        ${escapeHtml(plugin.pluginTitle)}
+                        · ${escapeHtml(plugin.type)}
+                    </small>
+                    <p>${escapeHtml(
+                        plugin.description || "该 Task 未提供描述",
+                    )}</p>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderPluginDefinitionFields(task) {
+        const details = state.pluginDetails.get(task.type);
+        if (!details?.schema?.properties) {
+            return "";
+        }
+        const required = new Set(details.schema.required || []);
+        const properties = Object.entries(details.schema.properties)
+            .filter(([name]) =>
+                !COMMON_TASK_FIELDS.has(name)
+                && !(
+                    task.type === TASK_TYPES.PAUSE
+                    && name === "resume"
+                )
+            );
+        if (properties.length === 0) {
+            return "";
+        }
+        return `
+            <div class="inspector-divider"></div>
+            <div class="field-section-title">插件配置</div>
+            ${properties.map(([name, schema]) =>
+                renderPluginDefinitionField(
+                    task,
+                    name,
+                    schema,
+                    required.has(name),
+                    details.schema,
+                )
+            ).join("")}
+        `;
+    }
+
+    function renderPluginDefinitionField(
+        task,
+        name,
+        schema,
+        required,
+        rootSchema,
+    ) {
+        schema = resolvedPluginPropertySchema(schema, rootSchema);
+        const kind = pluginPropertyType(schema);
+        const value = Object.prototype.hasOwnProperty.call(task, name)
+            ? task[name]
+            : schema.default;
+        const label = schema.title || name;
+        const description = schema.description || name;
+        const requiredMark = required ? " · 必填" : "";
+        let control;
+        if (Array.isArray(schema.enum)) {
+            control = `
+                <select
+                    data-plugin-field="${escapeAttribute(name)}"
+                    data-plugin-kind="${escapeAttribute(kind)}"
+                    data-plugin-required="${required}"
+                >
+                    ${required ? "" : '<option value="">未设置</option>'}
+                    ${schema.enum.map((item) => `
+                        <option
+                            value="${escapeAttribute(item)}"
+                            ${String(item) === String(value) ? "selected" : ""}
+                        >${escapeHtml(item)}</option>
+                    `).join("")}
+                </select>
+            `;
+        } else if (kind === "boolean") {
+            control = `
+                <select
+                    data-plugin-field="${escapeAttribute(name)}"
+                    data-plugin-kind="boolean"
+                    data-plugin-required="${required}"
+                >
+                    ${required ? "" : '<option value="">未设置</option>'}
+                    <option value="true" ${value === true ? "selected" : ""}>是</option>
+                    <option value="false" ${value === false ? "selected" : ""}>否</option>
+                </select>
+            `;
+        } else if (kind === "array" || kind === "object") {
+            const jsonValue = value === undefined
+                ? ""
+                : JSON.stringify(value, null, 2);
+            control = `
+                <textarea
+                    data-plugin-field="${escapeAttribute(name)}"
+                    data-plugin-kind="json"
+                    data-plugin-required="${required}"
+                    placeholder="JSON"
+                >${escapeHtml(jsonValue)}</textarea>
+            `;
+        } else {
+            const inputType = kind === "integer" || kind === "number"
+                ? "number"
+                : "text";
+            control = `
+                <input
+                    type="${inputType}"
+                    data-plugin-field="${escapeAttribute(name)}"
+                    data-plugin-kind="${escapeAttribute(kind)}"
+                    data-plugin-required="${required}"
+                    value="${escapeAttribute(value ?? "")}"
+                >
+            `;
+        }
+        return `
+            <div class="field">
+                <label>${escapeHtml(label)}${requiredMark}</label>
+                ${control}
+                <small>${escapeHtml(description)}</small>
+            </div>
+        `;
+    }
+
+    function resolvedPluginPropertySchema(schema, rootSchema) {
+        if (!schema?.$ref?.startsWith("#/")) {
+            return schema || {};
+        }
+        const target = schema.$ref.slice(2)
+            .split("/")
+            .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"))
+            .reduce((value, part) => value?.[part], rootSchema);
+        return target
+            ? { ...target, ...schema, $ref: undefined }
+            : schema;
+    }
+
+    function pluginPropertyType(schema) {
+        if (typeof schema?.type === "string") {
+            return schema.type;
+        }
+        if (Array.isArray(schema?.type)) {
+            return schema.type.find((type) => type !== "null") || "string";
+        }
+        const alternative = (schema?.anyOf || schema?.oneOf || [])
+            .find((candidate) => candidate?.type !== "null");
+        return alternative ? pluginPropertyType(alternative) : "string";
+    }
+
+    function taskTypeCode(type) {
+        const entry = Object.entries(TASK_TYPES).find(
+            ([, className]) => className === type,
+        );
+        if (entry) {
+            return entry[0];
+        }
+        const className = String(type || TASK_TYPES.AUTO);
+        return className.split(/[.$]/).at(-1);
+    }
+
     function taskTypeClass(type) {
-        const normalized = String(type || "AUTO").toUpperCase();
-        if (normalized === "PAUSE") {
+        if (type === TASK_TYPES.PAUSE) {
             return "pause";
         }
-        if (normalized === "PARALLEL") {
+        if (type === TASK_TYPES.PARALLEL) {
             return "parallel";
         }
         return "auto";
     }
 
     function taskTypeIcon(type) {
-        const normalized = String(type || "AUTO").toUpperCase();
-        if (normalized === "PAUSE") {
+        if (type === TASK_TYPES.PAUSE) {
             return "Ⅱ";
         }
-        if (normalized === "PARALLEL") {
+        if (type === TASK_TYPES.PARALLEL) {
             return "⑂";
         }
         return "⚡";
@@ -3845,13 +4254,20 @@
     }
 
     function definitionTaskKeys() {
-        const nodes = [];
-        flattenTasks(state.definition?.tasks, null, 0, nodes);
-        return new Set(
-            nodes
-                .map((node) => node.task.key)
-                .filter(Boolean),
-        );
+        const keys = new Set();
+        const visit = (tasks) => {
+            (Array.isArray(tasks) ? tasks : []).forEach((task) => {
+                if (task?.key) {
+                    keys.add(task.key);
+                }
+                if (task?.pause && typeof task.pause === "object") {
+                    visit([task.pause]);
+                }
+                visit(task?.tasks);
+            });
+        };
+        visit(state.definition?.tasks);
+        return keys;
     }
 
     function uniqueTaskKey(base, reserved = new Set()) {
@@ -3888,6 +4304,9 @@
         function visit(tasks) {
             (tasks || []).forEach((task) => {
                 result.push(task);
+                if (task.pause && typeof task.pause === "object") {
+                    visit([task.pause]);
+                }
                 visit(task.tasks);
             });
         }
@@ -4015,10 +4434,20 @@
         }).format(new Date(epochMillis));
     }
 
-    function approvalTemplateOutputs() {
+    function approvalTemplateInputs() {
         return [
-            { key: "decision", type: "STRING" },
-            { key: "comment", type: "STRING" },
+            {
+                key: "decision",
+                type: "STRING",
+                displayName: "审批决定",
+                required: false,
+            },
+            {
+                key: "comment",
+                type: "STRING",
+                displayName: "审批意见",
+                required: false,
+            },
         ];
     }
 
@@ -4087,9 +4516,9 @@
     }
 
     function newTask(type) {
-        const base = type === "PAUSE"
+        const base = type === TASK_TYPES.PAUSE
             ? "approval-task"
-            : type === "PARALLEL"
+            : type === TASK_TYPES.PARALLEL
                 ? "parallel-task"
                 : "auto-task";
         const keys = definitionTaskKeys();
@@ -4102,18 +4531,17 @@
     }
 
     function taskDefinition(type, key) {
-        return {
+        const task = {
             key,
             type,
             inputs: [],
-            outputs:
-                type === "PAUSE"
-                    ? approvalTemplateOutputs()
-                    : [],
+            outputs: [],
             route: "DIRECT",
             dependOn: [],
             tasks: [],
         };
+        applyPluginDefaults(task, type);
+        return task;
     }
 
     function stringifyYaml(value) {

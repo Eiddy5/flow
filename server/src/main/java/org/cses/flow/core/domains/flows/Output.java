@@ -1,5 +1,8 @@
 package org.cses.flow.core.domains.flows;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import java.util.Objects;
 
 /**
@@ -10,7 +13,11 @@ public final class Output implements Data {
     private final String key;
     private final DataType type;
 
-    private Output(String key, DataType type) {
+    @JsonCreator
+    private Output(
+        @JsonProperty("key") String key,
+        @JsonProperty("type") DataType type
+    ) {
         this.key = requireText(key, "Output key");
         this.type = Objects.requireNonNull(type, "Output type");
     }

@@ -1,0 +1,6 @@
+{
+  "sourceCommit": "4ee322ba95e6d858e1b619b6b139b3444b20420d",
+  "sourceCommitShort": "4ee322ba9",
+  "updatedAt": "2026-07-20",
+  "updateRule": "For the next skill refresh, inspect source changes in sourceCommit..HEAD, update affected skills, then replace sourceCommit with the source snapshot reviewed."
+}

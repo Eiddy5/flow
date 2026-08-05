@@ -2,8 +2,7 @@
 
 ## 状态
 
-Accepted（WorkerTaskHandler 发现与双服务文件要求由 ADR 0024 替代；通用 Plugin
-与 TaskExtension 的 ServiceLoader 注册继续有效）
+Superseded by [ADR 0026](0026-use-task-class-as-in-project-plugin.md)
 
 ## 背景
 

@@ -1,5 +1,7 @@
 package org.cses.flow.core.services.executions;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
@@ -7,8 +9,12 @@ import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.RunContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -35,7 +41,9 @@ class Uc07NestedTaskFlowTest {
         "backend-build",
         "frontend-build",
         "backend-review",
-        "frontend-review"
+        "frontend-review",
+        "create-backend-review",
+        "create-frontend-review"
     );
 
     private static final List<String> COMPLETE_RUN_ORDER = List.of(
@@ -45,10 +53,13 @@ class Uc07NestedTaskFlowTest {
         "frontend-build",
         "backend-review",
         "frontend-review",
+        "create-backend-review",
+        "create-frontend-review",
         "integrate-results",
         "security-stage",
         "security-check",
         "security-approve",
+        "create-security-approval",
         "publish-artifact",
         "notify-result"
     );
@@ -61,15 +72,15 @@ class Uc07NestedTaskFlowTest {
             );
             Map<String, Task> tasks = tasksByKey(flow);
 
-            assertEquals(12, tasks.size());
-            assertEquals(12, new HashSet<>(tasks.keySet()).size());
+            assertEquals(15, tasks.size());
+            assertEquals(15, new HashSet<>(tasks.keySet()).size());
             Set<String> taskIds = new HashSet<>();
             tasks.values().forEach(task -> {
                 assertNotNull(task.id());
                 assertFalse(task.id().isBlank());
                 assertTrue(taskIds.add(task.id()));
             });
-            assertDefinitionTopology(tasks);
+            assertDefinitionTopology(flow);
 
             Execution execution = fixture.executionService().create(
                 fixture.session(),
@@ -83,9 +94,9 @@ class Uc07NestedTaskFlowTest {
             );
             assertEquals(flow.id(), execution.flowId());
             assertEquals(flow.reversion(), execution.flowReversion());
-            assertEquals(State.Type.WAITING, execution.state().current());
+            assertEquals(State.Type.RUNNING, execution.state().current());
             assertEquals(INITIAL_RUN_ORDER, taskKeys(execution, flow));
-            assertEquals(6, execution.taskRuns().size());
+            assertEquals(8, execution.taskRuns().size());
 
             TaskRun backendReview = run(execution, tasks.get("backend-review"));
             TaskRun frontendReview = run(
@@ -104,11 +115,16 @@ class Uc07NestedTaskFlowTest {
 
             // PASS-S1-02
             assertCompleted(execution, tasks, "receive-request");
-            assertCompleted(execution, tasks, "prepare-release");
+            assertEquals(
+                State.Type.RUNNING,
+                run(execution, tasks.get("prepare-release"))
+                    .state()
+                    .current()
+            );
             assertCompleted(execution, tasks, "backend-build");
             assertCompleted(execution, tasks, "frontend-build");
-            assertEquals(State.Type.WAITING, backendReview.state().current());
-            assertEquals(State.Type.WAITING, frontendReview.state().current());
+            assertEquals(State.Type.PAUSED, backendReview.state().current());
+            assertEquals(State.Type.PAUSED, frontendReview.state().current());
             assertEquals(ExternalTaskStatus.WAITING, backendExternal.status());
             assertEquals(ExternalTaskStatus.WAITING, frontendExternal.status());
             assertNotEquals(backendExternal.id(), frontendExternal.id());
@@ -117,7 +133,7 @@ class Uc07NestedTaskFlowTest {
             assertEquals(backendReview.id(), backendExternal.taskRunId());
             assertEquals(frontendReview.id(), frontendExternal.taskRunId());
 
-            assertRuntimeTopology(execution, tasks);
+            assertRuntimeTopology(execution, flow);
             assertNoRunsFrom(execution, flow, "integrate-results");
 
             Execution afterBackend =
@@ -157,7 +173,7 @@ class Uc07NestedTaskFlowTest {
                 );
             // PASS-S1-06
             assertEquals(State.Type.COMPLETED, completed.state().current());
-            assertEquals(12, completed.taskRuns().size());
+            assertEquals(15, completed.taskRuns().size());
             assertTrue(completed.taskRuns().stream()
                 .allMatch(run ->
                     run.state().current() == State.Type.COMPLETED
@@ -211,7 +227,7 @@ class Uc07NestedTaskFlowTest {
                 run(afterBackend, tasks.get("backend-review")).outputs()
             );
             assertEquals(
-                State.Type.WAITING,
+                State.Type.PAUSED,
                 run(afterBackend, tasks.get("frontend-review")).state().current()
             );
             assertEquals(
@@ -269,7 +285,7 @@ class Uc07NestedTaskFlowTest {
 
             assertCompleted(afterFrontend, tasks, "security-stage");
             assertEquals(State.Type.COMPLETED, securityCheck.state().current());
-            assertEquals(State.Type.WAITING, securityApprove.state().current());
+            assertEquals(State.Type.PAUSED, securityApprove.state().current());
             assertEquals(
                 securityCheck.id(),
                 securityApprove.parentId().orElseThrow()
@@ -302,9 +318,9 @@ class Uc07NestedTaskFlowTest {
             // PASS-S2-03
             assertEquals(State.Type.COMPLETED, completed.state().current());
             assertEquals(COMPLETE_RUN_ORDER, taskKeys(completed, flow));
-            assertEquals(12, completed.taskRuns().size());
+            assertEquals(15, completed.taskRuns().size());
             assertEquals(
-                12,
+                15,
                 completed.taskRuns().stream()
                     .map(TaskRun::id)
                     .distinct()
@@ -313,7 +329,7 @@ class Uc07NestedTaskFlowTest {
             assertTrue(completed.taskRuns().stream().allMatch(
                 taskRun -> taskRun.state().current() == State.Type.COMPLETED
             ));
-            assertRuntimeTopology(completed, tasks);
+            assertRuntimeTopology(completed, flow);
             assertEquals(
                 Set.of(
                     backendExternal.id(),
@@ -437,7 +453,12 @@ class Uc07NestedTaskFlowTest {
                 externalTask(fixture, frontendExternal.id()).status()
             );
             assertCompleted(canceled, tasks, "receive-request");
-            assertCompleted(canceled, tasks, "prepare-release");
+            assertEquals(
+                State.Type.TERMINATED,
+                run(canceled, tasks.get("prepare-release"))
+                    .state()
+                    .current()
+            );
             assertCompleted(canceled, tasks, "backend-build");
             assertCompleted(canceled, tasks, "frontend-build");
 
@@ -659,19 +680,20 @@ class Uc07NestedTaskFlowTest {
                 movedBackendReviewYaml("uc07-s6-flow")
             );
             Map<String, Task> tasks = tasksByKey(flow);
+            Map<String, String> topology = definitionTopology(flow);
 
             // PASS-S6-01
             assertEquals(
-                tasks.get("prepare-release").id(),
-                tasks.get("backend-review").parentId().orElseThrow()
+                "prepare-release",
+                topology.get("backend-review")
             );
             assertNotEquals(
-                tasks.get("backend-build").id(),
-                tasks.get("backend-review").parentId().orElseThrow()
+                "backend-build",
+                topology.get("backend-review")
             );
             assertEquals(
-                tasks.get("frontend-build").id(),
-                tasks.get("frontend-review").parentId().orElseThrow()
+                "frontend-build",
+                topology.get("frontend-review")
             );
 
             Execution execution = fixture.executionService().create(
@@ -780,9 +802,9 @@ class Uc07NestedTaskFlowTest {
                 flow.id()
             );
 
-            assertEquals(State.Type.WAITING, waiting.state().current());
+            assertEquals(State.Type.RUNNING, waiting.state().current());
             assertEquals(
-                List.of("start", "approval"),
+                List.of("start", "approval", "create-approval"),
                 taskKeys(waiting, flow)
             );
             assertNoRun(waiting, tasks.get("approved"));
@@ -806,6 +828,8 @@ class Uc07NestedTaskFlowTest {
                 List.of(
                     "start",
                     "approval",
+                    "create-approval",
+                    "route-approval",
                     "approved",
                     "approved-finish",
                     "serial-finish"
@@ -819,55 +843,85 @@ class Uc07NestedTaskFlowTest {
         }
     }
 
-    private static void assertDefinitionTopology(Map<String, Task> tasks) {
-        assertTrue(tasks.get("receive-request").parentId().isEmpty());
-        assertTrue(tasks.get("prepare-release").parentId().isEmpty());
+    private static void assertDefinitionTopology(Flow flow) {
+        Map<String, String> topology = definitionTopology(flow);
+        assertEquals(null, topology.get("receive-request"));
+        assertEquals(null, topology.get("prepare-release"));
         assertEquals(
-            tasks.get("prepare-release").id(),
-            tasks.get("backend-build").parentId().orElseThrow()
+            "prepare-release",
+            topology.get("backend-build")
         );
         assertEquals(
-            tasks.get("backend-build").id(),
-            tasks.get("backend-review").parentId().orElseThrow()
+            "backend-build",
+            topology.get("backend-review")
         );
         assertEquals(
-            tasks.get("prepare-release").id(),
-            tasks.get("frontend-build").parentId().orElseThrow()
+            "backend-review",
+            topology.get("create-backend-review")
         );
         assertEquals(
-            tasks.get("frontend-build").id(),
-            tasks.get("frontend-review").parentId().orElseThrow()
-        );
-        assertTrue(tasks.get("integrate-results").parentId().isEmpty());
-        assertTrue(tasks.get("security-stage").parentId().isEmpty());
-        assertEquals(
-            tasks.get("security-stage").id(),
-            tasks.get("security-check").parentId().orElseThrow()
+            "prepare-release",
+            topology.get("frontend-build")
         );
         assertEquals(
-            tasks.get("security-check").id(),
-            tasks.get("security-approve").parentId().orElseThrow()
+            "frontend-build",
+            topology.get("frontend-review")
         );
-        assertTrue(tasks.get("publish-artifact").parentId().isEmpty());
-        assertTrue(tasks.get("notify-result").parentId().isEmpty());
+        assertEquals(
+            "frontend-review",
+            topology.get("create-frontend-review")
+        );
+        assertEquals(null, topology.get("integrate-results"));
+        assertEquals(null, topology.get("security-stage"));
+        assertEquals(
+            "security-stage",
+            topology.get("security-check")
+        );
+        assertEquals(
+            "security-check",
+            topology.get("security-approve")
+        );
+        assertEquals(
+            "security-approve",
+            topology.get("create-security-approval")
+        );
+        assertEquals(null, topology.get("publish-artifact"));
+        assertEquals(null, topology.get("notify-result"));
     }
 
     private static void assertRuntimeTopology(
         Execution execution,
-        Map<String, Task> tasks
+        Flow flow
     ) {
+        Map<String, Task> tasks = tasksByKey(flow);
+        Map<String, String> definitionTopology = definitionTopology(flow);
         Map<String, String> expected = new LinkedHashMap<>();
         execution.taskRuns().forEach(taskRun -> {
             Task task = taskById(tasks, taskRun.taskId());
-            expected.put(task.key(), task.parentId()
-                .map(parentId -> tasks.values().stream()
-                    .filter(parent -> parent.id().equals(parentId))
-                    .map(Task::key)
-                    .findFirst()
-                    .orElseThrow())
-                .orElse(null));
+            expected.put(task.key(), definitionTopology.get(task.key()));
         });
         assertEquals(expected, runtimeTopology(execution, tasks));
+    }
+
+    private static Map<String, String> definitionTopology(Flow flow) {
+        Map<String, String> topology = new LinkedHashMap<>();
+        appendDefinitionTopology(flow.tasks(), null, topology);
+        return topology;
+    }
+
+    private static void appendDefinitionTopology(
+        List<Task> tasks,
+        String parentKey,
+        Map<String, String> topology
+    ) {
+        for (Task task : tasks) {
+            topology.put(task.key(), parentKey);
+            appendDefinitionTopology(
+                task.definitionChildren(),
+                task.key(),
+                topology
+            );
+        }
     }
 
     private static Map<String, String> runtimeTopology(
@@ -910,7 +964,7 @@ class Uc07NestedTaskFlowTest {
             run(execution, tasks.get(completedKey)).outputs()
         );
         assertEquals(
-            State.Type.WAITING,
+            State.Type.PAUSED,
             run(execution, tasks.get(waitingKey)).state().current()
         );
         assertEquals(
@@ -1020,7 +1074,7 @@ class Uc07NestedTaskFlowTest {
         return tasks.stream()
             .flatMap(task -> java.util.stream.Stream.concat(
                 java.util.stream.Stream.of(task),
-                flatten(task.tasks()).stream()
+                flatten(task.definitionChildren()).stream()
             ))
             .toList();
     }
@@ -1088,52 +1142,61 @@ class Uc07NestedTaskFlowTest {
             description: 两层嵌套 Task 长流程
             tasks:
               - key: receive-request
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
 
               - key: prepare-release
-                type: PARALLEL
+                type: org.cses.flow.extensions.flow.Parallel
                 tasks:
                   - key: backend-build
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     tasks:
                       - key: backend-review
-                        type: PAUSE
-                        outputs:
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: create-backend-review
+                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                        resume:
                           - key: backendResult
                             type: STRING
 
                   - key: frontend-build
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     tasks:
                       - key: frontend-review
-                        type: PAUSE
-                        outputs:
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: create-frontend-review
+                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                        resume:
                           - key: frontendResult
                             type: STRING
 
               - key: integrate-results
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 dependOn:
                   - backend-review
                   - frontend-review
 
               - key: security-stage
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 tasks:
                   - key: security-check
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     tasks:
                       - key: security-approve
-                        type: PAUSE
-                        outputs:
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: create-security-approval
+                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                        resume:
                           - key: securityDecision
                             type: STRING
 
               - key: publish-artifact
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
 
               - key: notify-result
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(key);
     }
 
@@ -1143,52 +1206,61 @@ class Uc07NestedTaskFlowTest {
             description: 上移 backend review 的两层流程
             tasks:
               - key: receive-request
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
 
               - key: prepare-release
-                type: PARALLEL
+                type: org.cses.flow.extensions.flow.Parallel
                 tasks:
                   - key: backend-build
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
 
                   - key: backend-review
-                    type: PAUSE
-                    outputs:
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: create-backend-review
+                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                    resume:
                       - key: backendResult
                         type: STRING
 
                   - key: frontend-build
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     tasks:
                       - key: frontend-review
-                        type: PAUSE
-                        outputs:
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: create-frontend-review
+                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                        resume:
                           - key: frontendResult
                             type: STRING
 
               - key: integrate-results
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 dependOn:
                   - backend-review
                   - frontend-review
 
               - key: security-stage
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 tasks:
                   - key: security-check
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     tasks:
                       - key: security-approve
-                        type: PAUSE
-                        outputs:
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: create-security-approval
+                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                        resume:
                           - key: securityDecision
                             type: STRING
 
               - key: publish-artifact
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
 
               - key: notify-result
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(key);
     }
 
@@ -1198,25 +1270,60 @@ class Uc07NestedTaskFlowTest {
             description: 普通同级子任务默认串行
             tasks:
               - key: start
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 tasks:
                   - key: approval
-                    type: PAUSE
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: create-approval
+                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                    resume:
+                      - key: decision
+                        type: STRING
+                  - key: route-approval
+                    type: org.cses.flow.core.services.executions.Uc07NestedTaskFlowTest.ResumeDecisionTask
+                    dependOn:
+                      - approval
                     outputs:
                       - key: decision
                         type: STRING
                     tasks:
                       - key: approved
-                        type: AUTO
+                        type: org.cses.flow.extensions.tasks.AutomaticTask
                         route: outputs.decision == "APPROVED"
                         tasks:
                           - key: approved-finish
-                            type: AUTO
+                            type: org.cses.flow.extensions.tasks.AutomaticTask
                       - key: rejected
-                        type: AUTO
+                        type: org.cses.flow.extensions.tasks.AutomaticTask
                         route: outputs.decision == "REJECTED"
                   - key: serial-finish
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(key);
+    }
+
+    /** Copies a resumed decision into a normal parent output for UC routing. */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static final class ResumeDecisionTask
+        extends Task implements RunnableTask {
+
+        @Override
+        public RunResult run(RunContext context) {
+            Object dependencies = context.inputs().get("dependOnOutputs");
+            if (!(dependencies instanceof Map<?, ?> byTask)) {
+                return RunResult.completed(Map.of());
+            }
+            Object approval = byTask.get("approval");
+            if (!(approval instanceof Map<?, ?> outputs)
+                || !outputs.containsKey("decision")) {
+                return RunResult.completed(Map.of());
+            }
+            return RunResult.completed(Map.of(
+                "decision",
+                outputs.get("decision")
+            ));
+        }
     }
 }

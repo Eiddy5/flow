@@ -4,7 +4,8 @@
 
 Accepted（`Flow.close`、`CLOSED` 与 `flows.status` 已由 ADR 0018 的
 `delete/deleted` 取代；来源聚合已由 ADR 0022 命名为 FlowDraft 并移除固定
-`draft` 字段，来源与 Reversion 分离等其余决策继续有效）
+`draft` 字段；TaskExtension 显式 properties 编解码由 ADR 0026 的通用 Jackson
+持久化取代；来源与 Reversion 分离等其余决策继续有效）
 
 其中 Java 时间表示条款已由
 [`ADR 0015`](0015-use-long-millisecond-java-time.md) 取代。

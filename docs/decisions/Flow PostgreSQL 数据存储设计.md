@@ -3,15 +3,14 @@
 > 修订说明：本文使用 `key + version`、数据库自增 Flow id 和 `CLOSE` 的结构
 > 早于 ADR 0008，当前仅保留为历史存储方案，不能直接作为目标领域模型的建表
 > 依据。`FlowDraft`、稳定 String `id`、`reversion`、`deleted` 以及两类
-> Repository 的目标边界以
-> [Flow 定义域模型与生命周期规范](../standards/flow-definition-lifecycle.md)
-> 为准；正式迁移数据库前必须重新形成存储 ADR 和迁移方案。
+> Repository 的目标边界以 ADR 0008、ADR 0014、ADR 0018 和 ADR 0022 为准；
+> 正式迁移数据库前必须重新形成存储 ADR 和迁移方案。
 > Task 的目标字段和类型扩展边界以
-> [Task 领域模型规范](../standards/task-domain-model.md) 为准，本文中的
+> [Flow 架构决策索引](README.md) 中的 Task 决策链为准，本文中的
 > `task_properties` 设计不得直接反推领域 `Map`。
 > Data、Input、Output 的身份和类型边界以
-> [Data、Input 与 Output 领域模型规范](../standards/data-domain-model.md)
-> 为准，正式存储模型必须使用 key、type；类型代码和运行值规则确认后再收紧
+> [ADR 0019](0019-establish-basic-data-types.md) 为准，正式存储模型必须使用
+> key、type；类型代码和运行值规则确认后再收紧
 > 对应校验。
 
 ## 1. 设计范围

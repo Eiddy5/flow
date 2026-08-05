@@ -3,10 +3,10 @@
 ## 状态
 
 Accepted（其中过渡期 `FlowDefinition`、Draft 创建入口和迁移差距描述由
-ADR 0014 取代；classpath 插件发现以及包括 `TaskTypeDispatcher` 在内的
-`core/plugins` 目录归属由 ADR 0023
-补充；Input 定义片段的多态物化方式由 ADR 0019 的 2026-08-03 修订取代，集中
-YAML 解析与 Task 扩展注册决定继续生效）
+ADR 0014 取代；Input 定义片段的多态物化方式由 ADR 0019 的 2026-08-03 修订
+取代；TaskExtension/Dispatcher、类型规范化和 Flow 直接消费 Map 的部署链路由
+[ADR 0026](0026-use-task-class-as-in-project-plugin.md) 取代。集中、严格的 YAML
+格式边界继续有效）
 
 ## 背景
 

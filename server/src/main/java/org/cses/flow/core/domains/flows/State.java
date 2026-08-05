@@ -14,8 +14,11 @@ public final class State {
     public enum Type {
         CREATED,
         RUNNING,
-        WAITING,
+        PAUSED,
         COMPLETED,
+        WARNING,
+        CANCELLED,
+        FAILED,
         TERMINATED
     }
 
@@ -64,8 +67,8 @@ public final class State {
         return current == Type.CREATED || current == Type.RUNNING;
     }
 
-    public boolean isWaiting() {
-        return current == Type.WAITING;
+    public boolean isPaused() {
+        return current == Type.PAUSED;
     }
 
     public boolean isTerminal() {
@@ -88,8 +91,8 @@ public final class State {
         return withState(Type.RUNNING);
     }
 
-    public State waiting() {
-        return withState(Type.WAITING);
+    public State paused() {
+        return withState(Type.PAUSED);
     }
 
     public State complete() {
@@ -143,14 +146,13 @@ public final class State {
             case CREATED ->
                 target == Type.RUNNING || target == Type.TERMINATED;
             case RUNNING ->
-                target == Type.WAITING
+                target == Type.PAUSED
                     || target == Type.COMPLETED
                     || target == Type.TERMINATED;
-            case WAITING ->
+            case PAUSED ->
                 target == Type.RUNNING
-                    || target == Type.COMPLETED
                     || target == Type.TERMINATED;
-            case COMPLETED, TERMINATED -> false;
+            case COMPLETED, WARNING, CANCELLED, FAILED, TERMINATED -> false;
         };
     }
 

@@ -1,89 +1,25 @@
 package org.cses.flow.extensions.tasks;
 
-import org.cses.flow.core.domains.flows.Input;
-import org.cses.flow.core.domains.flows.Output;
-import org.cses.flow.core.domains.tasks.RunContext;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.domains.tasks.RunResult;
-import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Plugin;
 
-import java.util.List;
 import java.util.Map;
 
 /**
- * Minimal automatic Task extension used by the first lifecycle use case.
+ * Minimal automatic Task used by the first lifecycle use case.
  */
+@Plugin(
+    title = "自动任务",
+    description = "由 Worker 自动执行并继续后续流程"
+)
+@SuperBuilder
+@NoArgsConstructor
 public final class AutomaticTask extends Task implements RunnableTask {
-
-    public static final String TYPE = "AUTO";
-
-    private AutomaticTask(
-        String id,
-        String parentId,
-        String key,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        RouteExpression route,
-        List<String> dependOn,
-        List<? extends Task> tasks
-    ) {
-        super(
-            id,
-            parentId,
-            key,
-            TYPE,
-            inputs,
-            outputs,
-            route,
-            dependOn,
-            tasks
-        );
-    }
-
-    public static AutomaticTask create(
-        String id,
-        String parentId,
-        String key,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        RouteExpression route,
-        List<String> dependOn,
-        List<? extends Task> tasks
-    ) {
-        return new AutomaticTask(
-            id,
-            parentId,
-            key,
-            inputs,
-            outputs,
-            route,
-            dependOn,
-            tasks
-        );
-    }
-
-    public static AutomaticTask rehydrate(
-        String id,
-        String parentId,
-        String key,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        RouteExpression route,
-        List<String> dependOn,
-        List<? extends Task> tasks
-    ) {
-        return new AutomaticTask(
-            id,
-            parentId,
-            key,
-            inputs,
-            outputs,
-            route,
-            dependOn,
-            tasks
-        );
-    }
 
     @Override
     public RunResult run(RunContext context) {

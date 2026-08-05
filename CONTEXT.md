@@ -27,11 +27,14 @@ _Avoid_: CLOSED status, FlowDefinitionStatus, physical deletion, version replace
 **Workflow Runtime State**:
 由 Flow 定义域的 `State` 统一定义、贯穿一次工作流运行的状态语言；
 State 对象以 `current` 表达当前状态，以 `history` 保存从创建开始的真实变化
-轨迹。`State.Type` 统一包含 `CREATED/RUNNING/WAITING/COMPLETED/TERMINATED`，
-分别归入创建和运行、等待、正常终止、异常终止四类。Execution、TaskRun 各自
-持有完整 State 并限制自己的合法路线；RunnableTask 只报告完成或失败事实，
-BranchTask 的等待和完成由 Executor 直接应用，全部历史仍由聚合产生。
-PAUSE 使用 WAITING，审批、表单或工单仍拥有自己的外部业务状态。
+轨迹。`State.Type` 统一包含
+`CREATED/RUNNING/PAUSED/COMPLETED/WARNING/CANCELLED/FAILED/TERMINATED`。
+Execution 只使用 CREATED、RUNNING 和现有终态；PAUSED 只属于明确的 PAUSE
+TaskRun。WARNING、CANCELLED、FAILED 当前只作为 Pause 超时 Behavior 的目标契约，
+尚没有超时触发入口。
+Execution、TaskRun 各自持有完整 State 并限制自己的合法路线；RunnableTask 只
+报告完成或失败事实，OrchestrationTask 的暂停和作用域收敛由 Executor 直接
+应用，全部历史仍由聚合产生。审批、表单或工单仍拥有自己的外部业务状态。
 _Avoid_: ExecutionStatus, TaskRunStatus, WorkerTaskOutcome, approval status
 
 **Data**:
@@ -58,7 +61,7 @@ _Avoid_: Output interface, Output value, response DTO
 
 **Task**:
 Flow Reversion 中不可分割的流程步骤定义；其领域字段 `id` 跨 reversion 保持稳定，被引用时称为 `taskId`。Task 通过 `parentId` 表达定义父子关系，并声明输入、输出、路由、依赖及直接子 Task，但不保存实际运行结果；YAML 只声明业务 `key`，完整 Task 仅在成功部署时产生。
-RunnableTask 与 BranchTask 是具体 Task 可拥有的两种互斥能力，离开 Task 后没有
+RunnableTask 与 OrchestrationTask 是具体 Task 可拥有的两种互斥能力，离开 Task 后没有
 独立业务意义；Worker 和 Executor 分别调用或解释这些能力，但不拥有它们。
 _Avoid_: Node, Activity
 
@@ -66,13 +69,14 @@ _Avoid_: Node, Activity
 继承 Task 并实现 RunnableTask 能力的具体步骤定义；它把实际工作写在
 `run(RunContext)` 中，只有这种 Task 才能形成 WorkerTask 并交给 Worker。它不能
 读取或改变 Execution、TaskRun、nexts 或分支编排状态。
-_Avoid_: WorkerTaskHandler, executable BranchTask, generic Task execution
+_Avoid_: WorkerTaskHandler, executable OrchestrationTask, generic Task execution
 
-**Branch Task**:
-继承 Task 并实现 BranchTask 能力的流程控制步骤定义，例如 PAUSE、PARALLEL 和
-未来规则确认后的 LOOP。它没有实际工作和 `run` 方法，不形成 WorkerTask；
-Executor 直接根据其编排特征管理 TaskRun、等待、并行展开和后续路线。
-_Avoid_: Runnable branch, structural WorkerTask, WorkerTaskHandler
+**Orchestration Task**:
+继承 Task 并实现 OrchestrationTask 能力的流程控制步骤定义，例如 PAUSE、
+PARALLEL 和未来规则确认后的 LOOP、LOOP UNTIL、SUBFLOW。它没有实际工作和
+`run` 方法，不形成 WorkerTask；Executor 直接根据其编排特征管理 TaskRun、暂停、
+作用域收敛和后续路线。
+_Avoid_: BranchTask, runnable orchestration, structural WorkerTask
 
 **Run Context**:
 每次只服务一个 RunnableTask 调用的临时不可变上下文，只提供当前 Session、命令
@@ -87,18 +91,30 @@ _Avoid_: WorkerContext, Execution context, TaskRun snapshot, persisted context
 _Avoid_: Implicit parallel branches, sibling batch, unordered children
 
 **PARALLEL Task**:
-显式声明多个直接子分支可以同时开始的结构 Task；它自身完成后，把所有 route
-成立且依赖满足的直接子 Task 作为同一 Execution 内的并行分支运行，并等待全部
-已选择分支收敛。并行不由普通同级 Task、Child Execution 或多个 DIRECT route
-隐式推断。
+显式声明多个直接子分支可以同时开始的编排作用域。它进入后保持 RUNNING，把所有
+route 成立且依赖满足的直接子 Task 作为同一 Execution 内的并行分支运行，只在
+全部实际选中分支子树正常收敛后完成。没有 route 匹配时正常完成；并行不由普通
+同级 Task、Child Execution 或多个 DIRECT route 隐式推断。各分支共享同一进入
+上下文快照但独立演进，outputs 不自动合并；`concurrent` 只声明后续 Worker 队列
+消费者并发上限。
 _Avoid_: Implicit parallel, Parallel Execution, Child Execution, parallel flag
 
 **Task Extension**:
 为一个稳定 Task `type` 提供具体 Task 定义及其物化、重建和专有 properties 规则的
 Plugin 扩展点；注册后 Flow 可以用该 `type` 部署 Task。运行能力由具体 Task 自身
-实现 RunnableTask 或 BranchTask，不由 TaskExtension 执行。TaskExtension 不分配
+实现 RunnableTask 或 OrchestrationTask，不由 Plugin 注册机制执行。Plugin 不分配
 Task 身份、不拥有 Flow 聚合或 TaskRun 状态。
 _Avoid_: Task instance, WorkerTaskHandler, Task type catalog, generic Task
+
+**Task Template Expression**:
+由 Task 定义持有、在一次 Runnable Task 调用中从只读运行输入提取值并插入固定文本
+的消息模板；它只允许点分路径读取，不能执行脚本、调用方法或改变运行上下文。
+_Avoid_: Route Expression, arbitrary script, mutable runtime context
+
+**Log**:
+在流程运行时解析 message 模板并把结果写入应用日志的步骤；它不负责审计留痕、
+不产生流程输出，也不改变 Execution 或 TaskRun 的推进规则。
+_Avoid_: LogTask, Audit Log, logging service
 
 **Execution**:
 Flow Reversion 被启动后形成的一次完整运行实例；它永久绑定启动时的 `flowId + flowReversion`，保存生命周期状态和有序 TaskRun 历史，并且可以同时拥有多个活动 TaskRun。Execution 不是移动游标，实际执行路径由 TaskRun 事实表达。
@@ -107,7 +123,7 @@ _Avoid_: Process, workflow instance
 **Executor Scheduling Cycle**:
 以一个 Execution 及其精确 Flow Reversion 为输入、从已有 TaskRun 事实重建下一
 批工作并推进到下一个可提交点的一次可恢复调度循环。循环内的 ExecutorContext
-只暂存 nexts、Runnable WorkerTask、Branch TaskRun、异常和状态变化增量；它不是持久化游标，也不持有
+只暂存 nexts、Runnable WorkerTask、暂停效果、编排作用域完成和状态变化增量；它不是持久化游标，也不持有
 FlowDraft、Session 或 DSLContext。
 _Avoid_: Execution cursor, transaction context, persisted next queue
 
@@ -120,16 +136,21 @@ Task 可以因循环等原因产生多个 TaskRun；其列表顺序表达真实�
 _Avoid_: Activity, Task instance
 
 **PAUSE Task**:
-由 Flow Core 提供的外部等待编排 Task；它开始运行后使对应 TaskRun 进入
-`WAITING`，当没有其他可运行工作时 Execution 也进入 `WAITING`，直到 Flow Core
-接受外部结果并恢复该 TaskRun。PAUSE Task 只定义流程在哪里等待以及结果契约，
-不定义审批人、表单、工单或其他外部业务规则。
+由 Flow Core 提供的外部暂停编排 Task。它通过唯一必填的 `pause` Task 定义进入
+等待前必须执行的动作，通过 `resume` Input 列表定义外部回调，通过可选且成对出现
+的 `duration + behavior` 定义超时目标。Executor 先让 Pause TaskRun 保持
+`RUNNING` 并无条件执行完整 pause 子树，收敛后才使 Pause TaskRun 进入
+`PAUSED`；Execution 始终保持 `RUNNING`。Pause 的通用 `tasks` 必须为空，有效
+outputs 由 resume 的 key 和 Data Type 派生。它不定义审批人、表单、工单或其他
+外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
 
 **Execution Resume**:
-Flow Core 接受一个确定 PAUSE TaskRun 的外部结果、完成原 TaskRun 并继续同一
-Execution 的生命周期动作；外部调用方只提供 `executionId + taskRunId` 和结果，
-不能指定下一 Task、路由或目标状态。
+Flow Core 接受一个确定 PAUSE TaskRun 的外部回调，按该 Pause 的具体 resume Input
+校验并规范化数据，再把原 TaskRun 从 `PAUSED` 恢复为 `RUNNING`，由 Executor
+状态机完成它并继续同一 Execution。非法回调原子拒绝且 TaskRun 保持 `PAUSED`；
+外部调用方只提供 `executionId + taskRunId` 和回调数据，不能指定下一 Task、路由
+或目标状态。
 _Avoid_: External Task completion, direct TaskRun update, external routing
 
 **External Business Capability**:
@@ -168,5 +189,8 @@ _Avoid_: Merged Flowing Context
 _Avoid_: Writable shared variables
 
 **Stable State**:
-Execution 当前没有需要同步继续推进的自动工作、可以安全提交的运行状态，例如停在 PAUSE、失败、取消或完成。一个命令可以连续推进多个同步 Task，直到到达下一稳定态，整个过程属于同一个数据库事务。
+Execution 当前没有需要同步继续推进的自动工作、可以安全提交的运行事实组合，
+例如全部未完成叶子 TaskRun 都是 PAUSED，或 Execution 已失败、取消、完成。
+稳定点由 TaskRun 事实判断，不新增 Execution 等待状态。一个命令可以连续推进多个
+同步 Task，直到到达下一稳定点，整个过程属于同一个数据库事务。
 _Avoid_: One transaction per Task

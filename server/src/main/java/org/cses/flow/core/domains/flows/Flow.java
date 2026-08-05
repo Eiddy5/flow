@@ -3,18 +3,15 @@ package org.cses.flow.core.domains.flows;
 import lombok.Getter;
 import org.cses.flow.core.domains.Deletable;
 import org.cses.flow.core.domains.tasks.RouteExpression;
+import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.paas.common.util.StringUtil;
-import org.paas.json.JsonObject;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -26,32 +23,6 @@ import java.util.stream.Stream;
  * One complete, deployed Flow reversion.
  */
 public final class Flow implements Deletable<Flow> {
-
-    private static final Set<String> FLOW_DEFINITION_FIELDS = Set.of(
-        "key",
-        "description",
-        "inputs",
-        "outputs",
-        "tasks"
-    );
-    private static final Set<String> TASK_DEFINITION_FIELDS = Set.of(
-        "key",
-        "type",
-        "inputs",
-        "outputs",
-        "route",
-        "dependOn",
-        "tasks"
-    );
-    private static final Set<String> TASK_SYSTEM_FIELDS = Set.of(
-        "id",
-        "parentId",
-        "taskId"
-    );
-    private static final Set<String> OUTPUT_DEFINITION_FIELDS = Set.of(
-        "key",
-        "type"
-    );
 
     private final String id;
     private final String companyId;
@@ -126,29 +97,26 @@ public final class Flow implements Deletable<Flow> {
     }
 
     /**
-     * Materializes one complete Flow reversion from a parsed definition.
+     * Creates one complete Flow reversion from already-bound definitions.
      */
     public static Flow deploy(
         String companyId,
         String id,
-        Map<String, ?> definition,
+        String key,
+        String description,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
         Flow latest,
-        TaskTypeDispatcher taskTypeDispatcher,
         ActorRef actor,
         long deployedAt
     ) {
-        Objects.requireNonNull(
-            taskTypeDispatcher,
-            "Task type dispatcher"
-        );
         Objects.requireNonNull(actor, "Flow creator");
-        Objects.requireNonNull(deployedAt, "Flow deployedAt");
         String normalizedId = requireText(id, "Flow id");
         String normalizedCompanyId = requireText(companyId, "Company id");
-        Map<String, Object> source = flowDefinitionMap(definition);
-        String key = requiredText(source, "key", "Flow");
+        String normalizedKey = requireText(key, "Flow key");
+        List<Task> boundTasks = tasks == null ? List.of() : List.copyOf(tasks);
 
-        Map<String, String> taskIdsByKey = new LinkedHashMap<>();
         long reversion = 1;
         if (latest != null) {
             if (!normalizedId.equals(latest.id)
@@ -162,47 +130,25 @@ public final class Flow implements Deletable<Flow> {
                     "Deleted Flow cannot be deployed: " + normalizedId
                 );
             }
-            if (!latest.key.equals(key)) {
+            if (!latest.key.equals(normalizedKey)) {
                 throw new WorkflowException(
                     "Flow key cannot change across reversion: "
-                        + latest.key + " -> " + key
+                        + latest.key + " -> " + normalizedKey
                 );
             }
-            latest.allTasks().forEach(task ->
-                taskIdsByKey.put(task.key(), task.id())
-            );
+            requireStableTaskIds(latest, boundTasks);
             reversion = latest.reversion + 1;
         }
-
-        List<Input<?>> inputs = inputList(
-            source.get("inputs"),
-            "Flow.inputs"
-        );
-        List<Output> outputs = outputList(
-            source.get("outputs"),
-            "Flow.outputs"
-        );
-        List<Task> tasks = materializeTasks(
-            source.get("tasks"),
-            "Flow.tasks",
-            null,
-            taskIdsByKey,
-            taskTypeDispatcher
-        );
 
         return new Flow(
             normalizedId,
             normalizedCompanyId,
-            key,
+            normalizedKey,
             reversion,
-            optionalText(
-                source.get("description"),
-                "",
-                "Flow.description"
-            ),
+            description,
             inputs,
             outputs,
-            tasks,
+            boundTasks,
             false,
             actor,
             actor,
@@ -326,12 +272,7 @@ public final class Flow implements Deletable<Flow> {
     }
 
     public List<Task> allTasks() {
-        return tasks.stream()
-            .flatMap(task -> Stream.concat(
-                Stream.of(task),
-                task.allDescendants().stream()
-            ))
-            .toList();
+        return flatten(tasks);
     }
 
     public Flow copy() {
@@ -400,332 +341,29 @@ public final class Flow implements Deletable<Flow> {
         );
     }
 
-    private static List<Task> materializeTasks(
-        Object value,
-        String path,
-        String parentId,
-        Map<String, String> idsByKey,
-        TaskTypeDispatcher taskTypeDispatcher
+    private static void requireStableTaskIds(
+        Flow latest,
+        List<Task> tasks
     ) {
-        if (value == null) {
-            return List.of();
-        }
-        if (!(value instanceof List<?> definitions)) {
-            throw new IllegalArgumentException(path + " must be a list");
-        }
-        List<Task> tasks = new ArrayList<>(definitions.size());
-        for (int index = 0; index < definitions.size(); index++) {
-            String taskPath = path + "[" + index + "]";
-            Map<String, Object> definition = stringMap(
-                definitions.get(index),
-                taskPath
-            );
-            rejectTaskSystemFields(definition, taskPath);
-            String taskKey = requiredText(definition, "key", taskPath);
-            String taskType = requiredText(
-                definition,
-                "type",
-                taskPath
-            ).toUpperCase(Locale.ROOT);
-            List<Input<?>> inputs = inputList(
-                definition.get("inputs"),
-                taskPath + ".inputs"
-            );
-            List<Output> outputs = outputList(
-                definition.get("outputs"),
-                taskPath + ".outputs"
-            );
-            RouteExpression route;
-            try {
-                route = RouteExpression.parse(optionalText(
-                    definition.get("route"),
-                    "DIRECT",
-                    taskPath + ".route"
-                ));
-            } catch (RuntimeException exception) {
-                throw materializationFailure(taskPath, exception);
-            }
-            List<String> dependOn = textList(
-                definition.get("dependOn"),
-                taskPath + ".dependOn"
-            );
-            Map<String, Object> properties = taskProperties(definition);
-            String taskId = idsByKey.computeIfAbsent(
-                taskKey,
-                ignored -> StringUtil.newId()
-            );
-            List<Task> children = materializeTasks(
-                definition.get("tasks"),
-                taskPath + ".tasks",
-                taskId,
-                idsByKey,
-                taskTypeDispatcher
-            );
-            Task task;
-            try {
-                task = Objects.requireNonNull(
-                    taskTypeDispatcher.dispatch(
-                        taskId,
-                        parentId,
-                        taskKey,
-                        taskType,
-                        inputs,
-                        outputs,
-                        route,
-                        dependOn,
-                        properties,
-                        children
-                    ),
-                    "Task dispatcher result"
-                );
-            } catch (RuntimeException exception) {
-                throw materializationFailure(taskPath, exception);
-            }
-            if (!taskId.equals(task.id())
-                || !Objects.equals(
-                    Optional.ofNullable(parentId),
-                    task.parentId()
-                )
-                || !taskKey.equals(task.key())
-                || !taskType.equals(task.type())
-                || !inputs.equals(task.inputs())
-                || !outputs.equals(task.outputs())
-                || !route.equals(task.route())
-                || !dependOn.equals(task.dependOn())
-                || !properties.equals(
-                    taskTypeDispatcher.properties(task)
-                )
-                || !children.equals(task.tasks())) {
-                throw new IllegalArgumentException(
-                    taskPath
-                        + " dispatcher returned an inconsistent Task for "
-                        + taskKey
+        Map<String, String> previousIdByKey = latest.allTasks().stream()
+            .collect(Collectors.toMap(Task::key, Task::id));
+        Map<String, String> previousKeyById = latest.allTasks().stream()
+            .collect(Collectors.toMap(Task::id, Task::key));
+        for (Task task : flatten(tasks)) {
+            String previousId = previousIdByKey.get(task.key());
+            if (previousId != null && !previousId.equals(task.id())) {
+                throw new WorkflowException(
+                    "Task id cannot change across reversion: " + task.key()
                 );
             }
-            tasks.add(task);
-        }
-        return List.copyOf(tasks);
-    }
-
-    private static IllegalArgumentException materializationFailure(
-        String path,
-        RuntimeException exception
-    ) {
-        String detail = exception.getMessage() == null
-            ? exception.getClass().getSimpleName()
-            : exception.getMessage();
-        return new IllegalArgumentException(
-            path + " could not be materialized: " + detail,
-            exception
-        );
-    }
-
-    private static Map<String, Object> flowDefinitionMap(
-        Map<String, ?> value
-    ) {
-        Map<String, Object> definition = stringMap(value, "Flow");
-        Set<String> unknown = new LinkedHashSet<>(definition.keySet());
-        unknown.removeAll(FLOW_DEFINITION_FIELDS);
-        if (!unknown.isEmpty()) {
-            throw new IllegalArgumentException(
-                "Flow contains unsupported fields: " + unknown
-            );
-        }
-        return definition;
-    }
-
-    private static void rejectTaskSystemFields(
-        Map<String, Object> definition,
-        String path
-    ) {
-        for (String field : TASK_SYSTEM_FIELDS) {
-            if (definition.containsKey(field)) {
-                throw new IllegalArgumentException(
-                    path + " must not declare system field " + field
+            String previousKey = previousKeyById.get(task.id());
+            if (previousKey != null && !previousKey.equals(task.key())) {
+                throw new WorkflowException(
+                    "Task id cannot move to another key: "
+                        + previousKey + " -> " + task.key()
                 );
             }
         }
-    }
-
-    private static Map<String, Object> taskProperties(
-        Map<String, Object> definition
-    ) {
-        Map<String, Object> properties = new LinkedHashMap<>();
-        definition.forEach((field, value) -> {
-            if (!TASK_DEFINITION_FIELDS.contains(field)) {
-                properties.put(field, value);
-            }
-        });
-        return Map.copyOf(properties);
-    }
-
-    private static List<Input<?>> inputList(Object value, String path) {
-        if (value == null) {
-            return List.of();
-        }
-        if (!(value instanceof List<?> source)) {
-            throw new IllegalArgumentException(path + " must be a list");
-        }
-        List<Input<?>> result = new ArrayList<>(source.size());
-        for (int index = 0; index < source.size(); index++) {
-            String itemPath = path + "[" + index + "]";
-            Map<String, Object> definition = stringMap(
-                source.get(index),
-                itemPath
-            );
-            String key = requiredText(definition, "key", itemPath);
-            DataType type;
-            try {
-                type = DataType.parse(
-                    requiredText(definition, "type", itemPath)
-                );
-            } catch (IllegalArgumentException exception) {
-                throw materializationFailure(itemPath, exception);
-            }
-            Map<String, Object> normalized = new LinkedHashMap<>(definition);
-            normalized.put("type", type.name());
-            Object defaultValue = normalized.get("defaultValue");
-            if (defaultValue != null) {
-                try {
-                    normalized.put(
-                        "defaultValue",
-                        type.normalize(defaultValue)
-                    );
-                } catch (IllegalArgumentException exception) {
-                    throw materializationFailure(itemPath, exception);
-                }
-            }
-            if (!normalized.containsKey("displayName")) {
-                normalized.put("displayName", key);
-            }
-            if (!normalized.containsKey("required")) {
-                normalized.put("required", false);
-            }
-            try {
-                result.add(
-                    JsonObject.FromMap(normalized).asObject(Input.class)
-                );
-            } catch (RuntimeException exception) {
-                throw materializationFailure(itemPath, exception);
-            }
-        }
-        return List.copyOf(result);
-    }
-
-    private static List<Output> outputList(Object value, String path) {
-        if (value == null) {
-            return List.of();
-        }
-        if (!(value instanceof List<?> source)) {
-            throw new IllegalArgumentException(path + " must be a list");
-        }
-        List<Output> result = new ArrayList<>(source.size());
-        for (int index = 0; index < source.size(); index++) {
-            String itemPath = path + "[" + index + "]";
-            Map<String, Object> definition = outputDefinitionMap(
-                source.get(index),
-                itemPath
-            );
-            DataType type;
-            try {
-                type = DataType.parse(
-                    requiredText(definition, "type", itemPath)
-                );
-            } catch (IllegalArgumentException exception) {
-                throw materializationFailure(itemPath, exception);
-            }
-            result.add(Output.create(
-                requiredText(definition, "key", itemPath),
-                type
-            ));
-        }
-        return List.copyOf(result);
-    }
-
-    private static Map<String, Object> outputDefinitionMap(
-        Object value,
-        String path
-    ) {
-        Map<String, Object> definition = stringMap(value, path);
-        Set<String> unknown = new LinkedHashSet<>(definition.keySet());
-        unknown.removeAll(OUTPUT_DEFINITION_FIELDS);
-        if (!unknown.isEmpty()) {
-            throw new IllegalArgumentException(
-                path + " contains unsupported fields: " + unknown
-            );
-        }
-        return definition;
-    }
-
-    private static List<String> textList(Object value, String path) {
-        if (value == null) {
-            return List.of();
-        }
-        if (!(value instanceof List<?> source)) {
-            throw new IllegalArgumentException(path + " must be a list");
-        }
-        List<String> result = new ArrayList<>(source.size());
-        for (int index = 0; index < source.size(); index++) {
-            Object item = source.get(index);
-            if (!(item instanceof String text) || text.isBlank()) {
-                throw new IllegalArgumentException(
-                    path + "[" + index + "] must be non-blank text"
-                );
-            }
-            result.add(text.trim());
-        }
-        return List.copyOf(result);
-    }
-
-    private static Map<String, Object> stringMap(
-        Object value,
-        String path
-    ) {
-        if (!(value instanceof Map<?, ?> source)) {
-            throw new IllegalArgumentException(path + " must be a map");
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        source.forEach((key, nestedValue) -> {
-            if (!(key instanceof String textKey)) {
-                throw new IllegalArgumentException(
-                    path + " contains a non-text key: " + key
-                );
-            }
-            result.put(textKey, nestedValue);
-        });
-        return result;
-    }
-
-    private static String requiredText(
-        Map<String, Object> source,
-        String field,
-        String path
-    ) {
-        String value = optionalText(
-            source.get(field),
-            "",
-            path + "." + field
-        );
-        if (value.isBlank()) {
-            throw new IllegalArgumentException(
-                path + "." + field + " must not be blank"
-            );
-        }
-        return value;
-    }
-
-    private static String optionalText(
-        Object value,
-        String defaultValue,
-        String path
-    ) {
-        if (value == null) {
-            return defaultValue;
-        }
-        if (!(value instanceof String text)) {
-            throw new IllegalArgumentException(path + " must be text");
-        }
-        return text.trim();
     }
 
     private static void validateDefinition(List<Task> tasks) {
@@ -747,49 +385,63 @@ public final class Flow implements Deletable<Flow> {
         Task parent
     ) {
         for (Task task : tasks) {
-            if (!keys.add(task.key())) {
-                throw new WorkflowException("Duplicate Task key: " + task.key());
-            }
-            if (!ids.add(task.id())) {
-                throw new WorkflowException("Duplicate Task id: " + task.id());
-            }
-            if (parent == null && !task.isTopLevel()) {
+            if (task == null) {
                 throw new WorkflowException(
-                    "Top-level Task parent id must be empty: " + task.key()
+                    "Flow tasks must not contain null values"
                 );
             }
-            if (parent != null
-                && !task.parentId().filter(parent.id()::equals).isPresent()) {
-                throw new WorkflowException(
-                    "Task parent id does not match its direct parent: "
-                        + task.key()
-                );
+            String taskKey = requireText(task.key(), "Task key");
+            String taskId = requireText(task.id(), "Task id");
+            if (!keys.add(taskKey)) {
+                throw new WorkflowException("Duplicate Task key: " + taskKey);
+            }
+            if (!ids.add(taskId)) {
+                throw new WorkflowException("Duplicate Task id: " + taskId);
             }
             if (parent == null
                 && !RouteExpression.direct().equals(task.route())) {
                 throw new WorkflowException(
-                    "Top-level Task route must be DIRECT: " + task.key()
+                    "Top-level Task route must be DIRECT: " + taskKey
                 );
             }
-            task.route().referencedOutputKey().ifPresent(outputKey -> {
-                if (parent == null || !parent.declaresOutput(outputKey)) {
-                    throw new WorkflowException(
-                        "Task route references undeclared parent output "
-                            + outputKey + ": " + task.key()
-                    );
-                }
-                Output routeOutput = parent.outputs().stream()
-                    .filter(output -> output.getKey().equals(outputKey))
-                    .findFirst()
-                    .orElseThrow();
-                if (routeOutput.getType() != DataType.STRING) {
-                    throw new WorkflowException(
-                        "Task route requires a STRING parent output "
-                            + outputKey + ": " + task.key()
-                    );
-                }
-            });
-            validateTasks(task.tasks(), keys, ids, task);
+            if (task.route() == null) {
+                throw new WorkflowException(
+                    "Task route must not be null: " + taskKey
+                );
+            }
+            boolean ordinaryChild = parent == null
+                || parent.tasks().contains(task);
+            if (ordinaryChild) {
+                task.route().referencedOutputKey().ifPresent(outputKey -> {
+                    boolean parallelInput =
+                        parent instanceof OrchestrationTask orchestrationTask
+                            && orchestrationTask
+                                .startsChildrenInParallel();
+                    boolean declared = parent != null
+                        && (parallelInput
+                            ? parent.declaresInput(outputKey)
+                            : parent.declaresOutput(outputKey));
+                    if (!declared) {
+                        throw new WorkflowException(
+                            "Task route references undeclared parent context "
+                                + outputKey + ": " + taskKey
+                        );
+                    }
+                    Data routeData = (parallelInput
+                        ? parent.inputs().stream()
+                        : parent.outputs().stream())
+                        .filter(data -> data.getKey().equals(outputKey))
+                        .findFirst()
+                        .orElseThrow();
+                    if (routeData.getType() != DataType.STRING) {
+                        throw new WorkflowException(
+                            "Task route requires STRING parent context "
+                                + outputKey + ": " + taskKey
+                        );
+                    }
+                });
+            }
+            validateTasks(task.definitionChildren(), keys, ids, task);
         }
     }
 

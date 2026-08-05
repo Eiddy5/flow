@@ -1,6 +1,7 @@
 package org.cses.flow.core.services.executions;
 
 import io.micronaut.context.ApplicationContext;
+import io.micronaut.inject.qualifiers.Qualifiers;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.flows.Flow;
@@ -10,6 +11,7 @@ import org.cses.flow.core.services.externaltasks.PostgresExternalTriggerRunner;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.paas.common.util.StringUtil;
@@ -30,7 +32,9 @@ public final class WorkflowUcFixture implements AutoCloseable {
         "consul.client.registration.enabled", false,
         "consul.client.watch.service.enabled", false,
         "grpc.server.enabled", false,
-        "thrift.server.enabled", false
+        "thrift.server.enabled", false,
+        "pulsar.consumer.enabled", false,
+        "jooq.send-event", false
     );
 
     private ApplicationContext context;
@@ -245,7 +249,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
         String trailing = trailingAutomaticTask
             ? """
               - key: record-result
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """
             : "";
         return """
@@ -253,8 +257,11 @@ public final class WorkflowUcFixture implements AutoCloseable {
             description: %s
             tasks:
               - key: wait-confirmation
-                type: PAUSE
-                outputs:
+                type: org.cses.flow.extensions.flow.Pause
+                pause:
+                  key: create-confirmation
+                  type: org.cses.flow.extensions.tasks.AutomaticTask
+                resume:
                   - key: decision
                     type: STRING
             %s
@@ -277,12 +284,17 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     private void startServer() {
         var builder = ApplicationContext.builder()
-            .properties(properties)
-            .singletons(jooq);
+            .properties(properties);
         if (singletons.length > 0) {
             builder.singletons(singletons);
         }
-        context = builder.start();
+        context = builder.build();
+        context.registerSingleton(
+            JOOQ.class,
+            jooq,
+            Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME)
+        );
+        context.start();
         flowService = context.getBean(FlowService.class);
         executionService = context.getBean(ExecutionService.class);
         externalTaskService = context.getBean(ExternalTaskService.class);

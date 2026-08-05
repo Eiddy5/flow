@@ -110,9 +110,9 @@ class ExecutionServiceResumeTest {
                 fixture.session(),
                 started.id()
             ).orElseThrow();
-            assertEquals(State.Type.WAITING, unchanged.state().current());
+            assertEquals(State.Type.RUNNING, unchanged.state().current());
             assertEquals(
-                State.Type.WAITING,
+                State.Type.PAUSED,
                 unchanged.taskRuns().getFirst().state().current()
             );
 

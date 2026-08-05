@@ -8,6 +8,7 @@ import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.runtime.server.EmbeddedServer;
+import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.infrastructure.datapilot.DemoPostgresJooqAdapter;
 import org.cses.flow.infrastructure.session.StudioSessionArgumentBinder;
 import org.junit.jupiter.api.Test;
@@ -51,6 +52,40 @@ class FlowDemoControllerTest {
                 server.getApplicationContext().containsBean(
                     StudioSessionArgumentBinder.class
                 )
+            );
+
+            JsonNode plugins = get(client, "/api/plugins");
+            assertEquals("core", plugins.get(0).get("name").asText());
+            JsonNode automatic = findTaskPlugin(
+                plugins,
+                "org.cses.flow.extensions.tasks.AutomaticTask"
+            );
+            assertNotNull(automatic);
+            assertEquals("自动任务", automatic.get("title").asText());
+            assertEquals(
+                "org.cses.flow.core.domains.tasks.Task",
+                automatic.get("baseType").asText()
+            );
+            assertNotNull(findTaskPlugin(
+                plugins,
+                TestNotificationTask.class.getCanonicalName()
+            ));
+
+            JsonNode details = get(
+                client,
+                "/api/plugins/"
+                    + "org.cses.flow.extensions.tasks.AutomaticTask"
+            );
+            assertEquals(
+                "org.cses.flow.extensions.tasks.AutomaticTask",
+                details.get("metadata").get("type").asText()
+            );
+            JsonNode schema = details.get("schema");
+            assertFalse(schema.get("additionalProperties").asBoolean());
+            assertFalse(schema.get("properties").has("id"));
+            assertEquals(
+                "org.cses.flow.extensions.tasks.AutomaticTask",
+                schema.get("properties").get("type").get("const").asText()
             );
         }
     }
@@ -101,7 +136,13 @@ class FlowDemoControllerTest {
             assertTrue(script.contains("每个 Input 独立定义 key 和 type"));
             assertTrue(script.contains("data-action=\"add-data-item\""));
             assertTrue(script.contains("创建并行节点与两个分支"));
-            assertTrue(script.contains("data-task-type=\"PARALLEL\""));
+            assertTrue(script.contains("renderRegisteredTaskOptions"));
+            assertTrue(script.contains("confirm-create-task"));
+            assertTrue(script.contains("来自插件注册表"));
+            assertFalse(script.contains("FALLBACK_TASK_PLUGINS"));
+            assertTrue(script.contains("pluginApi"));
+            assertTrue(script.contains("loadPluginDetails"));
+            assertTrue(script.contains("renderPluginDefinitionFields"));
             assertTrue(
                 script.contains("普通同级子任务仍按顺序执行")
             );
@@ -114,7 +155,9 @@ class FlowDemoControllerTest {
                 script.contains("子任务构成逻辑并行")
             );
             assertTrue(
-                script.contains("node.task.type === \"PARALLEL\"")
+                script.contains(
+                    "node.task.type === TASK_TYPES.PARALLEL"
+                )
             );
             assertTrue(script.contains("横向流程视图"));
             assertTrue(script.contains("主流程从左到右"));
@@ -138,6 +181,9 @@ class FlowDemoControllerTest {
             assertTrue(layoutScript.contains("earlierChildExpanded"));
             assertTrue(layoutScript.contains("returnsToParentRow"));
             assertTrue(layoutScript.contains("taskBranchKind"));
+            assertTrue(layoutScript.contains(
+                "org.cses.flow.extensions.flow.Parallel"
+            ));
             String styles = client.toBlocking().retrieve(
                 HttpRequest.GET("/demo/demo.css")
             );
@@ -284,8 +330,8 @@ class FlowDemoControllerTest {
                 Map.of()
             );
 
-            assertEquals("WAITING", waiting.get("state").asText());
-            assertEquals(2, waiting.get("taskRuns").size());
+            assertEquals("RUNNING", waiting.get("state").asText());
+            assertEquals(3, waiting.get("taskRuns").size());
             String finishId = findTaskId(
                 deployed.get("deployedFlow").get("tasks"),
                 "serial-finish"
@@ -312,13 +358,13 @@ class FlowDemoControllerTest {
             );
 
             assertEquals("COMPLETED", completed.get("state").asText());
-            assertEquals(4, completed.get("taskRuns").size());
+            assertEquals(5, completed.get("taskRuns").size());
             assertTrue(hasTaskRun(completed, finishId));
         }
     }
 
     @Test
-    void explicitParallelTaskStartsEveryDirectBranch() throws IOException {
+    void explicitParallelStartsEveryDirectBranch() throws IOException {
         try (EmbeddedServer server = startServer();
              HttpClient client = HttpClient.create(server.getURL())) {
 
@@ -356,22 +402,35 @@ class FlowDemoControllerTest {
                 Map.of("raw", pauseFlow())
             );
             String flowId = created.get("id").asText();
-            post(
+            JsonNode deployed = post(
                 client,
                 "/api/demo/flows/" + flowId + "/deploy",
                 Map.of()
             );
+            JsonNode confirm = deployed.get("deployedFlow")
+                .get("tasks").get(1);
+            assertEquals(
+                "create-confirmation",
+                confirm.get("pause").get("key").asText()
+            );
+            assertTrue(
+                !confirm.has("tasks") || confirm.get("tasks").isEmpty()
+            );
+            assertEquals("decision", confirm.get("resume").get(0)
+                .get("key").asText());
+            assertEquals("STRING", confirm.get("outputs").get(0)
+                .get("type").asText());
 
             JsonNode waiting = post(
                 client,
                 "/api/demo/flows/" + flowId + "/executions",
                 Map.of()
             );
-            assertEquals("WAITING", waiting.get("state").asText());
+            assertEquals("RUNNING", waiting.get("state").asText());
 
             JsonNode waitingRun = null;
             for (JsonNode taskRun : waiting.get("taskRuns")) {
-                if ("WAITING".equals(taskRun.get("state").asText())) {
+                if ("PAUSED".equals(taskRun.get("state").asText())) {
                     waitingRun = taskRun;
                     break;
                 }
@@ -396,7 +455,7 @@ class FlowDemoControllerTest {
                 )
             );
             assertEquals("COMPLETED", completed.get("state").asText());
-            assertEquals(3, completed.get("taskRuns").size());
+            assertEquals(4, completed.get("taskRuns").size());
             assertEquals(
                 "APPROVED",
                 completed.get("taskRuns").get(1)
@@ -509,9 +568,9 @@ class FlowDemoControllerTest {
                 max: 5
             tasks:
               - key: prepare
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
               - key: finish
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 dependOn:
                   - prepare
             """.formatted(key);
@@ -523,18 +582,21 @@ class FlowDemoControllerTest {
             description: HTTP demo pause resume
             tasks:
               - key: prepare
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
               - key: confirm
-                type: PAUSE
+                type: org.cses.flow.extensions.flow.Pause
                 dependOn:
                   - prepare
-                outputs:
+                pause:
+                  key: create-confirmation
+                  type: org.cses.flow.extensions.tasks.AutomaticTask
+                resume:
                   - key: decision
                     type: STRING
                   - key: comment
                     type: STRING
               - key: finish
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 dependOn:
                   - confirm
             """;
@@ -546,21 +608,22 @@ class FlowDemoControllerTest {
             description: Ordinary children must remain serial
             tasks:
               - key: start
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
                 tasks:
                   - key: approval
-                    type: PAUSE
-                    outputs:
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: create-approval
+                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                    resume:
                       - key: decision
                         type: STRING
                       - key: comment
                         type: STRING
-                    tasks:
-                      - key: approved
-                        type: AUTO
-                        route: outputs.decision == "APPROVED"
+                  - key: approved
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                   - key: serial-finish
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
             """;
     }
 
@@ -570,14 +633,14 @@ class FlowDemoControllerTest {
             description: Explicit parallel task
             tasks:
               - key: parallel
-                type: PARALLEL
+                type: org.cses.flow.extensions.flow.Parallel
                 tasks:
                   - key: left
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                   - key: right
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
               - key: finish
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """;
     }
 
@@ -603,6 +666,20 @@ class FlowDemoControllerTest {
                 String childId = findTaskId(children, key);
                 if (childId != null) {
                     return childId;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static JsonNode findTaskPlugin(
+        JsonNode registeredPlugins,
+        String type
+    ) {
+        for (JsonNode registeredPlugin : registeredPlugins) {
+            for (JsonNode task : registeredPlugin.get("tasks")) {
+                if (type.equals(task.get("type").asText())) {
+                    return task;
                 }
             }
         }

@@ -4,6 +4,8 @@ import io.micronaut.context.annotation.Primary;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Value;
 import jakarta.inject.Singleton;
+import jakarta.inject.Named;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.x9.jooq.JOOQ;
@@ -24,6 +26,7 @@ import java.util.List;
  */
 @Primary
 @Singleton
+@Named(FlowDatabase.DATA_SOURCE_NAME)
 @Requires(property = "flow.demo.enabled", value = "true")
 @Requires(
     property = "flow.memory.enabled",

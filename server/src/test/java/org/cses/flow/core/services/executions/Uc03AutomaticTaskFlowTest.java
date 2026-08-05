@@ -31,19 +31,19 @@ class Uc03AutomaticTaskFlowTest {
                 description: automatic input and output
                 tasks:
                   - key: prepare-input
-                    type: AUTO
+                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                     outputs:
                       - key: payload
                         type: STRING
                     tasks:
                       - key: target-success
-                        type: AUTO
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                         outputs:
                           - key: result
                             type: STRING
                         tasks:
                           - key: observe-output
-                            type: AUTO
+                            type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                             outputs:
                               - key: observed
                                 type: STRING
@@ -110,16 +110,16 @@ class Uc03AutomaticTaskFlowTest {
                 description: explicit automatic failure
                 tasks:
                   - key: prepare-input
-                    type: AUTO
+                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                     outputs:
                       - key: payload
                         type: STRING
                     tasks:
                       - key: target-fail
-                        type: AUTO
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                         tasks:
                           - key: never-run
-                            type: AUTO
+                            type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
 
             Execution created = fixture.executionService().create(
@@ -159,13 +159,13 @@ class Uc03AutomaticTaskFlowTest {
                 description: unexpected automatic exception
                 tasks:
                   - key: prepare-input
-                    type: AUTO
+                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                     outputs:
                       - key: payload
                         type: STRING
                     tasks:
                       - key: target-throw
-                        type: AUTO
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
             long before = fixture.executionService().executions(
                 fixture.session()

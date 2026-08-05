@@ -1,6 +1,8 @@
 package org.cses.flow.core.commands;
 
 import jakarta.inject.Singleton;
+import jakarta.inject.Named;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.x9.jooq.JOOQ;
@@ -18,7 +20,7 @@ public final class CommandExecutor {
     private final CommandHandlerRegistry handlerRegistry;
 
     public CommandExecutor(
-        JOOQ jooq,
+        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
         CommandHandlerRegistry handlerRegistry
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");

@@ -28,7 +28,7 @@ class StateTest {
         assertTrue(state.history().getFirst().date() >= before);
         assertTrue(state.history().getFirst().date() <= after);
         assertTrue(state.isActive());
-        assertFalse(state.isWaiting());
+        assertFalse(state.isPaused());
         assertFalse(state.isTerminal());
         assertThrows(
             UnsupportedOperationException.class,
@@ -42,8 +42,8 @@ class StateTest {
     void withStateShouldAppendHistoryWithoutChangingThePreviousValue() {
         State created = State.created();
         State running = created.withState(State.Type.RUNNING);
-        State waiting = running.waiting();
-        State resumed = waiting.running();
+        State paused = running.paused();
+        State resumed = paused.running();
         State completed = resumed.complete();
 
         assertEquals(State.Type.CREATED, created.current());
@@ -52,7 +52,7 @@ class StateTest {
             List.of(
                 State.Type.CREATED,
                 State.Type.RUNNING,
-                State.Type.WAITING,
+                State.Type.PAUSED,
                 State.Type.RUNNING,
                 State.Type.COMPLETED
             ),
@@ -69,29 +69,29 @@ class StateTest {
         State failed = State.created()
             .running()
             .fail();
-        State terminatedWhileWaiting = State.created()
+        State terminatedWhilePaused = State.created()
             .running()
-            .waiting()
+            .paused()
             .terminate();
 
         assertEquals(State.Type.TERMINATED, failed.current());
-        assertEquals(State.Type.TERMINATED, terminatedWhileWaiting.current());
+        assertEquals(State.Type.TERMINATED, terminatedWhilePaused.current());
         assertEquals(3, failed.history().size());
-        assertEquals(4, terminatedWhileWaiting.history().size());
+        assertEquals(4, terminatedWhilePaused.history().size());
     }
 
     @Test
     void rehydrateShouldRestoreTheExactHistoryWithoutAppending() {
         State restored = State.rehydrate(
-            State.Type.WAITING,
+            State.Type.PAUSED,
             List.of(
                 State.History.rehydrate(State.Type.CREATED, 100L),
                 State.History.rehydrate(State.Type.RUNNING, 200L),
-                State.History.rehydrate(State.Type.WAITING, 300L)
+                State.History.rehydrate(State.Type.PAUSED, 300L)
             )
         );
 
-        assertEquals(State.Type.WAITING, restored.current());
+        assertEquals(State.Type.PAUSED, restored.current());
         assertEquals(3, restored.history().size());
         assertEquals(300L, restored.history().getLast().date());
     }
@@ -122,11 +122,15 @@ class StateTest {
         );
         assertThrows(
             WorkflowException.class,
-            () -> State.created().withState(State.Type.WAITING)
+            () -> State.created().withState(State.Type.PAUSED)
         );
         assertThrows(
             WorkflowException.class,
             () -> State.created().running().running()
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> State.created().running().paused().complete()
         );
         assertThrows(
             WorkflowException.class,

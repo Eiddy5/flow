@@ -104,5 +104,5 @@ PAUSE TaskRun 进入 WAITING。外部能力保存 `executionId + taskRunId`，�
   内容由本决策替代。
 - Flow Core 的运行状态词汇和迁移规则由 ADR 0017 的统一 State 约束；PAUSE 使用
   通用 WAITING 类型，但不把审批待审、通过或驳回等外部业务状态带入 Core。
-- 目标领域模型由
-  [`pause-domain-model.md`](../standards/pause-domain-model.md) 统一规定。
+- PAUSE、WAITING、Resume 和 BranchTask 的后续选择由本 ADR、ADR 0017 与
+  ADR 0024 共同约束；当前决策链见 [`README.md`](README.md)。

@@ -1,5 +1,8 @@
 package org.cses.flow.core.domains.tasks;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonValue;
+
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -34,6 +37,7 @@ public final class RouteExpression {
         return new RouteExpression(DIRECT, null, null);
     }
 
+    @JsonCreator
     public static RouteExpression parse(String expression) {
         String normalized = expression == null || expression.isBlank()
             ? DIRECT
@@ -54,6 +58,7 @@ public final class RouteExpression {
         );
     }
 
+    @JsonValue
     public String source() {
         return source;
     }

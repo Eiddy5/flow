@@ -68,7 +68,7 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
     /**
      * The column <code>public.flow_tasks.type</code>.
      */
-    public final TableField<FlowTasksRecord, String> TYPE = createField(DSL.name("type"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+    public final TableField<FlowTasksRecord, String> TYPE = createField(DSL.name("type"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
      * The column <code>public.flow_tasks.route</code>.
@@ -181,7 +181,7 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
             Internal.createCheck(this, DSL.name("ck_flow_tasks_properties"), "((jsonb_typeof(properties) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("ck_flow_tasks_reversion"), "((flow_reversion > 0))", true),
             Internal.createCheck(this, DSL.name("ck_flow_tasks_route"), "((length(btrim(route)) > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_type"), "(((length(btrim((type)::text)) >= 1) AND (length(btrim((type)::text)) <= 64)))", true)
+            Internal.createCheck(this, DSL.name("ck_flow_tasks_type"), "(((type <> ''::text) AND (type = btrim(type))))", true)
         );
     }
 

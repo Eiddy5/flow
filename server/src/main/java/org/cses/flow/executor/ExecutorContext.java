@@ -23,7 +23,8 @@ public final class ExecutorContext {
     private final Flow flow;
     private final List<TaskRun> nexts;
     private final List<WorkerTask> workerTasks;
-    private final List<TaskRun> branchTaskRuns;
+    private final List<TaskRun> pausedTaskRuns;
+    private final List<String> orchestrationCompletions;
     private final List<State.Type> states;
 
     public ExecutorContext(Flow flow, Execution execution) {
@@ -38,7 +39,8 @@ public final class ExecutorContext {
         }
         this.nexts = new ArrayList<>();
         this.workerTasks = new ArrayList<>();
-        this.branchTaskRuns = new ArrayList<>();
+        this.pausedTaskRuns = new ArrayList<>();
+        this.orchestrationCompletions = new ArrayList<>();
         this.states = new ArrayList<>();
         this.states.add(execution.state().current());
     }
@@ -63,8 +65,12 @@ public final class ExecutorContext {
         return List.copyOf(workerTasks);
     }
 
-    public List<TaskRun> branchTaskRuns() {
-        return List.copyOf(branchTaskRuns);
+    public List<TaskRun> pausedTaskRuns() {
+        return List.copyOf(pausedTaskRuns);
+    }
+
+    public List<String> orchestrationCompletions() {
+        return List.copyOf(orchestrationCompletions);
     }
 
     void stageNexts(List<TaskRun> plannedNexts) {
@@ -92,16 +98,28 @@ public final class ExecutorContext {
         return staged;
     }
 
-    void stageBranchTaskRun(TaskRun taskRun) {
-        branchTaskRuns.add(Objects.requireNonNull(
+    void stagePausedTaskRun(TaskRun taskRun) {
+        pausedTaskRuns.add(Objects.requireNonNull(
             taskRun,
             "taskRun"
         ));
     }
 
-    List<TaskRun> takeBranchTaskRuns() {
-        List<TaskRun> staged = List.copyOf(branchTaskRuns);
-        branchTaskRuns.clear();
+    List<TaskRun> takePausedTaskRuns() {
+        List<TaskRun> staged = List.copyOf(pausedTaskRuns);
+        pausedTaskRuns.clear();
+        return staged;
+    }
+
+    void stageOrchestrationCompletions(List<String> taskRunIds) {
+        Objects.requireNonNull(taskRunIds, "TaskRun ids");
+        orchestrationCompletions.clear();
+        orchestrationCompletions.addAll(taskRunIds);
+    }
+
+    List<String> takeOrchestrationCompletions() {
+        List<String> staged = List.copyOf(orchestrationCompletions);
+        orchestrationCompletions.clear();
         return staged;
     }
 

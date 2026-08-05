@@ -2210,39 +2210,30 @@ select:focus-visible,
     margin-bottom: 0;
 }
 
-.task-picker-grid {
+.task-picker-form {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
+    gap: 14px;
 }
 
-.task-choice {
+.task-picker-form .field {
+    margin-bottom: 0;
+}
+
+.task-picker-selection {
     display: grid;
-    grid-template-columns: 42px 1fr;
-    gap: 4px 12px;
-    min-height: 142px;
-    padding: 18px;
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 12px;
+    padding: 15px;
     border: 1px solid var(--line);
     border-radius: 12px;
-    text-align: left;
     background: #fbfcfa;
-    cursor: pointer;
-    transition: border-color 120ms ease, transform 120ms ease,
-        box-shadow 120ms ease;
 }
 
-.task-choice:hover {
-    transform: translateY(-2px);
-    border-color: #9fcabf;
-    box-shadow: 0 10px 24px rgba(19, 39, 35, 0.08);
-}
-
-.task-choice-icon {
+.task-picker-selection-icon {
     display: grid;
-    grid-row: 1 / span 2;
     place-items: center;
-    width: 42px;
-    height: 42px;
+    width: 46px;
+    height: 46px;
     border-radius: 10px;
     color: var(--teal);
     background: var(--teal-soft);
@@ -2250,39 +2241,46 @@ select:focus-visible,
     font-weight: 900;
 }
 
-.task-choice.pause .task-choice-icon {
+.task-picker-selection.pause .task-picker-selection-icon {
     color: var(--amber);
     background: var(--amber-soft);
 }
 
-.task-choice.parallel .task-choice-icon {
+.task-picker-selection.parallel .task-picker-selection-icon {
     color: var(--blue);
     background: #eaf1ff;
 }
 
-.task-choice strong,
-.task-choice small {
+.task-picker-selection strong,
+.task-picker-selection small {
     display: block;
 }
 
-.task-choice strong {
+.task-picker-selection strong {
     margin-bottom: 4px;
     font-size: 14px;
 }
 
-.task-choice small {
+.task-picker-selection small {
+    overflow-wrap: anywhere;
     color: var(--muted);
     font-family: var(--mono);
     font-size: 9px;
 }
 
-.task-choice em {
-    grid-column: 1 / -1;
-    align-self: end;
+.task-picker-selection p {
+    margin: 8px 0 0;
     color: var(--muted);
     font-size: 10px;
-    font-style: normal;
     line-height: 1.55;
+}
+
+.task-picker-empty {
+    padding: 18px;
+    border: 1px dashed var(--line);
+    border-radius: 12px;
+    color: var(--muted);
+    text-align: center;
 }
 
 .branch-builder-modal {

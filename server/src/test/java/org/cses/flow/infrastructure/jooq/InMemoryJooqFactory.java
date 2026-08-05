@@ -3,6 +3,7 @@ package org.cses.flow.infrastructure.jooq;
 import io.micronaut.context.annotation.Factory;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
+import jakarta.inject.Named;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -36,6 +37,7 @@ public class InMemoryJooqFactory {
     }
 
     @Singleton
+    @Named(FlowDatabase.DATA_SOURCE_NAME)
     JOOQ jooq() {
         DSLContext dsl = DSL.using(SQLDialect.POSTGRES);
         return new JOOQ(dsl.configuration(), null) {

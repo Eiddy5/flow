@@ -14,6 +14,7 @@ import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.extensions.flow.Pause;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -533,7 +534,6 @@ public final class FlowDemoModels {
     public static final class TaskView {
 
         private final String id;
-        private final String parentId;
         private final String key;
         private final String type;
         private final String route;
@@ -541,20 +541,26 @@ public final class FlowDemoModels {
         private final List<DataView> inputs;
         private final List<DataView> outputs;
         private final List<TaskView> tasks;
+        private final TaskView pause;
+        private final List<DataView> resume;
+        private final String duration;
+        private final String behavior;
 
         private TaskView(
             String id,
-            String parentId,
             String key,
             String type,
             String route,
             List<String> dependOn,
             List<DataView> inputs,
             List<DataView> outputs,
-            List<TaskView> tasks
+            List<TaskView> tasks,
+            TaskView pause,
+            List<DataView> resume,
+            String duration,
+            String behavior
         ) {
             this.id = id;
-            this.parentId = parentId;
             this.key = key;
             this.type = type;
             this.route = route;
@@ -562,28 +568,40 @@ public final class FlowDemoModels {
             this.inputs = List.copyOf(inputs);
             this.outputs = List.copyOf(outputs);
             this.tasks = List.copyOf(tasks);
+            this.pause = pause;
+            this.resume = List.copyOf(resume);
+            this.duration = duration;
+            this.behavior = behavior;
         }
 
         private static TaskView from(Task task) {
+            Pause pauseTask = task instanceof Pause candidate
+                ? candidate
+                : null;
             return new TaskView(
                 task.id(),
-                task.parentId().orElse(null),
                 task.key(),
-                task.type(),
+                task.getType(),
                 task.route().source(),
                 task.dependOn(),
                 task.inputs().stream().map(DataView::from).toList(),
                 task.outputs().stream().map(DataView::from).toList(),
-                task.tasks().stream().map(TaskView::from).toList()
+                task.tasks().stream().map(TaskView::from).toList(),
+                pauseTask == null ? null : from(pauseTask.pause()),
+                pauseTask == null
+                    ? List.of()
+                    : pauseTask.resume().stream().map(DataView::from).toList(),
+                pauseTask == null
+                    ? null
+                    : pauseTask.duration().orElse(null),
+                pauseTask == null
+                    ? null
+                    : pauseTask.behavior().map(Enum::name).orElse(null)
             );
         }
 
         public String getId() {
             return id;
-        }
-
-        public String getParentId() {
-            return parentId;
         }
 
         public String getKey() {
@@ -612,6 +630,22 @@ public final class FlowDemoModels {
 
         public List<TaskView> getTasks() {
             return tasks;
+        }
+
+        public TaskView getPause() {
+            return pause;
+        }
+
+        public List<DataView> getResume() {
+            return resume;
+        }
+
+        public String getDuration() {
+            return duration;
+        }
+
+        public String getBehavior() {
+            return behavior;
         }
     }
 

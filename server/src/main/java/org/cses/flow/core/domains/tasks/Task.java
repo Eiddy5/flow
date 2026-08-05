@@ -1,13 +1,16 @@
 package org.cses.flow.core.domains.tasks;
 
-import org.cses.flow.core.domains.flows.Data;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.Plugin;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -17,71 +20,66 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * Immutable base domain object for a Task definition.
+ * Base domain object for a bound Task plugin definition.
+ *
+ * <p>Jackson and Micronaut may populate fields through the public no-args
+ * constructor. No mutation methods are exposed after binding.</p>
  */
-public abstract class Task {
+@SuperBuilder
+@NoArgsConstructor
+public abstract class Task implements Plugin {
 
-    private final String id;
-    private final String parentId;
-    private final String key;
-    private final String type;
-    private final List<Input<?>> inputs;
-    private final List<Output> outputs;
-    private final RouteExpression route;
-    private final List<String> dependOn;
-    private final List<Task> tasks;
+    @NotBlank
+    private String id;
 
-    protected Task(
-        String id,
-        String parentId,
-        String key,
-        String type,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        RouteExpression route,
-        List<String> dependOn,
-        List<? extends Task> tasks
-    ) {
-        this.id = requireText(id, "Task id");
-        this.parentId = normalizeOptionalText(parentId);
-        this.key = requireText(key, "Task key");
-        this.type = requireText(type, "Task type");
-        this.inputs = immutableData(inputs, "Task inputs");
-        this.outputs = immutableData(outputs, "Task outputs");
-        this.route = Objects.requireNonNull(route, "Task route");
-        this.dependOn = immutableTextList(dependOn, "Task dependOn");
-        this.tasks = tasks == null ? List.of() : List.copyOf(tasks);
-        for (Task task : this.tasks) {
-            if (!task.parentId().filter(this.id::equals).isPresent()) {
-                throw new IllegalArgumentException(
-                    "Child Task parent id must equal " + this.id
-                );
-            }
-        }
-    }
+    @NotBlank
+    private String key;
+
+    @NotNull
+    @Builder.Default
+    private List<Input<?>> inputs = List.of();
+
+    @NotNull
+    @Builder.Default
+    private List<Output> outputs = List.of();
+
+    @NotNull
+    @Builder.Default
+    private RouteExpression route = RouteExpression.direct();
+
+    @NotNull
+    @Builder.Default
+    private List<@NotBlank String> dependOn = List.of();
+
+    @NotNull
+    @Builder.Default
+    private List<Task> tasks = List.of();
 
     public final String id() {
         return id;
-    }
-
-    public final Optional<String> parentId() {
-        return Optional.ofNullable(parentId);
     }
 
     public final String key() {
         return key;
     }
 
-    public final String type() {
-        return type;
-    }
-
     public final List<Input<?>> inputs() {
-        return inputs;
+        return inputs == null ? List.of() : List.copyOf(inputs);
     }
 
-    public final List<Output> outputs() {
-        return outputs;
+    public List<Output> outputs() {
+        return outputs == null ? List.of() : List.copyOf(outputs);
+    }
+
+    /**
+     * Returns the outputs bound directly to the common Task field.
+     *
+     * <p>Concrete Tasks whose effective outputs are derived from a
+     * type-specific definition can use this value when validating a restored
+     * definition without exposing a second public output contract.</p>
+     */
+    protected final List<Output> configuredOutputs() {
+        return outputs == null ? List.of() : List.copyOf(outputs);
     }
 
     public final RouteExpression route() {
@@ -89,15 +87,23 @@ public abstract class Task {
     }
 
     public final List<String> dependOn() {
-        return dependOn;
+        return dependOn == null ? List.of() : List.copyOf(dependOn);
     }
 
     public final List<Task> tasks() {
-        return tasks;
+        return tasks == null ? List.of() : List.copyOf(tasks);
     }
 
-    public final boolean isTopLevel() {
-        return parentId == null;
+    /**
+     * Returns every directly-contained Task definition owned by this Task.
+     *
+     * <p>The common implementation is the ordinary post-completion
+     * {@link #tasks()} list. A concrete orchestration Task may expose a
+     * type-specific containment relation without changing that list's
+     * scheduling meaning.</p>
+     */
+    public List<Task> definitionChildren() {
+        return tasks();
     }
 
     public final boolean matchesRoute(Map<String, ?> parentOutputs) {
@@ -105,29 +111,27 @@ public abstract class Task {
     }
 
     public final boolean declaresOutput(String outputKey) {
-        return outputs.stream().anyMatch(output ->
+        return outputs().stream().anyMatch(output ->
             output.getKey().equals(outputKey)
         );
     }
 
+    public final boolean declaresInput(String inputKey) {
+        return inputs().stream().anyMatch(input ->
+            input.getKey().equals(inputKey)
+        );
+    }
+
     /**
-     * Validates runtime outputs against this immutable Task definition.
-     *
-     * <p>A result object must be submitted, and every submitted key must be
-     * declared. Declared outputs may be absent so route expressions can
-     * distinguish a missing value from a matching value. Every submitted
-     * value is safely normalized to the exact wrapper represented by the
-     * declared DataType.</p>
+     * Validates runtime outputs against this bound Task definition.
      */
     public final Map<String, Object> validateOutputs(
         Map<String, ?> actualOutputs
     ) {
         if (actualOutputs == null) {
-            throw new WorkflowException(
-                "Task outputs must be provided"
-            );
+            throw new WorkflowException("Task outputs must be provided");
         }
-        LinkedHashSet<String> declared = outputs.stream()
+        LinkedHashSet<String> declared = outputs().stream()
             .map(Output::getKey)
             .collect(java.util.stream.Collectors.toCollection(
                 LinkedHashSet::new
@@ -143,10 +147,8 @@ public abstract class Task {
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, ?> entry : actualOutputs.entrySet()) {
-            Output output = outputs.stream()
-                .filter(candidate ->
-                    candidate.getKey().equals(entry.getKey())
-                )
+            Output output = outputs().stream()
+                .filter(candidate -> candidate.getKey().equals(entry.getKey()))
                 .findFirst()
                 .orElseThrow();
             try {
@@ -162,11 +164,11 @@ public abstract class Task {
     }
 
     public final boolean dependsOn(String taskKey) {
-        return dependOn.contains(taskKey);
+        return dependOn().contains(taskKey);
     }
 
     public final Optional<Task> findDescendant(String taskId) {
-        return tasks.stream()
+        return definitionChildren().stream()
             .flatMap(task -> Stream.concat(
                 Stream.of(task),
                 task.allDescendants().stream()
@@ -176,7 +178,7 @@ public abstract class Task {
     }
 
     public final List<Task> allDescendants() {
-        return tasks.stream()
+        return definitionChildren().stream()
             .flatMap(task -> Stream.concat(
                 Stream.of(task),
                 task.allDescendants().stream()
@@ -185,7 +187,7 @@ public abstract class Task {
     }
 
     /**
-     * Concrete subtypes override this when they own explicit extra fields.
+     * Concrete subtypes can expose additional equality state when needed.
      */
     protected Object typeSpecificEqualityState() {
         return null;
@@ -201,14 +203,12 @@ public abstract class Task {
         }
         return getClass().equals(other.getClass())
             && Objects.equals(id, other.id)
-            && Objects.equals(parentId, other.parentId)
             && Objects.equals(key, other.key)
-            && Objects.equals(type, other.type)
-            && Objects.equals(inputs, other.inputs)
-            && Objects.equals(outputs, other.outputs)
+            && Objects.equals(inputs(), other.inputs())
+            && Objects.equals(outputs(), other.outputs())
             && Objects.equals(route, other.route)
-            && Objects.equals(dependOn, other.dependOn)
-            && Objects.equals(tasks, other.tasks)
+            && Objects.equals(dependOn(), other.dependOn())
+            && Objects.equals(tasks(), other.tasks())
             && Objects.equals(
                 typeSpecificEqualityState(),
                 other.typeSpecificEqualityState()
@@ -220,72 +220,13 @@ public abstract class Task {
         return Objects.hash(
             getClass(),
             id,
-            parentId,
             key,
-            type,
-            inputs,
-            outputs,
+            inputs(),
+            outputs(),
             route,
-            dependOn,
-            tasks,
+            dependOn(),
+            tasks(),
             typeSpecificEqualityState()
         );
-    }
-
-    private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
-        }
-        return value.trim();
-    }
-
-    private static String normalizeOptionalText(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static <T extends Data> List<T> immutableData(
-        List<? extends T> source,
-        String field
-    ) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        List<T> copy = new ArrayList<>(source.size());
-        HashSet<String> keys = new HashSet<>();
-        for (T data : source) {
-            if (data == null) {
-                throw new IllegalArgumentException(
-                    field + " must not contain null values"
-                );
-            }
-            if (!keys.add(data.getKey())) {
-                throw new IllegalArgumentException(
-                    field + " contains duplicate key: " + data.getKey()
-                );
-            }
-            copy.add(data);
-        }
-        return List.copyOf(copy);
-    }
-
-    private static List<String> immutableTextList(
-        List<String> values,
-        String field
-    ) {
-        if (values == null || values.isEmpty()) {
-            return List.of();
-        }
-        List<String> result = new ArrayList<>(values.size());
-        HashSet<String> unique = new HashSet<>();
-        for (String value : values) {
-            String text = requireText(value, field + " value");
-            if (!unique.add(text)) {
-                throw new IllegalArgumentException(
-                    field + " contains duplicate key: " + text
-                );
-            }
-            result.add(text);
-        }
-        return List.copyOf(result);
     }
 }

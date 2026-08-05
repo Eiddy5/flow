@@ -4,6 +4,10 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import io.micronaut.serde.annotation.Serdeable;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.flows.inputs.BooleanInput;
 import org.cses.flow.core.domains.flows.inputs.ByteInput;
 import org.cses.flow.core.domains.flows.inputs.CharacterInput;
@@ -17,10 +21,14 @@ import org.cses.flow.core.domains.flows.inputs.StringInput;
 import java.util.Objects;
 
 /**
- * Immutable base description of one Flow or Task input.
+ * Base description of one Flow or Task input.
  *
  * @param <T> accepted Java wrapper value type
  */
+@SuperBuilder
+@Getter
+@Setter
+@NoArgsConstructor
 @Serdeable
 @JsonIgnoreProperties(ignoreUnknown = false)
 @JsonTypeInfo(
@@ -41,47 +49,38 @@ import java.util.Objects;
 })
 public abstract class Input<T> implements Data {
 
-    private final String key;
-    private final String displayName;
-    private final boolean required;
-    private final T defaultValue;
+    private String key;
+    private String displayName;
+    private boolean required;
+    private T defaultValue;
 
-    protected Input(
-        String key,
-        String displayName,
-        boolean required,
-        T defaultValue
-    ) {
-        this.key = requireText(key, "Input key");
-        this.displayName = requireText(
-            displayName,
-            "Input displayName"
-        );
-        this.required = required;
-        this.defaultValue = defaultValue;
-    }
-
-    @Override
-    public final String getKey() {
-        return key;
-    }
-
-    public final String getDisplayName() {
-        return displayName;
-    }
-
-    public final boolean isRequired() {
-        return required;
-    }
-
-    public final T getDefaultValue() {
-        return defaultValue;
+    /**
+     * Completes validation after JSON no-args construction and setter binding.
+     */
+    public final void validateDefinition() {
+        key = requireText(key, "Input key");
+        displayName = requireText(displayName, "Input displayName");
+        validateSubtypeDefinition();
+        validateDefaultValue();
     }
 
     /**
      * Validates one typed value against subtype-specific rules.
      */
     public abstract void valid(T value);
+
+    /**
+     * Normalizes one transport value to this Input's exact Java type and then
+     * applies the concrete Input rules.
+     */
+    @SuppressWarnings("unchecked")
+    public final Object normalized(Object value) {
+        T normalized = value == null
+            ? null
+            : (T) getType().normalize(value);
+        valid(normalized);
+        return normalized;
+    }
 
     protected final void validateRequired(T value) {
         if (required && value == null) {
@@ -95,6 +94,9 @@ public abstract class Input<T> implements Data {
         if (defaultValue != null) {
             valid(defaultValue);
         }
+    }
+
+    protected void validateSubtypeDefinition() {
     }
 
     protected boolean specificEquals(Input<?> other) {

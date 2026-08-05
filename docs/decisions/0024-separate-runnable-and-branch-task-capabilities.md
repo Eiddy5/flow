@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted
+Accepted（Task 能力分类继续有效；Task 不可变构造、TaskExtension 注册和外部插件
+相关条款由 [ADR 0026](0026-use-task-class-as-in-project-plugin.md) 取代）
 
 ## 背景
 
@@ -65,6 +66,10 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
   - PAUSE 由 Executor 使 TaskRun 进入 WAITING。
   - PARALLEL 结构节点由 Executor 完成自身 TaskRun，再把匹配的直接子 Task 组成
     并行批次。
+- `ExecutorService.handle(...)` 是 Task 能力分支的状态推进循环：每批 TaskRun
+  并入 Execution 后，RunnableTask 暂存 WorkerTask 并返回提交边界；BranchTask
+  直接完成或等待，非等待分支随后立即继续推导下一批 TaskRun。DefaultExecutor
+  不再调用 BranchTask 状态推进入口，只负责保存、兼容等待资源和 Worker 投递。
 - TaskExtension 与通用 Plugin 只负责类型注册、创建、重建和类型专有 properties，
   与 RunnableTask/BranchTask 的运行能力正交。外部 Runnable Task 插件把执行逻辑
   写在具体 Task 类的 `run` 方法中，只需通过 Plugin SPI 注册 TaskExtension。

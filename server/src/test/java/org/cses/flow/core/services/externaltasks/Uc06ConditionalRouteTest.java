@@ -1,5 +1,7 @@
 package org.cses.flow.core.services.externaltasks;
 
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
@@ -7,7 +9,11 @@ import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.Test;
 
@@ -97,7 +103,7 @@ class Uc06ConditionalRouteTest {
             assertNoRun(completed, task(scenario.flow(), "reject"));
             // PASS-S3-02
             assertEquals(State.Type.COMPLETED, completed.state().current());
-            assertEquals(1, completed.taskRuns().size());
+            assertEquals(3, completed.taskRuns().size());
             assertTrue(fixture.externalTaskService().waitingTasks(
                 fixture.session()
             ).isEmpty());
@@ -225,9 +231,9 @@ class Uc06ConditionalRouteTest {
                 fixture.session(),
                 first.id()
             ).orElseThrow();
-            assertEquals(State.Type.WAITING, untouched.state().current());
+            assertEquals(State.Type.RUNNING, untouched.state().current());
             assertEquals(
-                State.Type.WAITING,
+                State.Type.PAUSED,
                 untouched.taskRuns().getFirst().state().current()
             );
             assertTrue(untouched.taskRuns().getFirst().outputs().isEmpty());
@@ -324,18 +330,53 @@ class Uc06ConditionalRouteTest {
             description: conditional approval
             tasks:
               - key: approval-decision
-                type: PAUSE
+                type: org.cses.flow.extensions.flow.Pause
+                pause:
+                  key: create-approval-decision
+                  type: org.cses.flow.extensions.tasks.AutomaticTask
+                resume:
+                  - key: decision
+                    type: STRING
+              - key: route-decision
+                type: org.cses.flow.core.services.externaltasks.Uc06ConditionalRouteTest.ResumeDecisionTask
+                dependOn:
+                  - approval-decision
                 outputs:
                   - key: decision
                     type: STRING
                 tasks:
                   - key: approve
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     route: '%s'
                   - key: reject
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                     route: 'outputs.decision == "REJECTED"'
             """.formatted(key, approveRoute);
+    }
+
+    /** Copies a resumed decision into a normal parent output for UC routing. */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static final class ResumeDecisionTask
+        extends Task implements RunnableTask {
+
+        @Override
+        public RunResult run(RunContext context) {
+            Object dependencies = context.inputs().get("dependOnOutputs");
+            if (!(dependencies instanceof Map<?, ?> byTask)) {
+                return RunResult.completed(Map.of());
+            }
+            Object approval = byTask.get("approval-decision");
+            if (!(approval instanceof Map<?, ?> outputs)
+                || !outputs.containsKey("decision")) {
+                return RunResult.completed(Map.of());
+            }
+            return RunResult.completed(Map.of(
+                "decision",
+                outputs.get("decision")
+            ));
+        }
     }
 
     private static final class RouteScenario {

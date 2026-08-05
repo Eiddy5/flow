@@ -6,8 +6,10 @@
 逻辑。凡是需要创建、解析、序列化、反序列化或转换 JSON 的代码，都必须遵守本
 规范。
 
-PAAS JSON 是本项目统一的 JSON 能力入口。业务代码不得绕过公共封装直接使用
-Jackson `ObjectMapper`。
+PAAS JSON 是一般业务和基础设施 JSON 的统一能力入口。Task 插件的严格多态绑定
+是 [ADR 0026](../decisions/0026-use-task-class-as-in-project-plugin.md) 定义的窄化
+例外，只能通过 `core/serializers/JacksonMapper` 使用受控 Jackson 配置。其他业务
+代码不得绕过公共封装直接使用 Jackson `ObjectMapper`。
 
 ## 1. 统一使用 PAAS JSON
 
@@ -19,9 +21,11 @@ Jackson `ObjectMapper`。
 | `JsonObjects` | 创建、解析和操作 JSON 数组 |
 | `JsonFactory` | 公共序列化、反序列化和类型转换能力 |
 
-新增或修改 JSON 代码时，应先使用这些类型已有的公共方法，不得重复封装
-`JsonUtil`、`JsonHelper` 或项目私有的 Mapper。只有 PAAS JSON 确实无法表达已确认
-的公共需求时，才可以先形成架构决策，再扩展统一能力。
+新增或修改一般 JSON 代码时，应先使用这些类型已有的公共方法，不得重复封装
+`JsonUtil`、`JsonHelper` 或项目私有 Mapper。Task 插件链路必须复用现有
+`JacksonMapper`，也不能在插件、Repository 或 Controller 中创建第二套 Mapper。
+只有现有两条受控入口都无法表达已确认的公共需求时，才可以先形成架构决策，再
+扩展统一能力。
 
 ## 2. 常用方法
 
@@ -88,10 +92,12 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
 - Core 优先接收领域对象和值类型。JSON 只是 HTTP、配置或持久化格式时，应在
   Controller、Serializer、Entry 或其他边界完成转换，不能让 JSON 技术类型扩散
   为领域模型。
-- ADR 0019 确认的 Input 定义物化是窄化边界：Flow 可以把 YamlParser 产生的单个
-  Input Map 临时转为 `JsonObject`，并通过 `asObject(Input.class)` 按 `type`
-  多态实例化；Repository Codec 使用 `asObjects(Input.class)` 恢复。该例外不允许
-  `JsonObject` 成为领域字段、公共方法参数，也不允许再建立项目私有 Mapper。
+- Flow YAML 中的 Input/Output 和 Task 由 `FlowDefinitionDeserializer` 使用受控
+  `JacksonMapper` 绑定。绑定结果必须立即执行定义校验，校验失败的对象不能进入
+  聚合。持久化 Input 继续由 Repository Codec 使用 PAAS JSON 恢复。
+- Task 插件 properties 的拆分与合并由 `FlowTaskEntry` 调用同一个
+  `JacksonMapper` 完成。Entry 不持有 ObjectMapper，不注册 Module，也不自行处理
+  插件类型；恢复具体 Task 仍经过注册表驱动的 `PluginDeserializer`。
 - JOOQ Entry 中的 JSON/JSONB 字段转换必须使用 `JsonObject`、
   `JsonObjects` 或 `JsonFactory`。转换和扩展方法仍放在对应的 `XxxEntry` 或其
   专用 Codec 中。
@@ -100,9 +106,9 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
 - `org.flow.gen` 下的生成代码由生成器维护，不手工修改；生成类已经提供 PAAS
   JSON 字段和转换能力时，调用方必须直接复用。
 
-## 4. 禁止直接使用 ObjectMapper 处理 JSON
+## 4. 禁止在受控边界外直接使用 ObjectMapper
 
-手写项目代码禁止直接导入、创建、注入、缓存或封装
+除下一节列出的受控边界外，手写项目代码禁止直接导入、创建、注入、缓存或封装
 `com.fasterxml.jackson.databind.ObjectMapper` 来处理 JSON。
 
 禁止写法包括但不限于：
@@ -129,15 +135,19 @@ PAAS 公共能力演进。
 
 以下情况不属于“直接使用 ObjectMapper 处理 JSON”：
 
-1. `core/serializers/YamlParser` 按 ADR 0013 使用
-   `ObjectMapper(new YAMLFactory())` 解析 YAML。它是非 JSON 格式边界，例外不能
-   扩散到其他类，也不能用于 JSON。
-2. Micronaut、PAAS JSON 或其他第三方库内部使用 Jackson，项目代码不直接绕过
+1. `core/serializers/JacksonMapper` 按 ADR 0026 集中创建严格 JSON/YAML Mapper、
+   注册 `PluginModule` 并隐藏具体 ObjectMapper。`YamlParser` 和
+   `FlowDefinitionDeserializer` 可在同一包内使用 Jackson tree model；
+   `core/plugins/PluginDeserializer` 可在一次 Jackson 回调内读取插件节点。该例外
+   只服务 Flow 定义和 Task 插件的多态绑定，不得成为公共领域契约。
+2. `FlowTaskEntry` 只能调用 `JacksonMapper` 的领域级转换方法拆分/合并插件
+   properties；不能直接接触 ObjectMapper 或 JsonNode。
+3. Micronaut、PAAS JSON 或其他第三方库内部使用 Jackson，项目代码不直接绕过
    PAAS API。
-3. 无 Micronaut 容器的基础设施测试为 PAAS JSON 初始化
+4. 无 Micronaut 容器的基础设施测试为 PAAS JSON 初始化
    `JsonFactory.instance`。该初始化只负责测试引导，测试中的 JSON 创建、解析和
    断言仍必须通过 PAAS JSON 完成。
-4. 生成器产出的代码由生成模板决定，不直接手工修改。项目维护的生成模板和生成
+5. 生成器产出的代码由生成模板决定，不直接手工修改。项目维护的生成模板和生成
    逻辑仍应优先生成 PAAS JSON 用法。
 
 新增例外必须记录 ADR，说明为什么 PAAS JSON 无法满足需求、例外边界和后续收敛
@@ -157,8 +167,9 @@ PAAS 公共能力演进。
 新增或修改 JSON 代码时逐项检查：
 
 1. 是否统一使用 `org.paas.json` 下的公共类型和方法。
-2. 是否根据对象、数组和类型转换场景选择了正确的 PAAS JSON API。
-3. 是否避免新增 `ObjectMapper`、`JsonNode` 或私有 JSON 工具类。
+2. 是否根据一般 JSON 或 Task 插件多态场景选择了 PAAS JSON 或现有
+   `JacksonMapper`。
+3. 是否避免在受控包之外新增 `ObjectMapper`、`JsonNode` 或私有 JSON 工具类。
 4. JSON 技术类型是否被限制在 HTTP、Serializer、Entry、Codec 等必要边界。
 5. JOOQ JSON/JSONB 字段转换是否放在对应 Entry 或专用 Codec 中。
 6. 转换失败或公共方法返回 `null` 时是否按业务契约处理。

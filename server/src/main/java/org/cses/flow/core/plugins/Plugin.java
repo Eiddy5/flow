@@ -1,19 +1,19 @@
 package org.cses.flow.core.plugins;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import jakarta.validation.constraints.NotNull;
+
 /**
  * Root interface for every automatically discovered plugin.
  */
 public interface Plugin {
 
     /**
-     * Stable identifier within one extension point.
+     * Exact class identifier used in definitions and persistence.
      */
-    String type();
-
-    /**
-     * Interface whose implementations share one type namespace.
-     */
-    default Class<? extends Plugin> extensionPoint() {
-        return Plugin.class;
+    @NotNull
+    @JsonProperty(value = "type", access = JsonProperty.Access.READ_ONLY)
+    default String getType() {
+        return getClass().getCanonicalName();
     }
 }

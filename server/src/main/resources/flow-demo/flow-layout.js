@@ -16,6 +16,8 @@
     const NODE_TOP = 14;
     const FIRST_NODE_X = 94;
     const TERMINAL_WIDTH = 54;
+    const PARALLEL_TASK_TYPE =
+        "org.cses.flow.extensions.flow.Parallel";
 
     function build(tasks) {
         const context = {
@@ -248,7 +250,7 @@
     }
 
     function taskBranchKind(task, children) {
-        if (String(task.type || "").toUpperCase() === "PARALLEL") {
+        if (task.type === PARALLEL_TASK_TYPE) {
             return "parallel";
         }
         if (children.some((child) => isConditionalRoute(child.route))) {

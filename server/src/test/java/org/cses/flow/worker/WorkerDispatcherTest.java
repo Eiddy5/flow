@@ -1,13 +1,20 @@
 package org.cses.flow.worker;
 
+import lombok.Builder;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+import org.cses.flow.core.domains.flows.ActorRef;
+import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunContext;
+import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
+import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.extensions.tasks.AutomaticTask;
-import org.cses.flow.extensions.tasks.PauseTask;
+import org.cses.flow.extensions.flow.Pause;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -20,27 +27,26 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 final class WorkerDispatcherTest {
 
+    private static final Context PLUGINS = builtInContext(
+        new TestNotificationTask()
+    );
     private final WorkerDispatcher dispatcher = new WorkerDispatcher();
 
     @Test
     void directlyInvokesTheRunnableTask() {
-        AutomaticTask task = AutomaticTask.create(
-            "task-1",
-            null,
-            "automatic",
-            List.of(),
-            List.of(),
-            RouteExpression.direct(),
-            List.of(),
-            List.of()
-        );
+        AutomaticTask task = AutomaticTask.builder()
+            .id("task-1")
+            .key("automatic")
+            .build();
         WorkerTask workerTask = new WorkerTask(
             "execution-1",
             "task-run-1",
@@ -59,17 +65,15 @@ final class WorkerDispatcherTest {
     }
 
     @Test
-    void rejectsBranchTasksBeforeWorkerDispatch() {
-        PauseTask task = PauseTask.create(
-            "task-1",
-            null,
-            "pause",
-            List.of(),
-            List.of(),
-            RouteExpression.direct(),
-            List.of(),
-            List.of()
-        );
+    void rejectsOrchestrationTasksBeforeWorkerDispatch() {
+        Pause task = Pause.builder()
+            .id("task-1")
+            .key("pause")
+            .pause(AutomaticTask.builder()
+                .id("action-1")
+                .key("create-pause")
+                .build())
+            .build();
 
         assertThrows(
             IllegalArgumentException.class,
@@ -83,8 +87,55 @@ final class WorkerDispatcherTest {
     }
 
     @Test
+    void dispatchesAMaterializedPluginUsingItsCustomField() {
+        Flow flow = PLUGINS.deploy(
+            "worker-company",
+            "worker-flow",
+            Map.of(
+                "key", "notification-flow",
+                "tasks", List.of(Map.of(
+                    "key", "notify",
+                    "type",
+                    TestNotificationTask.class.getCanonicalName(),
+                    "channel", "operations",
+                    "outputs", List.of(Map.of(
+                        "key", "channel",
+                        "type", "STRING"
+                    ))
+                ))
+            ),
+            null,
+            ActorRef.create("worker-user", "Worker User"),
+            1_785_312_000_000L
+        );
+        TestNotificationTask task = assertInstanceOf(
+            TestNotificationTask.class,
+            flow.tasks().getFirst()
+        );
+
+        WorkerTaskResult result = dispatcher.dispatch(
+            new Session<User>(),
+            DSL.using(SQLDialect.POSTGRES),
+            new WorkerTask(
+                "execution-1",
+                "task-run-1",
+                task,
+                Map.of()
+            )
+        );
+
+        assertEquals(
+            Map.of("channel", "operations"),
+            result.outputs()
+        );
+    }
+
+    @Test
     void createsOneFreshRunContextPerRunnableInvocation() {
-        ContextRecordingTask task = new ContextRecordingTask();
+        ContextRecordingTask task = ContextRecordingTask.builder()
+            .id("task-1")
+            .key("record-context")
+            .build();
         Map<String, Object> sourceInputs = new LinkedHashMap<>();
         sourceInputs.put("payload", "original");
         WorkerTask workerTask = new WorkerTask(
@@ -121,24 +172,13 @@ final class WorkerDispatcherTest {
         );
     }
 
+    @SuperBuilder
+    @NoArgsConstructor
     private static final class ContextRecordingTask
         extends Task implements RunnableTask {
 
-        private final List<RunContext> contexts = new ArrayList<>();
-
-        private ContextRecordingTask() {
-            super(
-                "task-1",
-                null,
-                "record-context",
-                "TEST_RUN_CONTEXT",
-                List.of(),
-                List.of(),
-                RouteExpression.direct(),
-                List.of(),
-                List.of()
-            );
-        }
+        @Builder.Default
+        private List<RunContext> contexts = new ArrayList<>();
 
         @Override
         public RunResult run(RunContext context) {

@@ -77,13 +77,14 @@ final class ExecutionTest {
         assertTrue(execution.state().is(State.Type.RUNNING));
         assertTrue(taskRun.state().is(State.Type.RUNNING));
 
-        execution.waitTaskRun(taskRun.id());
-        execution.enterWaiting();
+        execution.pauseTaskRun(taskRun.id());
 
-        assertTrue(execution.state().is(State.Type.WAITING));
-        assertTrue(taskRun.state().is(State.Type.WAITING));
+        assertTrue(execution.state().is(State.Type.RUNNING));
+        assertTrue(taskRun.state().is(State.Type.PAUSED));
 
         execution.resumeTaskRun(taskRun.id(), Map.of());
+        assertTrue(taskRun.state().is(State.Type.RUNNING));
+        execution.completeTaskRun(taskRun.id(), Map.of());
         execution.complete();
 
         assertTrue(execution.state().is(State.Type.COMPLETED));
@@ -91,8 +92,6 @@ final class ExecutionTest {
         assertEquals(
             List.of(
                 State.Type.CREATED,
-                State.Type.RUNNING,
-                State.Type.WAITING,
                 State.Type.RUNNING,
                 State.Type.COMPLETED
             ),
@@ -102,7 +101,8 @@ final class ExecutionTest {
             List.of(
                 State.Type.CREATED,
                 State.Type.RUNNING,
-                State.Type.WAITING,
+                State.Type.PAUSED,
+                State.Type.RUNNING,
                 State.Type.COMPLETED
             ),
             history(taskRun.state())
@@ -168,38 +168,16 @@ final class ExecutionTest {
     }
 
     @Test
-    void rehydrateShouldRejectRoutesThatOnlyTheGenericStateAllows() {
-        State taskRunRestart = State.rehydrate(
-            State.Type.RUNNING,
+    void rehydrateShouldRejectPausedExecutionState() {
+        State paused = State.rehydrate(
+            State.Type.PAUSED,
             List.of(
                 State.History.rehydrate(State.Type.CREATED, 100L),
                 State.History.rehydrate(State.Type.RUNNING, 200L),
-                State.History.rehydrate(State.Type.WAITING, 300L),
-                State.History.rehydrate(State.Type.RUNNING, 400L)
-            )
-        );
-        State executionCompletesWhileWaiting = State.rehydrate(
-            State.Type.COMPLETED,
-            List.of(
-                State.History.rehydrate(State.Type.CREATED, 100L),
-                State.History.rehydrate(State.Type.RUNNING, 200L),
-                State.History.rehydrate(State.Type.WAITING, 300L),
-                State.History.rehydrate(State.Type.COMPLETED, 400L)
+                State.History.rehydrate(State.Type.PAUSED, 300L)
             )
         );
 
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> TaskRun.rehydrate(
-                "execution-route-task-run",
-                "execution-route-task",
-                null,
-                Map.of(),
-                taskRunRestart,
-                Map.of(),
-                null
-            )
-        );
         assertThrows(
             IllegalArgumentException.class,
             () -> Execution.rehydrate(
@@ -207,7 +185,7 @@ final class ExecutionTest {
                 "execution-route-company",
                 "execution-route-flow",
                 1,
-                executionCompletesWhileWaiting,
+                paused,
                 0,
                 List.of()
             )

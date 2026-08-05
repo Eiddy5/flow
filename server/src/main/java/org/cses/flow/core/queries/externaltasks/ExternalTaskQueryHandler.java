@@ -1,10 +1,12 @@
 package org.cses.flow.core.queries.externaltasks;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.repositories.externaltasks.ExternalTaskRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.x9.jooq.JOOQ;
@@ -20,7 +22,7 @@ public final class ExternalTaskQueryHandler {
 
     @Inject
     public ExternalTaskQueryHandler(
-        JOOQ jooq,
+        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
         ExternalTaskRepository externalTaskRepository
     ) {
         this.jooq = jooq;

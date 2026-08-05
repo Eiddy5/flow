@@ -1,14 +1,13 @@
 package org.cses.flow.core;
 
 import io.micronaut.context.ApplicationContext;
+import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.PluginRegistry;
-import org.cses.flow.core.plugins.RegisteredTaskTypeDispatcher;
-import org.cses.flow.core.plugins.TaskExtension;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.services.flows.FlowService;
-import org.cses.flow.extensions.tasks.AutomaticTaskPlugin;
-import org.cses.flow.extensions.tasks.ParallelTaskPlugin;
-import org.cses.flow.extensions.tasks.PauseTaskPlugin;
+import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.log.Log;
+import org.cses.flow.extensions.flow.Parallel;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -16,7 +15,7 @@ import org.paas.session.User;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlowCoreWiringTest {
@@ -30,7 +29,9 @@ class FlowCoreWiringTest {
             "micronaut.config-client.enabled", false,
             "consul.client.registration.enabled", false,
             "grpc.server.enabled", false,
-            "thrift.server.enabled", false
+            "thrift.server.enabled", false,
+            "pulsar.consumer.enabled", false,
+            "jooq.send-event", false
         );
 
         try (ApplicationContext context =
@@ -39,24 +40,21 @@ class FlowCoreWiringTest {
             PluginRegistry registry = context.getBean(
                 PluginRegistry.class
             );
-            assertInstanceOf(
-                RegisteredTaskTypeDispatcher.class,
-                context.getBean(TaskTypeDispatcher.class)
+            assertSame(
+                AutomaticTask.class,
+                registry.resolve(AutomaticTask.class.getName(), Task.class)
             );
-            assertInstanceOf(
-                AutomaticTaskPlugin.class,
-                registry.find(TaskExtension.class, "AUTO").orElseThrow()
+            assertSame(
+                Pause.class,
+                registry.resolve(Pause.class.getName(), Task.class)
             );
-            assertInstanceOf(
-                PauseTaskPlugin.class,
-                registry.find(TaskExtension.class, "pause").orElseThrow()
+            assertSame(
+                Parallel.class,
+                registry.resolve(Parallel.class.getName(), Task.class)
             );
-            assertInstanceOf(
-                ParallelTaskPlugin.class,
-                registry.find(
-                    TaskExtension.class,
-                    "parallel"
-                ).orElseThrow()
+            assertSame(
+                Log.class,
+                registry.resolve(Log.class.getName(), Task.class)
             );
             Session<User> session = session("wiring-company");
 
@@ -67,7 +65,7 @@ class FlowCoreWiringTest {
                 description: Micronaut 装配验证
                 tasks:
                   - key: start
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                 """
             );
             service.deploy(
@@ -82,7 +80,10 @@ class FlowCoreWiringTest {
             ).orElseThrow();
             assertTrue(!current.isDeleted());
             assertEquals(1L, current.reversion());
-            assertEquals("AUTO", current.tasks().getFirst().type());
+            assertEquals(
+                AutomaticTask.class.getName(),
+                current.tasks().getFirst().getType()
+            );
             assertEquals(
                 draft.raw(),
                 service.draft(session, draft.id()).orElseThrow().raw()

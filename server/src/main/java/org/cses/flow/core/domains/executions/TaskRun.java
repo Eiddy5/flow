@@ -150,12 +150,12 @@ public final class TaskRun {
         return state.isActive();
     }
 
-    public boolean isWaiting() {
-        return state.isWaiting();
+    public boolean isPaused() {
+        return state.isPaused();
     }
 
     public boolean isUnfinished() {
-        return state.isActive() || state.isWaiting();
+        return state.isActive() || state.isPaused();
     }
 
     void start() {
@@ -163,9 +163,9 @@ public final class TaskRun {
         state = state.running();
     }
 
-    void waitForResult() {
+    void pause() {
         requireState(State.Type.RUNNING);
-        state = state.waiting();
+        state = state.paused();
     }
 
     void complete(Map<String, ?> completedOutputs) {
@@ -176,10 +176,10 @@ public final class TaskRun {
     }
 
     void resume(Map<String, ?> completedOutputs) {
-        requireState(State.Type.WAITING);
+        requireState(State.Type.PAUSED);
         outputs = immutableMap(completedOutputs);
         error = null;
-        state = state.complete();
+        state = state.running();
     }
 
     void fail(String failure) {
@@ -223,13 +223,14 @@ public final class TaskRun {
                     target == State.Type.RUNNING
                         || target == State.Type.TERMINATED;
                 case RUNNING ->
-                    target == State.Type.WAITING
+                    target == State.Type.PAUSED
                         || target == State.Type.COMPLETED
                         || target == State.Type.TERMINATED;
-                case WAITING ->
-                    target == State.Type.COMPLETED
+                case PAUSED ->
+                    target == State.Type.RUNNING
                         || target == State.Type.TERMINATED;
-                case COMPLETED, TERMINATED -> false;
+                case COMPLETED, WARNING, CANCELLED, FAILED,
+                    TERMINATED -> false;
             };
             if (!valid) {
                 throw new IllegalArgumentException(

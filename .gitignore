@@ -18,6 +18,8 @@ out/
 .codex/skills/*
 !.codex/skills/design-postgres-schema/
 !.codex/skills/design-postgres-schema/**
+!.codex/skills/design-clear-processing/
+!.codex/skills/design-clear-processing/**
 !.codex/skills/flow-domain-modeling/
 !.codex/skills/flow-domain-modeling/**
 !.codex/skills/generate-uc/

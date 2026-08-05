@@ -1,12 +1,14 @@
 package org.cses.flow.core.queries.flows;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.repositories.flows.FlowDraftRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.x9.jooq.JOOQ;
@@ -23,7 +25,7 @@ public final class FlowQueryHandler {
 
     @Inject
     public FlowQueryHandler(
-        JOOQ jooq,
+        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
         FlowRepository flowRepository,
         FlowDraftRepository draftRepository
     ) {

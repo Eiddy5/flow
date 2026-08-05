@@ -4,11 +4,16 @@ import io.micronaut.json.JsonMapper;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
+import org.cses.flow.core.domains.flows.inputs.StringInput;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.RouteExpression;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.cses.flow.core.domains.tasks.TemplateExpression;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
+import org.cses.flow.extensions.flow.Parallel;
+import org.cses.flow.extensions.flow.Pause;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
@@ -19,17 +24,124 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskDataPersistenceMappingTest {
 
-    private final TaskTypeDispatcher dispatcher = builtInDispatcher();
+    private final Context plugins = builtInContext();
 
     @BeforeAll
     static void initializeJsonMapper() {
         JsonFactory.instance = JsonMapper.createDefault();
+    }
+
+    @Test
+    void flowTaskEntryRoundTripsLogMessageExpression() {
+        Log task = Log.builder()
+            .id("log-id")
+            .key("write-log")
+            .message(TemplateExpression.parse(
+                "处理结果：{{ dependOnOutputs.prepare.result }}"
+            ))
+            .dependOn(List.of("prepare"))
+            .build();
+
+        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+            "company-1",
+            "flow-1",
+            1,
+            task,
+            null,
+            0,
+            plugins.jacksonMapper()
+        );
+
+        assertEquals(
+            "处理结果：{{ dependOnOutputs.prepare.result }}",
+            entry.properties.asMap().get("message")
+        );
+        Log restored = assertInstanceOf(
+            Log.class,
+            entry.toDomain(plugins.jacksonMapper(), List.of())
+        );
+        assertEquals(task, restored);
+        assertEquals(task.message(), restored.message());
+    }
+
+    @Test
+    void flowTaskEntryRoundTripsParallelConcurrentProperty() {
+        Parallel task = Parallel.builder()
+            .id("parallel-id")
+            .key("parallel")
+            .concurrent(4)
+            .build();
+
+        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+            "company-1",
+            "flow-1",
+            1,
+            task,
+            null,
+            0,
+            plugins.jacksonMapper()
+        );
+
+        assertEquals(4, entry.properties.asMap().get("concurrent"));
+        Parallel restored = assertInstanceOf(
+            Parallel.class,
+            entry.toDomain(plugins.jacksonMapper(), List.of())
+        );
+        assertEquals(task, restored);
+        assertEquals(4, restored.concurrent().orElseThrow());
+    }
+
+    @Test
+    void flowTaskEntryRoundTripsPauseSpecificDefinitionTree() {
+        Task action = AutomaticTask.builder()
+            .id("action-id")
+            .key("create-approval")
+            .build();
+        Pause task = Pause.builder()
+            .id("pause-id")
+            .key("wait-approval")
+            .pause(action)
+            .resume(List.of(StringInput.builder()
+                .key("decision")
+                .displayName("Decision")
+                .required(true)
+                .build()))
+            .duration("P1M")
+            .behavior(Pause.Behavior.WARN)
+            .build();
+        plugins.modelValidator().validate(task);
+
+        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+            "company-1",
+            "flow-1",
+            1,
+            task,
+            null,
+            0,
+            plugins.jacksonMapper()
+        );
+
+        assertTrue(entry.properties.asMap().containsKey("pause"));
+        assertEquals("P1M", entry.properties.asMap().get("duration"));
+        Pause restored = assertInstanceOf(
+            Pause.class,
+            entry.toDomain(plugins.jacksonMapper(), List.of())
+        );
+        assertEquals(task, restored);
+        assertEquals(action, restored.pause());
+        assertEquals(List.of(action), restored.definitionChildren());
+        assertEquals(
+            List.of(Output.create("decision", DataType.STRING)),
+            restored.outputs()
+        );
     }
 
     @Test
@@ -45,29 +157,31 @@ class TaskDataPersistenceMappingTest {
                 "max", 5
             )
         ).asObject(Input.class);
-        Task task = AutomaticTask.create(
-            "task-id",
-            null,
-            "approval",
-            List.of(definitionInput),
-            List.of(Output.create("decision", DataType.STRING)),
-            RouteExpression.parse(
+        Task task = AutomaticTask.builder()
+            .id("task-id")
+            .key("approval")
+            .inputs(List.of(definitionInput))
+            .outputs(List.of(Output.create(
+                "decision",
+                DataType.STRING
+            )))
+            .route(RouteExpression.parse(
                 "outputs.decision == \"approved\""
-            ),
-            List.of("prepare"),
-            List.of()
-        );
+            ))
+            .dependOn(List.of("prepare"))
+            .build();
 
         FlowTaskEntry entry = FlowTaskEntry.fromDomain(
             "company-1",
             "flow-1",
             1,
             task,
+            null,
             0,
-            dispatcher
+            plugins.jacksonMapper()
         );
 
-        Task restored = entry.toDomain(dispatcher, List.of());
+        Task restored = entry.toDomain(plugins.jacksonMapper(), List.of());
         assertEquals(task, restored);
         IntegerInput input = (IntegerInput) restored.inputs().getFirst();
         assertEquals(2, input.getDefaultValue());
@@ -85,7 +199,7 @@ class TaskDataPersistenceMappingTest {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.id = "task-id";
         entry.key = "automatic";
-        entry.type = "AUTO";
+        entry.type = AutomaticTask.class.getName();
         entry.route = "DIRECT";
         entry.inputs = JsonObjects.FromList(List.of(Map.of(
             "key", "request",
@@ -95,7 +209,7 @@ class TaskDataPersistenceMappingTest {
         entry.dependOn = JsonObjects.Create();
 
         Input<?> restored = entry.toDomain(
-            dispatcher,
+            plugins.jacksonMapper(),
             List.of()
         ).inputs().getFirst();
         assertEquals("request", restored.getDisplayName());
@@ -107,7 +221,7 @@ class TaskDataPersistenceMappingTest {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.id = "task-id";
         entry.key = "approval";
-        entry.type = "AUTO";
+        entry.type = AutomaticTask.class.getName();
         entry.route = "DIRECT";
         entry.inputs = JsonObjects.FromList(List.of("legacy"));
         entry.outputs = JsonObjects.Create();
@@ -115,7 +229,7 @@ class TaskDataPersistenceMappingTest {
 
         assertThrows(
             RuntimeException.class,
-            () -> entry.toDomain(dispatcher, List.of())
+            () -> entry.toDomain(plugins.jacksonMapper(), List.of())
         );
     }
 

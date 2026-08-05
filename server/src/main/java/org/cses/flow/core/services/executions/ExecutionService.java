@@ -62,7 +62,7 @@ public final class ExecutionService {
     }
 
     /**
-     * Resumes one waiting PAUSE TaskRun and drives the Execution to its next
+     * Resumes one PAUSED TaskRun and drives the Execution to its next
      * stable state.
      */
     public <S extends Session<U>, U extends User> Execution resume(

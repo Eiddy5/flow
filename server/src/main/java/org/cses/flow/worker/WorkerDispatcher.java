@@ -1,7 +1,7 @@
 package org.cses.flow.worker;
 
 import jakarta.inject.Singleton;
-import org.cses.flow.core.domains.tasks.RunContext;
+import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.jooq.DSLContext;
 import org.paas.session.Session;

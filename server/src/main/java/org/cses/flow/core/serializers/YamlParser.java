@@ -4,8 +4,9 @@ import com.fasterxml.jackson.core.JsonLocation;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.inject.Singleton;
 
 import java.util.ArrayList;
@@ -22,22 +23,30 @@ public final class YamlParser {
 
     private final ObjectMapper objectMapper;
 
-    public YamlParser() {
-        YAMLFactory yamlFactory = new YAMLFactory();
-        yamlFactory.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-        objectMapper = new ObjectMapper(yamlFactory);
-        objectMapper.enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    public YamlParser(JacksonMapper jacksonMapper) {
+        this.objectMapper = jacksonMapper.yamlMapper();
     }
 
     public Map<String, Object> parse(String source) {
+        Object parsed = objectMapper.convertValue(
+            parseTree(source),
+            Object.class
+        );
+        return immutableStringMap(parsed, "YAML root");
+    }
+
+    public ObjectNode parseTree(String source) {
         if (source == null || source.isBlank()) {
             throw new IllegalArgumentException(
                 "YAML source must not be blank"
             );
         }
         try {
-            Object parsed = objectMapper.readValue(source, Object.class);
-            return immutableStringMap(parsed, "YAML root");
+            JsonNode parsed = objectMapper.readTree(source);
+            if (!(parsed instanceof ObjectNode object)) {
+                throw new IllegalArgumentException("YAML root must be a map");
+            }
+            return object;
         } catch (JsonProcessingException exception) {
             throw parseFailure(exception);
         }

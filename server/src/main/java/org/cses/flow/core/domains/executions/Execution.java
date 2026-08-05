@@ -170,9 +170,9 @@ public final class Execution {
             .toList();
     }
 
-    public List<TaskRun> waitingTaskRuns() {
+    public List<TaskRun> pausedTaskRuns() {
         return taskRuns.stream()
-            .filter(TaskRun::isWaiting)
+            .filter(TaskRun::isPaused)
             .toList();
     }
 
@@ -312,36 +312,23 @@ public final class Execution {
         taskRun.complete(outputs);
     }
 
-    public void waitTaskRun(String taskRunId) {
+    public void pauseTaskRun(String taskRunId) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
         requireTaskRunState(taskRun, State.Type.RUNNING);
         markModified();
-        taskRun.waitForResult();
-    }
-
-    public void enterWaiting() {
-        requireRunning();
-        if (!activeTaskRuns().isEmpty() || waitingTaskRuns().isEmpty()) {
-            throw new WorkflowException(
-                "Execution can wait only when all unfinished TaskRuns wait: "
-                    + id
-            );
-        }
-        markModified();
-        state = state.waiting();
+        taskRun.pause();
     }
 
     public void resumeTaskRun(
         String taskRunId,
         Map<String, ?> outputs
     ) {
-        requireWaiting();
+        requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
-        requireTaskRunState(taskRun, State.Type.WAITING);
+        requireTaskRunState(taskRun, State.Type.PAUSED);
         markModified();
         taskRun.resume(outputs);
-        state = state.running();
     }
 
     public void failTaskRun(String taskRunId, String error) {
@@ -422,12 +409,6 @@ public final class Execution {
                 "Created Execution must not have TaskRuns"
             );
         }
-        if (state.is(State.Type.WAITING)
-            && (!activeTaskRuns().isEmpty() || waitingTaskRuns().isEmpty())) {
-            throw new IllegalArgumentException(
-                "Waiting Execution must have only waiting unfinished TaskRuns"
-            );
-        }
         if (state.isTerminal() && !unfinishedTaskRuns().isEmpty()) {
             throw new IllegalArgumentException(
                 "Terminal Execution must not have unfinished TaskRuns"
@@ -446,12 +427,9 @@ public final class Execution {
                     target == State.Type.RUNNING
                         || target == State.Type.TERMINATED;
                 case RUNNING ->
-                    target == State.Type.WAITING
-                        || target == State.Type.COMPLETED
+                    target == State.Type.COMPLETED
                         || target == State.Type.TERMINATED;
-                case WAITING ->
-                    target == State.Type.RUNNING
-                        || target == State.Type.TERMINATED;
+                case PAUSED, WARNING, CANCELLED, FAILED -> false;
                 case COMPLETED, TERMINATED -> false;
             };
             if (!valid) {
@@ -472,14 +450,6 @@ public final class Execution {
             throw new WorkflowException(
                 "Execution must be " + expected + " but was " + state
                     + ": " + id
-            );
-        }
-    }
-
-    private void requireWaiting() {
-        if (!state.is(State.Type.WAITING)) {
-            throw new WorkflowException(
-                "Execution must be WAITING but was " + state + ": " + id
             );
         }
     }

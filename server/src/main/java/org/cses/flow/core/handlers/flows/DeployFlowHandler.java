@@ -7,10 +7,9 @@ import org.cses.flow.core.commands.CommandContext;
 import org.cses.flow.core.commands.CommandHandler;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.repositories.flows.FlowDraftRepository;
-import org.cses.flow.core.serializers.YamlParser;
+import org.cses.flow.core.serializers.FlowDefinitionDeserializer;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -25,20 +24,17 @@ public final class DeployFlowHandler implements CommandHandler<
 
     private final FlowDraftRepository draftRepository;
     private final FlowRepository flowRepository;
-    private final TaskTypeDispatcher taskTypeDispatcher;
-    private final YamlParser yamlParser;
+    private final FlowDefinitionDeserializer flowDefinitionDeserializer;
 
     @Inject
     public DeployFlowHandler(
         FlowDraftRepository draftRepository,
         FlowRepository flowRepository,
-        TaskTypeDispatcher taskTypeDispatcher,
-        YamlParser yamlParser
+        FlowDefinitionDeserializer flowDefinitionDeserializer
     ) {
         this.draftRepository = draftRepository;
         this.flowRepository = flowRepository;
-        this.taskTypeDispatcher = taskTypeDispatcher;
-        this.yamlParser = yamlParser;
+        this.flowDefinitionDeserializer = flowDefinitionDeserializer;
     }
 
     @Override
@@ -70,12 +66,11 @@ public final class DeployFlowHandler implements CommandHandler<
             companyId,
             flowId
         ).orElse(null);
-        Flow deployed = Flow.deploy(
+        Flow deployed = flowDefinitionDeserializer.deserialize(
+            draft.raw(),
             companyId,
             flowId,
-            yamlParser.parse(draft.raw()),
             latest,
-            taskTypeDispatcher,
             FlowHandlerSupport.actor(context.getSession()),
             System.currentTimeMillis()
         );

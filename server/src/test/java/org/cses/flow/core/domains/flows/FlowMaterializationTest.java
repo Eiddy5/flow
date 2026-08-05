@@ -1,25 +1,21 @@
 package org.cses.flow.core.domains.flows;
 
 import io.micronaut.json.JsonMapper;
-import org.cses.flow.core.domains.tasks.RunContext;
-import org.cses.flow.core.domains.tasks.RunResult;
-import org.cses.flow.core.domains.tasks.RouteExpression;
-import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.plugins.TaskExtension;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
+import org.cses.flow.core.plugins.TestNotificationTask;
+import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.flow.Pause;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
 import org.paas.json.JsonObject;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.withPlugins;
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -31,8 +27,9 @@ class FlowMaterializationTest {
     private static final ActorRef ACTOR =
         ActorRef.create("user-1", "Flow Designer");
     private static final long DEPLOYED_AT = 1_785_312_000_000L;
-
-    private final TaskTypeDispatcher dispatcher = builtInDispatcher();
+    private static final Context CONTEXT = builtInContext(
+        new TestNotificationTask()
+    );
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -58,20 +55,23 @@ class FlowMaterializationTest {
                 )),
                 "tasks", List.of(Map.of(
                     "key", "prepare",
-                    "type", "AUTO",
+                    "type", AutomaticTask.class.getName(),
                     "outputs", List.of(Map.of(
                         "key", "prepared",
                         "type", "BOOLEAN"
                     )),
                     "tasks", List.of(Map.of(
                         "key", "approval",
-                        "type", "PAUSE",
-                        "route", "DIRECT"
+                        "type", Pause.class.getName(),
+                        "route", "DIRECT",
+                        "pause", Map.of(
+                            "key", "create-approval",
+                            "type", AutomaticTask.class.getName()
+                        )
                     ))
                 ))
             ),
-            null,
-            dispatcher
+            null
         );
 
         assertEquals(1L, flow.reversion());
@@ -86,10 +86,7 @@ class FlowMaterializationTest {
         );
         Task parent = flow.tasks().getFirst();
         assertEquals("DIRECT", parent.route().source());
-        assertEquals(
-            parent.id(),
-            parent.tasks().getFirst().parentId().orElseThrow()
-        );
+        assertEquals("approval", parent.tasks().getFirst().key());
     }
 
     @Test
@@ -97,14 +94,12 @@ class FlowMaterializationTest {
         Flow first = deploy(
             "flow-1",
             definition("first", "prepare"),
-            null,
-            dispatcher
+            null
         );
         Flow second = deploy(
             "flow-1",
             definition("second", "prepare", "finish"),
-            first,
-            dispatcher
+            first
         );
 
         assertEquals(2L, second.reversion());
@@ -123,7 +118,7 @@ class FlowMaterializationTest {
     }
 
     @Test
-    void rejectsSystemFieldsAndUnknownBuiltInProperties() {
+    void rejectsSystemFieldsUnknownPropertiesAndLegacyShortTypes() {
         IllegalArgumentException systemField = assertThrows(
             IllegalArgumentException.class,
             () -> deploy(
@@ -133,11 +128,10 @@ class FlowMaterializationTest {
                     "tasks", List.of(Map.of(
                         "id", "user-controlled",
                         "key", "prepare",
-                        "type", "AUTO"
+                        "type", AutomaticTask.class.getName()
                     ))
                 ),
-                null,
-                dispatcher
+                null
             )
         );
         assertTrue(systemField.getMessage().contains(
@@ -152,16 +146,31 @@ class FlowMaterializationTest {
                     "key", "invalid",
                     "tasks", List.of(Map.of(
                         "key", "prepare",
-                        "type", "AUTO",
+                        "type", AutomaticTask.class.getName(),
                         "retryTimes", 2
                     ))
                 ),
-                null,
-                dispatcher
+                null
             )
         );
-        assertTrue(pluginField.getMessage().contains(
-            "AUTO Task contains unsupported fields"
+        assertTrue(pluginField.getMessage().contains("retryTimes"));
+
+        IllegalArgumentException legacyType = assertThrows(
+            IllegalArgumentException.class,
+            () -> deploy(
+                "flow-1",
+                Map.of(
+                    "key", "invalid",
+                    "tasks", List.of(Map.of(
+                        "key", "prepare",
+                        "type", "AUTO"
+                    ))
+                ),
+                null
+            )
+        );
+        assertTrue(legacyType.getMessage().contains(
+            "No plugin registered for type: AUTO"
         ));
     }
 
@@ -175,21 +184,19 @@ class FlowMaterializationTest {
                     "key", "invalid-route",
                     "tasks", List.of(Map.of(
                         "key", "parent",
-                        "type", "AUTO",
+                        "type", AutomaticTask.class.getName(),
                         "tasks", List.of(Map.of(
                             "key", "child",
-                            "type", "AUTO",
-                            "route",
-                            "outputs.missing == \"yes\""
+                            "type", AutomaticTask.class.getName(),
+                            "route", "outputs.missing == \"yes\""
                         ))
                     ))
                 ),
-                null,
-                dispatcher
+                null
             )
         );
         assertTrue(route.getMessage().contains(
-            "references undeclared parent output"
+            "references undeclared parent context"
         ));
 
         WorkflowException typedRoute = assertThrows(
@@ -200,24 +207,23 @@ class FlowMaterializationTest {
                     "key", "invalid-route-type",
                     "tasks", List.of(Map.of(
                         "key", "parent",
-                        "type", "AUTO",
+                        "type", AutomaticTask.class.getName(),
                         "outputs", List.of(Map.of(
                             "key", "approved",
                             "type", "BOOLEAN"
                         )),
                         "tasks", List.of(Map.of(
                             "key", "child",
-                            "type", "AUTO",
+                            "type", AutomaticTask.class.getName(),
                             "route", "outputs.approved == \"yes\""
                         ))
                     ))
                 ),
-                null,
-                dispatcher
+                null
             )
         );
         assertTrue(typedRoute.getMessage().contains(
-            "requires a STRING parent output"
+            "requires STRING parent context"
         ));
 
         WorkflowException dependency = assertThrows(
@@ -228,12 +234,11 @@ class FlowMaterializationTest {
                     "key", "invalid-dependency",
                     "tasks", List.of(Map.of(
                         "key", "task",
-                        "type", "AUTO",
+                        "type", AutomaticTask.class.getName(),
                         "dependOn", List.of("missing")
                     ))
                 ),
-                null,
-                dispatcher
+                null
             )
         );
         assertTrue(dependency.getMessage().contains(
@@ -242,34 +247,50 @@ class FlowMaterializationTest {
     }
 
     @Test
-    void delegatesPluginSpecificYamlAndPersistenceSnapshotToPlugin() {
-        TaskTypeDispatcher pluginDispatcher = withPlugins(
-            new NotificationTaskPlugin()
-        );
+    void bindsPluginSpecificFieldsDirectlyToTheConcreteTask() {
         Flow flow = deploy(
             "flow-plugin",
             Map.of(
                 "key", "plugin-flow",
                 "tasks", List.of(Map.of(
                     "key", "notify",
-                    "type", "notification",
+                    "type", TestNotificationTask.class.getCanonicalName(),
                     "channel", "operations"
                 ))
             ),
-            null,
-            pluginDispatcher
+            null
         );
 
-        Task task = flow.tasks().getFirst();
-        NotificationTask notification = assertInstanceOf(
-            NotificationTask.class,
-            task
+        TestNotificationTask notification = assertInstanceOf(
+            TestNotificationTask.class,
+            flow.tasks().getFirst()
         );
         assertEquals("operations", notification.channel());
         assertEquals(
-            Map.of("channel", "operations"),
-            pluginDispatcher.properties(task)
+            "operations",
+            CONTEXT.jacksonMapper().toMap(notification).get("channel")
         );
+    }
+
+    @Test
+    void activelyValidatesPluginSpecificFieldsAfterBinding() {
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> deploy(
+                "flow-plugin",
+                Map.of(
+                    "key", "plugin-flow",
+                    "tasks", List.of(Map.of(
+                        "key", "notify",
+                        "type",
+                        TestNotificationTask.class.getCanonicalName()
+                    ))
+                ),
+                null
+            )
+        );
+
+        assertTrue(exception.getMessage().contains("channel"));
     }
 
     @Test
@@ -277,8 +298,7 @@ class FlowMaterializationTest {
         Flow first = deploy(
             "flow-1",
             definition("first", "prepare"),
-            null,
-            dispatcher
+            null
         );
         first.delete(ACTOR, DEPLOYED_AT + 10_000L);
 
@@ -289,8 +309,7 @@ class FlowMaterializationTest {
             () -> deploy(
                 "flow-1",
                 definition("second", "prepare"),
-                first,
-                dispatcher
+                first
             )
         );
     }
@@ -298,15 +317,13 @@ class FlowMaterializationTest {
     private static Flow deploy(
         String id,
         Map<String, ?> definition,
-        Flow latest,
-        TaskTypeDispatcher dispatcher
+        Flow latest
     ) {
-        return Flow.deploy(
+        return CONTEXT.deploy(
             "company-1",
             id,
             definition,
             latest,
-            dispatcher,
             ACTOR,
             DEPLOYED_AT
         );
@@ -320,7 +337,7 @@ class FlowMaterializationTest {
             java.util.Arrays.stream(taskKeys)
                 .map(key -> Map.<String, Object>of(
                     "key", key,
-                    "type", "AUTO"
+                    "type", AutomaticTask.class.getName()
                 ))
                 .toList();
         return Map.of(
@@ -328,158 +345,6 @@ class FlowMaterializationTest {
             "description", description,
             "tasks", tasks
         );
-    }
-
-    private static final class NotificationTask
-        extends Task implements RunnableTask {
-
-        private static final String TYPE = "NOTIFICATION";
-        private final String channel;
-
-        private NotificationTask(
-            String id,
-            String parentId,
-            String key,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            RouteExpression route,
-            List<String> dependOn,
-            String channel,
-            List<? extends Task> tasks
-        ) {
-            super(
-                id,
-                parentId,
-                key,
-                TYPE,
-                inputs,
-                outputs,
-                route,
-                dependOn,
-                tasks
-            );
-            if (channel == null || channel.isBlank()) {
-                throw new IllegalArgumentException(
-                    "Notification channel must not be blank"
-                );
-            }
-            this.channel = channel.trim();
-        }
-
-        private String channel() {
-            return channel;
-        }
-
-        @Override
-        public RunResult run(RunContext context) {
-            return RunResult.completed(Map.of());
-        }
-
-        @Override
-        protected Object typeSpecificEqualityState() {
-            return channel;
-        }
-    }
-
-    private static final class NotificationTaskPlugin
-        implements TaskExtension {
-
-        @Override
-        public String type() {
-            return NotificationTask.TYPE;
-        }
-
-        @Override
-        public Task create(
-            String id,
-            String parentId,
-            String key,
-            List<Input<?>> inputs,
-            List<Output> outputs,
-            RouteExpression route,
-            List<String> dependOn,
-            Map<String, ?> properties,
-            List<? extends Task> tasks
-        ) {
-            return materialize(
-                id,
-                parentId,
-                key,
-                inputs,
-                outputs,
-                route,
-                dependOn,
-                properties,
-                tasks
-            );
-        }
-
-        @Override
-        public Task rehydrate(
-            String id,
-            String parentId,
-            String key,
-            List<Input<?>> inputs,
-            List<Output> outputs,
-            RouteExpression route,
-            List<String> dependOn,
-            Map<String, ?> properties,
-            List<? extends Task> tasks
-        ) {
-            return materialize(
-                id,
-                parentId,
-                key,
-                inputs,
-                outputs,
-                route,
-                dependOn,
-                properties,
-                tasks
-            );
-        }
-
-        @Override
-        public Map<String, Object> properties(Task task) {
-            if (!(task instanceof NotificationTask notification)) {
-                throw new IllegalArgumentException(
-                    "NOTIFICATION plugin requires NotificationTask"
-                );
-            }
-            return Map.of("channel", notification.channel());
-        }
-
-        private static Task materialize(
-            String id,
-            String parentId,
-            String key,
-            List<Input<?>> inputs,
-            List<Output> outputs,
-            RouteExpression route,
-            List<String> dependOn,
-            Map<String, ?> properties,
-            List<? extends Task> tasks
-        ) {
-            Map<String, Object> copy = new LinkedHashMap<>();
-            properties.forEach(copy::put);
-            Object channel = copy.remove("channel");
-            if (!copy.isEmpty()) {
-                throw new IllegalArgumentException(
-                    "Unsupported NOTIFICATION fields: " + copy.keySet()
-                );
-            }
-            return new NotificationTask(
-                id,
-                parentId,
-                key,
-                inputs,
-                outputs,
-                route,
-                dependOn,
-                channel instanceof String text ? text : null,
-                tasks
-            );
-        }
     }
 
     private static Input<?> input(

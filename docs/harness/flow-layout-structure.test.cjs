@@ -2,11 +2,17 @@ const assert = require("node:assert/strict");
 const layoutEngine = require(
     "../../server/src/main/resources/flow-demo/flow-layout.js",
 );
+const AUTO_TASK_TYPE =
+    "org.cses.flow.extensions.tasks.AutomaticTask";
+const PAUSE_TASK_TYPE =
+    "org.cses.flow.extensions.flow.Pause";
+const PARALLEL_TASK_TYPE =
+    "org.cses.flow.extensions.flow.Parallel";
 
 function task(key, tasks = [], options = {}) {
     return {
         key,
-        type: options.type || "AUTO",
+        type: options.type || AUTO_TASK_TYPE,
         route: options.route || "DIRECT",
         tasks,
     };
@@ -26,7 +32,7 @@ const definition = [
                             task("auto-task-5"),
                             task("auto-task-6"),
                         ],
-                        { type: "PARALLEL" },
+                        { type: PARALLEL_TASK_TYPE },
                     ),
                 ],
                 {
@@ -43,7 +49,7 @@ const definition = [
                 },
             ),
         ],
-        { type: "PAUSE" },
+        { type: PAUSE_TASK_TYPE },
     ),
     task("auto-task-4"),
 ];

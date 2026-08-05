@@ -1,10 +1,12 @@
 package org.cses.flow.core.queries.executions;
 
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.x9.jooq.JOOQ;
@@ -20,7 +22,7 @@ public final class ExecutionQueryHandler {
 
     @Inject
     public ExecutionQueryHandler(
-        JOOQ jooq,
+        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
         ExecutionRepository executionRepository
     ) {
         this.jooq = jooq;

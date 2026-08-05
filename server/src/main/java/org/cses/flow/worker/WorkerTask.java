@@ -28,7 +28,7 @@ public final class WorkerTask {
         if (!(taskDefinition instanceof RunnableTask capability)) {
             throw new IllegalArgumentException(
                 "WorkerTask requires a RunnableTask: "
-                    + taskDefinition.type()
+                    + taskDefinition.getType()
             );
         }
         this.runnableTask = capability;

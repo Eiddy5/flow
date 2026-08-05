@@ -28,7 +28,7 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
   --tests '*Uc02ExecutionLifecycleTest' \
   --tests '*Uc03AutomaticTaskFlowTest' \
   --tests '*Uc04ExternalTaskResumeTest' \
-  --tests '*Uc05ParallelTaskJoinTest' \
+  --tests '*Uc05ParallelJoinTest' \
   --tests '*Uc06ConditionalRouteTest' \
   --tests '*Uc07NestedTaskFlowTest' \
   --tests '*TaskTest' \
@@ -91,7 +91,7 @@ FLOW_POSTGRES_TEST_PASSWORD=flow \
 
 ## 当前限制
 
-- 测试源码仍保留内存 Repository 供领域单元测试使用，但 UC-01～UC-07 不使用
+- 测试源码仍保留内存 Repository 供领域单元测试使用，但 UC-01～UC-08 不使用
   内存 Repository。
 - Flow 尚无 HTTP Controller；当前公开用户操作边界是 Service。
 - 外派对象当前按 companyId 隔离，尚未定义更细粒度的受派用户字段。

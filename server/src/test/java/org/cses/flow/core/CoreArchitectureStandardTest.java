@@ -19,8 +19,6 @@ class CoreArchitectureStandardTest {
     private static final Path FLOW = MAIN_JAVA.resolve("org/cses/flow");
     private static final Path CORE = FLOW.resolve("core");
     private static final Set<String> PARTITIONED_DIRECTORIES = Set.of(
-        "commands",
-        "exceptions",
         "handlers",
         "queries",
         "repositories",
@@ -103,6 +101,7 @@ class CoreArchitectureStandardTest {
     @Test
     void executorAndWorkerAreTopLevelPeersOfCore() throws IOException {
         Path taskDomain = CORE.resolve("domains/tasks");
+        Path runner = CORE.resolve("runner");
         assertTrue(
             Files.isRegularFile(FLOW.resolve(
                 "executor/ExecutorService.java"
@@ -129,16 +128,16 @@ class CoreArchitectureStandardTest {
         assertTrue(
             Files.isRegularFile(taskDomain.resolve("RunnableTask.java"))
                 && Files.isRegularFile(taskDomain.resolve(
-                    "BranchTask.java"
+                    "OrchestrationTask.java"
                 ))
-                && Files.isRegularFile(taskDomain.resolve(
+                && Files.isRegularFile(runner.resolve(
                     "RunContext.java"
                 ))
                 && Files.isRegularFile(taskDomain.resolve(
                     "RunResult.java"
                 )),
-            "Task capabilities and their direct invocation contract must "
-                + "be owned by the Task domain"
+            "Task capabilities and results must remain in the Task domain, "
+                + "with invocation context in the Core runner"
         );
 
         List<String> misplaced = new ArrayList<>();
@@ -168,7 +167,10 @@ class CoreArchitectureStandardTest {
                 "private final List<TaskRun> nexts;"
             )
                 && contextSource.contains(
-                    "private final List<TaskRun> branchTaskRuns;"
+                    "private final List<TaskRun> pausedTaskRuns;"
+                )
+                && contextSource.contains(
+                    "private final List<String> orchestrationCompletions;"
                 )
                 && !contextSource.contains("DSLContext")
                 && !contextSource.contains("Session<")
@@ -178,8 +180,9 @@ class CoreArchitectureStandardTest {
                 && Files.notExists(CORE.resolve(
                     "handlers/executions/ExecutionHandler.java"
                 )),
-            "ExecutorContext must expose TaskRun nexts directly and "
-                + "DefaultExecutor must be the only runtime coordinator"
+            "ExecutorContext must expose TaskRun nexts, pause effects, and "
+                + "orchestration completions "
+                + "without carrying transaction runtime objects"
         );
 
         for (String handler : List.of(
@@ -199,12 +202,13 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
-    void taskCapabilitiesKeepBranchesOutOfWorkers() throws IOException {
+    void taskCapabilitiesKeepOrchestrationOutOfWorkers() throws IOException {
         Path taskDomain = CORE.resolve("domains/tasks");
+        Path runner = CORE.resolve("runner");
         Path worker = FLOW.resolve("worker");
         Path executor = FLOW.resolve("executor");
         Path extensionWorkers = FLOW.resolve("extensions/workers");
-        String runContext = Files.readString(taskDomain.resolve(
+        String runContext = Files.readString(runner.resolve(
             "RunContext.java"
         ));
         String dispatcher = Files.readString(worker.resolve(
@@ -216,20 +220,23 @@ class CoreArchitectureStandardTest {
         String workerResult = Files.readString(worker.resolve(
             "WorkerTaskResult.java"
         ));
-        String branchTask = Files.readString(taskDomain.resolve(
-            "BranchTask.java"
+        String orchestrationTask = Files.readString(taskDomain.resolve(
+            "OrchestrationTask.java"
         ));
         String automatic = Files.readString(FLOW.resolve(
             "extensions/tasks/AutomaticTask.java"
         ));
         String pause = Files.readString(FLOW.resolve(
-            "extensions/tasks/PauseTask.java"
+            "extensions/flow/Pause.java"
         ));
         String parallel = Files.readString(FLOW.resolve(
-            "extensions/tasks/ParallelTask.java"
+            "extensions/flow/Parallel.java"
         ));
         String executorService = Files.readString(executor.resolve(
             "ExecutorService.java"
+        ));
+        String defaultExecutor = Files.readString(executor.resolve(
+            "DefaultExecutor.java"
         ));
 
         assertTrue(
@@ -240,7 +247,9 @@ class CoreArchitectureStandardTest {
                 && Files.notExists(worker.resolve("RunnableTask.java"))
                 && Files.notExists(worker.resolve("RunContext.java"))
                 && Files.notExists(worker.resolve("RunResult.java"))
-                && Files.notExists(executor.resolve("BranchTask.java"))
+                && Files.notExists(executor.resolve(
+                    "OrchestrationTask.java"
+                ))
                 && (!Files.isDirectory(extensionWorkers)
                     || directJavaFiles(extensionWorkers).isEmpty()),
             "Task capabilities cannot be owned by Worker or Executor, and "
@@ -262,19 +271,28 @@ class CoreArchitectureStandardTest {
                 && !workerTask.contains("private final Task task;")
                 && !dispatcher.contains("PluginLoader")
                 && !dispatcher.contains("WorkerTaskHandler")
-                && !workerResult.contains("State.Type.WAITING")
-                && !branchTask.contains("RunResult run("),
-            "Worker must directly run RunnableTask and cannot return WAITING"
+                && !workerResult.contains("State.Type.PAUSED")
+                && !orchestrationTask.contains("RunResult run("),
+            "Worker must directly run RunnableTask and cannot return PAUSED"
         );
         assertTrue(
             automatic.contains("implements RunnableTask")
                 && automatic.contains("RunResult run(RunContext context)")
-                && pause.contains("implements BranchTask")
-                && parallel.contains("implements BranchTask")
-                && executorService.contains("dispatchBranch(")
-                && executorService.contains("runnable == branch"),
+                && pause.contains("implements OrchestrationTask")
+                && parallel.contains("implements OrchestrationTask")
+                && executorService.contains(
+                    "boolean handle(ExecutorContext context)"
+                )
+                && executorService.contains("handleOrchestration(")
+                && executorService.contains("runnable == orchestration"),
             "Concrete Tasks must declare one capability and Executor must "
-                + "handle branches directly"
+                + "handle orchestration directly"
+        );
+        assertTrue(
+            defaultExecutor.contains("executorService.handle(context)")
+                && !defaultExecutor.contains("dispatchBranch("),
+            "DefaultExecutor must submit Worker effects while "
+                + "ExecutorService owns OrchestrationTask state progression"
         );
     }
 
@@ -372,14 +390,21 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
-    void serializationIsFlatAndYamlParserIsBusinessNeutral()
+    void serializationCentralizesJacksonAndKeepsYamlParsingNeutral()
         throws IOException {
 
         Path serialization = CORE.resolve("serializers");
         Path yamlParser = serialization.resolve("YamlParser.java");
+        Path jacksonMapper = serialization.resolve("JacksonMapper.java");
+        Path flowDeserializer = serialization.resolve(
+            "FlowDefinitionDeserializer.java"
+        );
         assertTrue(
-            Files.isRegularFile(yamlParser),
-            "YamlParser must be the Core YAML entry point"
+            Files.isRegularFile(yamlParser)
+                && Files.isRegularFile(jacksonMapper)
+                && Files.isRegularFile(flowDeserializer),
+            "Serialization must expose one mapper, YAML parser, and Flow "
+                + "definition deserializer"
         );
 
         List<String> nestedDirectories;
@@ -395,16 +420,22 @@ class CoreArchitectureStandardTest {
         );
 
         String source = Files.readString(yamlParser);
+        String mapperSource = Files.readString(jacksonMapper);
         assertTrue(
-            source.contains("com.fasterxml.jackson.databind.ObjectMapper")
-                && source.contains(
+            mapperSource.contains(
+                "com.fasterxml.jackson.databind.ObjectMapper"
+            )
+                && mapperSource.contains(
                     "com.fasterxml.jackson.dataformat.yaml.YAMLFactory"
                 )
-                && !source.contains("org.yaml.snakeyaml"),
-            "YamlParser must use Jackson ObjectMapper with YAMLFactory"
+                && mapperSource.contains("PluginModule")
+                && !mapperSource.contains("org.yaml.snakeyaml"),
+            "JacksonMapper must own strict JSON/YAML mapper configuration"
         );
         assertTrue(
-            !source.contains("org.cses.flow.core.domains")
+            source.contains("JacksonMapper")
+                && !source.contains("YAMLFactory")
+                && !source.contains("org.cses.flow.core.domains")
                 && !source.contains("org.cses.flow.core.commands")
                 && !source.contains("org.cses.flow.extensions"),
             "YamlParser must not interpret Flow, Task, or extension types"
@@ -425,48 +456,60 @@ class CoreArchitectureStandardTest {
             Files.notExists(CORE.resolve(
                 "services/tasks/TaskDefinitionAssembler.java"
             )),
-            "Task identity assembly belongs to Flow"
+            "Task identity assembly belongs to Flow definition binding"
         );
         assertTrue(
             Files.notExists(CORE.resolve(
                 "domains/flows/FlowInput.java"
             )),
-            "Flow must consume the generic parser result directly"
+            "Flow binding must not introduce transport DTOs"
         );
         assertTrue(
             Files.notExists(CORE.resolve(
                 "domains/tasks/TaskDefinitionInput.java"
             )),
-            "Task mapping must remain inside Flow"
+            "Task binding must use the registered concrete plugin class"
         );
     }
 
     @Test
-    void taskMaterializationUsesTheGenericPluginRegistryWithoutTypeBranches()
+    void taskPluginsUseCompileTimeDiscoveryAndExactClassTypes()
         throws IOException {
 
         Path plugins = CORE.resolve("plugins");
         Path pluginSpi = plugins.resolve("Plugin.java");
-        Path taskExtension = plugins.resolve("TaskExtension.java");
-        Path dispatcherPort = plugins.resolve("TaskTypeDispatcher.java");
-        Path extensions = FLOW.resolve("extensions/tasks");
-        Path extensionTests = TEST_JAVA.resolve(
-            "org/cses/flow/extensions/tasks"
+        Path pluginAnnotation = plugins.resolve("annotations/Plugin.java");
+        Path pluginDeserializer = plugins.resolve(
+            "PluginDeserializer.java"
         );
+        Path pluginModule = plugins.resolve("PluginModule.java");
+        Path extensions = FLOW.resolve("extensions/tasks");
         Path loader = plugins.resolve("PluginLoader.java");
         Path registry = plugins.resolve("PluginRegistry.java");
+        Path defaultRegistry = plugins.resolve(
+            "DefaultPluginRegistry.java"
+        );
+        Path pluginMetadata = plugins.resolve("PluginMetadata.java");
+        Path registeredPlugin = plugins.resolve("RegisteredPlugin.java");
+        Path pluginSchema = CORE.resolve(
+            "serializers/PluginSchemaGenerator.java"
+        );
         Path dispatcher = plugins.resolve(
             "RegisteredTaskTypeDispatcher.java"
         );
 
         assertTrue(
             Files.isRegularFile(pluginSpi)
-                && Files.isRegularFile(taskExtension)
-                && Files.isRegularFile(dispatcherPort)
-                && Files.isRegularFile(loader)
                 && Files.isRegularFile(registry)
-                && Files.isRegularFile(dispatcher),
-            "Core plugin SPI, loader, registry, and dispatcher must exist"
+                && Files.isRegularFile(defaultRegistry)
+                && Files.isRegularFile(pluginMetadata)
+                && Files.isRegularFile(registeredPlugin)
+                && Files.isRegularFile(pluginSchema)
+                && Files.isRegularFile(pluginAnnotation)
+                && Files.isRegularFile(pluginDeserializer)
+                && Files.isRegularFile(pluginModule),
+            "Core plugin interface, marker, registry, and Jackson module "
+                + "must exist"
         );
         assertTrue(
             List.of(
@@ -482,23 +525,22 @@ class CoreArchitectureStandardTest {
             "Extensions must contain implementations, not plugin runtime"
         );
         assertTrue(
-            Files.notExists(plugins.resolve("TaskPlugin.java"))
+            Files.notExists(loader)
+                && Files.notExists(dispatcher)
+                && Files.notExists(plugins.resolve("TaskExtension.java"))
+                && Files.notExists(plugins.resolve("TaskTypeDispatcher.java"))
+                && Files.notExists(plugins.resolve("TaskPlugin.java"))
                 && Files.notExists(plugins.resolve(
                     "TaskPluginRegistry.java"
                 )),
-            "Task-only plugin root and registry must not be restored"
+            "Legacy loader, dispatcher, and companion extension contracts "
+                + "must stay removed"
         );
         assertTrue(
             Files.notExists(CORE.resolve(
                 "domains/tasks/TaskTypeDispatcher.java"
             )),
-            "TaskTypeDispatcher must be owned by core/plugins, not domains"
-        );
-        assertTrue(
-            Files.notExists(extensionTests.resolve(
-                "TaskExtensionTestSupport.java"
-            )),
-            "Plugin runtime test support must not be owned by extensions"
+            "A domain-owned type dispatcher must not be restored"
         );
         assertTrue(
             Files.notExists(extensions.resolve(
@@ -507,36 +549,50 @@ class CoreArchitectureStandardTest {
             "Hard-coded built-in Task dispatcher must not be restored"
         );
 
-        String dispatcherSource = Files.readString(dispatcher);
+        String deserializerSource = Files.readString(pluginDeserializer);
         assertTrue(
-            !dispatcherSource.contains("switch")
-                && !dispatcherSource.contains("AutomaticTask")
-                && !dispatcherSource.contains("PauseTask"),
-            "Task dispatcher must resolve plugins without concrete branches"
+            deserializerSource.contains(
+                "registry.resolve(type, pluginType)"
+            )
+                && !deserializerSource.contains("switch")
+                && !deserializerSource.contains("AutomaticTask")
+                && !deserializerSource.contains("Pause"),
+            "Plugin deserialization must resolve without concrete branches"
         );
 
         String registrySource = Files.readString(registry);
-        String taskExtensionSource = Files.readString(taskExtension);
+        String defaultRegistrySource = Files.readString(defaultRegistry);
+        String pluginSource = Files.readString(pluginSpi);
+        String annotationSource = Files.readString(pluginAnnotation);
         assertTrue(
-            registrySource.contains("Collection<Plugin>")
-                && registrySource.contains("@Context")
-                && registrySource.contains("putIfAbsent")
-                && registrySource.contains("Locale.ROOT")
-                && registrySource.contains("PluginLoader.load(Plugin.class)"),
-            "Plugins must be discovered and registered by extension point"
+            registrySource.contains("interface PluginRegistry")
+                && registrySource.contains("List<RegisteredPlugin>")
+                && registrySource.contains("findMetadata")
+                && !registrySource.contains("register(")
+                && defaultRegistrySource.contains("Collection<")
+                && defaultRegistrySource.contains("@Context")
+                && defaultRegistrySource.contains("putIfAbsent")
+                && defaultRegistrySource.contains("getCanonicalName()")
+                && !defaultRegistrySource.contains("Locale.ROOT")
+                && !defaultRegistrySource.contains("ServiceLoader"),
+            "Plugins must be registered by exact canonical class name"
         );
         assertTrue(
-            taskExtensionSource.contains("extends Plugin")
-                && taskExtensionSource.contains(
-                    "return TaskExtension.class"
-                ),
-            "Task materialization must use a specialized Plugin extension point"
-        );
-
-        String loaderSource = Files.readString(loader);
-        assertTrue(
-            loaderSource.contains("ServiceLoader.load"),
-            "Classpath plugin discovery must be owned by core/plugins"
+            pluginSource.contains("default String getType()")
+                && pluginSource.contains("getCanonicalName()")
+                && annotationSource.contains("@Bean")
+                && annotationSource.contains("@DefaultScope")
+                && annotationSource.contains("@Introspected")
+                && annotationSource.contains(
+                    "Introspected.AccessKind.FIELD"
+                )
+                && annotationSource.contains(
+                    "Introspected.Visibility.ANY"
+                )
+                && annotationSource.contains("String title()")
+                && annotationSource.contains("String description()"),
+            "Plugin and @Plugin must complement each other for type and "
+                + "compile-time discovery"
         );
     }
 

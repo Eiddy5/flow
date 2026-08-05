@@ -7,9 +7,9 @@ AI Agent 在开始编码或审查代码前必须阅读本文件。
 
 本文件集中维护项目通用开发规则，包括技术 ID、Java 类型、timestamp 毫秒值、
 复用和小范围重构。领域对象、聚合和状态机的设计规则由
-[`domain-object-modeling.md`](domain-object-modeling.md) 维护；工作流 Core 的具体
-包和运行边界由 [`workflow-core-java-model.md`](workflow-core-java-model.md)
-维护。
+[`domain-object-modeling.md`](domain-object-modeling.md) 维护；Flow Core 当前选择的
+具体对象、包和运行边界通过
+[`../decisions/README.md`](../decisions/README.md) 查找对应 ADR。
 
 领域、模块或场景规范可以增加更严格的要求，但不得绕过本规范。改变公共接口、
 模块边界、领域模型、数据模型或本规范核心规则时，必须新增或修订 ADR。
@@ -107,6 +107,12 @@ public record ExecutionSummary(
 
 - 选择 `record` 不得绕过领域对象创建规则或模块边界。
 - `class` 的不可变字段使用 `private final`，并通过构造方法一次初始化。
+- ADR 0019 的 Input 定义层次是窄化例外：PAAS JSON 需要先通过无参构造和字段
+  绑定形成具体子类，再由 Flow 或 Repository 边界执行完整定义校验。该层次允许
+  非 `final` 字段和仅供 Micronaut Serialization 默认方法内省使用的公共 Setter；
+  Setter 是技术绑定入口，不是业务变更方法。校验通过并进入聚合后仍按只读定义
+  使用，Service、Handler 和其他领域对象不得调用 Setter；此例外不得扩展到其他
+  领域对象。
 - `record` 组件包含集合、Map、数组或其他可变对象时，紧凑构造方法必须防御性
   复制；访问方法不能泄漏可变引用。
 - 使用 `class` 表达值语义时，应按需要实现 `equals()`、`hashCode()` 和
@@ -140,7 +146,8 @@ public record ExecutionSummary(
 - 领域对象不得自行读取客户端时间，也不得接受调用方提交的审计 timestamp 作为
   服务器事实。
 - `State` 记录状态真实发生时间的方式属于 State 领域设计，不属于项目通用时间
-  规则，具体见 [`workflow-core-java-model.md`](workflow-core-java-model.md)。
+  规则，具体见
+  [`ADR 0017`](../decisions/0017-centralize-workflow-runtime-state-in-flow-domain.md)。
 
 ### 数据库和第三方边界
 
@@ -230,7 +237,7 @@ Handler、工具类或领域对象。
   阅读 [`domain-object-modeling.md`](domain-object-modeling.md)。
 - 涉及项目目录、Core 分包、Executor、Worker 或 Plugin 时，必须阅读
   [`../project-structure.md`](../project-structure.md) 和
-  [`workflow-core-java-model.md`](workflow-core-java-model.md)。
+  [`../decisions/README.md`](../decisions/README.md) 中对应的架构决策。
 - 涉及 JSON 时阅读 [`json.md`](json.md)；手写代码统一使用 `org.paas.json`。
 - 涉及 Command、Handler、Session 或写事务时阅读
   [`command-executor.md`](command-executor.md)。

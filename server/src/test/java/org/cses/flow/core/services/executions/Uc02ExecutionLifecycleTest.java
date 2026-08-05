@@ -52,7 +52,7 @@ class Uc02ExecutionLifecycleTest {
             );
             assertEquals(flow.id(), started.flowId());
             assertEquals(1L, started.flowReversion());
-            assertEquals(State.Type.WAITING, started.state().current());
+            assertEquals(State.Type.RUNNING, started.state().current());
 
             fixture.restartServer();
             ExternalTask externalTask =
@@ -395,7 +395,7 @@ class Uc02ExecutionLifecycleTest {
                     fixture.session(),
                     running.id()
                 ).orElseThrow();
-            assertEquals(State.Type.WAITING, afterRejectedCancel.state().current());
+            assertEquals(State.Type.RUNNING, afterRejectedCancel.state().current());
             assertEquals(
                 originalLockVersion,
                 afterRejectedCancel.lockVersion()
@@ -424,7 +424,7 @@ class Uc02ExecutionLifecycleTest {
                 key: uc02-s5-completed
                 tasks:
                   - key: complete
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                 """);
             Execution completed = fixture.executionService().create(
                 fixture.session(),
@@ -607,7 +607,7 @@ class Uc02ExecutionLifecycleTest {
             assertEquals(1, reloaded.taskRuns().size());
             assertTrue(reloaded.taskRuns().stream()
                 .allMatch(taskRun ->
-                    taskRun.state().current() != State.Type.WAITING
+                    taskRun.state().current() != State.Type.PAUSED
                         && taskRun.state().current() != State.Type.CREATED
                         && taskRun.state().current() != State.Type.RUNNING
                 ));
@@ -627,11 +627,11 @@ class Uc02ExecutionLifecycleTest {
                 description: two independent executions
                 tasks:
                   - key: first
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                   - key: second
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                   - key: third
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                 """);
 
             Execution firstStarted = fixture.executionService().create(
@@ -696,11 +696,11 @@ class Uc02ExecutionLifecycleTest {
                 description: persisted definition after restart
                 tasks:
                   - key: first
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                   - key: second
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                   - key: third
-                    type: AUTO
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                 """);
             String flowId = flow.id();
             java.util.List<String> taskIds = flow.tasks().stream()

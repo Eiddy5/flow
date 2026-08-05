@@ -6,7 +6,8 @@ Accepted（生产内存实现部分由 ADR 0007 修订；Execution 的 Flow 引�
 定义类型由 ADR 0008 修订；领域对象创建方式由 ADR 0010 修订；
 Executor/Worker 包边界由 ADR 0012 修订；PAUSE 与外部业务能力边界由
 ADR 0016 补充；运行状态类型与状态机由 ADR 0017 修订；单轮上下文、nexts
-两阶段应用与提交协调边界由 ADR 0020 修订）
+两阶段应用与提交协调边界由 ADR 0020 修订；RunnableTask、BranchTask、Worker
+调用方式及 ExecutorService 状态推进循环由 ADR 0024 与后续确认模型修订）
 
 ## 背景
 
@@ -151,6 +152,5 @@ ExecutionService
 - 恢复状态机只需要加载完整 Flow、Execution 和有序 TaskRun。
 - 新 Task 类型通过外部扩展单元和 WorkerTaskHandler 注册，不修改
   Executor 的状态编排职责。
-- Execution、TaskRun 的目标字段、方法、状态转换和迁移差距由
-  [`execution-domain-model.md`](../standards/execution-domain-model.md)
-  统一规定。
+- Execution、TaskRun 和 Executor 的后续修订由 ADR 0017、ADR 0020、ADR 0021
+  和 ADR 0024 继续约束；当前决策链见 [`README.md`](README.md)。

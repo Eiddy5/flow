@@ -1,13 +1,13 @@
 package org.cses.flow.core.domains.flows;
 
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -18,8 +18,7 @@ class FlowDeletionLifecycleTest {
     private static final ActorRef ACTOR =
         ActorRef.create("lifecycle-user", "Lifecycle User");
     private static final long CREATED_AT = 1_785_312_000_000L;
-    private static final TaskTypeDispatcher DISPATCHER =
-        builtInDispatcher();
+    private static final Context PLUGINS = builtInContext();
 
     @Test
     void draftDeletesOnlyOnce() {
@@ -127,18 +126,17 @@ class FlowDeletionLifecycleTest {
     }
 
     private static Flow deploy(Flow latest) {
-        return Flow.deploy(
+        return PLUGINS.deploy(
             "company-1",
             "flow-1",
             Map.of(
                 "key", "lifecycle-flow",
                 "tasks", List.of(Map.of(
                     "key", "start",
-                    "type", "AUTO"
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
                 ))
             ),
             latest,
-            DISPATCHER,
             ACTOR,
             CREATED_AT
         );

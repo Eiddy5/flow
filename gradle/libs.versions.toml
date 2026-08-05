@@ -1,12 +1,18 @@
 [versions]
 micronaut-plugins = "4.6.2"
+micronaut-platform = "4.10.6.488"
 shadow = "8.3.9"
 paas-library = "1.0.0.19"
 hikaricp = "7.1.0"
 cloud-datapilot = "2.0.48"
+jsonschema-generator = "4.38.0"
+swagger-annotations = "2.2.43"
 
 [libraries]
+micronaut-platform = { module = "io.micronaut.platform:micronaut-platform", version.ref = "micronaut-platform" }
 micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" } # 可以看到这些依赖是没有版本号的，因为它们只接受我们平台管理
+micronaut-validation = { module = "io.micronaut.validation:micronaut-validation" }
+jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api" }
 micronaut-serde-processor = { module = "io.micronaut.serde:micronaut-serde-processor" }
 micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
 micronaut-discovery-client = { module = "io.micronaut.discovery:micronaut-discovery-client" }
@@ -28,8 +34,16 @@ jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension" }
 jooq-paas = { module = "org.jooq:jooq-paas" }
 micronaut-jooq = { module = "io.micronaut.sql:micronaut-jooq" }
 micronaut-jdbc-hikari = { module = "io.micronaut.sql:micronaut-jdbc-hikari" }
+flyway-core = { module = "org.flywaydb:flyway-core" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+postgresql = { module = "org.postgresql:postgresql" }
 opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
 org-x9-cloud-datapilot = { module = "org.x9.cloud:cloud-datapilot", version.ref = "cloud-datapilot" }
+jsonschema-generator = { module = "com.github.victools:jsonschema-generator", version.ref = "jsonschema-generator" }
+jsonschema-module-jackson = { module = "com.github.victools:jsonschema-module-jackson", version.ref = "jsonschema-generator" }
+jsonschema-module-jakarta-validation = { module = "com.github.victools:jsonschema-module-jakarta-validation", version.ref = "jsonschema-generator" }
+jsonschema-module-swagger = { module = "com.github.victools:jsonschema-module-swagger-2", version.ref = "jsonschema-generator" }
+swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version.ref = "swagger-annotations" }
 
 [plugins]
 micronaut-application = { id = "io.micronaut.application", version.ref = "micronaut-plugins" }

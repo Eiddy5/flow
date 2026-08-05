@@ -49,6 +49,14 @@ import org.flow.gen.flow.pojos.FlowsObject;
 `org.flow.gen.flow` 下的文件由 JOOQ Generator 生成，禁止直接手工修改。数据库结构
 改变后应修改数据库脚本并重新生成代码，不能在生成类中补业务方法。
 
+`gen` 是 JOOQ 生成代码和数据库脚本的源码归属。`server` 在构建期直接依赖
+`gen` 的生成类型，并把生产 SQL 转换到自身 `db/migration/flow` 资源目录；业务
+代码仍不能依赖 Generator 或 JOOQ Codegen 实现。
+
+Flow 运行时中的 `org.x9.jooq.JOOQ`、JOOQ `Configuration` 和 `DataSource` 必须
+使用 `@Named("flow")` 绑定。宿主应用即使同时存在 `default`、`mattermost` 等数据
+源，Flow Repository 和事务也不得回退到这些数据源。
+
 ## 2. 生成类提供的快捷能力
 
 当前生成的 `XxxObject` 继承：
@@ -222,8 +230,9 @@ Database
 - 只服务于该 Repository 的读取辅助方法。
 
 Entry 和专用 Codec 中的 JSON/JSONB 转换必须同时遵守
-[`json.md`](json.md)，统一使用 PAAS JSON 公共能力，不得直接使用 Jackson
-`ObjectMapper`。
+[`json.md`](json.md)。一般字段统一使用 PAAS JSON；ADR 0026 定义的
+`FlowTaskEntry` 插件 properties 例外只能调用集中 `JacksonMapper` 的公开转换
+方法，Entry 仍不得直接使用 Jackson `ObjectMapper` 或注册 Module。
 
 示例：
 
@@ -482,7 +491,8 @@ Entry 列表暴露给 Core 调用方。
 
 事务边界见
 [`command-executor.md`](command-executor.md)，领域与 Repository 边界见
-[`workflow-core-java-model.md`](workflow-core-java-model.md)。
+[`domain-object-modeling.md`](domain-object-modeling.md) 及
+[`../decisions/README.md`](../decisions/README.md) 中对应的聚合决策。
 
 ## 12. 禁止事项
 

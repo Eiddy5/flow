@@ -1,6 +1,7 @@
 package org.cses.flow.core.services.externaltasks;
 
 import io.micronaut.context.ApplicationContext;
+import io.micronaut.inject.qualifiers.Qualifiers;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
@@ -9,8 +10,10 @@ import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.services.executions.ExecutionService;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
 import org.paas.session.User;
+import org.x9.jooq.JOOQ;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,7 +36,9 @@ public final class PostgresExternalTriggerRunner {
         "consul.client.registration.enabled", false,
         "consul.client.watch.service.enabled", false,
         "grpc.server.enabled", false,
-        "thrift.server.enabled", false
+        "thrift.server.enabled", false,
+        "pulsar.consumer.enabled", false,
+        "jooq.send-event", false
     );
 
     private PostgresExternalTriggerRunner() {
@@ -45,10 +50,16 @@ public final class PostgresExternalTriggerRunner {
         }
         PostgresJooqTestAdapter jooq =
             PostgresJooqTestAdapter.fromEnvironment();
-        try (ApplicationContext context = ApplicationContext.builder()
+        ApplicationContext context = ApplicationContext.builder()
             .properties(PROPERTIES)
-            .singletons(jooq)
-            .start()) {
+            .build();
+        context.registerSingleton(
+            JOOQ.class,
+            jooq,
+            Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME)
+        );
+        try (context) {
+            context.start();
 
             ExternalTaskService service =
                 context.getBean(ExternalTaskService.class);

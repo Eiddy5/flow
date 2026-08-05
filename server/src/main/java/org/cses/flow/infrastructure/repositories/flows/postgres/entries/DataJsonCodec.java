@@ -53,7 +53,18 @@ final class DataJsonCodec {
             }
             normalized.add(definition);
         }
-        return List.copyOf(normalized.asObjects(INPUT_TYPE));
+        List<Input<?>> inputs = normalized.asObjects(INPUT_TYPE);
+        for (int index = 0; index < inputs.size(); index++) {
+            try {
+                inputs.get(index).validateDefinition();
+            } catch (RuntimeException exception) {
+                throw new IllegalStateException(
+                    "Persisted " + field + "[" + index + "] is invalid",
+                    exception
+                );
+            }
+        }
+        return List.copyOf(inputs);
     }
 
     static List<Output> decodeOutputs(JsonObjects values, String field) {

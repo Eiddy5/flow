@@ -4,6 +4,7 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.repositories.executions.memory.InMemoryExecutionRepository;
 import org.cses.flow.core.repositories.externaltasks.memory.InMemoryExternalTaskRepository;
 import org.cses.flow.worker.WorkerDispatcher;
@@ -17,15 +18,17 @@ import org.paas.session.User;
 import java.util.List;
 import java.util.Map;
 
-import static org.cses.flow.core.plugins.TaskExtensionTestSupport.builtInDispatcher;
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class DefaultExecutorTest {
 
+    private static final Context PLUGINS = builtInContext();
+
     @Test
     void persistsAndDispatchesUntilTheExecutionIsStable() {
-        Flow flow = Flow.deploy(
+        Flow flow = PLUGINS.deploy(
             "default-executor-company",
             "default-executor-flow",
             Map.of(
@@ -33,16 +36,15 @@ final class DefaultExecutorTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "prepare",
-                        "type", "AUTO"
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
                     ),
                     Map.of(
                         "key", "finish",
-                        "type", "AUTO"
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
                     )
                 )
             ),
             null,
-            builtInDispatcher(),
             ActorRef.create("executor-user", "Executor User"),
             1_785_312_000_000L
         );
@@ -99,18 +101,21 @@ final class DefaultExecutorTest {
 
     @Test
     void handlesPauseBranchWithoutCreatingAWorkerTask() {
-        Flow flow = Flow.deploy(
+        Flow flow = PLUGINS.deploy(
             "default-executor-company",
             "pause-branch-flow",
             Map.of(
                 "key", "pause-branch",
                 "tasks", List.of(Map.of(
                     "key", "wait-confirmation",
-                    "type", "PAUSE"
+                    "type", org.cses.flow.extensions.flow.Pause.class.getName(),
+                    "pause", Map.of(
+                        "key", "create-confirmation",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    )
                 ))
             ),
             null,
-            builtInDispatcher(),
             ActorRef.create("executor-user", "Executor User"),
             1_785_312_000_000L
         );
@@ -138,13 +143,16 @@ final class DefaultExecutorTest {
             context
         );
 
-        assertTrue(waiting.state().is(State.Type.WAITING));
-        assertEquals(1, waiting.taskRuns().size());
+        assertTrue(waiting.state().is(State.Type.RUNNING));
+        assertEquals(2, waiting.taskRuns().size());
         assertTrue(waiting.taskRuns().getFirst().state().is(
-            State.Type.WAITING
+            State.Type.PAUSED
+        ));
+        assertTrue(waiting.taskRuns().getLast().state().is(
+            State.Type.COMPLETED
         ));
         assertTrue(context.workerTasks().isEmpty());
-        assertTrue(context.branchTaskRuns().isEmpty());
+        assertTrue(context.pausedTaskRuns().isEmpty());
         assertEquals(
             waiting.taskRuns().getFirst().id(),
             externalTaskRepository.findWaiting(

@@ -8,7 +8,7 @@
 - 使用服务端 `YamlParser` 预览定义。
 - 发布不可变 Flow Reversion。
 - 启动 Execution，并查看持久化的 TaskRun 与 State History。
-- 为 PAUSE TaskRun 提交 outputs，通过
+- 为 PAUSE TaskRun 提交符合 `resume` Input 定义的回调数据，通过
   `ExecutionService.resume(...)` 恢复并继续流程。
 
 页面不会在浏览器内模拟流程状态。草稿、发布版本、Execution 和 TaskRun 均通过
@@ -116,14 +116,23 @@ FLOW_DEMO_USER_NAME="My Demo User"
 ## 页面能力与当前边界
 
 - 画布和 YAML 编辑的是同一份草稿原文。
+- 页面初始化时调用 `GET /api/plugins` 读取全局插件目录；所有“添加流程 Task”、
+  “添加后续 Task”和“添加子 Task”入口共用按注册插件包分组的 Task 下拉列表，
+  不维护独立类型清单或内置三类型 fallback。选中 Task 后调用
+  `GET /api/plugins/{canonicalType}` 按需获取定义 Schema，并在右侧生成插件专有
+  字段控件；字段布局仍是 Demo 本地行为，不进入 Plugin 元信息。
+- 页面可继续用 AUTO、PAUSE 和 PARALLEL 作为三个内置任务的可读标签和 Demo
+  行为分支；写入 YAML 的 `type` 始终是具体任务类的完整地址，不接受这些标签作为
+  类型别名。其他项目内 Task 会使用目录中的 title、description 和 canonical type。
 - 点击“新建流程”先填写 Flow Key 和描述，服务端保存空草稿后才进入编排画布；
   创建流程不会再要求选择 Task 类型。
 - 左侧只负责草稿的列表、搜索和切换，不再展示独立的“流程结构”区域。空画布、
   顶部工具栏和画布结构摘要都提供“添加流程 Task”，该操作始终追加到
   `Flow.tasks`，不受当前选中节点影响；选中已有节点后，节点下方会出现
-  “后续 Task”、“子 Task”、“并行”和“Route”快捷操作。任意 Task 都可以
-  添加这两类节点：“后续 Task”插入当前节点之后的同级位置，“子 Task”明确
-  写入当前节点的 `tasks`。
+  “后续 Task”、“子 Task”、“并行”和“Route”快捷操作。除 PAUSE 外的普通 Task
+  可以添加这两类节点：“后续 Task”插入当前节点之后的同级位置，“子 Task”明确
+  写入当前节点的 `tasks`。PAUSE 的通用 `tasks` 必须为空，页面改为编辑其专有
+  `pause` 前置 Task，并通过同级 Task 表达恢复后的后续流程。
 - 页面按真实领域语义提供四种编排能力：
   - 顺序任务：Flow 顶层 Task 和普通 Task 的直接子 Task 均按定义顺序依次推进。
   - 后续任务：插入当前 Task 所在序列的下一位；当前 Task 的整棵子任务树结束后
@@ -142,7 +151,9 @@ FLOW_DEMO_USER_NAME="My Demo User"
   填写自定义匹配值。
 - 同一父任务下所有命中 Route 的子任务都会按定义顺序进入，因此 Route 不是强制
   互斥的 `if/else`；未命中的子任务不会创建虚假的 `SKIPPED` TaskRun。
-- 并行必须由 `type: PARALLEL` 显式声明，表示它的多个直接分支可以在同一个
+- 并行必须由完整类地址
+  `org.cses.flow.extensions.flow.Parallel` 显式声明为 `type`，表示它的
+  多个直接分支可以在同一个
   Execution 内同时处于可运行或等待状态。普通 Task 即使拥有多个同级子 Task，
   也只会等待前一棵子任务树结束后再推进下一棵。当前 Worker 仍逐个派发候选任务，
   不对外承诺同一线程上的物理并发。
@@ -155,21 +166,24 @@ FLOW_DEMO_USER_NAME="My Demo User"
   必要的流程标签和运行状态。当前正在执行或等待的节点使用有节奏的蓝色边框动画，
   已经完成的节点使用绿色边框。节点属性区继续使用 Route 表单和依赖多选列表，
   YAML 仍可用于高级编辑。
-- Flow 和 Task 的 inputs/outputs 都使用列表编辑器；Input 每一项先选择服务端
+- Flow 和普通 Task 的 inputs/outputs、PAUSE 的 resume Inputs 都使用列表编辑器；
+  Input 每一项先选择服务端
   DataType，再填写 key、displayName、required、defaultValue 等公共字段以及
   当前具体 Input 子类的特有字段，Output 每一项填写 key 和 type。各项可以独立
   新增、修改或删除，并实时同步到同一份 YAML。
 - 页面初始化时调用 `GET /api/demo/data-types`，获取九种稳定代码、Java 包装
   类型、具体 Input 类和字段控件元数据。当前 `IntegerInput` 会额外显示 min/max；
   前端不允许自由输入 type，也不维护另一份类型别名表。
-- 数字默认值和 PAUSE 数字输出按服务端 DataType 做范围检查与包装类型归一化；
+- 数字默认值和 PAUSE 数字恢复输入按服务端 DataType 做范围检查与包装类型归一化；
   字符串数字不会被后端静默转换。Route 仍只允许直接父 Task 的 STRING Output。
 - 保存允许不完整草稿；发布使用现有 Flow 领域规则做完整校验。
 - 启动总是选择当前 Core 查询到的最新可用 Reversion。
 - AUTO Worker 会由当前执行链同步推进。
-- PAUSE 默认声明 `decision` 和 `comment` 输出并在运行时生成审批表单；用户使用
-  “同意”或“拒绝”按钮提交，不填写技术 JSON。页面仍通过确定的
-  `executionId + taskRunId` 调用统一 Resume 入口。
+- 新建 PAUSE 时页面自动生成一个可替换的 AUTO `pause` 前置 Task，并默认声明
+  `decision` 和 `comment` 两个 resume Inputs。运行时审批表单按这些 Input 生成；
+  用户使用“同意”或“拒绝”按钮提交，不填写技术 JSON。页面仍通过确定的
+  `executionId + taskRunId` 调用统一 Resume 入口，TaskRun 先恢复为 RUNNING，再由
+  Executor 继续推进。
 - 当前 `ExecutionService.create(...)` 不接收启动输入，因此页面不展示虚假的
   “启动参数”能力。
 
@@ -188,8 +202,8 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
   --tests 'org.cses.flow.controller.demo.FlowDemoControllerTest'
 ```
 
-该测试覆盖静态资源、固定 Demo Session、DataType 元数据、IntegerInput
-定义往返、草稿创建/列表/编辑、发布、自动运行、PAUSE 恢复、版本查询和删除。
+该测试覆盖静态资源、固定 Demo Session、插件目录与定义 Schema、DataType 元数据、
+IntegerInput 定义往返、草稿创建/列表/编辑、发布、自动运行、PAUSE 恢复、版本查询和删除。
 真实 PostgreSQL 联调仍应按本手册启动服务并从页面完成一次用户路径。
 
 布局核心可以不启动浏览器直接执行固定结构回归：

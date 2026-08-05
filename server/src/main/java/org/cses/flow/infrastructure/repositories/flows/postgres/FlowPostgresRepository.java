@@ -5,9 +5,9 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.plugins.TaskTypeDispatcher;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.infrastructure.repositories.flows.postgres.entries.FlowEntry;
 import org.cses.flow.infrastructure.repositories.flows.postgres.entries.FlowTaskEntry;
 import org.jooq.DSLContext;
@@ -32,13 +32,13 @@ import static org.flow.gen.flow.Tables.FLOWS;
 )
 public final class FlowPostgresRepository implements FlowRepository {
 
-    private final TaskTypeDispatcher taskTypeDispatcher;
+    private final JacksonMapper jacksonMapper;
 
     @Inject
     public FlowPostgresRepository(
-        TaskTypeDispatcher taskTypeDispatcher
+        JacksonMapper jacksonMapper
     ) {
-        this.taskTypeDispatcher = taskTypeDispatcher;
+        this.jacksonMapper = jacksonMapper;
     }
 
     @Override
@@ -204,7 +204,7 @@ public final class FlowPostgresRepository implements FlowRepository {
                     );
                 }
                 return entry.toDomain(
-                    taskTypeDispatcher,
+                    jacksonMapper,
                     restoreChildren(entries, entry.id, restored)
                 );
             })
@@ -218,6 +218,7 @@ public final class FlowPostgresRepository implements FlowRepository {
             flow.companyId(),
             flow.id(),
             flow.reversion(),
+            null,
             flow.tasks()
         );
         for (FlowTaskEntry entry : entries) {
@@ -232,6 +233,7 @@ public final class FlowPostgresRepository implements FlowRepository {
         String companyId,
         String flowId,
         long reversion,
+        String parentId,
         List<Task> tasks
     ) {
         for (int index = 0; index < tasks.size(); index++) {
@@ -241,14 +243,16 @@ public final class FlowPostgresRepository implements FlowRepository {
                 flowId,
                 reversion,
                 task,
+                parentId,
                 index,
-                taskTypeDispatcher
+                jacksonMapper
             ));
             appendTasks(
                 entries,
                 companyId,
                 flowId,
                 reversion,
+                task.id(),
                 task.tasks()
             );
         }

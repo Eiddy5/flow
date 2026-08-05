@@ -24,7 +24,9 @@ class FlowServiceTest {
         "micronaut.config-client.enabled", false,
         "consul.client.registration.enabled", false,
         "grpc.server.enabled", false,
-        "thrift.server.enabled", false
+        "thrift.server.enabled", false,
+        "pulsar.consumer.enabled", false,
+        "jooq.send-event", false
     );
 
     @Test
@@ -105,7 +107,7 @@ class FlowServiceTest {
             description: %s
             tasks:
               - key: start
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(description);
     }
 

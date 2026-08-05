@@ -214,9 +214,6 @@ date 严格递增。
 - 本决策修订 ADR 0002 中的状态枚举、ADR 0012 中 Worker 持有完整 State 的
   描述，以及此前把 CREATED/RUNNING 合并为 ACTIVE 的文档；其余聚合、运行和
   包边界继续有效。
-- 统一目标模型由
-  [`workflow-core-java-model.md`](../standards/workflow-core-java-model.md)、
-  [`execution-domain-model.md`](../standards/execution-domain-model.md)、
-  [`pause-domain-model.md`](../standards/pause-domain-model.md) 和
-  [`flow-definition-lifecycle.md`](../standards/flow-definition-lifecycle.md)
-  共同维护。
+- State、Execution、PAUSE 和运行组件的当前决策链统一通过
+  [`README.md`](README.md) 查找；本 ADR 是 State.Type、History、服务器系统时间
+  和持久化规则的权威决策。

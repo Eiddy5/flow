@@ -411,7 +411,7 @@ class Uc01FlowLifecycleTest {
               id: injected-user
             tasks:
               - key: start
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """;
         FlowDraft draft = service.saveDraft(user, raw);
         FlowDraft before = service.draft(
@@ -448,7 +448,7 @@ class Uc01FlowLifecycleTest {
             description: %s
             tasks:
               - key: start
-                type: AUTO
+                type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(key, description);
     }
 

@@ -20,6 +20,8 @@ repositories {
 }
 
 configurations.configureEach {
+    exclude group: "io.netty", module: "netty-transport-native-io_uring"
+    exclude group: "io.netty", module: "netty-transport-classes-io_uring"
     // The Flow server does not expose the PAAS diagnostic module. Its eager
     // ServerService bean requires MongoDB and prevents a standalone local boot.
     exclude group: "org.paas", module: "paas-diagnostic"
@@ -29,27 +31,57 @@ configurations.configureEach {
     // Temporal is not part of the current Flow Core phase. Its application
     // listener requires Redisson and a Temporal server during startup.
     exclude group: "org.paas", module: "paas-temporal"
+    resolutionStrategy {
+        force(libs.hikaricp)
+    }
 }
 
 dependencies {
+    api(platform(libs.micronaut.platform))
     api(project(':gen'))
 
     compileOnly(libs.lombok)
+    compileOnly(libs.org.paas.all)
     annotationProcessor(libs.lombok)
     annotationProcessor(libs.micronaut.http.validation)
     annotationProcessor(libs.micronaut.serde.processor)
+
     implementation(libs.micronaut.http.client)
     implementation(libs.micronaut.discovery.client)
     implementation(libs.micronaut.elasticsearch)
     implementation(libs.micronaut.serde.jackson)
     implementation(libs.jackson.dataformat.yaml)
-    api(libs.org.x9.cloud.datapilot)
+    implementation(libs.jsonschema.generator) {
+        exclude group: 'com.fasterxml.jackson.core'
+    }
+    implementation(libs.jsonschema.module.jackson)
+    implementation(libs.jsonschema.module.jakarta.validation)
+    implementation(libs.jsonschema.module.swagger) {
+        exclude group: 'com.fasterxml.jackson.core'
+    }
+    implementation(libs.swagger.annotations)
+    implementation(libs.micronaut.jooq)
+    implementation(libs.micronaut.jdbc.hikari)
+    implementation(libs.flyway.core)
+    implementation(libs.org.x9.cloud.datapilot)
+
     api(libs.jooq.paas)
+    api(libs.jakarta.validation.api)
     api(libs.paas.json)
     api(libs.paas.session)
     api(libs.opentelemetry.exporter.otlp)
+
+    runtimeOnly(libs.flyway.database.postgresql)
+    runtimeOnly(libs.postgresql)
     runtimeOnly(libs.logback.classic)
+
+    testImplementation(libs.micronaut.validation)
+    testImplementation(libs.logback.classic)
     testRuntimeOnly(libs.junit.platform.launcher)
+    testCompileOnly(libs.lombok)
+    testAnnotationProcessor(libs.lombok)
+    testAnnotationProcessor(libs.micronaut.http.validation)
+    testAnnotationProcessor(libs.micronaut.serde.processor)
 }
 
 application {
@@ -92,7 +124,38 @@ tasks.configureEach {
     }
 }
 
+def genProject = project(':gen')
+
+tasks.named('processResources') {
+    from(genProject.layout.projectDirectory.dir(
+        'sql/production-release/flow'
+    )) {
+        include('**/*.sql')
+        includeEmptyDirs = false
+        eachFile { details ->
+            String[] segments = details.relativePath.segments
+            String date = segments[segments.length - 2]
+                .replace('-', '.')
+            String sourceName = segments[segments.length - 1]
+            def matcher = sourceName =~ /^(\d{3})_(.+)\.sql$/
+            if (!matcher.matches()) {
+                throw new GradleException(
+                    "Unsupported Flow migration name: ${details.path}"
+                )
+            }
+            details.relativePath = new org.gradle.api.file.RelativePath(
+                true,
+                'db',
+                'migration',
+                'flow',
+                "V${date}.${matcher.group(1)}__${matcher.group(2)}.sql"
+            )
+        }
+    }
+}
+
 tasks.withType(Test).configureEach {
+    useJUnitPlatform()
     testLogging {
         showStandardStreams = true
     }

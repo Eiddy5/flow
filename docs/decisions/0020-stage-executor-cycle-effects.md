@@ -2,8 +2,8 @@
 
 ## 状态
 
-Accepted（nexts 两阶段应用继续有效；所有 nexts 都形成 WorkerTask 的规则由
-ADR 0024 替代）
+Accepted（nexts 两阶段应用继续有效；Task 能力分支及 ExecutorService 内部循环由
+ADR 0024 和后续已确认运行模型修订）
 
 本决策修订 ADR 0002 中“创建 Handler 先启动 Execution、`handleNext` 直接创建
 TaskRun”的调用顺序，以及 ADR 0012 中由 Core `ExecutionHandler` 协调保存和
@@ -69,6 +69,8 @@ ADR 0006。
 - `nexts`：`handleNext` 解析出的下一批 CREATED TaskRun；应用时通过
   `taskId` 从精确 Flow Reversion 解析 Task 定义。
 - `workerTasks`：`onNexts` 应用后等待投递的不可变 WorkerTask。
+- `waitingTaskRuns`：Executor 已经推进到 WAITING、并等待 DefaultExecutor 在
+  聚合保存后创建兼容 ExternalTask 资源的 PAUSE TaskRun。
 - `states`：本轮观察到的 Execution 状态序列，首项为上下文创建时的
   `State.Type`，相邻状态去重。
 
@@ -76,17 +78,30 @@ ADR 0006。
 持久化、权威的状态历史。Session 和 DSLContext 不进入 ExecutorContext，它们
 只在提交与 Worker 调用边界作为运行参数传递。
 
-Context 的字段集合固定为 `execution`、`flow`、`nexts`、`workerTasks` 和
-`states`。它不保存来源字符串、异常副本、计划待消费标志或聚合 dirty 标记；
-如需来源诊断应使用结构化日志。异常沿调用栈抛出并触发事务回滚；计划与应用顺序
-由 `ExecutorService.advance(...)` 封装；是否存在未保存变化只在
+Context 的字段集合固定为 `execution`、`flow`、`nexts`、`workerTasks`、
+`waitingTaskRuns` 和 `states`。它不保存来源字符串、异常副本、计划待消费标志或
+聚合 dirty 标记；如需来源诊断应使用结构化日志。异常沿调用栈抛出并触发事务
+回滚；计划、应用和 BranchTask 递进顺序由 `ExecutorService.handle(...)` 封装；
+是否存在未保存变化只在
 `DefaultExecutor.drive(...)` 调用栈内以局部变量维护。
 
 当前项目尚未定义延迟任务、子流程和 Loop 的正式运行协议与类型，因此本次不使用
 `List<Object>` 或空壳模型预占这些字段。相应能力确认后，应以明确的不可变效果
 类型加入同一个上下文，而不是把副作用重新散回 Handler。
 
-### handleNext 与 onNexts
+### handle、handleNext 与 onNexts
+
+`ExecutorService.handle(context)` 是状态推进循环入口。它反复按顺序调用
+`handleNext` 与 `onNexts`，直到出现以下任一边界：
+
+1. 当前批次包含 RunnableTask，已经形成等待提交和投递的 WorkerTask。
+2. Execution 到达 WAITING 或终态。
+3. 当前没有可以同步继续推进的状态变化。
+
+`onNexts` 遇到 BranchTask 时直接在 Executor 内启动并收敛对应 TaskRun；无需
+外部恢复的结构节点完成后，`handle` 立即进入下一轮 `handleNext`。PAUSE 先进入
+WAITING，再由下一轮空批次使 Execution 收敛到 WAITING。BranchTask 不形成
+WorkerTask，也不由 DefaultExecutor 调用第二个状态推进入口。
 
 `ExecutorService.handleNext(context)` 只执行以下动作：
 
@@ -106,16 +121,19 @@ Repository 或调用 Worker。
    CREATED -> RUNNING 与第一批 TaskRun 并入；后续批次使用
    `Execution.addTaskRuns(...)`。
 3. 原子校验并合并尚未附着的 TaskRun。
-4. 为本批 TaskRun 暂存 WorkerTask。
-5. 同步 `states` 并返回 Execution 聚合是否发生变化。
-6. 当空批次代表流程已经收敛或只剩外部等待时，分别应用 COMPLETED 或 WAITING。
+4. 校验每个 Task 恰好具有 RunnableTask 或 BranchTask 能力；只为 RunnableTask
+   暂存 WorkerTask，BranchTask 由 Executor 直接推进。
+5. PAUSE 进入 WAITING 后暂存 waitingTaskRuns 效果，供聚合保存后创建兼容等待
+   资源；PARALLEL 等非等待 BranchTask 不进入该效果集合。
+6. 同步 `states` 并返回 Execution 聚合是否发生变化。
+7. 当空批次代表流程已经收敛或只剩外部等待时，分别应用 COMPLETED 或 WAITING。
 
 同一批次必须先完整验证再并入；批次中任一重复身份、重复非循环 Task、非法父
 TaskRun 或非 CREATED TaskRun 都不能留下部分聚合变化。
 
-`handleNext` 与 `onNexts` 是 Executor 模块内部阶段，统一由 `advance` 按顺序
-调用。外部调用方只通过 DefaultExecutor 的 execute、resume 和 cancel 入口推进，
-不承担阶段排序和重复消费防护。
+`handleNext` 与 `onNexts` 是 Executor 模块内部阶段，统一由 `handle` 按顺序并
+循环调用。外部调用方只通过 DefaultExecutor 的 execute、resume 和 cancel 入口
+推进，不承担阶段排序、BranchTask 递进或重复消费防护。
 
 ### DefaultExecutor
 
@@ -124,14 +142,17 @@ TaskRun 或非 CREATED TaskRun 都不能留下部分聚合变化。
 其精确 Flow Reversion，然后把纯 ExecutorContext 交给 DefaultExecutor。新建
 Execution 尚无持久化行，不执行锁定读取。DefaultExecutor 负责：
 
-1. 调用 `advance`，由其依次完成 `handleNext` 与 `onNexts`。
-2. 根据 `advance` 的返回值和本次调用栈中的局部变更标记，通过
+1. 调用 `handle`，由其循环完成 `handleNext`、`onNexts` 与 BranchTask 状态推进。
+2. 根据 `handle` 的返回值和本次调用栈中的局部变更标记，通过
    ExecutionRepository 保存完整聚合。
-3. 在 Worker 调用前保存 CREATED/RUNNING TaskRun，满足 Task 自有记录的外键
+3. 在聚合保存后消费 waitingTaskRuns，为 PAUSE 创建兼容 ExternalTask 资源。
+4. 在 Worker 调用前保存 CREATED/RUNNING TaskRun，满足 Task 自有记录的外键
    前置条件。
-4. 投递本轮 WorkerTask，将 WorkerTaskResult 交回 ExecutorService 应用。
-5. 持续循环直到 Execution 到达等待、终态或当前没有可同步推进的工作。
-6. 统一处理取消和等待资源清理；未处理异常继续向外抛出并回滚事务。
+5. 投递本轮 WorkerTask，将 WorkerTaskResult 交回 ExecutorService 应用，再次
+   调用 `handle` 推导后续状态。
+6. 持续提交 Worker 边界，直到 Execution 到达等待、终态或当前没有可同步推进
+   的工作。
+7. 统一处理取消和等待资源清理；未处理异常继续向外抛出并回滚事务。
 
 Core 中不再保留另一个 `ExecutionHandler` 协调器，避免两个对象共同拥有保存和
 投递顺序。
@@ -166,11 +187,18 @@ sequenceDiagram
     H->>R: lockById(companyId, executionId)
     R-->>H: locked Execution
     H->>D: execute(session, dsl, context)
-    D->>S: advance(context)
-    S->>C: handleNext stages nexts
-    Note over C: Execution 尚未改变
-    S->>C: onNexts consumes nexts
-    S->>C: update Execution + states + WorkerTask
+    D->>S: handle(context)
+    loop until Worker or stable-state boundary
+        S->>C: handleNext stages nexts
+        Note over C: Execution 尚未改变
+        S->>C: onNexts consumes nexts
+        S->>C: update Execution + states
+        alt BranchTask
+            S->>C: complete or wait TaskRun
+        else RunnableTask
+            S->>C: stage WorkerTask
+        end
+    end
     S-->>D: aggregate changed?
     D->>R: save when local change flag is true
     D->>W: dispatch WorkerTask
@@ -186,7 +214,7 @@ sequenceDiagram
 - `ECTX-002`：Context 不持有 FlowDraft、Session、DSLContext 或可持久化
   游标。
 - `ECTX-003`：`handleNext` 返回后 Execution 与 TaskRun 历史保持不变。
-- `ECTX-004`：`advance` 必须在形成下一批 nexts 前消费并清空当前批次。
+- `ECTX-004`：`handle` 必须在形成下一批 nexts 前消费并清空当前批次。
 - `ECTX-005`：只有 `onNexts` 可以把调度产生的 TaskRun 批次并入 Execution。
 - `ECTX-006`：未保存聚合变化只存在于 DefaultExecutor 当前调用栈，不进入
   Context；State History 不因保存而重置。
@@ -196,6 +224,8 @@ sequenceDiagram
 - `ECTX-009`：未处理异常回滚命令，不伪造 TERMINATED 状态。
 - `ECTX-010`：推进、恢复或取消已有 Execution 前，Handler 必须在当前事务中
   按租户锁定读取聚合。
+- `ECTX-011`：非等待 BranchTask 必须在 `handle` 内完成后继续推导 nexts；PAUSE
+  必须在返回提交边界前使 TaskRun 与 Execution 收敛到 WAITING。
 
 ## 后果
 

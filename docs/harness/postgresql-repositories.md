@@ -36,8 +36,10 @@ erDiagram
         bigint flow_reversion PK
         varchar id PK
         varchar parent_id
+        text type
         jsonb inputs
         jsonb outputs
+        jsonb properties
     }
 ```
 
@@ -69,6 +71,10 @@ psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-30/003_backfill_input_definition_fields.sql
 psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-31/001_remove_flow_draft_flags.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-08-03/001_use_task_plugin_class_name.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-08-04/001_use_paused_task_run_state.sql
 ```
 
 已有 001 表结构的数据库还需按顺序执行：
@@ -90,6 +96,10 @@ psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-30/003_backfill_input_definition_fields.sql
 psql "$FLOW_POSTGRES_TEST_URL" \
   -f gen/sql/production-release/flow/2026-07-31/001_remove_flow_draft_flags.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-08-03/001_use_task_plugin_class_name.sql
+psql "$FLOW_POSTGRES_TEST_URL" \
+  -f gen/sql/production-release/flow/2026-08-04/001_use_paused_task_run_state.sql
 ```
 
 `003_align_temporal_columns.sql` 将旧脚本中的毫秒时间戳转换为
@@ -97,7 +107,7 @@ psql "$FLOW_POSTGRES_TEST_URL" \
 保持一致。`001_align_flow_source_and_reversion.sql` 分离原始来源与部署快照，
 统一 `reversion/flow_reversion` 字段，并增加 Flow/Task 的 Input、Output 和
 `dependOn` 存储。`002_rename_assignment_to_external_task.sql` 将 PAUSE 的 Core
-等待表改为中性的 `external_task`，并移除已经可以从绑定 PauseTask 稳定读取的
+等待表改为中性的 `external_task`，并移除已经可以从绑定 Pause 稳定读取的
 `allowed_outputs` 契约副本。项目自有 Java 类型仍使用 Epoch 毫秒 `long`，只在
 Entry 边界与 `OffsetDateTime` 转换。
 
@@ -118,12 +128,25 @@ Entry 边界与 `OffsetDateTime` 转换。
 displayName 时补为 key，缺少 required 时补为 false；已有值、具体子类字段、
 数组顺序和非对象项保持不变。脚本可重复执行。
 
+`001_use_task_plugin_class_name.sql` 把 `flow_tasks.type` 从 64 字符短类型扩为
+`text`，用于保存具体 Task 的 canonical class name，并拒绝空值或首尾空白。
+脚本不回填 `AUTO`、`PAUSE`、`PARALLEL` 等历史短类型；数据库应按本次破坏性
+变更的约定清理后重新部署 Flow。
+
+`001_use_paused_task_run_state.sql` 按 ADR 0029 执行一次性破坏迁移：清空已有
+Execution、TaskRun 和 ExternalTask 运行事实，把工作流状态词汇中的 `WAITING`
+替换为 `PAUSED`，
+并分别收紧 Execution 与 TaskRun 的数据库约束。Execution 只允许
+`CREATED/RUNNING/COMPLETED/TERMINATED`，只有明确的 Pause TaskRun 可以使用
+`PAUSED`；ExternalTask 的 `WAITING` 技术状态不受影响。
+
 测试只使用随机 companyId，不会清空或删除数据库中的其他租户数据。
 UC 测试默认保留本场景创建的 Flow、Execution、TaskRun 和 ExternalTask 数据，
 便于在本地 PostgreSQL 中观察真实入库结果。场景中出现 PAUSE 时，夹具先关闭
-启动 server 的 ApplicationContext，再由独立 External Trigger
+启动 Server 的 ApplicationContext，再由独立 External Trigger
 ApplicationContext 从 PostgreSQL 恢复并推进，因此完成型场景结束后不应存在
-WAITING Execution 或 WAITING ExternalTask。如需在 CI 或一次性验证后清理，
+PAUSED TaskRun 或 WAITING ExternalTask；Execution 在暂停期间仍为 RUNNING。
+如需在 CI 或一次性验证后清理，
 显式设置 `FLOW_POSTGRES_TEST_CLEANUP=true`；清理范围只限本次夹具创建的随机
 companyId。
 
@@ -142,8 +165,8 @@ FLOW_POSTGRES_TEST_PASSWORD=flow \
 
 ## 运行 UC 测试
 
-UC-01～UC-07 通过 Micronaut server 的公开 Service/Command 链路装配生产
-PostgreSQL Repository，不再使用 Flow 内存 Repository。运行 UC、server 模块或
+UC-01～UC-08 通过 Micronaut Core 的公开 Service/Command 链路装配生产
+PostgreSQL Repository，不再使用 Flow 内存 Repository。运行 UC、Server 模块或
 项目完整测试前必须设置相同的三个 PostgreSQL 环境变量：
 
 ```bash

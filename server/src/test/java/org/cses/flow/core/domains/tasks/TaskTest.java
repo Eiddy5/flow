@@ -5,25 +5,32 @@ import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
+import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.extensions.tasks.AutomaticTask;
-import org.cses.flow.extensions.tasks.PauseTask;
+import org.cses.flow.extensions.flow.Pause;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
 import org.paas.json.JsonObject;
 
 import java.lang.reflect.Modifier;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskTest {
+
+    private static final Context PLUGINS = builtInContext(
+        new TestNotificationTask()
+    );
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -31,52 +38,25 @@ class TaskTest {
     }
 
     @Test
-    void normalizesAndProtectsDefinitionState() {
-        List<Input<?>> inputs = new ArrayList<>(
-            List.of(input("request", DataType.STRING))
-        );
-        List<Output> outputs = new ArrayList<>(
-            List.of(Output.create("result", DataType.STRING))
-        );
-        List<String> dependOn = new ArrayList<>(List.of("prepare"));
-        List<Task> children = new ArrayList<>(
-            List.of(AutomaticTask.create(
-                "child-id",
-                "task-id",
-                "child",
-                List.of(),
-                List.of(),
-                RouteExpression.direct(),
-                List.of(),
-                List.of()
-            ))
+    void exposesReadOnlyBoundDefinitionState() {
+        Task child = automatic("child-id", "child");
+        Task task = PLUGINS.modelValidator().validate(
+            AutomaticTask.builder()
+                .id("task-id")
+                .key("task")
+                .inputs(List.of(input("request", DataType.STRING)))
+                .outputs(List.of(Output.create(
+                    "result",
+                    DataType.STRING
+                )))
+                .route(RouteExpression.direct())
+                .dependOn(List.of("prepare"))
+                .tasks(List.of(child))
+                .build()
         );
 
-        Task task = AutomaticTask.create(
-            "task-id",
-            null,
-            " task ",
-            inputs,
-            outputs,
-            RouteExpression.parse(" "),
-            dependOn,
-            children
-        );
-        inputs.clear();
-        outputs.clear();
-        dependOn.clear();
-        children.clear();
-
+        assertEquals(AutomaticTask.class.getName(), task.getType());
         assertEquals("task", task.key());
-        assertEquals("AUTO", task.type());
-        assertEquals(
-            List.of(input("request", DataType.STRING)),
-            task.inputs()
-        );
-        assertEquals(
-            List.of(Output.create("result", DataType.STRING)),
-            task.outputs()
-        );
         assertTrue(task.declaresOutput("result"));
         assertEquals("DIRECT", task.route().source());
         assertEquals(List.of("prepare"), task.dependOn());
@@ -91,83 +71,94 @@ class TaskTest {
             UnsupportedOperationException.class,
             () -> task.dependOn().add("other")
         );
+        assertFalse(Arrays.stream(Task.class.getMethods())
+            .anyMatch(method -> method.getName().startsWith("set")));
     }
 
     @Test
     void usesDefinitionValueEqualityAcrossPersistenceBoundaries() {
-        Task first = AutomaticTask.create(
-            "task-1",
-            "parent-1",
-            "approval",
-            List.of(input("request", DataType.STRING)),
-            List.of(Output.create("decision", DataType.STRING)),
-            RouteExpression.parse(
+        Task first = AutomaticTask.builder()
+            .id("task-1")
+            .key("approval")
+            .inputs(List.of(input("request", DataType.STRING)))
+            .outputs(List.of(Output.create("decision", DataType.STRING)))
+            .route(RouteExpression.parse(
                 "outputs.decision == \"approved\""
-            ),
-            List.of("prepare"),
-            List.of()
-        );
-        Task restored = AutomaticTask.rehydrate(
-            "task-1",
-            "parent-1",
-            "approval",
-            List.of(input("request", DataType.STRING)),
-            List.of(Output.rehydrate("decision", DataType.STRING)),
-            RouteExpression.parse(
+            ))
+            .dependOn(List.of("prepare"))
+            .build();
+        Task restored = AutomaticTask.builder()
+            .id("task-1")
+            .key("approval")
+            .inputs(List.of(input("request", DataType.STRING)))
+            .outputs(List.of(Output.rehydrate(
+                "decision",
+                DataType.STRING
+            )))
+            .route(RouteExpression.parse(
                 "outputs.decision == \"approved\""
-            ),
-            List.of("prepare"),
-            List.of()
-        );
+            ))
+            .dependOn(List.of("prepare"))
+            .build();
 
         assertEquals(first, restored);
         assertEquals(first.hashCode(), restored.hashCode());
     }
 
     @Test
-    void rejectsDuplicateDataAndDependencyKeys() {
+    void activeValidatorRejectsInvalidDirectlyCreatedTasks() {
         assertThrows(
             IllegalArgumentException.class,
-            () -> AutomaticTask.create(
-                "task-1",
-                null,
-                "approval",
-                List.of(
-                    input("request", DataType.STRING),
-                    input("request", DataType.INTEGER)
-                ),
-                List.of(),
-                RouteExpression.direct(),
-                List.of(),
-                List.of()
+            () -> PLUGINS.modelValidator().validate(
+                AutomaticTask.builder()
+                    .id("task-1")
+                    .key("approval")
+                    .inputs(List.of(
+                        input("request", DataType.STRING),
+                        input("request", DataType.INTEGER)
+                    ))
+                    .build()
             )
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> AutomaticTask.create(
-                "task-1",
-                null,
-                "approval",
-                List.of(),
-                List.of(),
-                RouteExpression.direct(),
-                List.of("prepare", "prepare"),
-                List.of()
+            () -> PLUGINS.modelValidator().validate(
+                AutomaticTask.builder()
+                    .id("task-1")
+                    .key("approval")
+                    .dependOn(List.of("prepare", "prepare"))
+                    .build()
+            )
+        );
+        assertThrows(
+            jakarta.validation.ConstraintViolationException.class,
+            () -> PLUGINS.modelValidator().validate(
+                AutomaticTask.builder().id(" ").key("task").build()
+            )
+        );
+        assertThrows(
+            jakarta.validation.ConstraintViolationException.class,
+            () -> PLUGINS.modelValidator().validate(
+                TestNotificationTask.builder()
+                    .id("task-2")
+                    .key("notify")
+                    .build()
             )
         );
     }
 
     @Test
     void allowsTheSameDataKeyAcrossInputAndOutputDirections() {
-        Task task = AutomaticTask.create(
-            "task-1",
-            null,
-            "transform",
-            List.of(input("payload", DataType.STRING)),
-            List.of(Output.create("payload", DataType.STRING)),
-            RouteExpression.direct(),
-            List.of(),
-            List.of()
+        Task task = PLUGINS.modelValidator().validate(
+            AutomaticTask.builder()
+                .id("task-1")
+                .key("transform")
+                .inputs(List.of(input("payload", DataType.STRING)))
+                .outputs(List.of(Output.create(
+                    "payload",
+                    DataType.STRING
+                )))
+                .build()
         );
 
         assertEquals("payload", task.inputs().getFirst().getKey());
@@ -176,16 +167,11 @@ class TaskTest {
 
     @Test
     void validatesProvidedAndDeclaredRuntimeOutputs() {
-        Task task = PauseTask.create(
-            "task-1",
-            null,
-            "wait",
-            List.of(),
-            List.of(Output.create("decision", DataType.STRING)),
-            RouteExpression.direct(),
-            List.of(),
-            List.of()
-        );
+        Task task = AutomaticTask.builder()
+            .id("task-1")
+            .key("wait")
+            .outputs(List.of(Output.create("decision", DataType.STRING)))
+            .build();
 
         assertDoesNotThrow(() ->
             task.validateOutputs(Map.of("decision", "approved"))
@@ -209,16 +195,11 @@ class TaskTest {
             () -> task.validateOutputs(Map.of("decision", true))
         );
 
-        Task numericTask = PauseTask.create(
-            "task-2",
-            null,
-            "numeric-wait",
-            List.of(),
-            List.of(Output.create("count", DataType.LONG)),
-            RouteExpression.direct(),
-            List.of(),
-            List.of()
-        );
+        Task numericTask = AutomaticTask.builder()
+            .id("task-2")
+            .key("numeric-wait")
+            .outputs(List.of(Output.create("count", DataType.LONG)))
+            .build();
         assertEquals(
             1L,
             numericTask.validateOutputs(Map.of("count", 1)).get("count")
@@ -230,25 +211,22 @@ class TaskTest {
     }
 
     @Test
-    void exposesOnlyCompleteStaticCreationAndRehydration() {
-        assertTrue(List.of(AutomaticTask.class, PauseTask.class).stream()
-            .flatMap(type -> Arrays.stream(type.getDeclaredConstructors()))
-            .allMatch(constructor ->
-                Modifier.isPrivate(constructor.getModifiers())
-            ));
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> AutomaticTask.create(
-                " ",
-                null,
-                "task",
-                List.of(),
-                List.of(),
-                RouteExpression.direct(),
-                List.of(),
-                List.of()
-            )
-        );
+    void providesAPublicNoArgsConstructorForFrameworkBinding() {
+        for (Class<? extends Task> type : List.of(
+            AutomaticTask.class,
+            Pause.class
+        )) {
+            var constructor = assertDoesNotThrow(
+                () -> type.getConstructor()
+            );
+            assertTrue(
+                Modifier.isPublic(constructor.getModifiers())
+            );
+        }
+    }
+
+    private static AutomaticTask automatic(String id, String key) {
+        return AutomaticTask.builder().id(id).key(key).build();
     }
 
     private static Input<?> input(String key, DataType type) {

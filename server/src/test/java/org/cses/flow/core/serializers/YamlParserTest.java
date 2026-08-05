@@ -8,10 +8,13 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 
 class YamlParserTest {
 
-    private final YamlParser parser = new YamlParser();
+    private final YamlParser parser = new YamlParser(
+        builtInContext().jacksonMapper()
+    );
 
     @Test
     void parsesADeeplyImmutableMappingWithoutBusinessKnowledge() {

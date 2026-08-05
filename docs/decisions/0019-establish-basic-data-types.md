@@ -174,12 +174,20 @@ ADR 0013：YamlParser 仍返回通用只读 Map，但每个 Input 定义片段�
 以 `Input.class` 作为目标类型完成多态实例化；PostgreSQL JSONB 也通过
 `JsonObjects.asObjects(Input.class)` 恢复同一子类。
 
-Input 基类声明 `type` 判别字段及全部稳定子类型，具体 Input 声明自己的 JSON
-创建参数。PAAS JSON 根据该元数据选择并调用具体构造器，领域构造器继续校验公共
-字段、默认值和子类约束。项目不再保留 `InputDefinitionMapper`、手写类型
-`switch` 或另一份 type 到 Java 类的映射。Input 仍不公开 Setter、无参构造或
-主动 `create(...)`；JSON 技术对象只允许在 Flow 定义物化和 Repository Codec
-边界短暂存在，不能进入聚合状态或公共领域契约。
+Input 基类声明 `type` 判别字段及全部稳定子类型。Input 基类使用 Lombok
+`@SuperBuilder`、`@Getter`、`@Setter` 与 `@NoArgsConstructor`；拥有专有字段的
+具体子类为这些字段生成 Getter/Setter。每个具体类型保留 `@Serdeable`，使用它
+自带的默认方法内省，不重复声明 FIELD/METHOD `@Introspected` 配置。PAAS JSON
+根据多态元数据选择具体子类，再通过无参构造和 Setter 恢复公共字段与子类字段。
+Lombok Builder 不参与 JSON 反序列化，只提供 Java 侧继承字段一致的构建方式。
+
+无参 Setter 绑定完成后，Flow 定义物化和 Repository Codec 必须立即调用 Input 的
+`validateDefinition()`，统一规范化并校验公共字段、默认值和子类约束。校验失败
+的空对象或半成品不能进入 Flow 或 Task 聚合。项目不再保留
+`InputDefinitionMapper`、手写类型 `switch` 或另一份 type 到 Java 类的映射。
+Input 的公共 Setter 仅是 Micronaut Serialization 技术绑定入口，不是业务变更
+方法；Service、Handler 和其他领域对象不得调用。Input 不提供主动 `create(...)`；
+JSON 技术对象只允许在上述转换边界短暂存在，不能进入聚合状态或公共领域契约。
 
 ## 领域类图
 
@@ -274,7 +282,8 @@ TaskRun ..> Data : validates against definition
 - `DTYPE-007`：类型校验失败不改变 Execution、TaskRun、Flow Reversion 或
   `lockVersion`。
 - `DTYPE-008`：具体 Input 由定义反序列化按 type 选择，调用方不主动创建，未知
-  type 不得回退为 StringInput。
+  type 不得回退为 StringInput；无参 Setter 绑定结果必须通过完整定义校验后才能进入
+  聚合。
 
 ## 场景校验
 
@@ -297,7 +306,9 @@ TaskRun ..> Data : validates against definition
 1. 已建立独立 DataType，并把 Data.getType() 从 String 改为 DataType。
 2. 已将 Input 迁移为抽象 `Input<T>`，增加公共描述字段和九个具体 Input 子类。
 3. 已保留 ADR 0013，并以 PAAS JSON 的 Input 多态元数据统一 YAML Map 与
-   PostgreSQL JSONB 的具体子类恢复，不再使用 `InputDefinitionMapper`。
+   PostgreSQL JSONB 的具体子类选择，通过 Lombok 无参构造和 Setter 完成属性
+   绑定并在边界执行完整定义校验，不再使用 `InputDefinitionMapper` 或重复的
+   FIELD/METHOD `@Introspected` 配置。
 4. 已迁移 Flow、Task、TaskExtension、Repository 和测试签名。
 5. 已由服务端暴露 DataType 与 Input 字段元数据，Demo 据此生成表单。
 6. 已在 Worker 完成和 PAUSE Resume 边界校验并归一化 Output；运行时 Input

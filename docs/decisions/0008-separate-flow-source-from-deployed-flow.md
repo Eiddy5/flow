@@ -76,12 +76,10 @@ Accepted（部署后保留来源、完整存储迁移和旧契约删除由 ADR 0
   UC-01 仍按旧模型实现，需要作为后续迁移链路统一调整。
 - `CreateUpgradeDraft` 不再是独立业务能力；升级规则进入 `deploy`。
 - 草稿查询与已部署 Flow 查询需要使用各自明确的 Repository 契约。
-- 目标字段、方法、不变量和迁移边界由
-  [`flow-definition-lifecycle.md`](../standards/flow-definition-lifecycle.md)
-  统一规定。
-- 随 Flow 部署产生的完整 Task 由
-  [`task-domain-model.md`](../standards/task-domain-model.md)
-  统一规定；Flow 从通用映射一次性构建具备完整身份和父子关系的 Task，
-  不建立或持久化中间 Task 类型。
+- Flow 来源、Reversion、生命周期和 FlowDraft 聚合的后续选择由 ADR 0013、
+  ADR 0014、ADR 0018 和 ADR 0022 共同约束。
+- 随 Flow 部署产生的完整 Task 由 ADR 0013、ADR 0021、ADR 0023 和 ADR 0024
+  继续约束；Flow 从通用映射一次性构建具备完整身份和父子关系的 Task，不建立或
+  持久化中间 Task 类型。当前决策链见 [`README.md`](README.md)。
 - 若需要永久保留每次部署使用的原始 YAML，应另行确认版本化来源快照，
   不能把已部署 Flow 重新改为未解析来源对象。
