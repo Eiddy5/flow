@@ -38,10 +38,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * User-facing HTTP adapter used by the standalone Flow Studio demo.
+ * User-facing HTTP adapter enabled by the unified Flow Demo environment.
  */
 @Controller("/api/demo")
-@Requires(property = "flow.studio.enabled", value = "true")
+@Requires(property = "flow.demo.enabled", value = "true")
 public final class FlowDemoController {
 
     private final FlowService flowService;

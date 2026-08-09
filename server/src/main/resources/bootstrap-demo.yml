@@ -1,13 +1,13 @@
 micronaut:
   config-client:
-    enabled: false
+    enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
 
 consul:
   client:
     registration:
-      enabled: false
+      enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
     config:
-      enabled: false
+      enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
     watch:
       service:
-        enabled: false
+        enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}

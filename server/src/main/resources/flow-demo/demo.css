@@ -706,20 +706,24 @@ select:focus-visible,
         0 10px 22px rgba(57, 119, 213, 0.13);
 }
 
-.flow-node.state-completed {
+.flow-node.state-success,
+.flow-node.state-warning {
     border-left: 4px solid var(--teal);
 }
 
-.flow-node.state-waiting {
+.flow-node.state-paused {
     border-left: 4px solid var(--amber);
 }
 
 .flow-node.state-running,
+.flow-node.state-restarted,
 .flow-node.state-created {
     border-left: 4px solid var(--blue);
 }
 
-.flow-node.state-terminated {
+.flow-node.state-failed,
+.flow-node.state-killing,
+.flow-node.state-killed {
     border-left: 4px solid var(--coral);
 }
 

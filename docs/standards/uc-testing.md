@@ -59,8 +59,8 @@ UC 测试不是技术架构符合性测试。ADR、模块依赖、领域内部�
 例如：
 
 ```text
-server/src/main/java/org/cses/flow/core/services/flows/FlowService.java
-server/src/test/java/org/cses/flow/core/services/flows/Uc01FlowLifecycleTest.java
+core/src/main/java/org/cses/flow/core/services/flows/FlowService.java
+core/src/test/java/org/cses/flow/core/services/flows/Uc01FlowLifecycleTest.java
 ```
 
 主测试类注释记录 UC 路径：
@@ -231,8 +231,8 @@ assertTrue(queryDraft(id).isEmpty());
 典型命令：
 
 ```bash
-./gradlew :server:test --tests '*Uc01FlowLifecycleTest'
-./gradlew :server:test
+./gradlew :core:test --tests '*Uc01FlowLifecycleTest'
+./gradlew :core:test
 ./gradlew test
 ```
 

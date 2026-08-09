@@ -4,13 +4,13 @@
 
 ## Flow 项目接入说明
 
-Flow Core 的 PostgreSQL Repository 不通过 DataPilot 选择数据库。它在 `server`
-模块内直接消费 Micronaut 具名 `datasources.flow`，并为该数据源创建具名 JOOQ 与
-Flyway 迁移边界。
+Flow Core 的 PostgreSQL Repository 不通过 DataPilot 选择数据库。宿主通过
+`datasources.flow` 声明标准具名数据源，由 Micronaut 与 PAAS 自动创建具名
+DataSource 和 JOOQ。
+Schema 由部署人员在启动前手工执行完整基线，Flow 不使用 Flyway。
 
-`server/src/main/java/org/cses/flow/infrastructure/datapilot` 只保留 Server/Demo 的
-历史兼容适配；它不能代替 Flow Core 的 `datasources.flow` 与
-`jooq.datasources.flow` 配置。
+`core/src/main/java/org/cses/flow/infrastructure/datapilot` 只保留 Core/Demo 的
+历史兼容适配；它不能代替 Flow Core 的 `datasources.flow` 配置。
 
 ## 1. DataPilot 在项目中的定位
 
@@ -51,7 +51,7 @@ org-x9-cloud-datapilot = {
 }
 ```
 
-`server` 模块引入依赖：
+`core` 模块引入依赖：
 
 ```groovy
 dependencies {
@@ -62,13 +62,13 @@ dependencies {
 相关文件：
 
 - [`gradle/libs.versions.toml`](gradle/libs.versions.toml)
-- [`server/build.gradle`](server/build.gradle)
+- [`core/build.gradle`](../../core/build.gradle)
 - [`buildSrc/src/main/groovy/org.cses.build.base.gradle`](buildSrc/src/main/groovy/org.cses.build.base.gradle)
 
 可以使用以下命令确认最终解析版本：
 
 ```bash
-./gradlew :server:dependencyInsight \
+./gradlew :core:dependencyInsight \
   --dependency cloud-datapilot \
   --configuration compileClasspath
 ```
@@ -94,7 +94,7 @@ useLocalCloudDatapilot=false
 临时启用：
 
 ```bash
-./gradlew -PuseLocalCloudDatapilot=true :server:compileJava
+./gradlew -PuseLocalCloudDatapilot=true :core:compileJava
 ```
 
 也可以在本地 `gradle.properties` 中设置：
@@ -933,4 +933,4 @@ public class ExampleRepository {
 | 索引模型 | [`TaskEntity.java`](server/src/main/java/org/cses/server/service/taskManage/domain/task/entity/TaskEntity.java) |
 | 全局搜索 | [`DocGlobalSearchIndex.java`](server/src/main/java/org/cses/server/service/doc/repositories/searcher/DocGlobalSearchIndex.java) |
 | 数据变更拦截 | [`TaskPermissionRecipientInterceptor.java`](server/src/main/java/org/cses/server/service/taskManage/domain/task/notify/TaskPermissionRecipientInterceptor.java) |
-| Consul 配置入口 | [`server/src/main/resources/bootstrap.yaml`](server/src/main/resources/bootstrap.yaml) |
+| Consul 配置入口 | [`server/src/main/resources/bootstrap-flow-standalone.yaml`](../../server/src/main/resources/bootstrap-flow-standalone.yaml) |

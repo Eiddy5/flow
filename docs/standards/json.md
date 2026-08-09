@@ -87,8 +87,9 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
 
 ## 3. 分层使用规则
 
-- Controller 可以使用 Micronaut 的请求和响应绑定；需要手动处理 JSON 时，仍
-  必须使用 PAAS JSON。
+- Controller 可以使用 Micronaut 的请求和响应绑定；当前 HTTP JSON codec 使用
+  Jackson Databind，边界模型统一继承 PAAS `SerializableObject` 并使用 Lombok
+  `@Getter`、`@Setter`。需要手动处理 JSON 时，仍必须使用 PAAS JSON。
 - Core 优先接收领域对象和值类型。JSON 只是 HTTP、配置或持久化格式时，应在
   Controller、Serializer、Entry 或其他边界完成转换，不能让 JSON 技术类型扩散
   为领域模型。

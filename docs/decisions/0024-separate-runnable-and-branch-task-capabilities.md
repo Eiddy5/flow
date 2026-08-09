@@ -52,9 +52,11 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
   的运行时协议；它们离开 Task 后没有独立业务意义。因此两个接口必须与 `Task`
   一起位于 `core/domains/tasks`。`RunContext`、`RunResult` 是 RunnableTask 的
   直接调用契约，也归入该包。Worker 和 Executor 只消费、不能拥有这些能力。
-- `RunContext` 每次只服务一次 RunnableTask 调用。它只提供当前 Session、命令
-  DSLContext 和不可变实际 inputs；不暴露 Task、WorkerTask、Execution、TaskRun、
-  nexts 或状态修改入口。
+- `RunContext` 每次只服务一次 RunnableTask 调用。它提供当前 Session、命令
+  DSLContext 和不可变运行时 `variables`；变量保留键 `$flow.execution` 与
+  `$flow.inputs` 分别携带当前 Execution 和实际 inputs，并通过 `executionId()`、
+  `inputs()` 提供便捷访问。它不提供 Task、WorkerTask、TaskRun、nexts 或状态推进
+  入口。
 - `RunResult` 只允许表达 COMPLETED 或 TERMINATED。WAITING 属于 BranchTask 的
   编排结果，不能由 RunnableTask 或 Worker 返回。
 - Executor 在把计划并入 Execution 前校验能力互斥性。没有能力或同时实现两种

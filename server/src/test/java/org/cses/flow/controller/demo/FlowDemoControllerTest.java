@@ -9,8 +9,9 @@ import io.micronaut.http.HttpStatus;
 import io.micronaut.http.client.HttpClient;
 import io.micronaut.runtime.server.EmbeddedServer;
 import org.cses.flow.core.plugins.TestNotificationTask;
+import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.infrastructure.datapilot.DemoPostgresJooqAdapter;
-import org.cses.flow.infrastructure.session.StudioSessionArgumentBinder;
+import org.cses.flow.infrastructure.session.DemoSessionArgumentBinder;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -27,10 +28,10 @@ class FlowDemoControllerTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Test
-    void studioEnvironmentUsesLocalSessionWithoutDemoPostgres()
+    void platformManagedDemoUsesLocalSessionWithoutStandalonePostgres()
         throws IOException {
 
-        try (EmbeddedServer server = startStudioServer();
+        try (EmbeddedServer server = startPlatformManagedDemoServer();
              HttpClient client = HttpClient.create(server.getURL())) {
 
             String page = client.toBlocking().retrieve(
@@ -42,7 +43,7 @@ class FlowDemoControllerTest {
             assertEquals(9, dataTypes.size());
             JsonNode session = get(client, "/api/demo/session");
             assertEquals("flow-demo", session.get("companyId").asText());
-            assertEquals("studio-user", session.get("userId").asText());
+            assertEquals("demo-user", session.get("userId").asText());
             assertFalse(
                 server.getApplicationContext().containsBean(
                     DemoPostgresJooqAdapter.class
@@ -50,15 +51,14 @@ class FlowDemoControllerTest {
             );
             assertTrue(
                 server.getApplicationContext().containsBean(
-                    StudioSessionArgumentBinder.class
+                    DemoSessionArgumentBinder.class
                 )
             );
 
             JsonNode plugins = get(client, "/api/plugins");
-            assertEquals("core", plugins.get(0).get("name").asText());
             JsonNode automatic = findTaskPlugin(
                 plugins,
-                "org.cses.flow.extensions.tasks.AutomaticTask"
+                AutomaticTask.class.getCanonicalName()
             );
             assertNotNull(automatic);
             assertEquals("自动任务", automatic.get("title").asText());
@@ -66,10 +66,19 @@ class FlowDemoControllerTest {
                 "org.cses.flow.core.domains.tasks.Task",
                 automatic.get("baseType").asText()
             );
-            assertNotNull(findTaskPlugin(
+            assertEquals(
+                AutomaticTask.class.getPackageName(),
+                automatic.get("packageName").asText()
+            );
+            JsonNode notification = findTaskPlugin(
                 plugins,
                 TestNotificationTask.class.getCanonicalName()
-            ));
+            );
+            assertNotNull(notification);
+            assertEquals(
+                TestNotificationTask.class.getPackageName(),
+                notification.get("packageName").asText()
+            );
 
             JsonNode details = get(
                 client,
@@ -79,6 +88,10 @@ class FlowDemoControllerTest {
             assertEquals(
                 "org.cses.flow.extensions.tasks.AutomaticTask",
                 details.get("metadata").get("type").asText()
+            );
+            assertEquals(
+                AutomaticTask.class.getPackageName(),
+                details.get("metadata").get("packageName").asText()
             );
             JsonNode schema = details.get("schema");
             assertFalse(schema.get("additionalProperties").asBoolean());
@@ -137,6 +150,8 @@ class FlowDemoControllerTest {
             assertTrue(script.contains("data-action=\"add-data-item\""));
             assertTrue(script.contains("创建并行节点与两个分支"));
             assertTrue(script.contains("renderRegisteredTaskOptions"));
+            assertTrue(script.contains("plugin.packageName"));
+            assertTrue(script.contains("pluginPackage"));
             assertTrue(script.contains("confirm-create-task"));
             assertTrue(script.contains("来自插件注册表"));
             assertFalse(script.contains("FALLBACK_TASK_PLUGINS"));
@@ -281,7 +296,7 @@ class FlowDemoControllerTest {
                 Map.of()
             );
             String executionId = started.get("id").asText();
-            assertEquals("COMPLETED", started.get("state").asText());
+            assertEquals("SUCCESS", started.get("state").asText());
             assertEquals(flowId, started.get("flowId").asText());
             assertEquals(2, started.get("taskRuns").size());
 
@@ -289,7 +304,7 @@ class FlowDemoControllerTest {
                 client,
                 "/api/demo/executions/" + executionId
             );
-            assertEquals("COMPLETED", execution.get("state").asText());
+            assertEquals("SUCCESS", execution.get("state").asText());
 
             JsonNode reversion = get(
                 client,
@@ -330,7 +345,7 @@ class FlowDemoControllerTest {
                 Map.of()
             );
 
-            assertEquals("RUNNING", waiting.get("state").asText());
+            assertEquals("PAUSED", waiting.get("state").asText());
             assertEquals(3, waiting.get("taskRuns").size());
             String finishId = findTaskId(
                 deployed.get("deployedFlow").get("tasks"),
@@ -357,7 +372,7 @@ class FlowDemoControllerTest {
                 )
             );
 
-            assertEquals("COMPLETED", completed.get("state").asText());
+            assertEquals("SUCCESS", completed.get("state").asText());
             assertEquals(5, completed.get("taskRuns").size());
             assertTrue(hasTaskRun(completed, finishId));
         }
@@ -386,7 +401,7 @@ class FlowDemoControllerTest {
                 Map.of()
             );
 
-            assertEquals("COMPLETED", completed.get("state").asText());
+            assertEquals("SUCCESS", completed.get("state").asText());
             assertEquals(4, completed.get("taskRuns").size());
         }
     }
@@ -426,7 +441,7 @@ class FlowDemoControllerTest {
                 "/api/demo/flows/" + flowId + "/executions",
                 Map.of()
             );
-            assertEquals("RUNNING", waiting.get("state").asText());
+            assertEquals("PAUSED", waiting.get("state").asText());
 
             JsonNode waitingRun = null;
             for (JsonNode taskRun : waiting.get("taskRuns")) {
@@ -454,7 +469,7 @@ class FlowDemoControllerTest {
                     )
                 )
             );
-            assertEquals("COMPLETED", completed.get("state").asText());
+            assertEquals("SUCCESS", completed.get("state").asText());
             assertEquals(4, completed.get("taskRuns").size());
             assertEquals(
                 "APPROVED",
@@ -473,12 +488,11 @@ class FlowDemoControllerTest {
         Map<String, Object> properties = Map.ofEntries(
             Map.entry("micronaut.server.port", -1),
             Map.entry("flow.memory.enabled", true),
-            Map.entry("flow.studio.enabled", true),
             Map.entry("flow.demo.enabled", true),
-            Map.entry("flow.studio.session-binder.enabled", true),
-            Map.entry("flow.studio.company-id", "demo-http-company"),
-            Map.entry("flow.studio.user-id", "demo-http-user"),
-            Map.entry("flow.studio.user-name", "Demo HTTP User"),
+            Map.entry("flow.demo.session-binder.enabled", true),
+            Map.entry("flow.demo.company-id", "demo-http-company"),
+            Map.entry("flow.demo.user-id", "demo-http-user"),
+            Map.entry("flow.demo.user-name", "Demo HTTP User"),
             Map.entry("datasources.default.enabled", false),
             Map.entry("flyway.datasources.default.enabled", false),
             Map.entry("micronaut.config-client.enabled", false),
@@ -501,10 +515,11 @@ class FlowDemoControllerTest {
         return ApplicationContext.run(EmbeddedServer.class, properties);
     }
 
-    private static EmbeddedServer startStudioServer() {
+    private static EmbeddedServer startPlatformManagedDemoServer() {
         Map<String, Object> properties = Map.ofEntries(
             Map.entry("micronaut.server.port", -1),
             Map.entry("flow.memory.enabled", true),
+            Map.entry("flow.demo.platform-managed", true),
             Map.entry("datasources.default.enabled", false),
             Map.entry("flyway.datasources.default.enabled", false),
             Map.entry("micronaut.config-client.enabled", false),
@@ -519,7 +534,7 @@ class FlowDemoControllerTest {
         return ApplicationContext.run(
             EmbeddedServer.class,
             properties,
-            "studio",
+            "demo",
             "test"
         );
     }

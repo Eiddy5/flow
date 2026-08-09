@@ -175,11 +175,12 @@ ADR 0013：YamlParser 仍返回通用只读 Map，但每个 Input 定义片段�
 `JsonObjects.asObjects(Input.class)` 恢复同一子类。
 
 Input 基类声明 `type` 判别字段及全部稳定子类型。Input 基类使用 Lombok
-`@SuperBuilder`、`@Getter`、`@Setter` 与 `@NoArgsConstructor`；拥有专有字段的
-具体子类为这些字段生成 Getter/Setter。每个具体类型保留 `@Serdeable`，使用它
-自带的默认方法内省，不重复声明 FIELD/METHOD `@Introspected` 配置。PAAS JSON
-根据多态元数据选择具体子类，再通过无参构造和 Setter 恢复公共字段与子类字段。
-Lombok Builder 不参与 JSON 反序列化，只提供 Java 侧继承字段一致的构建方式。
+`@Getter`、`@Setter` 与 `@NoArgsConstructor`，并继承 PAAS JSON 的
+`SerializableObject`；拥有专有字段的具体子类为这些字段生成 Getter/Setter。
+每个具体子类在构造器上声明 Lombok `@Builder`，保留公共字段的 `builder()` 调用
+方式。PAAS JSON 根据多态元数据选择具体子类，再通过无参构造和 Setter 恢复公共
+字段与子类字段，不依赖 Micronaut Serialization 注解或额外的 `@Introspected`
+配置。Lombok Builder 不参与 JSON 反序列化，只提供 Java 侧的便捷构建方式。
 
 无参 Setter 绑定完成后，Flow 定义物化和 Repository Codec 必须立即调用 Input 的
 `validateDefinition()`，统一规范化并校验公共字段、默认值和子类约束。校验失败

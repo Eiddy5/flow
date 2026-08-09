@@ -30,7 +30,8 @@ public class TaskRunObject extends JooqPojo implements Serializable {
     public String executionId;
     public String taskId;
     public String parentId;
-    public String status;
+    public Integer iteration;
+    public JSONB state;
     public OffsetDateTime startAt;
     public OffsetDateTime endAt;
     public JsonObject inputs;
@@ -40,7 +41,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
     public OffsetDateTime createdAt;
     public OffsetDateTime updatedAt;
     public OffsetDateTime deletedAt;
-    public JSONB stateHistory;
 
     public TaskRunObject() {}
 
@@ -49,7 +49,8 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.executionId = value.executionId;
         this.taskId = value.taskId;
         this.parentId = value.parentId;
-        this.status = value.status;
+        this.iteration = value.iteration;
+        this.state = value.state;
         this.startAt = value.startAt;
         this.endAt = value.endAt;
         this.inputs = value.inputs;
@@ -59,7 +60,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.createdAt = value.createdAt;
         this.updatedAt = value.updatedAt;
         this.deletedAt = value.deletedAt;
-        this.stateHistory = value.stateHistory;
     }
 
     public TaskRunObject(
@@ -67,7 +67,8 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         String executionId,
         String taskId,
         String parentId,
-        String status,
+        Integer iteration,
+        JSONB state,
         OffsetDateTime startAt,
         OffsetDateTime endAt,
         JsonObject inputs,
@@ -76,14 +77,14 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         Integer order,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt,
-        JSONB stateHistory
+        OffsetDateTime deletedAt
     ) {
         this.id = id;
         this.executionId = executionId;
         this.taskId = taskId;
         this.parentId = parentId;
-        this.status = status;
+        this.iteration = iteration;
+        this.state = state;
         this.startAt = startAt;
         this.endAt = endAt;
         this.inputs = inputs;
@@ -93,7 +94,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
-        this.stateHistory = stateHistory;
     }
 
     /**
@@ -153,17 +153,31 @@ public class TaskRunObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.task_run.status</code>.
+     * Getter for <code>public.task_run.iteration</code>.
      */
-    public String getStatus() {
-        return this.status;
+    public Integer getIteration() {
+        return this.iteration;
     }
 
     /**
-     * Setter for <code>public.task_run.status</code>.
+     * Setter for <code>public.task_run.iteration</code>.
      */
-    public void setStatus(String status) {
-        this.status = status;
+    public void setIteration(Integer iteration) {
+        this.iteration = iteration;
+    }
+
+    /**
+     * Getter for <code>public.task_run.state</code>.
+     */
+    public JSONB getState() {
+        return this.state;
+    }
+
+    /**
+     * Setter for <code>public.task_run.state</code>.
+     */
+    public void setState(JSONB state) {
+        this.state = state;
     }
 
     /**
@@ -292,20 +306,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
     }
 
-    /**
-     * Getter for <code>public.task_run.state_history</code>.
-     */
-    public JSONB getStateHistory() {
-        return this.stateHistory;
-    }
-
-    /**
-     * Setter for <code>public.task_run.state_history</code>.
-     */
-    public void setStateHistory(JSONB stateHistory) {
-        this.stateHistory = stateHistory;
-    }
-
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -339,11 +339,17 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         }
         else if (!this.parentId.equals(other.parentId))
             return false;
-        if (this.status == null) {
-            if (other.status != null)
+        if (this.iteration == null) {
+            if (other.iteration != null)
                 return false;
         }
-        else if (!this.status.equals(other.status))
+        else if (!this.iteration.equals(other.iteration))
+            return false;
+        if (this.state == null) {
+            if (other.state != null)
+                return false;
+        }
+        else if (!this.state.equals(other.state))
             return false;
         if (this.startAt == null) {
             if (other.startAt != null)
@@ -399,12 +405,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         }
         else if (!this.deletedAt.equals(other.deletedAt))
             return false;
-        if (this.stateHistory == null) {
-            if (other.stateHistory != null)
-                return false;
-        }
-        else if (!this.stateHistory.equals(other.stateHistory))
-            return false;
         return true;
     }
 
@@ -416,7 +416,8 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.executionId == null) ? 0 : this.executionId.hashCode());
         result = prime * result + ((this.taskId == null) ? 0 : this.taskId.hashCode());
         result = prime * result + ((this.parentId == null) ? 0 : this.parentId.hashCode());
-        result = prime * result + ((this.status == null) ? 0 : this.status.hashCode());
+        result = prime * result + ((this.iteration == null) ? 0 : this.iteration.hashCode());
+        result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
         result = prime * result + ((this.startAt == null) ? 0 : this.startAt.hashCode());
         result = prime * result + ((this.endAt == null) ? 0 : this.endAt.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
@@ -426,7 +427,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
-        result = prime * result + ((this.stateHistory == null) ? 0 : this.stateHistory.hashCode());
         return result;
     }
 
@@ -455,7 +455,8 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         map.put("execution_id", executionId);
         map.put("task_id", taskId);
         map.put("parent_id", parentId);
-        map.put("status", status);
+        map.put("iteration", iteration);
+        map.put("state", state);
         map.put("start_at", startAt);
         map.put("end_at", endAt);
         map.put("inputs", inputs == null ? null : inputs.toString());
@@ -465,7 +466,6 @@ public class TaskRunObject extends JooqPojo implements Serializable {
         map.put("created_at", createdAt);
         map.put("updated_at", updatedAt);
         map.put("deleted_at", deletedAt);
-        map.put("state_history", stateHistory);
         return map;
     }
 

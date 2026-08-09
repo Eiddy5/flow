@@ -26,8 +26,9 @@ flow/
 ├── settings.gradle    # Gradle 模块注册
 ├── buildSrc/          # 仓库共享的 Gradle 构建约定
 ├── gradle/            # Gradle Wrapper 和版本目录
-├── gen/               # 数据库脚本及 JOOQ 代码生成模块
-├── server/            # Flow 唯一运行模块和可启动 Micronaut 应用
+├── gen/               # Flow 数据库脚本及 JOOQ 代码生成模块
+├── core/              # 完整的非 HTTP Flow 能力与生产适配器
+├── server/            # HTTP 服务、启动入口、资源与会话绑定
 └── docs/              # 项目规范、决策、UC、Agent 和验证记忆
 ```
 
@@ -64,29 +65,40 @@ Skill 内复制第二套项目规则。`references/` 和 `scripts/` 只在工作
 
 ```text
 gen/
-├── sql/production-release/   # 按发布日期保存的生产数据库变更脚本
+├── sql/
+│   └── flow/                 # Flow 开发期 PostgreSQL 完整建表基线
 └── src/main/
     ├── java/
     │   ├── org/flow/builder/ # JOOQ Generator 启动和配置
-    │   └── org/flow/gen/flow/ # Flow 数据库生成类
+    │   └── org/flow/gen/     # Flow 数据库生成类
     └── resources/            # 生成器配置
 ```
 
-数据库表结构变更放在 `gen/sql/production-release/`，生成器逻辑放在
+Flow 数据库结构修改 `gen/sql/flow/001_create_flow_tables.sql`，生成器逻辑放在
 `gen/src/main/java/org/flow/builder/`，生成结果位于
 `gen/src/main/java/org/flow/gen/flow/`。生成结果不能手工修改，业务代码不能放入
 `gen`。生成类的使用规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
 
-`server` 构建直接依赖 `gen` 的 `org.flow.gen.flow` 生成类型，并把生产 SQL 转换为
-自身的 Flyway 迁移资源。Generator 和代码生成依赖仍只属于 `gen`，业务代码不能
-调用它们。
+`core` 构建依赖 `gen` 中 Flow 数据库的生成类型。Flow 基线由开发或部署人员在
+应用启动前手工执行，不进入 Core 或 Server 运行资源。基线变化后重建对应开发数据库，不
+维护旧数据升级路径；Generator 和代码生成依赖仍只属于 `gen`，业务代码不能调用它们。
+
+### `core/`
+
+完整的非 HTTP Flow 模块。它保存领域、用例、Executor、Worker、插件扩展、具名
+Flow 数据源与 JOOQ 装配、PostgreSQL Repository 以及 DataPilot 兼容适配。Core
+不包含 `Application`、HTTP Controller、HTTP 参数绑定或静态资源，可以由 CSES 等
+宿主通过 Server 的传递依赖直接注入和调用公开 Service。
 
 ### `server/`
 
-Flow 的唯一运行模块和可启动 Micronaut 应用。它保存 Flow Core、Executor、Worker、
-插件扩展、PostgreSQL Repository、`Application`、Controller、静态资源、配置和
-服务端适配器。
+Flow 的薄 HTTP 服务和可启动 Micronaut 应用。它通过 `api(project(":core"))` 传递
+暴露完整 Core，只保存 `Application`、Controller、HTTP Session Binder、静态资源
+和运行配置。Server 既可由自身 `Application` 独立启动，也可作为普通 JAR 进入
+CSES 的 ApplicationContext；模块边界见
+[`ADR 0042`](decisions/0042-split-core-from-http-server.md)，两种运行形态见
+[`ADR 0039`](decisions/0039-embed-complete-flow-server-in-cses.md)。
 
 ### `docs/`
 
@@ -108,23 +120,28 @@ Execution、PAUSE、Data、State、模块形态和运行协议等具体选择统
 
 ## 生产代码
 
-全部生产代码位于：
+Flow 生产代码分布在两个源码根：
 
 ```text
-server/src/main/java/org/cses/flow/
+core/src/main/java/org/cses/flow/    # 完整非 HTTP 能力
+server/src/main/java/org/cses/flow/  # 启动与 HTTP 服务
 ```
 
 当前一级结构：
 
 ```text
-server/src/main/java/org/cses/flow/
-├── Application.java  # Micronaut 应用启动入口和组合根
-├── controller/       # HTTP/Web 入站接口
+core/src/main/java/org/cses/flow/
 ├── core/             # 工作流领域、Task 能力、用例和持久化端口
 ├── executor/         # 单轮调度、OrchestrationTask 解释、状态机、保存与 Worker 投递协调
 ├── extensions/       # 可插拔的工作流能力扩展
-├── infrastructure/   # Flow 数据库、Repository、DataPilot 与 Session 适配
+├── infrastructure/   # Flow 数据库、Repository 与 DataPilot 适配
 └── worker/           # RunnableTask 调用、Worker 投递与关联结果信封
+
+server/src/main/java/org/cses/flow/
+├── Application.java  # Micronaut 应用启动入口和组合根
+├── controller/       # HTTP/Web 入站接口
+└── infrastructure/
+    └── session/      # HTTP 入站使用的 PAAS Session 适配
 ```
 
 ### `Application.java`
@@ -174,10 +191,10 @@ core/
 | 目录 | 职责 | 不应放入 |
 | --- | --- | --- |
 | `commands` | 表达一次写操作的意图和参数 | 查询实现、领域状态修改逻辑 |
-| `domains` | 保存 Flow、Execution、TaskRun 等领域对象、Task 能力及状态规则 | DTO、数据库 Record、Controller 模型 |
+| `domains` | 保存共享领域能力与 ActorRef 值对象，以及 Flow、Execution、TaskRun 等领域对象、Task 能力及状态规则 | DTO、数据库 Record、Controller 模型 |
 | `exceptions` | 保存稳定的核心业务异常 | HTTP 响应和数据库厂商异常 |
 | `handlers` | 执行 Command，协调领域、Repository 和事务内运行流程 | HTTP 协议处理 |
-| `plugins` | 提供 Plugin 契约、`@Plugin`、Micronaut 编译期发现、两级只读目录、精确类注册和 Jackson 多态绑定 | 具体 Task、RunnableTask 执行逻辑、OrchestrationTask 编排逻辑、页面布局元数据 |
+| `plugins` | 提供 Plugin 契约、`@Plugin`、Micronaut 编译期发现、按真实 Java 包分组的两级只读目录、精确类注册和 Jackson 多态绑定 | 具体 Task、RunnableTask 执行逻辑、OrchestrationTask 编排逻辑、页面布局元数据 |
 | `queries` | 执行只读查询并维护查询边界 | 写状态和推进 Execution |
 | `repositories` | 定义 Core 所需的持久化接口 | DataPilot/JOOQ Record 等具体技术实现 |
 | `serializers` | 集中配置严格 Jackson/YAML，解析通用 YAML，把 Flow 定义物化为完整领域对象，并按同一契约生成插件定义 Schema；目录保持扁平 | Controller 协议、执行调度、持久化 SQL |
@@ -188,8 +205,9 @@ core/
 YAML 树/只读 Map 解析，`FlowDefinitionDeserializer` 负责 Flow 字段、系统身份和
 递归 Task 定义的物化，`JacksonMapper` 是该链路唯一受控的 Jackson 配置入口。
 `plugins` 的运行机制放在包根，只有注解位于 `plugins/annotations`；
-`DefaultPluginRegistry` 构造全局只读目录。`PluginSchemaGenerator` 位于保持扁平的
-`serializers`，使用 `JacksonMapper` 的隔离副本按需生成定义 Schema。具体扩展
+`DefaultPluginRegistry` 直接从插件类的 `Class#getPackageName()` 取得真实包路径，
+并以此构造全局只读目录。`PluginSchemaGenerator` 位于
+保持扁平的 `serializers`，使用 `JacksonMapper` 的隔离副本按需生成定义 Schema。具体扩展
 实现仍位于 `extensions`。
 
 #### Core 业务模块
@@ -227,8 +245,9 @@ core/
 | --- | --- |
 | `flows` | FlowDraft、Flow 定义、统一运行 `State`、`deleted` 生命周期事实、草稿、发布、升级、删除和版本读取 |
 | `executions` | 使用统一 State 的 Execution 创建、推进、恢复、取消和 TaskRun 历史 |
+| `expressions` | 受限条件与模板表达式的解析和求值；Express 由 Route、Loop Until 复用，TemplateExpression 由需要渲染运行输入的 Task 复用 |
 | `externaltasks` | PAUSE 旧恢复方案的迁移遗留；新代码使用 `executions` 下的统一 Resume 用例 |
-| `plugins` | 全局只读插件包、Task 元信息和具体定义 Schema 查询 |
+| `plugins` | 按真实 Java 包分组的全局只读插件、Task 元信息和具体定义 Schema 查询 |
 | `tasks` | Task 抽象定义、RunnableTask/OrchestrationTask 能力及其直接调用契约 |
 | `shared` | 被多个业务模块稳定复用的核心协议，不作为兜底目录 |
 
@@ -288,11 +307,13 @@ worker/
 `RunnableTask`、`OrchestrationTask` 及 Runnable 的直接调用契约 `RunContext`、
 `RunResult` 归属于 `core/domains/tasks`；它们离开 Task 定义没有独立意义。
 Worker 只消费这些能力：接收包装 RunnableTask 的不可变 `WorkerTask`，为一次
-调用创建只包含 Session、DSLContext 与只读 inputs 的 `RunContext`，直接调用具体 Task 的
-`run(RunContext)`，再返回使用统一 `State.Type targetState` 的
+调用创建包含 Session、DSLContext 和只读 `variables` 的 `RunContext`，其中保留键
+`$flow.execution` 保存当前 `Execution`，`$flow.inputs` 保存当前 TaskRun 的实际输入；
+`RunContext` 通过 `executionId()` 和 `inputs()` 提供类型化便捷访问，再直接调用具体 Task 的
+`run(RunContext)`，返回使用统一 `State.Type targetState` 的
 `WorkerTaskResult`。结果只允许 COMPLETED 或 TERMINATED；PAUSED 只由 Executor
 处理明确的 Pause OrchestrationTask 时产生。Worker 不发现或选择
-WorkerTaskHandler，也不能读取或修改 Execution、TaskRun、决定下一项 Task 或
+WorkerTaskHandler，也不能推进或修改 Execution、TaskRun 状态、决定下一项 Task 或
 伪造 State History。
 
 ### `extensions/`
@@ -324,9 +345,10 @@ extensions/
 
 当前 `Pause` 是 Flow Core 自带并标注 `@Plugin` 的 OrchestrationTask 暂停能力，
 位于 `extensions/flow/Pause.java`。位于 `extensions` 表示它通过 Task 扩展协议
-装配，不表示审批或其他外部业务对象属于 Flow Core。外部业务能力只通过公开
-`ExecutionService.resume(...)` 与 PAUSE 对接，不能直接调用 Worker、Executor
-或 Handler。Pause 直接声明唯一必填的 `pause` Task、允许为空的 `resume` Input
+装配，不表示审批或其他外部业务对象属于 Flow Core。外部业务能力通过宿主自定义
+RunnableTask 与 `Pause.pause` 对接，Task 使用 `RunContext` 调用宿主 Service；跨进程
+场景才通过公开 `ExecutionService.resume(...)` 恢复 Pause。Task 不能直接调用 Worker、
+Executor 或 Handler。Pause 直接声明唯一必填的 `pause` Task、允许为空的 `resume` Input
 列表以及可选且成对配置的 `duration + behavior`；其通用 `tasks` 必须为空。
 完整定义遍历通过 `Task.definitionChildren()` 识别类型专有 Task，跨字段约束继续由
 `ModelValidator` 统一调用 `ModelInvariant` 校验。
@@ -336,8 +358,13 @@ extensions/
 只有 Parallel 的直接子任务由 Executor 组成同一批次。Parallel TaskRun 在全部实际
 选中分支子树收敛前保持 RUNNING，且不投递 Worker。
 
+当前 `Loop` 与 `LoopUntil` 同样属于 Flow Core 自带的 OrchestrationTask：Loop 按
+固定正整数次数串行重复子 Task，LoopUntil 在每轮收敛后检查受限条件并受最大轮数
+保护。循环体每轮形成独立 TaskRun，Executor 从 iteration、parentId 和有序历史
+恢复进度，不保存循环游标。
+
 `flow` 目录按语义所有权归纳 Flow 自身提供的编排 Task，而不是按每个具体能力再拆
-一层目录。Pause、Parallel 以及后续 Loop、Loop Until、Subflow 都属于该目录。
+一层目录。Pause、Parallel、Loop、Loop Until 以及后续 Subflow 都属于该目录。
 Log、Notification 等能够作为独立扩展能力演进的 Task，才使用自己的能力目录。
 
 扩展可以依赖 Core 提供的插件 SPI 与 Task 能力接口，不应为了声明 Task 能力而
@@ -345,13 +372,15 @@ Log、Notification 等能够作为独立扩展能力演进的 Task，才使用�
 
 领域对象的创建入口属于领域类型自身。`core/factories` 不属于项目目录结构，
 不得新增或恢复。`Plugin`、`PluginRegistry`、`DefaultPluginRegistry`、
-`RegisteredPlugin`、`PluginMetadata`、`PluginDeserializer` 和 `PluginModule`
-位于 `core/plugins`，发现注解位于 `core/plugins/annotations`；
+`RegisteredPlugin`、`PluginMetadata`、`PluginDeserializer` 和
+`PluginModule` 位于 `core/plugins`，发现注解位于 `core/plugins/annotations`；
 `PluginSchemaGenerator` 位于 `core/serializers`。
 新的独立项目内 Task 扩展在 `extensions/<extension-name>` 中以能力名称提供一个
 具体类；Flow 自有 OrchestrationTask 统一放在 `extensions/flow`。两者都继承
-`Task`、实现 `RunnableTask` 或 `OrchestrationTask` 之一，并标注 `@Plugin`，类名不
-强制增加 `Task` 后缀。Micronaut 在编译期发现这些 Bean，注册表按
+`Task`、实现 `RunnableTask` 或 `OrchestrationTask` 之一，并标注
+`@Plugin`，类名不强制增加 `Task` 后缀。宿主应用只需把自己的插件类放在有名称的
+真实 Java 包中并标注 `@Plugin`，无需声明额外的来源对象或标识。Micronaut 在编译期
+发现这些 Bean，注册表按 `Class#getPackageName()` 分组，再按
 `Class#getCanonicalName()` 建立精确、只读映射；新增类型不得修改 Flow、中心枚举
 或中心 `switch`。现有 `AutomaticTask` 暂时保留原类型地址；Pause 与 Parallel 按照
 ADR 0029 一次性迁移为 `org.cses.flow.extensions.flow.Pause` 和
@@ -359,24 +388,26 @@ ADR 0029 一次性迁移为 `org.cses.flow.extensions.flow.Pause` 和
 `core/services/plugins` 对外提供目录和按需 Schema 查询，`controller/plugins` 只把
 Java Class 转换为字符串 DTO。
 
-当前版本不支持 ServiceLoader、外部插件 JAR、运行时安装卸载、插件版本选择和
-独立 ClassLoader。项目内接入步骤见
+当前版本支持宿主源码或普通构建依赖贡献的编译期插件，不支持 ServiceLoader、插件
+目录动态 JAR、运行时安装卸载、插件版本选择和独立 ClassLoader。接入步骤见
 [`docs/harness/task-plugin.md`](harness/task-plugin.md)。
 
 ### `infrastructure/`
 
-基础设施适配层统一位于 Server，并按技术职责分包：
+非 HTTP 基础设施适配位于 Core，并按技术职责分包：
 
 ```text
-server/src/main/java/org/cses/flow/infrastructure/
-├── jooq/            # 具名 flow 数据源、JOOQ 和 Flyway 启动迁移
+core/src/main/java/org/cses/flow/infrastructure/
+├── jooq/            # 具名 flow 数据源和 JOOQ 装配
 ├── repositories/    # Repository 的具体生产实现
 │   └── <业务模块>/
 │       └── postgres/
 │           ├── XxxPostgresRepository.java
 │           └── entries/
 │               └── XxxEntry.java
-├── datapilot/       # Server/Demo 的历史兼容接线
+└── datapilot/       # Core/Demo 的历史兼容接线
+
+server/src/main/java/org/cses/flow/infrastructure/
 └── session/         # HTTP 入站使用的 PAAS Session 适配
 ```
 
@@ -395,18 +426,20 @@ JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Reposit
 对象的双向转换。详细规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
 
-测试使用的内存 Repository 和无连接基础设施替身只放在 `server/src/test/java`，
-不能作为生产 Bean 放入 `src/main`。相关决策见
+跨模块测试使用的内存 Repository 和无连接基础设施替身只放在
+`core/src/testFixtures/java`，模块私有测试替身放在对应模块的 `src/test/java`；它们
+都不能作为生产 Bean 放入 `src/main`。相关决策见
 [`docs/decisions/0007-keep-test-adapters-out-of-production.md`](decisions/0007-keep-test-adapters-out-of-production.md)。
 
 ## Server 资源目录
 
 ```text
 server/src/main/resources/
-├── application.yml       # Micronaut 应用配置
-├── application-demo.yml  # 独立用户 Demo 的应用覆盖配置
-├── bootstrap.yaml        # 配置中心、Consul 等早期启动配置
-├── bootstrap-demo.yml    # Demo 的早期启动覆盖配置
+├── application.yml       # 独立和嵌入形态共享的安全 flow.* 默认配置
+├── application-flow-standalone.yml # Flow 独立启动的应用与端口配置
+├── application-demo.yml  # 统一 Demo 页面、会话与数据库模式配置
+├── bootstrap-flow-standalone.yaml # Flow 独立启动的 Consul 等早期配置
+├── bootstrap-demo.yml    # 按 Demo 数据库模式切换平台早期配置
 ├── flow-demo/            # 由同一 Flow 服务托管的 Demo 页面静态资源
 ├── logback.xml           # 日志配置
 └── jiguang.json          # 当前业务资源配置
@@ -416,25 +449,27 @@ server/src/main/resources/
 
 ## 测试目录
 
-测试代码统一放在 Server 模块：
+测试代码跟随生产边界，并通过 Core test fixtures 复用跨模块替身：
 
 ```text
-server/src/test/java/  # Core、Executor、Worker、Repository、HTTP 与装配测试
+core/src/test/java/          # Core、Executor、Worker、Repository 与非 HTTP 装配测试
+core/src/testFixtures/java/  # 跨模块复用的测试 Repository、事务和基础设施替身
+server/src/test/java/        # HTTP、Session、启动装配与 Server 边界测试
 ```
 
 测试包必须镜像生产代码包。例如：
 
 ```text
 生产：
-server/src/main/java/org/cses/flow/core/services/flows/FlowService.java
+core/src/main/java/org/cses/flow/core/services/flows/FlowService.java
 
 测试：
-server/src/test/java/org/cses/flow/core/services/flows/Uc01FlowLifecycleTest.java
+core/src/test/java/org/cses/flow/core/services/flows/Uc01FlowLifecycleTest.java
 ```
 
 测试专用基础设施替身，例如内存 Repository、测试事务、测试 Session 和测试装配
-Bean，应放在 `server/src/test/java` 中与所替代生产边界对应的包内，不能反向进入
-生产源码。
+Bean，应放在 `core/src/testFixtures/java` 或所属模块的 `src/test/java` 中与所替代
+生产边界对应的包内，不能反向进入生产源码。
 
 UC 测试的目录和一对一映射要求见
 [`docs/standards/uc-testing.md`](standards/uc-testing.md)。
@@ -442,8 +477,13 @@ UC 测试的目录和一对一映射要求见
 ## 依赖方向
 
 ```text
-gen（生成类和迁移来源）
-  -> server 构建与运行资源
+gen（生成类和数据库基线来源）
+  -> core 编译
+
+core（完整非 HTTP Flow 能力）
+  -> server（HTTP Adapter 与可启动应用）
+  -> CSES ApplicationContext（经 server 传递依赖）
+CSES Approval -> core 中公开的 ExecutionService Resume 能力
 
 server
   -> core/services
@@ -480,10 +520,14 @@ infrastructure
 
 核心依赖方向：
 
-- Gradle 模块只有 `gen` 与 `server`；`server` 直接使用 `gen` 的生成输出，并在
-  构建时把生产 SQL 转换为运行迁移资源。
-- `controller`、`executor`、`worker`、`extensions`、`infrastructure` 可以依赖
-  `core` Java 包。
+- Gradle 模块为 `gen`、`core` 与 `server`；依赖方向固定为 `gen -> core -> server`。
+  Flow 建表基线由人工执行，不进入 `core` 或 `server` 运行资源。
+- Approval 是 CSES 业务模块，不在 Flow 仓库保存领域代码或表结构。CSES 单向依赖
+  完整 Flow JAR，并通过公开的 `ExecutionService` 恢复精确的 Pause TaskRun；Flow
+  不依赖 CSES Approval。完整边界见
+  [`ADR 0038`](decisions/0038-keep-approval-business-in-cses.md)。
+- `server` 只能通过公开 Core 能力提供 HTTP 和启动装配；`executor`、`worker`、
+  `extensions`、`infrastructure` 与 `core` Java 包共同位于 Gradle `core` 模块。
 - `core/services` 通过 Handler 调用 `core/serializers`，由定义反序列化器把严格
   YAML 一次性物化为 Flow；领域对象不直接依赖 Jackson。
 - `core/plugins` 可以依赖 Task 领域类型和统一模型校验；具体扩展实现依赖其公开
@@ -499,32 +543,36 @@ infrastructure
 | 要新增的内容 | 目录 |
 | --- | --- |
 | HTTP 接口 | `server/src/main/java/org/cses/flow/controller/` |
-| 对外业务入口 | `server/src/main/java/org/cses/flow/core/services/<业务模块>/` |
-| 写操作参数 | `server/src/main/java/org/cses/flow/core/commands/<业务模块>/` |
-| 写操作处理 | `server/src/main/java/org/cses/flow/core/handlers/<业务模块>/` |
-| 领域对象或状态 | `server/src/main/java/org/cses/flow/core/domains/<业务模块>/` |
-| 查询处理 | `server/src/main/java/org/cses/flow/core/queries/<业务模块>/` |
-| 持久化接口 | `server/src/main/java/org/cses/flow/core/repositories/<业务模块>/` |
-| YAML、严格 Jackson、Flow 定义物化与插件定义 Schema | `server/src/main/java/org/cses/flow/core/serializers/`，保持扁平 |
-| Plugin 契约、目录、发现注册与多态绑定 | `server/src/main/java/org/cses/flow/core/plugins/`；注解放其 `annotations/` |
-| 插件目录与详情查询 Service | `server/src/main/java/org/cses/flow/core/services/plugins/` |
+| 对外业务入口 | `core/src/main/java/org/cses/flow/core/services/<业务模块>/` |
+| 写操作参数 | `core/src/main/java/org/cses/flow/core/commands/<业务模块>/` |
+| 写操作处理 | `core/src/main/java/org/cses/flow/core/handlers/<业务模块>/` |
+| 跨领域共享能力接口与 ActorRef 值对象 | `core/src/main/java/org/cses/flow/core/domains/` 根目录，不再按单项能力建立子目录 |
+| 领域对象或状态 | `core/src/main/java/org/cses/flow/core/domains/<业务模块>/` |
+| Express 条件与 TemplateExpression 模板值对象 | `core/src/main/java/org/cses/flow/core/domains/expressions/` |
+| 查询处理 | `core/src/main/java/org/cses/flow/core/queries/<业务模块>/` |
+| 持久化接口 | `core/src/main/java/org/cses/flow/core/repositories/<业务模块>/` |
+| YAML、严格 Jackson、Flow 定义物化与插件定义 Schema | `core/src/main/java/org/cses/flow/core/serializers/`，保持扁平 |
+| Plugin 契约、目录、发现注册与多态绑定 | `core/src/main/java/org/cses/flow/core/plugins/`；注解放其 `annotations/` |
+| 插件目录与详情查询 Service | `core/src/main/java/org/cses/flow/core/services/plugins/` |
 | 插件全局 HTTP 查询 | `server/src/main/java/org/cses/flow/controller/plugins/` |
-| 模型主动校验 | `server/src/main/java/org/cses/flow/core/validations/` |
-| 工作流统一运行 State 与迁移规则 | `server/src/main/java/org/cses/flow/core/domains/flows/State.java` |
-| Flow 草稿聚合与删除生命周期事实 | `server/src/main/java/org/cses/flow/core/domains/flows/` |
-| Task 能力接口及 RunnableTask 直接调用契约 | `server/src/main/java/org/cses/flow/core/domains/tasks/` |
-| Execution 编排推进、单轮上下文或 nexts 批次逻辑 | `server/src/main/java/org/cses/flow/executor/` |
-| Worker 调度器、投递信封或关联结果信封 | `server/src/main/java/org/cses/flow/worker/` |
-| PostgreSQL Repository 实现 | `server/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
+| 模型主动校验 | `core/src/main/java/org/cses/flow/core/validations/` |
+| 工作流统一运行 State 与迁移规则 | `core/src/main/java/org/cses/flow/core/domains/flows/State.java` |
+| Flow 草稿聚合与删除生命周期事实 | `core/src/main/java/org/cses/flow/core/domains/flows/` |
+| Task 能力接口及 RunnableTask 直接调用契约 | `core/src/main/java/org/cses/flow/core/domains/tasks/` |
+| Execution 编排推进、单轮上下文或 nexts 批次逻辑 | `core/src/main/java/org/cses/flow/executor/` |
+| Worker 调度器、投递信封或关联结果信封 | `core/src/main/java/org/cses/flow/worker/` |
+| PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
-| Flow 数据源、JOOQ 与迁移接线 | `server/src/main/java/org/cses/flow/infrastructure/jooq/` |
-| Server/Demo 的 DataPilot 接线 | `server/src/main/java/org/cses/flow/infrastructure/datapilot/` |
-| Flow 自有 OrchestrationTask | `server/src/main/java/org/cses/flow/extensions/flow/<TypeName>.java` |
-| 标注 `@Plugin` 的独立项目内 Task 扩展 | `server/src/main/java/org/cses/flow/extensions/<extension-name>/<ExtensionName>.java` |
+| Flow YAML 数据源配置、JOOQ 与数据库接线 | `core/src/main/java/org/cses/flow/infrastructure/jooq/` |
+| Core/Demo 的 DataPilot 接线 | `core/src/main/java/org/cses/flow/infrastructure/datapilot/` |
+| Flow 自有 OrchestrationTask | `core/src/main/java/org/cses/flow/extensions/flow/<TypeName>.java` |
+| 标注 `@Plugin` 的独立项目内 Task 扩展 | `core/src/main/java/org/cses/flow/extensions/<extension-name>/<ExtensionName>.java` |
 | RunnableTask 具体执行逻辑 | 对应扩展目录中的具体类 |
 | 生产配置 | `server/src/main/resources/` |
-| 生产代码对应测试 | 与生产包一致的 `server/src/test/java/` |
-| 数据库变更脚本 | `gen/sql/production-release/` |
+| Core 生产代码对应测试 | 与生产包一致的 `core/src/test/java/` |
+| 跨模块测试夹具 | `core/src/testFixtures/java/` |
+| HTTP 与启动装配测试 | 与生产包一致的 `server/src/test/java/` |
+| 开发期数据库建表基线 | `gen/sql/flow/001_create_flow_tables.sql` |
 | 开发或测试规范 | `docs/standards/` |
 | 架构决策 | `docs/decisions/` |
 | UC 场景 | `docs/uc/<领域>/` |

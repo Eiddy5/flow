@@ -1,4 +1,4 @@
-# Flow Studio 用户 Demo 运行手册
+# Flow Demo 运行手册
 
 ## 目的
 
@@ -16,9 +16,9 @@
 
 ## 数据库准备
 
-Demo 使用当前 Flow PostgreSQL Schema。空数据库按日期顺序执行
-`gen/sql/production-release/flow/` 下的全部迁移；已有数据库只执行尚未应用的
-增量迁移。详细顺序与字段说明见
+Demo 使用当前 Flow PostgreSQL Schema。空数据库执行
+`gen/sql/flow/001_create_flow_tables.sql`；开发期基线变化后，已有数据库需要显式
+重建，不提供增量升级或旧数据迁移。字段说明见
 [`postgresql-repositories.md`](postgresql-repositories.md)。
 
 默认连接为：
@@ -31,42 +31,34 @@ password: flow
 
 应通过环境变量覆盖实际环境的连接信息，不要把凭证写入仓库。
 
-## 随项目服务启动 Studio
+## 统一启动入口
 
-项目服务已经通过正式环境连接 PostgreSQL 时，只激活 `studio` 环境。该环境注册
-Flow Studio 静态资源和页面 Controller，并提供仅供本地 Studio 使用的固定会话；
-它不会替换正式环境的 JOOQ/DataPilot 连接。
+页面、Controller 和固定本地会话统一由 `demo` 环境启用，不再使用 `studio`
+环境。`FLOW_DEMO_PLATFORM_MANAGED` 决定数据库和平台配置的来源：
 
-在 IntelliJ IDEA 的 Application Run Configuration 中，把 `studio` 追加到现有
-环境变量。例如原来没有显式环境：
+- 未配置或设置为 `false`：独立模式，关闭 Consul 配置读取与服务注册，使用
+  `FLOW_DEMO_POSTGRES_*` 直连 PostgreSQL。
+- 设置为 `true`：平台托管模式，启用平台配置与服务注册，不注册 Demo 直连
+  Adapter，使用 `datasources.flow` 自动装配的具名 Flow 数据库。
+
+两种模式都只激活 `demo` 页面能力，并且不会回退到宿主的 `default` 数据源。
+`demo` 会用固定本地 Binder 替换正式 Session Binder，只能在本地或受控开发环境
+启用，不能作为生产登录与授权方案。
+
+## 随项目服务启动平台托管 Demo
+
+项目服务已经通过正式环境或 Consul 配置具名 `flow` 数据源时，在 IntelliJ IDEA
+的 Application Run Configuration 中把 `demo` 追加到现有环境，并启用平台托管
+模式。例如原来使用 `dev` 时：
 
 ```text
-MICRONAUT_ENVIRONMENTS=studio
-```
-
-原来使用 `dev` 时：
-
-```text
-MICRONAUT_ENVIRONMENTS=dev,studio
+MICRONAUT_ENVIRONMENTS=dev,demo
+FLOW_DEMO_PLATFORM_MANAGED=true
 ```
 
 停止旧进程并重新点击运行按钮。日志应包含
-`Established active environments: [..., studio]`。服务启动后访问：
-
-```text
-http://127.0.0.1:3434/demo/index.html
-```
-
-`studio` 页面 API 使用当前项目服务已经装配的数据库事务边界。固定本地身份默认
-为 `flow-demo / studio-user / Flow Studio User`，可在 IDEA 环境变量中覆盖：
-
-```text
-FLOW_STUDIO_COMPANY_ID=my-local-company
-FLOW_STUDIO_USER_ID=my-local-user
-FLOW_STUDIO_USER_NAME=My Local User
-```
-
-Studio Binder 不接受浏览器伪造租户，仅应在本地开发时激活 `studio` 环境。
+`Established active environments: [..., demo]`。页面 API 继续使用项目服务已经
+装配的具名 `flow` 数据库事务边界，不会创建 Demo 直连 Adapter。
 
 ## 独立 Demo 启动
 
@@ -74,7 +66,8 @@ Studio Binder 不接受浏览器伪造租户，仅应在本地开发时激活 `s
 
 ```bash
 JAVA_HOME=$(/usr/libexec/java_home -v 21) \
-MICRONAUT_ENVIRONMENTS=demo \
+MICRONAUT_ENVIRONMENTS=flow-standalone,demo \
+FLOW_DEMO_PLATFORM_MANAGED=false \
 FLOW_DEMO_POSTGRES_URL=jdbc:postgresql://127.0.0.1:5432/flow \
 FLOW_DEMO_POSTGRES_USER=flow \
 FLOW_DEMO_POSTGRES_PASSWORD=flow \
@@ -96,9 +89,9 @@ http://<本机局域网 IP>:3434/demo/index.html
 如只允许本机访问，可在启动时设置 `FLOW_DEMO_HOST=127.0.0.1`。局域网访问还需
 确保 macOS 防火墙允许 Java 接收入站连接，并且访问设备与本机处于可互通网络。
 
-Demo 环境会关闭 Consul 配置读取和服务注册，并使用短连接 PostgreSQL JOOQ 事务
-适配器，因此页面与 API 可以在本地独立启动。正常环境仍使用平台管理的 DataPilot
-连接。
+独立模式会关闭 Consul 配置读取和服务注册，并使用短连接 PostgreSQL JOOQ 事务
+Adapter，因此页面与 API 可以在本地独立启动。平台托管模式仍使用具名
+`datasources.flow` 自动装配结果。
 
 ## Demo 会话
 
@@ -110,14 +103,15 @@ FLOW_DEMO_USER_ID=my-demo-user
 FLOW_DEMO_USER_NAME="My Demo User"
 ```
 
-默认值分别为 `flow-demo`、`demo-user` 和 `Flow Demo User`。Demo 与 Studio
-都会显式启用本地 Binder，不能替代正式环境的登录和授权。
+默认值分别为 `flow-demo`、`demo-user` 和 `Flow Demo User`。Demo 会显式启用
+本地 Binder，不能替代正式环境的登录和授权。
 
 ## 页面能力与当前边界
 
 - 画布和 YAML 编辑的是同一份草稿原文。
 - 页面初始化时调用 `GET /api/plugins` 读取全局插件目录；所有“添加流程 Task”、
-  “添加后续 Task”和“添加子 Task”入口共用按注册插件包分组的 Task 下拉列表，
+  “添加后续 Task”和“添加子 Task”入口共用按插件类真实 `packageName` 分组的 Task
+  下拉列表；分组标题、其他 Task 类型选择和已选摘要都显示真实包路径，
   不维护独立类型清单或内置三类型 fallback。选中 Task 后调用
   `GET /api/plugins/{canonicalType}` 按需获取定义 Schema，并在右侧生成插件专有
   字段控件；字段布局仍是 Demo 本地行为，不进入 Plugin 元信息。
@@ -187,10 +181,9 @@ FLOW_DEMO_USER_NAME="My Demo User"
 - 当前 `ExecutionService.create(...)` 不接收启动输入，因此页面不展示虚假的
   “启动参数”能力。
 
-已有数据库按顺序执行 `003_backfill_input_definition_fields.sql` 后，只有
-key/type 的旧 Input 会补为 `displayName=key`、`required=false`。页面打开尚未
-保存的旧 YAML 草稿时也会应用同一兼容并提示存在未保存修改；显式非法字段和未知
-type 仍需按真实业务修订。
+页面打开只有 key/type 的旧 YAML Input 时，会在浏览器编辑态补出
+`displayName=key`、`required=false` 并提示存在未保存修改；数据库不再提供旧
+JSONB 快照的回填脚本。显式非法字段和未知 type 仍需按真实业务修订。
 
 ## 自动验证
 

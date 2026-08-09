@@ -24,7 +24,7 @@ import java.util.Optional;
 @Singleton
 @Replaces(SessionArgumentBinder.class)
 @Requires(
-    property = "flow.studio.session-binder.enabled",
+    property = "flow.demo.session-binder.enabled",
     notEquals = "true"
 )
 public final class TestSessionArgumentBinder

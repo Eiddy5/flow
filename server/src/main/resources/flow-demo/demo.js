@@ -22,8 +22,12 @@
         CREATED: "已创建",
         RUNNING: "运行中",
         PAUSED: "已暂停",
-        COMPLETED: "已完成",
-        TERMINATED: "已终止",
+        RESTARTED: "恢复中",
+        SUCCESS: "已成功",
+        WARNING: "警告完成",
+        FAILED: "已失败",
+        KILLING: "终止中",
+        KILLED: "已终止",
     };
     const ICONS = {
         flow:
@@ -83,7 +87,7 @@
         runCollapsed: false,
         modal: null,
         search: "",
-        pluginBundles: [],
+        pluginPackages: [],
         pluginDetails: new Map(),
         pluginDetailRequests: new Map(),
     };
@@ -175,7 +179,7 @@
             const [
                 session,
                 dataTypes,
-                pluginBundles,
+                pluginPackages,
                 drafts,
                 executions,
             ] =
@@ -188,7 +192,7 @@
             ]);
             state.session = session;
             state.dataTypes = dataTypes;
-            state.pluginBundles = pluginBundles;
+            state.pluginPackages = pluginPackages;
             state.drafts = drafts;
             state.executions = executions;
             if (drafts.length > 0) {
@@ -882,7 +886,9 @@
                 replaying
                 || ["CREATED", "RUNNING", "PAUSED"].includes(run?.state)
             );
-        const completed = !routeMissed && run?.state === "COMPLETED";
+        const completed =
+            !routeMissed
+            && ["SUCCESS", "WARNING"].includes(run?.state);
         const semanticBadges = renderNodeSemanticBadges(node);
         return `
             <div class="flow-node-wrap ${selected ? "has-actions" : ""}">
@@ -1093,7 +1099,9 @@
         return `
             <div class="fact-row">
                 <span class="fact-key" title="${escapeAttribute(run.taskId)}">
-                    ${escapeHtml(key)}
+                    ${escapeHtml(key)}${run.iteration
+                        ? ` #${escapeHtml(run.iteration)}`
+                        : ""}
                 </span>
                 <span class="badge badge-${run.state.toLowerCase()}">
                     ${escapeHtml(stateLabel(run.state))}
@@ -3909,12 +3917,11 @@
     }
 
     function availableTaskPlugins() {
-        return state.pluginBundles.flatMap((plugin) =>
+        return state.pluginPackages.flatMap((plugin) =>
             (Array.isArray(plugin.tasks) ? plugin.tasks : []).map(
                 (task) => ({
                     ...task,
-                    pluginName: plugin.name,
-                    pluginTitle: plugin.title || plugin.name,
+                    pluginPackage: plugin.packageName,
                 }),
             )
         );
@@ -3934,19 +3941,20 @@
             >
                 ${escapeHtml(taskTypeCode(plugin.type))}
                 · ${escapeHtml(plugin.title)}
+                · ${escapeHtml(plugin.pluginPackage)}
             </option>
         `).join("");
     }
 
     function renderRegisteredTaskOptions(selectedType) {
-        const groups = state.pluginBundles.map((plugin) => {
+        const groups = state.pluginPackages.map((plugin) => {
             const tasks = Array.isArray(plugin.tasks) ? plugin.tasks : [];
             if (tasks.length === 0) {
                 return "";
             }
             return `
                 <optgroup label="${escapeAttribute(
-                    plugin.title || plugin.name,
+                    plugin.packageName,
                 )}">
                     ${tasks.map((task) => `
                         <option
@@ -3973,7 +3981,7 @@
                 <div>
                     <strong>${escapeHtml(plugin.title)}</strong>
                     <small>
-                        ${escapeHtml(plugin.pluginTitle)}
+                        ${escapeHtml(plugin.pluginPackage)}
                         · ${escapeHtml(plugin.type)}
                     </small>
                     <p>${escapeHtml(
@@ -4243,7 +4251,10 @@
             return false;
         }
         const parentRun = taskRunForKey(deployedParent.key);
-        if (!parentRun || parentRun.state !== "COMPLETED") {
+        if (
+            !parentRun
+            || !["SUCCESS", "WARNING"].includes(parentRun.state)
+        ) {
             return false;
         }
         return !(
@@ -4338,7 +4349,9 @@
         }
         const task = allDeployedTasks().find((item) => item.key === key);
         return task
-            ? execution.taskRuns.find((run) => run.taskId === task.id)
+            ? execution.taskRuns
+                .filter((run) => run.taskId === task.id)
+                .at(-1) || null
             : null;
     }
 

@@ -29,7 +29,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public String companyId;
     public String flowId;
     public Long flowReversion;
-    public String status;
+    public JSONB state;
     public Long lockVersion;
     public JSONB creator;
     public JSONB updater;
@@ -37,7 +37,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public OffsetDateTime createdAt;
     public OffsetDateTime updatedAt;
     public OffsetDateTime deletedAt;
-    public JSONB stateHistory;
 
     public ExecutionsObject() {}
 
@@ -46,7 +45,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.companyId = value.companyId;
         this.flowId = value.flowId;
         this.flowReversion = value.flowReversion;
-        this.status = value.status;
+        this.state = value.state;
         this.lockVersion = value.lockVersion;
         this.creator = value.creator;
         this.updater = value.updater;
@@ -54,7 +53,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.createdAt = value.createdAt;
         this.updatedAt = value.updatedAt;
         this.deletedAt = value.deletedAt;
-        this.stateHistory = value.stateHistory;
     }
 
     public ExecutionsObject(
@@ -62,21 +60,20 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         String companyId,
         String flowId,
         Long flowReversion,
-        String status,
+        JSONB state,
         Long lockVersion,
         JSONB creator,
         JSONB updater,
         JSONB deleter,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt,
-        JSONB stateHistory
+        OffsetDateTime deletedAt
     ) {
         this.id = id;
         this.companyId = companyId;
         this.flowId = flowId;
         this.flowReversion = flowReversion;
-        this.status = status;
+        this.state = state;
         this.lockVersion = lockVersion;
         this.creator = creator;
         this.updater = updater;
@@ -84,7 +81,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
-        this.stateHistory = stateHistory;
     }
 
     /**
@@ -144,17 +140,17 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.executions.status</code>.
+     * Getter for <code>public.executions.state</code>.
      */
-    public String getStatus() {
-        return this.status;
+    public JSONB getState() {
+        return this.state;
     }
 
     /**
-     * Setter for <code>public.executions.status</code>.
+     * Setter for <code>public.executions.state</code>.
      */
-    public void setStatus(String status) {
-        this.status = status;
+    public void setState(JSONB state) {
+        this.state = state;
     }
 
     /**
@@ -255,20 +251,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
     }
 
-    /**
-     * Getter for <code>public.executions.state_history</code>.
-     */
-    public JSONB getStateHistory() {
-        return this.stateHistory;
-    }
-
-    /**
-     * Setter for <code>public.executions.state_history</code>.
-     */
-    public void setStateHistory(JSONB stateHistory) {
-        this.stateHistory = stateHistory;
-    }
-
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -302,11 +284,11 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.flowReversion.equals(other.flowReversion))
             return false;
-        if (this.status == null) {
-            if (other.status != null)
+        if (this.state == null) {
+            if (other.state != null)
                 return false;
         }
-        else if (!this.status.equals(other.status))
+        else if (!this.state.equals(other.state))
             return false;
         if (this.lockVersion == null) {
             if (other.lockVersion != null)
@@ -350,12 +332,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.deletedAt.equals(other.deletedAt))
             return false;
-        if (this.stateHistory == null) {
-            if (other.stateHistory != null)
-                return false;
-        }
-        else if (!this.stateHistory.equals(other.stateHistory))
-            return false;
         return true;
     }
 
@@ -367,7 +343,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
         result = prime * result + ((this.flowId == null) ? 0 : this.flowId.hashCode());
         result = prime * result + ((this.flowReversion == null) ? 0 : this.flowReversion.hashCode());
-        result = prime * result + ((this.status == null) ? 0 : this.status.hashCode());
+        result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
         result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
         result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
         result = prime * result + ((this.updater == null) ? 0 : this.updater.hashCode());
@@ -375,7 +351,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
-        result = prime * result + ((this.stateHistory == null) ? 0 : this.stateHistory.hashCode());
         return result;
     }
 
@@ -404,7 +379,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         map.put("company_id", companyId);
         map.put("flow_id", flowId);
         map.put("flow_reversion", flowReversion);
-        map.put("status", status);
+        map.put("state", state);
         map.put("lock_version", lockVersion);
         map.put("creator", creator);
         map.put("updater", updater);
@@ -412,7 +387,6 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         map.put("created_at", createdAt);
         map.put("updated_at", updatedAt);
         map.put("deleted_at", deletedAt);
-        map.put("state_history", stateHistory);
         return map;
     }
 

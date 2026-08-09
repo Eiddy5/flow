@@ -21,6 +21,7 @@ rootProject.name = "flow"
 
 
 include("gen")
+include("core")
 include("server")
 
 if (providers.gradleProperty("useLocalCloudDatapilot").orNull?.toBoolean()) {

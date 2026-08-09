@@ -20,14 +20,6 @@ configurations.configureEach {
 }
 
 dependencies {
-    implementation(libs.org.paas.all)
-    implementation(libs.org.x9.cloud.library)
-    implementation(libs.org.paas.service.all) {
-        exclude group: 'xpp3', module: 'xpp3'
-        exclude group: 'xpp3', module: 'xpp3_min'
-        exclude group: 'xmlpull', module: 'xmlpull'
-        exclude group: 'pull-parser', module: 'pull-parser'
-    }
 }
 
 java {

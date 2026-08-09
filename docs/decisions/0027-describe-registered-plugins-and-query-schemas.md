@@ -15,8 +15,9 @@ ADR 0026 已能在 YAML 反序列化时选择具体 Task，但编排工具仍不
 AUTO、PAUSE、PARALLEL 等硬编码清单，每新增一个项目内插件都要同步修改前端，插件
 不能形成“注册、发现、选择、配置”的自闭环。
 
-当前阶段仍只考虑同一项目编译产物中的 Task 插件，不增加外部 JAR、ClassLoader、
-安装卸载或插件版本机制。插件元信息只描述定义能力，不承载 Demo 布局、画布行为或
+当前阶段支持 Flow 自带插件，以及由宿主应用或普通依赖在构建期贡献到同一个
+ApplicationContext 的 Task 插件；不增加运行时插件目录、独立 ClassLoader、安装
+卸载或插件版本机制。插件元信息只描述定义能力，不承载 Demo 布局、画布行为或
 运行时 UI 组件。
 
 ## 备选方案
@@ -37,24 +38,26 @@ AUTO、PAUSE、PARALLEL 等硬编码清单，每新增一个项目内插件都�
 
 ## 决策
 
-采用方案三，并借鉴 Kestra 的“全局 Registry + 注册插件包 + 类元信息”两级组织，
-但只保留当前项目内扩展需要的最小能力。
+采用方案三，并保留“全局 Registry + Java package + 类元信息”的两级组织，只使用
+插件类本身已经提供的事实。
 
 ### 元信息与注册表
 
 - `@Plugin` 增加可选 `title` 和 `description`。空 title 回退为具体类 simple name，
   空 description 统一为 `""`；不提供 alias、icon 或 UI 元数据。
 - `PluginMetadata<T>` 描述一个已注册具体类：`type` 是具体 Class，`baseClass` 是
-  `Task` 等能力基类，并保存规范化后的 title 和 description。
+  `Task` 等能力基类，并保存规范化后的 title 和 description；`packageName` 直接由
+  `type.getPackageName()` 派生，不由插件作者重复声明。
 - 第一版注册表只支持 `Task` 这一种插件能力；带 `@Plugin` 但不是 Task 的类会在启动
   校验中被拒绝。未来增加其他能力时，需要显式扩展 `RegisteredPlugin` 的聚合结构。
-- `RegisteredPlugin` 描述一个已经注册的插件包。第一版只有一个名为 `core` 的包，
-  聚合同一项目编译产物中的全部 `PluginMetadata<Task>`；它不保存 Plugin Bean 实例。
+- `RegisteredPlugin` 描述一个真实 Java package，按 `packageName` 聚合对应的全部
+  `PluginMetadata<Task>`；它不保存 Plugin Bean 实例，也不创建没有插件的虚拟分组。
 - `PluginRegistry` 是全局只读接口，只公开插件包列表、精确类型元信息查询和能力受限
   的类解析。`DefaultPluginRegistry` 在 Micronaut 启动期消费 `Collection<Plugin>`，
-  完成 ADR 0026 的全部注册校验后一次性构造不可变快照。
-- 包按 name、Task 元信息按 canonical class name 确定性排序；不依赖 DI 顺序、title
-  或页面顺序。
+  完成 ADR 0026 的全部注册校验后，按具体类的 `Class#getPackageName()` 一次性构造
+  不可变快照。
+- package 按完整 package name、Task 元信息按 canonical class name 确定性排序；
+  不依赖 DI 顺序、title 或页面顺序。插件必须属于具名 Java package。
 - 注册失败仍阻止应用启动。类型解析继续只接受精确 canonical class name，不恢复
   AUTO、PAUSE、PARALLEL 等短类型或任何别名。
 
@@ -77,7 +80,8 @@ AUTO、PAUSE、PARALLEL 等硬编码清单，每新增一个项目内插件都�
 
 - `PluginService` 是 Core 对外的全局只读查询入口。列表查询只读取注册快照；详情查询
   组合 `PluginMetadata` 和惰性 Schema。
-- `GET /api/plugins` 返回注册插件包及 Task 元信息；
+- `GET /api/plugins` 返回按真实 Java package 分组的注册插件及 Task 元信息；分组和
+  每个 Task 元信息都显式返回 `packageName`；
   `GET /api/plugins/{canonicalType}` 返回单个插件元信息和完整 Schema。
 - HTTP DTO 把 Java `Class` 转为 canonical name 字符串，不暴露 `Class` 对象。
 - 第一版不按 Session、tenant 或 companyId 隔离目录，不提供分页、搜索、筛选或专用
@@ -86,16 +90,17 @@ AUTO、PAUSE、PARALLEL 等硬编码清单，每新增一个项目内插件都�
 ### Demo 消费
 
 Flow Studio Demo 是该公共能力的第一个消费者：启动时读取插件目录，任务选择控件不再
-维护独立类型清单；选中具体类型时请求详情 Schema，并在 Demo 内按 Schema 生成插件
-专有字段控件。AUTO、PAUSE、PARALLEL 仍可作为 Demo 的显示标签和行为分支，但不会
-参与服务端类型解析。
+维护独立类型清单；选择器按真实 package name 分组，扁平类型选择与已选摘要也显示
+该包路径。选中具体类型时请求详情 Schema，并在 Demo 内按 Schema 生成插件专有字段
+控件。AUTO、PAUSE、PARALLEL 仍可作为 Demo 的显示标签和行为分支，但不会参与服务端
+类型解析。
 
 ## 理由
 
 - 具体插件类继续是类型、字段和校验约束的唯一事实来源，目录与 Schema 都由注册结果
   推导，新增插件不需要修改中心枚举或 Controller 分支。
-- 两级模型保留未来增加外部插件包时的自然扩展点，同时不提前引入 ClassLoader、版本
-  和安装生命周期。
+- 真实 package path 已能区分 Flow、CSES 宿主和其他构建期依赖，不需要增加一个与
+  Java 类型信息重复的来源注册接口，也不提前引入 ClassLoader、版本和安装生命周期。
 - 启动时校验注册结构、查询时生成文档契约，使错误边界与影响范围匹配：不能运行的
   插件阻止启动，仅文档生成失败的插件只影响其详情查询。
 - Core 只提供结构化事实，Demo 自己决定表单布局，避免插件机制被某一个展示页面反向
@@ -105,8 +110,9 @@ Flow Studio Demo 是该公共能力的第一个消费者：启动时读取插件
 
 - 新增 Task 后会自动进入全局目录；插件作者可以只依赖默认标题，也可以在 `@Plugin`
   和字段 `@Schema` 中补充可读说明。
+- 插件列表分组字段统一为 `packageName`；目录消费者按真实包路径分组和标识来源。
 - 类改名或换包仍会同时改变 YAML 类型、持久化类型、目录 type 和 Schema 中的 type
-  const，是显式破坏性变更。
+  const；换包还会改变目录分组，是显式破坏性变更。
 - 插件目录是进程级不可变快照；运行时动态安装、刷新和卸载仍不在当前能力内。
 - Schema 是定义输入契约，不是前端组件协议。需要图标、组件或画布能力时必须另行设计，
   不能把 Demo 私有布局字段追加到当前元信息模型。

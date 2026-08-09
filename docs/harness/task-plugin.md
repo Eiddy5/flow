@@ -1,8 +1,9 @@
-# 项目内 Task 插件接入手册
+# 构建期 Task 插件接入手册
 
 ## 适用范围
 
-本手册用于在 Flow 项目源码内新增 Task 类型。当前版本不支持外部插件 JAR、
+本手册用于在 Flow 源码、宿主应用或普通构建依赖中新增 Task 类型。插件必须在构建期
+进入宿主 classpath，并具有 Micronaut BeanDefinition；当前版本不支持插件目录扫描、
 ServiceLoader、运行时安装、热卸载或独立 ClassLoader。
 
 ## 最小实现
@@ -46,7 +47,7 @@ public final class Notification extends Task implements RunnableTask {
 
     @Override
     public RunResult run(RunContext context) {
-        return RunResult.completed(Map.of());
+        return RunResult.success(Map.of());
     }
 
     @Override
@@ -61,6 +62,8 @@ public final class Notification extends Task implements RunnableTask {
 - 类必须是公共、非抽象类，并具有公共无参构造。
 - 类继承 `Task`；`Task` 已实现通用 `Plugin`。
 - 类直接标注 `@Plugin`，并恰好实现 `RunnableTask` 或 `OrchestrationTask` 之一。
+- 类必须位于具名 Java package；该真实 package path 自动成为插件目录分组，无需
+  单独声明或注册来源。
 - `@Plugin` 的 title 和 description 都可选；空 title 自动使用类 simple name，
   description 自动归一为 `""`。当前不支持 alias 或 icon。
 - 插件字段保持私有，由 Jackson 字段绑定；只公开只读访问器，不公开 Setter。
@@ -123,7 +126,8 @@ GET /api/plugins
 GET /api/plugins/org.cses.flow.extensions.notification.Notification
 ```
 
-列表接口按插件包返回 Task 元信息。当前项目内插件全部聚合到 `core` 包，Task 按
+列表接口按真实 Java package 返回 Task 元信息。分组与每个 Task 元信息都包含
+`packageName`，其值直接来自 `Class#getPackageName()`；package 按完整路径、Task 按
 canonical class name 排序。详情接口返回同一份元信息和 JSON Schema Draft 7：
 
 - `type` 是必填字符串，`const` 固定为具体类 canonical name。
@@ -137,10 +141,11 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
 
 ## 装配与验证
 
-1. 运行 `./gradlew :server:compileJava`，确认 Micronaut 能发现该 Bean。
-2. 启动应用，调用 `GET /api/plugins`，确认 `core.tasks` 包含该类的 canonical
-   name、title 和 description。缺少注解、公共无参构造、恰好一种运行能力等问题
-   必须阻止启动。
+1. Flow 内插件运行 `./gradlew :core:compileJava`；宿主插件编译对应宿主模块，确认
+   Micronaut 能发现该 Bean。
+2. 启动应用，调用 `GET /api/plugins`，确认目标 `packageName` 分组包含该类的
+   canonical name、packageName、title 和 description。缺少注解、公共无参构造、
+   具名 package 或恰好一种运行能力等问题必须阻止启动。
 3. 调用插件详情接口，确认 Schema 包含公共字段和插件专有字段，排除 `id`，并把
    type 固定为该 canonical name。
 4. 部署包含该 FQCN 和插件专有字段的 Flow，确认未知字段与非法字段值严格失败。
@@ -153,8 +158,11 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
 ## 边界
 
 - YAML 只能选择启动时已注册的项目内类，不能触发任意 `Class.forName`。
-- Task 不直接推进 Execution 或 TaskRun 状态。RunnableTask 只通过最小
-  `RunContext` 运行；OrchestrationTask 只声明 Executor 识别的编排特征。
+- Task 不直接推进 Execution 或 TaskRun 状态。RunnableTask 通过 `RunContext` 运行；
+  `variables` 的保留键 `$flow.execution` 和 `$flow.inputs` 分别携带当前 Execution
+  与实际输入，Task 应通过 `executionId()` 和 `inputs()` 读取它们，不得修改 Execution
+  或直接访问 Flow 的 Execution/TaskRun Repository。宿主业务能力应通过明确的扩展接口
+  接入，不通过通用容器查找。OrchestrationTask 只声明 Executor 识别的编排特征。
 - 普通 Task 通过 `tasks` 保存递归 children，不保存 `parentId`。类型专有包含关系
   通过 `Task.definitionChildren()` 暴露，例如 Pause 的 `pause` Task 随插件
   properties 保存。Repository 在写入普通 `tasks` 时派生 `parent_id`，读取后必须

@@ -1,0 +1,92 @@
+plugins {
+    id 'org.flow.build.base'
+    alias(libs.plugins.micronaut.library)
+    id 'java-library'
+    id 'java-test-fixtures'
+}
+
+version = "0.1"
+group = "org.cses.flow"
+
+repositories {
+    maven {
+        url = uri("http://maven.wehanyu.com:8082/artifactory/java3/")
+        allowInsecureProtocol = true
+    }
+    mavenCentral()
+    gradlePluginPortal()
+}
+
+configurations.configureEach {
+    exclude group: "io.netty", module: "netty-transport-native-io_uring"
+    exclude group: "io.netty", module: "netty-transport-classes-io_uring"
+    exclude group: "org.paas", module: "paas-diagnostic"
+    exclude group: "org.paas", module: "paas-response-wrapper"
+    exclude group: "org.paas", module: "paas-temporal"
+    resolutionStrategy {
+        force(libs.hikaricp)
+    }
+}
+
+configurations {
+    testFixturesImplementation.extendsFrom implementation
+    testFixturesCompileOnly.extendsFrom compileOnly
+    testFixturesAnnotationProcessor.extendsFrom annotationProcessor
+}
+
+dependencies {
+    api(project(':gen'))
+
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
+    annotationProcessor(libs.micronaut.http.validation)
+
+    implementation(libs.micronaut.jackson.databind)
+    implementation(libs.jackson.dataformat.yaml)
+    implementation(libs.jsonschema.generator) {
+        exclude group: 'com.fasterxml.jackson.core'
+    }
+    implementation(libs.jsonschema.module.jackson)
+    implementation(libs.jsonschema.module.jakarta.validation)
+    implementation(libs.jsonschema.module.swagger) {
+        exclude group: 'com.fasterxml.jackson.core'
+    }
+    implementation(libs.swagger.annotations)
+    implementation(libs.micronaut.jooq)
+    implementation(libs.micronaut.jdbc.hikari)
+    implementation(libs.org.x9.cloud.datapilot)
+
+    api(libs.jooq.paas)
+    api(libs.jakarta.validation.api)
+    api(libs.paas.json)
+    api(libs.paas.session)
+
+    runtimeOnly(libs.postgresql)
+
+    testImplementation(libs.micronaut.validation)
+    testImplementation(libs.logback.classic)
+    testRuntimeOnly(libs.junit.platform.launcher)
+    testCompileOnly(libs.lombok)
+    testAnnotationProcessor(libs.lombok)
+    testAnnotationProcessor(libs.micronaut.http.validation)
+}
+
+java {
+    sourceCompatibility = JavaVersion.toVersion("21")
+    targetCompatibility = JavaVersion.toVersion("21")
+}
+
+micronaut {
+    testRuntime("junit5")
+    processing {
+        incremental(true)
+        annotations("org.cses.flow.*")
+    }
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    testLogging {
+        showStandardStreams = true
+    }
+}

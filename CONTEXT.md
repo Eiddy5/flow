@@ -99,6 +99,24 @@ route 成立且依赖满足的直接子 Task 作为同一 Execution 内的并行
 消费者并发上限。
 _Avoid_: Implicit parallel, Parallel Execution, Child Execution, parallel flag
 
+**LOOP Task**:
+按必填正整数 times 串行重复完整子 Task 列表的编排作用域；每轮从 1 开始编号，
+只有当前轮完整收敛后才能创建下一轮，同一 Task 定义的每轮运行形成独立 TaskRun。
+Loop 的进度从精确 Flow Reversion 和 TaskRun 事实恢复，不保存运行游标。
+_Avoid_: ForEach, recursive Task graph, in-memory counter, retry
+
+**LOOP UNTIL Task**:
+至少执行一轮完整子 Task 列表，并在每轮收敛后使用受限条件读取本轮 Task outputs；
+条件成立时完成，达到必填 maxIterations 仍不成立时失败。它不是外部恢复等待、
+定时轮询器或无限循环。
+_Avoid_: WaitFor, Pause, arbitrary script, unbounded loop
+
+**Loop Iteration**:
+一个 Loop 或 Loop Until TaskRun 内从 1 开始编号的一轮真实执行范围；循环体直接子
+TaskRun 以 iteration 保存轮次，更深后代通过 parentId 链归属该轮。它没有独立
+Repository 或生命周期。
+_Avoid_: Loop cursor, retry attempt, Task definition version
+
 **Task Extension**:
 为一个稳定 Task `type` 提供具体 Task 定义及其物化、重建和专有 properties 规则的
 Plugin 扩展点；注册后 Flow 可以用该 `type` 部署 Task。运行能力由具体 Task 自身
@@ -106,9 +124,19 @@ Plugin 扩展点；注册后 Flow 可以用该 `type` 部署 Task。运行能力
 Task 身份、不拥有 Flow 聚合或 TaskRun 状态。
 _Avoid_: Task instance, WorkerTaskHandler, Task type catalog, generic Task
 
+**Express**:
+由 Flow 定义持有、用于只读判断 outputs 的不可变条件表达式；它统一解析
+`outputs.<path> == "<value>"`、暴露被引用的 output 路径，并以区分大小写的字符串
+精确比较完成求值。它与 Task Template Expression 同属受限表达式领域，但二者保持
+不同语法、结果和缺值规则；Route 与 Loop Until 分别约束条件路径所属范围，
+`DIRECT` 仍是 Route 语义。
+_Avoid_: RouteExpression, LoopConditionExpression, arbitrary script,
+Task Template Expression
+
 **Task Template Expression**:
 由 Task 定义持有、在一次 Runnable Task 调用中从只读运行输入提取值并插入固定文本
-的消息模板；它只允许点分路径读取，不能执行脚本、调用方法或改变运行上下文。
+的消息模板；它属于受限表达式领域，只允许点分路径读取，不能执行脚本、调用方法
+或改变运行上下文，也不承担 Express 的条件判断。
 _Avoid_: Route Expression, arbitrary script, mutable runtime context
 
 **Log**:
@@ -131,8 +159,9 @@ _Avoid_: Execution cursor, transaction context, persisted next queue
 Execution 实际执行某个 Task 时产生的真实实例。Executor Scheduling Cycle 可以
 先在 nexts 中构造 CREATED TaskRun，但只有 `onNexts` 经 Execution 聚合接受后
 才成为真实历史。它通过 `taskId` 关联确定 Flow Reversion 中的 Task，通过
-`parentId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。同一
-Task 可以因循环等原因产生多个 TaskRun；其列表顺序表达真实运行顺序。
+`parentId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。循环体
+直接子 TaskRun 还以可空的正整数 iteration 表达所属轮次；同一 Task 可以因循环
+产生多个 TaskRun，其列表顺序表达真实运行顺序。
 _Avoid_: Activity, Task instance
 
 **PAUSE Task**:

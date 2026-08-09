@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本规范适用于 `server` 模块中 `org.cses.flow.core` 下的写操作。Controller 和其他
+本规范适用于 `core` 模块中 `org.cses.flow.core` 下的写操作。Controller 和其他
 模块内调用方都通过同一份 Core Service/Command 链路使用这些规则。
 
 ## 固定调用链
@@ -46,7 +46,7 @@ Controller（Core 外）
 
 - 事务只由 `CommandExecutor` 使用具名 `@Named("flow")` 的
   `org.x9.jooq.JOOQ.runReturn` 开启。
-- Flow 事务只允许使用 `datasources.flow`；不得注入或回退到宿主的 `default`、
+- Flow 事务只允许使用 `datasources.flow` 自动装配的具名 `flow` 数据库；不得注入或回退到宿主的 `default`、
   `mattermost` 等 JOOQ Bean。
 - `CommandContext` 保存当前事务派生出的 `DSLContext`。
 - Handler 和 Repository 必须使用 `CommandContext.getDsl()`。

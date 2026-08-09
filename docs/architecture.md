@@ -9,8 +9,8 @@
 
 当前图覆盖：
 
-- `server` 单一运行模块内部的 Core、Executor、Worker、扩展和入站边界。
-- `gen` 的数据库迁移与 JOOQ 生成代码如何进入 Server 构建和运行资源。
+- `core` 中的完整非 HTTP Flow 能力与 `server` 中的 HTTP、启动边界。
+- `gen` 的开发期数据库基线如何由人工执行，以及 JOOQ 生成代码如何进入 Core。
 - 从 FlowDraft 保存、Flow 部署到 Execution 执行、暂停、恢复、取消和结束的主流程。
 
 ## 当前代码架构图
@@ -22,7 +22,7 @@ flowchart LR
         externalCaller["外部业务能力"]
     end
 
-    subgraph server ["server 模块：完整 Flow Micronaut 应用"]
+    subgraph server ["server 模块：HTTP 服务与启动"]
         subgraph inbound ["入站与应用装配"]
             micronautApp["Application / Micronaut Netty"]
             staticAssets["Flow Demo 静态资源"]
@@ -30,8 +30,9 @@ flowchart LR
             pluginController["PluginController"]
             sessionBinder["SessionArgumentBinder"]
         end
+    end
 
-        subgraph corePackages ["Core、运行时与扩展包"]
+    subgraph coreModule ["core 模块：完整非 HTTP Flow 能力"]
         subgraph useCases ["Core 公开用例"]
             flowService["FlowService"]
             executionService["ExecutionService"]
@@ -64,13 +65,12 @@ flowchart LR
 
         subgraph infrastructure ["基础设施适配"]
             postgresRepositories["PostgreSQL Repositories + Entries"]
-            jooqBoundary["具名 flow JOOQ + Flyway"]
-        end
+            jooqBoundary["具名 flow JOOQ"]
         end
     end
 
     subgraph gen ["gen 模块"]
-        migrations["PostgreSQL 迁移 SQL"]
+        migrations["PostgreSQL 建表基线"]
         generatedJooq["JOOQ 生成 Tables / Records / POJOs"]
     end
 
@@ -124,8 +124,7 @@ flowchart LR
     queryHandlers -->|"开启读事务"| jooqBoundary
     postgresRepositories --> generatedJooq
     jooqBoundary -->|"DSLContext / SQL"| postgres
-    migrations -.->|"构建时转换并打入 server 资源/JAR"| jooqBoundary
-    jooqBoundary -->|"启动时创建与演进表结构"| postgres
+    migrations -.->|"启动前由部署人员手工执行"| postgres
     postgres -.->|"构建期读取 schema 并生成"| generatedJooq
     consul -.->|"生产环境启动配置"| micronautApp
 
@@ -145,9 +144,11 @@ flowchart LR
 ```
 
 图中实线表示主要运行时调用或数据访问，虚线表示 SPI 实现、构建期关系、配置关系或
-兼容入口。`server` 是唯一运行和部署模块，Core、Executor、Worker、扩展与
-Infrastructure 是其中的 Java 包边界，不是独立 Gradle 模块或微服务。只有具名
-`flow` 数据源会收到 Flow 迁移和 JOOQ 请求。
+兼容入口。`core` 是完整的非 HTTP Flow Gradle 模块，包含 Core Java 包、Executor、
+Worker、扩展与 Infrastructure；`server` 是只保留 HTTP 与启动职责的薄模块，并通过
+`api` 传递暴露 Core。Server 既可独立启动，也可完整嵌入 CSES，两者不是独立微服务。
+Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只使用具名 `flow` 数据源。
+开发期基线变化后需要重建该数据库，不提供旧 Schema 或旧数据的升级路径。
 
 ## 核心业务流程图
 
@@ -282,11 +283,11 @@ flowchart TD
 ## 主要源码依据
 
 - [`server/src/main/java/org/cses/flow/controller/demo/FlowDemoController.java`](../server/src/main/java/org/cses/flow/controller/demo/FlowDemoController.java)
-- [`server/src/main/java/org/cses/flow/core/commands/CommandExecutor.java`](../server/src/main/java/org/cses/flow/core/commands/CommandExecutor.java)
-- [`server/src/main/java/org/cses/flow/core/handlers/executions/CreateExecutionHandler.java`](../server/src/main/java/org/cses/flow/core/handlers/executions/CreateExecutionHandler.java)
-- [`server/src/main/java/org/cses/flow/executor/DefaultExecutor.java`](../server/src/main/java/org/cses/flow/executor/DefaultExecutor.java)
-- [`server/src/main/java/org/cses/flow/executor/ExecutorService.java`](../server/src/main/java/org/cses/flow/executor/ExecutorService.java)
-- [`server/src/main/java/org/cses/flow/worker/WorkerDispatcher.java`](../server/src/main/java/org/cses/flow/worker/WorkerDispatcher.java)
-- [`server/src/main/java/org/cses/flow/infrastructure/jooq/`](../server/src/main/java/org/cses/flow/infrastructure/jooq/)
-- [`server/src/main/java/org/cses/flow/infrastructure/repositories/`](../server/src/main/java/org/cses/flow/infrastructure/repositories/)
-- [`gen/sql/production-release/flow/`](../gen/sql/production-release/flow/)
+- [`core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java)
+- [`core/src/main/java/org/cses/flow/core/handlers/executions/CreateExecutionHandler.java`](../core/src/main/java/org/cses/flow/core/handlers/executions/CreateExecutionHandler.java)
+- [`core/src/main/java/org/cses/flow/executor/DefaultExecutor.java`](../core/src/main/java/org/cses/flow/executor/DefaultExecutor.java)
+- [`core/src/main/java/org/cses/flow/executor/ExecutorService.java`](../core/src/main/java/org/cses/flow/executor/ExecutorService.java)
+- [`core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java`](../core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java)
+- [`core/src/main/java/org/cses/flow/infrastructure/jooq/`](../core/src/main/java/org/cses/flow/infrastructure/jooq/)
+- [`core/src/main/java/org/cses/flow/infrastructure/repositories/`](../core/src/main/java/org/cses/flow/infrastructure/repositories/)
+- [`gen/sql/flow/001_create_flow_tables.sql`](../gen/sql/flow/001_create_flow_tables.sql)

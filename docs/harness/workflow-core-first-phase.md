@@ -13,7 +13,7 @@ UC-06 条件路由和 UC-07 两层嵌套 Task 长流程。
 项目要求 Java 21。macOS 上如果当前 `JAVA_HOME` 无效或指向其他版本，可以仅为当前命令选择 Java 21：
 
 ```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :server:test
+JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :core:test
 ```
 
 ## 最小验证
@@ -23,7 +23,7 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
   FLOW_POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/flow \
   FLOW_POSTGRES_TEST_USER=flow \
   FLOW_POSTGRES_TEST_PASSWORD=flow \
-  ./gradlew :server:test \
+  ./gradlew :core:test \
   --tests '*Uc01FlowLifecycleTest' \
   --tests '*Uc02ExecutionLifecycleTest' \
   --tests '*Uc03AutomaticTaskFlowTest' \
@@ -66,7 +66,7 @@ AUTO 同命令连续执行、条件分支、并行等待、唯一汇合、两层
 
 ## 本地启动验证
 
-内存 Repository、JOOQ 和 Session 支架只存在于 `src/test`，不作为 UC 验证
+内存 Repository、JOOQ 和无连接基础设施支架位于 `core/src/testFixtures`，不作为 UC 验证
 模式。UC 使用生产 PostgreSQL Repository；数据库准备和迁移步骤见
 [`postgresql-repositories.md`](postgresql-repositories.md)。当前尚无 Flow HTTP
 Controller，因此本阶段通过公开 Service 验证，不把 HTTP 调用作为通过条件。

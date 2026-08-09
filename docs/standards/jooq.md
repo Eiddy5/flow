@@ -49,13 +49,18 @@ import org.flow.gen.flow.pojos.FlowsObject;
 `org.flow.gen.flow` 下的文件由 JOOQ Generator 生成，禁止直接手工修改。数据库结构
 改变后应修改数据库脚本并重新生成代码，不能在生成类中补业务方法。
 
-`gen` 是 JOOQ 生成代码和数据库脚本的源码归属。`server` 在构建期直接依赖
-`gen` 的生成类型，并把生产 SQL 转换到自身 `db/migration/flow` 资源目录；业务
-代码仍不能依赖 Generator 或 JOOQ Codegen 实现。
+`gen` 是 JOOQ 生成代码和数据库脚本的源码归属。开发期唯一 Schema 来源是
+`gen/sql/flow/001_create_flow_tables.sql`；开发或部署人员必须在应用启动前手工执行
+该基线，`core` 和 `server` 不复制迁移资源，也不自动创建或升级 Schema。基线变化时必须重建
+开发数据库并重新生成 JOOQ，不为旧 Schema 或旧数据编写升级脚本。业务代码仍不能
+依赖 Generator 或 JOOQ Codegen 实现。
 
 Flow 运行时中的 `org.x9.jooq.JOOQ`、JOOQ `Configuration` 和 `DataSource` 必须
 使用 `@Named("flow")` 绑定。宿主应用即使同时存在 `default`、`mattermost` 等数据
-源，Flow Repository 和事务也不得回退到这些数据源。
+源，Flow Repository 和事务也不得回退到这些数据源。宿主只配置标准
+`datasources.flow.*`；Micronaut Hikari、Micronaut JOOQ 与 PAAS JOOQ 根据具名
+DataSource 自动创建同名 Bean，Flow 不提供 DataSource 或 JOOQ Factory。
+`jooq.datasources.flow` 只用于显式覆盖方言或 JOOQ Settings，不是必填配置。
 
 ## 2. 生成类提供的快捷能力
 
@@ -153,7 +158,7 @@ Repository 的数据读写结果必须经过 Entry，不能绕过 Entry 直接�
 推荐结构：
 
 ```text
-server/src/main/java/org/cses/flow/infrastructure/
+core/src/main/java/org/cses/flow/infrastructure/
 └── repositories/
     └── flows/
         └── postgres/
@@ -318,7 +323,7 @@ dsl.insertInto(EXECUTIONS)
     .set(EXECUTIONS.COMPANY_ID, entry.companyId)
     .set(EXECUTIONS.FLOW_ID, entry.flowId)
     .set(EXECUTIONS.FLOW_REVERSION, entry.flowReversion)
-    .set(EXECUTIONS.STATUS, entry.status)
+    .set(EXECUTIONS.STATE, entry.state)
     .execute();
 ```
 
@@ -335,11 +340,11 @@ dsl.insertInto(EXECUTIONS)
 `set(TABLE.FIELD, value)`：
 
 ```java
-dsl.update(EXECUTIONS)
-    .set(EXECUTIONS.STATUS, status.name())
-    .set(EXECUTIONS.UPDATED_AT, updatedAt)
-    .where(EXECUTIONS.COMPANY_ID.eq(companyId))
-    .and(EXECUTIONS.ID.eq(executionId))
+dsl.update(FLOW_DRAFTS)
+    .set(FLOW_DRAFTS.RAW, raw)
+    .set(FLOW_DRAFTS.UPDATED_AT, updatedAt)
+    .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
+    .and(FLOW_DRAFTS.ID.eq(flowDraftId))
     .execute();
 ```
 
@@ -350,7 +355,7 @@ dsl.update(EXECUTIONS)
 - 带上完整业务身份、租户和并发条件。
 - 需要清空字段时显式调用 `.set(TABLE.FIELD, null)`。
 
-调用 `entry.setStatus(...)` 只会修改内存中的 Entry，并不会执行数据库更新；真正的
+调用 `entry.setState(...)` 只会修改内存中的 Entry，并不会执行数据库更新；真正的
 字段级更新必须通过 JOOQ Update 的 `.set(TABLE.FIELD, value)` 完成。
 
 ### 完整对象更新

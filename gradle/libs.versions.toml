@@ -2,7 +2,6 @@
 micronaut-plugins = "4.6.2"
 micronaut-platform = "4.10.6.488"
 shadow = "8.3.9"
-paas-library = "1.0.0.19"
 hikaricp = "7.1.0"
 cloud-datapilot = "2.0.48"
 jsonschema-generator = "4.38.0"
@@ -13,11 +12,10 @@ micronaut-platform = { module = "io.micronaut.platform:micronaut-platform", vers
 micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" } # 可以看到这些依赖是没有版本号的，因为它们只接受我们平台管理
 micronaut-validation = { module = "io.micronaut.validation:micronaut-validation" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api" }
-micronaut-serde-processor = { module = "io.micronaut.serde:micronaut-serde-processor" }
 micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
 micronaut-discovery-client = { module = "io.micronaut.discovery:micronaut-discovery-client" }
 micronaut-elasticsearch = { module = "io.micronaut.elasticsearch:micronaut-elasticsearch" }
-micronaut-serde-jackson = { module = "io.micronaut.serde:micronaut-serde-jackson" }
+micronaut-jackson-databind = { module = "io.micronaut:micronaut-jackson-databind" }
 logback-classic = { module = "ch.qos.logback:logback-classic" }
 jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
@@ -25,17 +23,13 @@ paas-json = { module = "org.paas:paas-json" }
 paas-session = { module = "org.paas:paas-session" }
 lombok = { module = "org.projectlombok:lombok" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
-org-paas-all = { module = "org.paas:paas-all" }
-org-x9-cloud-library = { module = "org.paas:paas-library", version.ref = "paas-library" }
-org-paas-service-all = { module = "org.paas.service:paas-service-all" }
+
 grpc-inprocess = { module = "io.grpc:grpc-inprocess" }
 grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded" }
 jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension" }
 jooq-paas = { module = "org.jooq:jooq-paas" }
 micronaut-jooq = { module = "io.micronaut.sql:micronaut-jooq" }
 micronaut-jdbc-hikari = { module = "io.micronaut.sql:micronaut-jdbc-hikari" }
-flyway-core = { module = "org.flywaydb:flyway-core" }
-flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 postgresql = { module = "org.postgresql:postgresql" }
 opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
 org-x9-cloud-datapilot = { module = "org.x9.cloud:cloud-datapilot", version.ref = "cloud-datapilot" }

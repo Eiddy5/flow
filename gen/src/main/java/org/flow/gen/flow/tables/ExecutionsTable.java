@@ -77,9 +77,9 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, Long> FLOW_REVERSION = createField(DSL.name("flow_reversion"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
-     * The column <code>public.executions.status</code>.
+     * The column <code>public.executions.state</code>.
      */
-    public final TableField<ExecutionsRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<ExecutionsRecord, JSONB> STATE = createField(DSL.name("state"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
      * The column <code>public.executions.lock_version</code>.
@@ -115,11 +115,6 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
      * The column <code>public.executions.deleted_at</code>.
      */
     public final TableField<ExecutionsRecord, OffsetDateTime> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
-
-    /**
-     * The column <code>public.executions.state_history</code>.
-     */
-    public final TableField<ExecutionsRecord, JSONB> STATE_HISTORY = createField(DSL.name("state_history"), SQLDataType.JSONB.nullable(false), this, "");
 
     private ExecutionsTable(Name alias, Table<ExecutionsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -157,7 +152,7 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_EXECUTIONS_FLOW, Indexes.IDX_EXECUTIONS_STATUS);
+        return Arrays.asList(Indexes.IDX_EXECUTIONS_FLOW);
     }
 
     @Override
@@ -178,8 +173,7 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
             Internal.createCheck(this, DSL.name("ck_executions_deleter"), "(((deleter IS NULL) OR ((jsonb_typeof(deleter) = 'object'::text) AND (deleter ? 'id'::text))))", true),
             Internal.createCheck(this, DSL.name("ck_executions_lock_version"), "((lock_version >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_executions_reversion"), "((flow_reversion > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_state_history"), "(((jsonb_typeof(state_history) = 'array'::text) AND (jsonb_array_length(state_history) > 0) AND (((state_history -> 0) ->> 'state'::text) = 'CREATED'::text) AND (((state_history -> '-1'::integer) ->> 'state'::text) = (status)::text) AND (jsonb_typeof(((state_history -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof(((state_history -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array(state_history, '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length(state_history)) AND (NOT jsonb_path_exists(state_history, '$[*]?(((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"COMPLETED\") && @.\"state\" != \"TERMINATED\")'::jsonpath)) AND (NOT jsonb_path_exists(state_history, '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_status"), "(((status)::text = ANY ((ARRAY['CREATED'::character varying, 'RUNNING'::character varying, 'COMPLETED'::character varying, 'TERMINATED'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_executions_state"), "(((jsonb_typeof(state) = 'object'::text) AND (state ? 'current'::text) AND (state ? 'history'::text) AND (jsonb_typeof((state -> 'current'::text)) = 'string'::text) AND ((state ->> 'current'::text) = ANY (ARRAY['CREATED'::text, 'RUNNING'::text, 'PAUSED'::text, 'RESTARTED'::text, 'SUCCESS'::text, 'WARNING'::text, 'FAILED'::text, 'KILLING'::text, 'KILLED'::text])) AND (jsonb_typeof((state -> 'history'::text)) = 'array'::text) AND (jsonb_array_length((state -> 'history'::text)) > 0) AND ((((state -> 'history'::text) -> 0) ->> 'state'::text) = 'CREATED'::text) AND ((((state -> 'history'::text) -> '-1'::integer) ->> 'state'::text) = (state ->> 'current'::text)) AND (jsonb_typeof((((state -> 'history'::text) -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof((((state -> 'history'::text) -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array((state -> 'history'::text), '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length((state -> 'history'::text))) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?((((((((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"PAUSED\") && @.\"state\" != \"RESTARTED\") && @.\"state\" != \"SUCCESS\") && @.\"state\" != \"WARNING\") && @.\"state\" != \"FAILED\") && @.\"state\" != \"KILLING\") && @.\"state\" != \"KILLED\")'::jsonpath)) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
             Internal.createCheck(this, DSL.name("ck_executions_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true)
         );
     }

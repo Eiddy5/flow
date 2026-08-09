@@ -77,9 +77,14 @@ public class TaskRunTable extends TableImpl<TaskRunRecord> {
     public final TableField<TaskRunRecord, String> PARENT_ID = createField(DSL.name("parent_id"), SQLDataType.VARCHAR(64), this, "");
 
     /**
-     * The column <code>public.task_run.status</code>.
+     * The column <code>public.task_run.iteration</code>.
      */
-    public final TableField<TaskRunRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(16).nullable(false), this, "");
+    public final TableField<TaskRunRecord, Integer> ITERATION = createField(DSL.name("iteration"), SQLDataType.INTEGER, this, "");
+
+    /**
+     * The column <code>public.task_run.state</code>.
+     */
+    public final TableField<TaskRunRecord, JSONB> STATE = createField(DSL.name("state"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
      * The column <code>public.task_run.start_at</code>.
@@ -126,11 +131,6 @@ public class TaskRunTable extends TableImpl<TaskRunRecord> {
      */
     public final TableField<TaskRunRecord, OffsetDateTime> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
 
-    /**
-     * The column <code>public.task_run.state_history</code>.
-     */
-    public final TableField<TaskRunRecord, JSONB> STATE_HISTORY = createField(DSL.name("state_history"), SQLDataType.JSONB.nullable(false), this, "");
-
     private TaskRunTable(Name alias, Table<TaskRunRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -167,7 +167,7 @@ public class TaskRunTable extends TableImpl<TaskRunRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_TASK_RUN_EXECUTION_STATUS, Indexes.IDX_TASK_RUN_PARENT, Indexes.IDX_TASK_RUN_TASK);
+        return Arrays.asList(Indexes.IDX_TASK_RUN_PARENT, Indexes.IDX_TASK_RUN_TASK);
     }
 
     @Override
@@ -183,13 +183,13 @@ public class TaskRunTable extends TableImpl<TaskRunRecord> {
     @Override
     public List<Check<TaskRunRecord>> getChecks() {
         return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_task_run_error"), "(((error IS NULL) OR (((status)::text = 'TERMINATED'::text) AND (length(btrim(error)) > 0))))", true),
+            Internal.createCheck(this, DSL.name("ck_task_run_error"), "(((error IS NULL) OR (((state ->> 'current'::text) = 'FAILED'::text) AND (length(btrim(error)) > 0))))", true),
             Internal.createCheck(this, DSL.name("ck_task_run_inputs"), "((jsonb_typeof(inputs) = 'object'::text))", true),
+            Internal.createCheck(this, DSL.name("ck_task_run_iteration"), "(((iteration IS NULL) OR ((iteration > 0) AND (parent_id IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_task_run_order"), "((\"order\" >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_task_run_outputs"), "((jsonb_typeof(outputs) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("ck_task_run_parent"), "(((parent_id IS NULL) OR ((parent_id)::text <> (id)::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_task_run_state_history"), "(((jsonb_typeof(state_history) = 'array'::text) AND (jsonb_array_length(state_history) > 0) AND (((state_history -> 0) ->> 'state'::text) = 'CREATED'::text) AND (((state_history -> '-1'::integer) ->> 'state'::text) = (status)::text) AND (jsonb_typeof(((state_history -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof(((state_history -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array(state_history, '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length(state_history)) AND (NOT jsonb_path_exists(state_history, '$[*]?((((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"PAUSED\") && @.\"state\" != \"COMPLETED\") && @.\"state\" != \"TERMINATED\")'::jsonpath)) AND (NOT jsonb_path_exists(state_history, '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_run_status"), "(((status)::text = ANY ((ARRAY['CREATED'::character varying, 'RUNNING'::character varying, 'PAUSED'::character varying, 'COMPLETED'::character varying, 'TERMINATED'::character varying])::text[])))", true),
+            Internal.createCheck(this, DSL.name("ck_task_run_state"), "(((jsonb_typeof(state) = 'object'::text) AND (state ? 'current'::text) AND (state ? 'history'::text) AND (jsonb_typeof((state -> 'current'::text)) = 'string'::text) AND ((state ->> 'current'::text) = ANY (ARRAY['CREATED'::text, 'RUNNING'::text, 'PAUSED'::text, 'SUCCESS'::text, 'WARNING'::text, 'FAILED'::text, 'KILLED'::text])) AND (jsonb_typeof((state -> 'history'::text)) = 'array'::text) AND (jsonb_array_length((state -> 'history'::text)) > 0) AND ((((state -> 'history'::text) -> 0) ->> 'state'::text) = 'CREATED'::text) AND ((((state -> 'history'::text) -> '-1'::integer) ->> 'state'::text) = (state ->> 'current'::text)) AND (jsonb_typeof((((state -> 'history'::text) -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof((((state -> 'history'::text) -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array((state -> 'history'::text), '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length((state -> 'history'::text))) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?((((((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"PAUSED\") && @.\"state\" != \"SUCCESS\") && @.\"state\" != \"WARNING\") && @.\"state\" != \"FAILED\") && @.\"state\" != \"KILLED\")'::jsonpath)) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
             Internal.createCheck(this, DSL.name("ck_task_run_time"), "(((start_at IS NULL) OR (end_at IS NULL) OR (end_at >= start_at)))", true)
         );
     }

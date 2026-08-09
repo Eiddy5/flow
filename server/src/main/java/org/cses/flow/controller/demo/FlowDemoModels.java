@@ -1,10 +1,11 @@
 package org.cses.flow.controller.demo;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
-import io.micronaut.serde.annotation.Serdeable;
+import lombok.Getter;
+import lombok.Setter;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.flows.ActorRef;
+import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Flow;
@@ -15,6 +16,7 @@ import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.extensions.flow.Pause;
+import org.paas.json.SerializableObject;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -31,8 +33,9 @@ public final class FlowDemoModels {
     private FlowDemoModels() {
     }
 
-    @Serdeable
-    public static final class SaveDraftRequest {
+    @Getter
+    @Setter
+    public static final class SaveDraftRequest extends SerializableObject {
 
         private String raw;
         private Long expectedLockVersion;
@@ -57,8 +60,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class ResumeRequest {
+    @Getter
+    @Setter
+    public static final class ResumeRequest extends SerializableObject {
 
         private Map<String, Object> outputs = new LinkedHashMap<>();
 
@@ -74,8 +78,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class SessionView {
+    @Getter
+    @Setter
+    public static final class SessionView extends SerializableObject {
 
         private final String companyId;
         private final String userId;
@@ -112,8 +117,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class DraftView {
+    @Getter
+    @Setter
+    public static final class DraftView extends SerializableObject {
 
         private final String id;
         private final String raw;
@@ -193,8 +199,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class DefinitionView {
+    @Getter
+    @Setter
+    public static final class DefinitionView extends SerializableObject {
 
         private final Map<String, Object> definition;
 
@@ -207,8 +214,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class InputTypeView {
+    @Getter
+    @Setter
+    public static final class InputTypeView extends SerializableObject {
 
         private final String code;
         private final String valueClass;
@@ -315,8 +323,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class InputFieldView {
+    @Getter
+    @Setter
+    public static final class InputFieldView extends SerializableObject {
 
         private final String key;
         private final String displayName;
@@ -359,8 +368,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class FlowView {
+    @Getter
+    @Setter
+    public static final class FlowView extends SerializableObject {
 
         private final String id;
         private final String key;
@@ -445,8 +455,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class DataView {
+    @Getter
+    @Setter
+    public static final class DataView extends SerializableObject {
 
         private final String key;
         private final String type;
@@ -530,8 +541,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class TaskView {
+    @Getter
+    @Setter
+    public static final class TaskView extends SerializableObject {
 
         private final String id;
         private final String key;
@@ -649,8 +661,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class ExecutionView {
+    @Getter
+    @Setter
+    public static final class ExecutionView extends SerializableObject {
 
         private final String id;
         private final String flowId;
@@ -739,12 +752,14 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class TaskRunView {
+    @Getter
+    @Setter
+    public static final class TaskRunView extends SerializableObject {
 
         private final String id;
         private final String taskId;
         private final String parentId;
+        private final Integer iteration;
         private final String state;
         private final Map<String, Object> inputs;
         private final Map<String, Object> outputs;
@@ -757,6 +772,7 @@ public final class FlowDemoModels {
             String id,
             String taskId,
             String parentId,
+            Integer iteration,
             String state,
             Map<String, Object> inputs,
             Map<String, Object> outputs,
@@ -768,6 +784,7 @@ public final class FlowDemoModels {
             this.id = id;
             this.taskId = taskId;
             this.parentId = parentId;
+            this.iteration = iteration;
             this.state = state;
             this.inputs = immutableMap(inputs);
             this.outputs = immutableMap(outputs);
@@ -783,6 +800,9 @@ public final class FlowDemoModels {
                 taskRun.id(),
                 taskRun.taskId(),
                 taskRun.parentId().orElse(null),
+                taskRun.iteration().isPresent()
+                    ? taskRun.iteration().getAsInt()
+                    : null,
                 taskRun.state().current().name(),
                 taskRun.inputs(),
                 taskRun.outputs(),
@@ -803,6 +823,10 @@ public final class FlowDemoModels {
 
         public String getParentId() {
             return parentId;
+        }
+
+        public Integer getIteration() {
+            return iteration;
         }
 
         public String getState() {
@@ -834,8 +858,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class HistoryView {
+    @Getter
+    @Setter
+    public static final class HistoryView extends SerializableObject {
 
         private final String state;
         private final long date;
@@ -861,8 +886,9 @@ public final class FlowDemoModels {
         }
     }
 
-    @Serdeable
-    public static final class ErrorView {
+    @Getter
+    @Setter
+    public static final class ErrorView extends SerializableObject {
 
         private final String message;
 

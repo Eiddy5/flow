@@ -27,7 +27,6 @@ public class Indexes {
     // -------------------------------------------------------------------------
 
     public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_ID, ExecutionsTable.EXECUTIONS.FLOW_REVERSION }, false);
-    public static final Index IDX_EXECUTIONS_STATUS = Internal.createIndex(DSL.name("idx_executions_status"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.STATUS }, false);
     public static final Index IDX_EXTERNAL_TASK_EXECUTION = Internal.createIndex(DSL.name("idx_external_task_execution"), ExternalTaskTable.EXTERNAL_TASK, new OrderField[] { ExternalTaskTable.EXTERNAL_TASK.COMPANY_ID, ExternalTaskTable.EXTERNAL_TASK.EXECUTION_ID }, false);
     public static final Index IDX_EXTERNAL_TASK_WAITING = Internal.createIndex(DSL.name("idx_external_task_waiting"), ExternalTaskTable.EXTERNAL_TASK, new OrderField[] { ExternalTaskTable.EXTERNAL_TASK.COMPANY_ID, ExternalTaskTable.EXTERNAL_TASK.STATUS, ExternalTaskTable.EXTERNAL_TASK.CREATED_AT }, false);
     public static final Index IDX_FLOW_DRAFTS_CREATOR_ID = Internal.createIndex(DSL.name("idx_flow_drafts_creator_id"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.CREATOR_ID }, false);
@@ -40,7 +39,6 @@ public class Indexes {
     public static final Index IDX_FLOWS_DELETER_ID = Internal.createIndex(DSL.name("idx_flows_deleter_id"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.DELETER_ID }, false);
     public static final Index IDX_FLOWS_LATEST = Internal.createIndex(DSL.name("idx_flows_latest"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.ID, FlowsTable.FLOWS.REVERSION.desc() }, false);
     public static final Index IDX_FLOWS_UPDATER_ID = Internal.createIndex(DSL.name("idx_flows_updater_id"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.UPDATER_ID }, false);
-    public static final Index IDX_TASK_RUN_EXECUTION_STATUS = Internal.createIndex(DSL.name("idx_task_run_execution_status"), TaskRunTable.TASK_RUN, new OrderField[] { TaskRunTable.TASK_RUN.EXECUTION_ID, TaskRunTable.TASK_RUN.STATUS }, false);
-    public static final Index IDX_TASK_RUN_PARENT = Internal.createIndex(DSL.name("idx_task_run_parent"), TaskRunTable.TASK_RUN, new OrderField[] { TaskRunTable.TASK_RUN.EXECUTION_ID, TaskRunTable.TASK_RUN.PARENT_ID, TaskRunTable.TASK_RUN.ORDER }, false);
+    public static final Index IDX_TASK_RUN_PARENT = Internal.createIndex(DSL.name("idx_task_run_parent"), TaskRunTable.TASK_RUN, new OrderField[] { TaskRunTable.TASK_RUN.EXECUTION_ID, TaskRunTable.TASK_RUN.PARENT_ID, TaskRunTable.TASK_RUN.ITERATION, TaskRunTable.TASK_RUN.ORDER }, false);
     public static final Index IDX_TASK_RUN_TASK = Internal.createIndex(DSL.name("idx_task_run_task"), TaskRunTable.TASK_RUN, new OrderField[] { TaskRunTable.TASK_RUN.TASK_ID }, false);
 }

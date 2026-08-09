@@ -78,17 +78,17 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     }
 
     /**
-     * Setter for <code>public.executions.status</code>.
+     * Setter for <code>public.executions.state</code>.
      */
-    public void setStatus(String value) {
+    public void setState(JSONB value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.executions.status</code>.
+     * Getter for <code>public.executions.state</code>.
      */
-    public String getStatus() {
-        return (String) get(4);
+    public JSONB getState() {
+        return (JSONB) get(4);
     }
 
     /**
@@ -189,20 +189,6 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         return (OffsetDateTime) get(11);
     }
 
-    /**
-     * Setter for <code>public.executions.state_history</code>.
-     */
-    public void setStateHistory(JSONB value) {
-        set(12, value);
-    }
-
-    /**
-     * Getter for <code>public.executions.state_history</code>.
-     */
-    public JSONB getStateHistory() {
-        return (JSONB) get(12);
-    }
-
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -226,14 +212,14 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowId, Long flowReversion, String status, Long lockVersion, JSONB creator, JSONB updater, JSONB deleter, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JSONB stateHistory) {
+    public ExecutionsRecord(String id, String companyId, String flowId, Long flowReversion, JSONB state, Long lockVersion, JSONB creator, JSONB updater, JSONB deleter, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
         setCompanyId(companyId);
         setFlowId(flowId);
         setFlowReversion(flowReversion);
-        setStatus(status);
+        setState(state);
         setLockVersion(lockVersion);
         setCreator(creator);
         setUpdater(updater);
@@ -241,7 +227,6 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setDeletedAt(deletedAt);
-        setStateHistory(stateHistory);
     }
 
 
@@ -257,7 +242,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setCompanyId(value.companyId);
             setFlowId(value.flowId);
             setFlowReversion(value.flowReversion);
-            setStatus(value.status);
+            setState(value.state);
             setLockVersion(value.lockVersion);
             setCreator(value.creator);
             setUpdater(value.updater);
@@ -265,7 +250,6 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setCreatedAt(value.createdAt);
             setUpdatedAt(value.updatedAt);
             setDeletedAt(value.deletedAt);
-            setStateHistory(value.stateHistory);
         }
     }
 
@@ -275,7 +259,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.companyId = getCompanyId();
         object.flowId = getFlowId();
         object.flowReversion = getFlowReversion();
-        object.status = getStatus();
+        object.state = getState();
         object.lockVersion = getLockVersion();
         object.creator = getCreator();
         object.updater = getUpdater();
@@ -283,7 +267,6 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.createdAt = getCreatedAt();
         object.updatedAt = getUpdatedAt();
         object.deletedAt = getDeletedAt();
-        object.stateHistory = getStateHistory();
         return object;
     }
 
@@ -298,7 +281,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.companyId = getCompanyId();
         pojo.flowId = getFlowId();
         pojo.flowReversion = getFlowReversion();
-        pojo.status = getStatus();
+        pojo.state = getState();
         pojo.lockVersion = getLockVersion();
         pojo.creator = getCreator();
         pojo.updater = getUpdater();
@@ -306,7 +289,6 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.createdAt = getCreatedAt();
         pojo.updatedAt = getUpdatedAt();
         pojo.deletedAt = getDeletedAt();
-        pojo.stateHistory = getStateHistory();
         return pojo;
     }
 }

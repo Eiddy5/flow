@@ -2,7 +2,10 @@
 
 ## 状态
 
-Accepted
+Superseded by
+[`ADR 0042`](0042-split-core-from-http-server.md)（数据库基线策略由 ADR 0033
+修订；完整 Server 嵌入 CSES、独立运行配置和人工建表契约由
+[`ADR 0039`](0039-embed-complete-flow-server-in-cses.md) 修订）
 
 ## 背景
 
@@ -52,8 +55,8 @@ Infrastructure 的职责边界。
 ### 构建与资源
 
 - `server` 直接依赖 `gen`，编译时使用 `org.flow.gen.flow` 生成类型。
-- `server:processResources` 把 `gen/sql/production-release/flow` 中的 SQL 转换为
-  `db/migration/flow/V*.sql`，供启动迁移使用。
+- `gen/sql/flow/001_create_flow_tables.sql` 作为人工执行的完整数据库基线；Server
+  不再把它复制为运行资源，也不在启动时迁移数据库，具体以 ADR 0039 为准。
 - 不再生成或验证 `org.cses.flow:flow` Library、独立 Core POM 或 Core Sources JAR。
 - 所有测试统一位于 `server/src/test/java`；测试 Adapter 不进入生产源码。
 
@@ -79,8 +82,8 @@ Infrastructure 的职责边界。
 
 - 原 `core/src/main/java`、`core/src/test/java` 和 `core/src/testFixtures/java` 内容
   分别并入 `server/src/main/java` 与 `server/src/test/java`。
-- 外部项目不能再依赖本仓库发布的独立 Flow Library；以后重新建立嵌入式制品时，
-  必须基于明确调用方和发布契约重新决策。
-- `server` 的依赖集合包含 Flow Core、数据库迁移、插件 Schema 和 HTTP 应用所需的
-  完整依赖。
+- CSES 作为已确认调用方，可以按 ADR 0039 依赖完整 Server 普通 JAR；仍不发布
+  独立 Core Library。
+- `server` 的依赖集合包含 Flow Core、插件 Schema、HTTP 和数据库访问所需的完整
+  依赖，但不包含 Flow Flyway 迁移。
 - 架构测试继续保护 Java 包边界以及旧插件机制不得恢复。

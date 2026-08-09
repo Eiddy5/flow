@@ -18,9 +18,9 @@ Flow 项目按本文模式接入 DataPilot，但当前只注册自身的 Postgre
 
 实现入口：
 
-- [`DataSourceKey.java`](../../server/src/main/java/org/cses/flow/infrastructure/datapilot/DataSourceKey.java)
-- [`FlowDataSourceEngine.java`](../../server/src/main/java/org/cses/flow/infrastructure/datapilot/FlowDataSourceEngine.java)
-- [`FlowDataSourceEngineService.java`](../../server/src/main/java/org/cses/flow/infrastructure/datapilot/FlowDataSourceEngineService.java)
+- [`DataSourceKey.java`](../../core/src/main/java/org/cses/flow/infrastructure/datapilot/DataSourceKey.java)
+- [`FlowDataSourceEngine.java`](../../core/src/main/java/org/cses/flow/infrastructure/datapilot/FlowDataSourceEngine.java)
+- [`FlowDataSourceEngineService.java`](../../core/src/main/java/org/cses/flow/infrastructure/datapilot/FlowDataSourceEngineService.java)
 
 当前阶段不注册原 CSES 工程的 MongoDB、系统 API 数据源和历史字段类型。需要这些
 能力时，应先确认 Flow 服务的物理连接配置和业务用途，再扩展引擎。PostgreSQL、
@@ -66,30 +66,30 @@ org-x9-cloud-datapilot = {
 }
 ```
 
-`server` 模块引入依赖：
+`core` 模块引入依赖：
 
 ```groovy
 dependencies {
-    api(libs.org.x9.cloud.datapilot)
+    implementation(libs.org.x9.cloud.datapilot)
 }
 ```
 
 相关文件：
 
 - [`gradle/libs.versions.toml`](gradle/libs.versions.toml)
-- [`server/build.gradle`](server/build.gradle)
+- [`core/build.gradle`](../../core/build.gradle)
 - [`buildSrc/src/main/groovy/org.cses.build.base.gradle`](buildSrc/src/main/groovy/org.cses.build.base.gradle)
 
-当前 `server/build.gradle` 中相同依赖声明了两次。实际使用时只需保留一行：
+当前依赖由 `core/build.gradle` 统一声明：
 
 ```groovy
-api(libs.org.x9.cloud.datapilot)
+implementation(libs.org.x9.cloud.datapilot)
 ```
 
 可以使用以下命令确认最终解析版本：
 
 ```bash
-./gradlew :server:dependencyInsight \
+./gradlew :core:dependencyInsight \
   --dependency cloud-datapilot \
   --configuration compileClasspath
 ```
@@ -115,7 +115,7 @@ useLocalCloudDatapilot=false
 临时启用：
 
 ```bash
-./gradlew -PuseLocalCloudDatapilot=true :server:compileJava
+./gradlew -PuseLocalCloudDatapilot=true :core:compileJava
 ```
 
 也可以在本地 `gradle.properties` 中设置：
@@ -954,4 +954,4 @@ public class ExampleRepository {
 | 索引模型 | [`TaskEntity.java`](server/src/main/java/org/cses/server/service/taskManage/domain/task/entity/TaskEntity.java) |
 | 全局搜索 | [`DocGlobalSearchIndex.java`](server/src/main/java/org/cses/server/service/doc/repositories/searcher/DocGlobalSearchIndex.java) |
 | 数据变更拦截 | [`TaskPermissionRecipientInterceptor.java`](server/src/main/java/org/cses/server/service/taskManage/domain/task/notify/TaskPermissionRecipientInterceptor.java) |
-| Consul 配置入口 | [`server/src/main/resources/bootstrap.yaml`](server/src/main/resources/bootstrap.yaml) |
+| Consul 配置入口 | [`server/src/main/resources/bootstrap-flow-standalone.yaml`](../../server/src/main/resources/bootstrap-flow-standalone.yaml) |

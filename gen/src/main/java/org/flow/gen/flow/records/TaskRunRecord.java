@@ -79,157 +79,157 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
     }
 
     /**
-     * Setter for <code>public.task_run.status</code>.
+     * Setter for <code>public.task_run.iteration</code>.
      */
-    public void setStatus(String value) {
+    public void setIteration(Integer value) {
         set(4, value);
     }
 
     /**
-     * Getter for <code>public.task_run.status</code>.
+     * Getter for <code>public.task_run.iteration</code>.
      */
-    public String getStatus() {
-        return (String) get(4);
+    public Integer getIteration() {
+        return (Integer) get(4);
+    }
+
+    /**
+     * Setter for <code>public.task_run.state</code>.
+     */
+    public void setState(JSONB value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.task_run.state</code>.
+     */
+    public JSONB getState() {
+        return (JSONB) get(5);
     }
 
     /**
      * Setter for <code>public.task_run.start_at</code>.
      */
     public void setStartAt(OffsetDateTime value) {
-        set(5, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.task_run.start_at</code>.
      */
     public OffsetDateTime getStartAt() {
-        return (OffsetDateTime) get(5);
+        return (OffsetDateTime) get(6);
     }
 
     /**
      * Setter for <code>public.task_run.end_at</code>.
      */
     public void setEndAt(OffsetDateTime value) {
-        set(6, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.task_run.end_at</code>.
      */
     public OffsetDateTime getEndAt() {
-        return (OffsetDateTime) get(6);
+        return (OffsetDateTime) get(7);
     }
 
     /**
      * Setter for <code>public.task_run.inputs</code>.[[before= ][]]
      */
     public void setInputs(JsonObject value) {
-        set(7, value == null ? null : value.toString());
+        set(8, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.task_run.inputs</code>.[[before= ][]]
      */
     public JsonObject getInputs() {
-        return JsonObject.Parse((String) get(7));
+        return JsonObject.Parse((String) get(8));
     }
 
     /**
      * Setter for <code>public.task_run.outputs</code>.[[before= ][]]
      */
     public void setOutputs(JsonObject value) {
-        set(8, value == null ? null : value.toString());
+        set(9, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.task_run.outputs</code>.[[before= ][]]
      */
     public JsonObject getOutputs() {
-        return JsonObject.Parse((String) get(8));
+        return JsonObject.Parse((String) get(9));
     }
 
     /**
      * Setter for <code>public.task_run.error</code>.
      */
     public void setError(String value) {
-        set(9, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.task_run.error</code>.
      */
     public String getError() {
-        return (String) get(9);
+        return (String) get(10);
     }
 
     /**
      * Setter for <code>public.task_run.order</code>.
      */
     public void setOrder(Integer value) {
-        set(10, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.task_run.order</code>.
      */
     public Integer getOrder() {
-        return (Integer) get(10);
+        return (Integer) get(11);
     }
 
     /**
      * Setter for <code>public.task_run.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(11, value);
+        set(12, value);
     }
 
     /**
      * Getter for <code>public.task_run.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(11);
+        return (OffsetDateTime) get(12);
     }
 
     /**
      * Setter for <code>public.task_run.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(12, value);
+        set(13, value);
     }
 
     /**
      * Getter for <code>public.task_run.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(12);
+        return (OffsetDateTime) get(13);
     }
 
     /**
      * Setter for <code>public.task_run.deleted_at</code>.
      */
     public void setDeletedAt(OffsetDateTime value) {
-        set(13, value);
+        set(14, value);
     }
 
     /**
      * Getter for <code>public.task_run.deleted_at</code>.
      */
     public OffsetDateTime getDeletedAt() {
-        return (OffsetDateTime) get(13);
-    }
-
-    /**
-     * Setter for <code>public.task_run.state_history</code>.
-     */
-    public void setStateHistory(JSONB value) {
-        set(14, value);
-    }
-
-    /**
-     * Getter for <code>public.task_run.state_history</code>.
-     */
-    public JSONB getStateHistory() {
-        return (JSONB) get(14);
+        return (OffsetDateTime) get(14);
     }
 
     // -------------------------------------------------------------------------
@@ -255,14 +255,15 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
     /**
      * Create a detached, initialised TaskRunRecord
      */
-    public TaskRunRecord(String id, String executionId, String taskId, String parentId, String status, OffsetDateTime startAt, OffsetDateTime endAt, JsonObject inputs, JsonObject outputs, String error, Integer order, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JSONB stateHistory) {
+    public TaskRunRecord(String id, String executionId, String taskId, String parentId, Integer iteration, JSONB state, OffsetDateTime startAt, OffsetDateTime endAt, JsonObject inputs, JsonObject outputs, String error, Integer order, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt) {
         super(TaskRunTable.TASK_RUN);
 
         setId(id);
         setExecutionId(executionId);
         setTaskId(taskId);
         setParentId(parentId);
-        setStatus(status);
+        setIteration(iteration);
+        setState(state);
         setStartAt(startAt);
         setEndAt(endAt);
         setInputs(inputs);
@@ -272,7 +273,6 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setDeletedAt(deletedAt);
-        setStateHistory(stateHistory);
     }
 
 
@@ -288,7 +288,8 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
             setExecutionId(value.executionId);
             setTaskId(value.taskId);
             setParentId(value.parentId);
-            setStatus(value.status);
+            setIteration(value.iteration);
+            setState(value.state);
             setStartAt(value.startAt);
             setEndAt(value.endAt);
             setInputs(value.inputs);
@@ -298,7 +299,6 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
             setCreatedAt(value.createdAt);
             setUpdatedAt(value.updatedAt);
             setDeletedAt(value.deletedAt);
-            setStateHistory(value.stateHistory);
         }
     }
 
@@ -308,7 +308,8 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         object.executionId = getExecutionId();
         object.taskId = getTaskId();
         object.parentId = getParentId();
-        object.status = getStatus();
+        object.iteration = getIteration();
+        object.state = getState();
         object.startAt = getStartAt();
         object.endAt = getEndAt();
         object.inputs = getInputs();
@@ -318,7 +319,6 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         object.createdAt = getCreatedAt();
         object.updatedAt = getUpdatedAt();
         object.deletedAt = getDeletedAt();
-        object.stateHistory = getStateHistory();
         return object;
     }
 
@@ -333,7 +333,8 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         pojo.executionId = getExecutionId();
         pojo.taskId = getTaskId();
         pojo.parentId = getParentId();
-        pojo.status = getStatus();
+        pojo.iteration = getIteration();
+        pojo.state = getState();
         pojo.startAt = getStartAt();
         pojo.endAt = getEndAt();
         pojo.inputs = getInputs();
@@ -343,7 +344,6 @@ public class TaskRunRecord extends UpdatableRecordImpl<TaskRunRecord> {
         pojo.createdAt = getCreatedAt();
         pojo.updatedAt = getUpdatedAt();
         pojo.deletedAt = getDeletedAt();
-        pojo.stateHistory = getStateHistory();
         return pojo;
     }
 }

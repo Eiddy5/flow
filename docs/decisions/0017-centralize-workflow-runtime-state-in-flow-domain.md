@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted（首次启动与单轮 transition 增量记录边界由 ADR 0020 补充）
+Accepted（首次启动与单轮 transition 增量记录边界由 ADR 0020 补充；持久化列结构
+由 ADR 0034 修订）
 
 ## 背景
 
@@ -171,19 +172,14 @@ date 严格递增。
 
 ### 持久化
 
-- `executions.status` 和 `task_run.status` 保存 `state.current().name()`。
-- 两张表新增非空 `jsonb state_history`，按顺序保存
-  `[{"state":"CREATED","date":...}, ...]`。
-- Repository Entry 必须同时写入 current 和完整 history，并通过
-  `State.rehydrate(current, history)` 恢复；两者不一致时拒绝重建。
-- 数据库约束保证 history 是非空数组、首项为 CREATED、末项等于 status，且每项
-  都含合法 state 和非负数值 date；领域重建继续校验全部迁移路线。
-- 迁移把旧 `ACTIVE` 映射为 `RUNNING`，把 `FAILED/CANCELED` 映射为
-  `TERMINATED`，并识别已有外部等待对应的 WAITING。
-- 历史数据没有完整的旧状态事件，只能用 `created_at/updated_at` 构造一次迁移
-  基线。该基线表达可验证的最小轨迹，不宣称恢复已经丢失的精确历史时间。
-- 数据迁移由
-  `2026-07-30/001_unify_workflow_state_types.sql` 完成，并可重复执行。
+- 按 ADR 0034，`executions.state` 和 `task_run.state` 各自使用一个非空 JSONB
+  对象保存完整 `current + history`，不再拆分 `status` 或 `state_history`。
+- Repository Entry 对完整 State 做一次编解码，并通过
+  `State.rehydrate(current, history)` 恢复和校验领域值对象。
+- 数据库约束保证 JSON 形状、状态值域、非空 History、首项 CREATED、末项等于
+  current，以及每项非负数值 date；领域重建继续校验完整迁移路线。
+- 当前状态过滤使用 `state ->> 'current'` 表达式索引，不保存冗余当前状态列。
+- 按 ADR 0033 直接维护开发期建表基线，不提供旧字段升级、历史数据回填或兼容读取。
 
 ## 理由
 

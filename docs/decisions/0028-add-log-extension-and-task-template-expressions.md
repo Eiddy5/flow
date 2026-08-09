@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（TemplateExpression 的语义所有权由 ADR 0037 修订）
 
 ## 背景
 
@@ -62,8 +62,9 @@ Flow 需要新增一个只负责输出日志的项目内扩展。该扩展的消
 
 ### TemplateExpression
 
-- `TemplateExpression` 是 Task 定义可复用的不可变值对象，保存用户提交的原始模板
-  并参与定义值相等性；它不是运行结果，也没有 Repository 或生命周期。
+- `TemplateExpression` 是 Task 定义可复用、由表达式领域拥有的不可变值对象，位于
+  `org.cses.flow.core.domains.expressions`。它保存用户提交的原始模板并参与定义值
+  相等性；它不是运行结果，也没有 Repository 或生命周期。
 - 模板支持固定文本、一个或多个 `{{ path.to.value }}` 占位表达式。路径段必须以
   英文字母开头，后续只允许英文字母、数字、下划线或连字符。
 - 表达式只读取运行时已经提供的只读 Map，不能调用 Java 方法、访问 Class、执行
