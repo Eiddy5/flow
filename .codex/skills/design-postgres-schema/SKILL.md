@@ -1,6 +1,6 @@
 ---
 name: design-postgres-schema
-description: 采用可复用、领域驱动的方法设计、审查和演进 PostgreSQL 表结构。适用于识别领域概念及关系，以第三范式为基线并作有依据的取舍，生成表关系图，选择 PostgreSQL 原生类型和特性，新增或变更表、字段、索引、约束，在 gen/sql 下生成带日期且可重复执行的 SQL，以及验证 PostgreSQL 表结构脚本。
+description: 采用可复用、领域驱动的方法设计、审查和演进 PostgreSQL 表结构。适用于识别领域概念及关系，以第三范式为基线并作有依据的取舍，生成表关系图，选择 PostgreSQL 原生类型和特性，新增或变更表、字段、索引、约束，维护 gen/sql 下可重建的开发期基线，以及验证 PostgreSQL 表结构脚本。
 ---
 
 # 设计 PostgreSQL 表结构
@@ -18,10 +18,11 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
    `docs/standards/project-development.md`。
 3. 阅读 `docs/standards/`、`docs/decisions/` 和 `docs/uc/` 中与当前领域、
    数据库、JOOQ、生命周期及架构有关的资料。
-4. 在确定目录和序号前，检查 `gen/sql/production-release/` 下已有的 SQL。
+4. 检查 `gen/sql/flow/001_create_flow_tables.sql` 当前基线；不要从已删除的历史
+   迁移反推目标模型。
 5. 仅在需要核对术语、类型、状态值或查询路径时检查应用模型。
 6. 按以下优先级判断事实来源：用户最新明确决定、已确认的项目文档和 ADR、
-   已发布 SQL、当前实现。发现冲突时，先说明冲突再修改 SQL。
+   当前 Schema 基线、当前实现。发现冲突时，先说明冲突再修改 SQL。
 
 ## 明确需求
 
@@ -157,11 +158,12 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
 - 使用由应用生成的 `varchar(64)` 技术 ID。
 - 需要审计快照时，使用 `creator`、`updater` 和 `deleter` JSONB 字段保存用户快照；
   只有需要直接过滤或索引时才增加派生的操作者 ID 字段。
-- 所有 `*_at` 时间值使用 Unix 毫秒时间戳，以 `bigint` 存储。
+- PostgreSQL 的所有 `*_at` 时间值使用 `timestamptz`；项目自有 Java 类型仍按
+  ADR 0015 使用 Unix 毫秒 `long/Long`，只在 Entry/Repository 边界转换。
 - 必填的创建和更新时间使用以下数据库默认值：
 
 ```sql
-DEFAULT ((extract(epoch FROM clock_timestamp()) * 1000)::bigint)
+DEFAULT now()
 ```
 
 - 需要软删除时使用 `deleted_at`。
@@ -172,26 +174,27 @@ DEFAULT ((extract(epoch FROM clock_timestamp()) * 1000)::bigint)
 - 将 JSON 类型、状态、版本和软删除一致性检查放在表定义附近。
 - 表、字段、索引和约束统一使用小写蛇形命名。
 
-## 编写生产 SQL
+## 维护开发期基线 SQL
 
-将 SQL 放入对应的业务模块：
+当前项目处于允许丢弃旧数据的开发阶段，完整 Schema 只维护在：
 
 ```text
-gen/sql/production-release/<module>/YYYY-MM-DD/NNN_description.sql
+gen/sql/flow/001_create_flow_tables.sql
 ```
 
-根据项目现有业务分类确定 `<module>`。检查当天目录并选择下一个未使用的三位序号。
-文件名使用小写蛇形命名。
+新增、删除或修改表、字段、索引和约束时直接修改这份基线。不要新增日期目录、增量
+ALTER 脚本、回填脚本或旧模型兼容分支。基线变化后显式重建开发数据库并重新生成
+JOOQ；不要在应用启动时自动删表或清库。
 
 让每条语句都能重复执行：
 
 - `CREATE TABLE IF NOT EXISTS`
 - `CREATE [UNIQUE] INDEX IF NOT EXISTS`
-- `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
-- 有条件保护或冲突安全的数据更新
+- 基线不写数据更新或回填
 
-不要为了迁移已有环境而修改已经发布的 SQL，应新增带日期和序号的变更脚本。
-`IF NOT EXISTS` 只能保证重复执行安全，不能修正名称相同但定义不同的已有对象。
+`IF NOT EXISTS` 只能保证相同基线重复执行安全，不能修正名称相同但定义不同的已有
+对象。修改后的基线只支持空数据库；旧数据库和旧数据不在开发期兼容范围。进入需要
+保留生产数据的发布阶段前，必须先通过新 ADR 冻结基线并重新定义追加迁移规则。
 
 ## 验证
 
@@ -199,28 +202,28 @@ gen/sql/production-release/<module>/YYYY-MM-DD/NNN_description.sql
 
 ```bash
 rg -n "FOREIGN KEY|REFERENCES|CONSTRAINT fk_" <sql-file>
-rg -n "timestamptz|timestamp" <sql-file>
+rg -n "_at\s+bigint" <sql-file>
 ```
 
 按照当前项目规则，两项检查都不应匹配任何内容。
 
-使用 PostgreSQL 验证全部有序 SQL：
+使用 PostgreSQL 验证完整基线：
 
 ```bash
 .codex/skills/design-postgres-schema/scripts/validate_postgres_schema.sh \
-  <ordered-sql-file> [...]
+  gen/sql/flow/001_create_flow_tables.sql
 ```
 
 验证脚本必须：
 
-- 成功执行全部传入的 SQL；
-- 再次成功执行全部 SQL；
+- 成功执行完整基线；
+- 再次成功执行同一基线；
 - 确认 PostgreSQL 外键数量为零；
-- 确认所有 `*_at` 字段都是 `bigint`；
+- 确认所有 `*_at` 字段都是 `timestamptz`；
 - 删除临时数据库容器。
 
-验证增量脚本时，先按生产顺序传入所有前置 SQL。变更已有对象时，同时验证全新安装
-和真实升级路径。
+不验证旧 Schema 的升级路径；每次变更都验证空库建表、相同基线重复执行以及最终
+Schema 与 JOOQ/Repository 契约一致。
 
 ## 交付
 
@@ -236,6 +239,6 @@ rg -n "timestamptz|timestamp" <sql-file>
 - 选择的 PostgreSQL 特性及其理由。
 - 关键查询路径及对应索引。
 - 已执行的验证。
-- 每个变更 SQL 文件的可点击链接。
+- 完整基线 SQL 的可点击链接。
 
 不要声称已经实现未实际完成的 Repository 接入、数据迁移或运行时行为。

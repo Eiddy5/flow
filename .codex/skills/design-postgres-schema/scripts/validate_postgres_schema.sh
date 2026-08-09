@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-if [[ "$#" -eq 0 ]]; then
-    echo "用法: $0 <按顺序排列的 SQL 文件> [...]" >&2
+if [[ "$#" -ne 1 ]]; then
+    echo "用法: $0 <完整基线 SQL 文件>" >&2
     exit 2
 fi
 
@@ -35,7 +35,9 @@ docker run \
 
 schema_ready=false
 for _ in {1..30}; do
-    if docker exec "$schema_container" \
+    if docker logs "$schema_container" 2>&1 \
+            | grep -q "PostgreSQL init process complete" \
+        && docker exec "$schema_container" \
         pg_isready -U "$schema_user" -d "$schema_database" >/dev/null 2>&1; then
         schema_ready=true
         break
@@ -80,12 +82,12 @@ invalid_time_columns="$(
            FROM information_schema.columns
           WHERE table_schema = 'public'
             AND column_name ~ '_at$'
-            AND data_type <> 'bigint'
+            AND data_type <> 'timestamp with time zone'
           ORDER BY table_name, ordinal_position;"
 )"
 
 if [[ -n "$invalid_time_columns" ]]; then
-    echo "时间字段必须使用 bigint:" >&2
+    echo "时间字段必须使用 timestamptz:" >&2
     echo "$invalid_time_columns" >&2
     exit 1
 fi
@@ -93,4 +95,4 @@ fi
 echo "表结构验证通过:"
 echo "- SQL 脚本已成功执行两次"
 echo "- 外键数量: 0"
-echo "- 所有 *_at 字段均为 bigint"
+echo "- 所有 *_at 字段均为 timestamptz"
