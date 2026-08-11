@@ -4,6 +4,7 @@
 package org.flow.gen.flow;
 
 
+import org.flow.gen.flow.tables.DispatchQueueMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExternalTaskTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
@@ -17,6 +18,11 @@ import org.flow.gen.flow.tables.TaskRunTable;
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Tables {
+
+    /**
+     * The table <code>public.dispatch_queue_messages</code>.
+     */
+    public static final DispatchQueueMessagesTable DISPATCH_QUEUE_MESSAGES = DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES;
 
     /**
      * The table <code>public.executions</code>.

@@ -90,3 +90,31 @@ tasks.withType(Test).configureEach {
         showStandardStreams = true
     }
 }
+
+tasks.named('test', Test) {
+    useJUnitPlatform {
+        excludeTags 'queue-load'
+    }
+}
+
+tasks.register('dispatchQueueLoadTest', Test) {
+    group = 'verification'
+    description = 'Runs opt-in Dispatch Queue scenario load tests.'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    maxParallelForks = 1
+    useJUnitPlatform {
+        includeTags 'queue-load'
+    }
+    def configuredResultsFile = providers
+        .environmentVariable('FLOW_QUEUE_LOAD_RESULTS_FILE')
+        .getOrElse(
+            layout.buildDirectory
+                .file('reports/dispatchQueueLoadTest/results.jsonl')
+                .get()
+                .asFile
+                .absolutePath
+        )
+    systemProperty('flow.queue.load.results-file', configuredResultsFile)
+    outputs.upToDateWhen { false }
+}

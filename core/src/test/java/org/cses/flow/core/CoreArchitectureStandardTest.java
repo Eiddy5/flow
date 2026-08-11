@@ -247,6 +247,144 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
+    void queueContractsRemainTopLevelPeers()
+        throws IOException {
+        Path queues = FLOW.resolve("queues");
+        Path events = queues.resolve("event");
+
+        for (Path contract : List.of(
+            queues.resolve("Queue.java"),
+            queues.resolve("DispatchQueue.java"),
+            queues.resolve("QueueSubscription.java"),
+            queues.resolve("QueueException.java"),
+            events.resolve("Event.java"),
+            events.resolve("DispatchEvent.java")
+        )) {
+            assertTrue(
+                Files.isRegularFile(contract),
+                () -> "Missing Queue contract: " + contract
+            );
+        }
+
+        assertTrue(
+            Files.notExists(CORE.resolve("queues")),
+            "Queue contracts must remain a top-level peer of Core"
+        );
+
+        String queueContract = Files.readString(queues.resolve("Queue.java"));
+        String dispatchContract = Files.readString(
+            queues.resolve("DispatchQueue.java")
+        );
+        String eventContract = Files.readString(
+            events.resolve("Event.java")
+        );
+        assertTrue(
+            !queueContract.contains("QueueSubscription subscribe("),
+            "Base Queue must not own Dispatch subscription semantics"
+        );
+        assertTrue(
+            dispatchContract.contains(
+                "QueueSubscription subscribe(Consumer<T> consumer);"
+            ),
+            "DispatchQueue must own competing Consumer registration"
+        );
+        assertTrue(
+            eventContract.contains("@JsonIgnore")
+                && eventContract.contains("DSLContext dsl();"),
+            "Event must expose but never persist its optional caller "
+                + "transaction"
+        );
+
+        List<String> coupled = new ArrayList<>();
+        List<String> unexpectedJooqDependencies = new ArrayList<>();
+        try (var paths = Files.walk(queues)) {
+            paths.filter(path -> path.toString().endsWith(".java"))
+                .forEach(path -> {
+                    try {
+                        String source = Files.readString(path);
+                        if (source.contains("import io.micronaut.")
+                            || source.contains(
+                                "import org.cses.flow.core."
+                            )
+                            || source.contains(
+                                "import org.cses.flow.executor."
+                            )
+                            || source.contains(
+                                "import org.cses.flow.worker."
+                            )
+                            || source.contains(
+                                "import org.cses.flow.infrastructure."
+                            )) {
+                            coupled.add(path.toString());
+                        }
+                        if (source.contains("import org.jooq.")
+                            && !path.equals(events.resolve("Event.java"))) {
+                            unexpectedJooqDependencies.add(path.toString());
+                        }
+                    } catch (IOException exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                });
+        }
+
+        assertTrue(
+            coupled.isEmpty(),
+            () -> "Queue contracts depend on unrelated Flow modules: "
+                + coupled
+        );
+        assertTrue(
+            unexpectedJooqDependencies.isEmpty(),
+            () -> "Only Event.dsl may expose the confirmed JOOQ "
+                + "transaction dependency: "
+                + unexpectedJooqDependencies
+        );
+    }
+
+    @Test
+    void defaultQueueAdapterRemainsInInfrastructure() throws IOException {
+        Path defaultQueue = FLOW.resolve("infrastructure/queues");
+        for (Path adapter : List.of(
+            defaultQueue.resolve("DefaultDispatchQueue.java"),
+            defaultQueue.resolve("PostgresQueueStore.java"),
+            defaultQueue.resolve("PollingQueueSubscription.java"),
+            defaultQueue.resolve(
+                "entries/DispatchQueueMessageEntry.java"
+            )
+        )) {
+            assertTrue(
+                Files.isRegularFile(adapter),
+                () -> "Missing Default Queue adapter: " + adapter
+            );
+        }
+
+        String queue = Files.readString(
+            defaultQueue.resolve("DefaultDispatchQueue.java")
+        );
+        String store = Files.readString(
+            defaultQueue.resolve("PostgresQueueStore.java")
+        );
+        assertTrue(
+            queue.contains("implements DispatchQueue<T>")
+                && queue.contains("Class<T> eventType")
+                && queue.contains("event.dsl()"),
+            "Default Queue must implement the Core seam, use the concrete "
+                + "Event class and read the Event transaction"
+        );
+        assertTrue(
+            store.contains(".forUpdate()")
+                && store.contains(".skipLocked()"),
+            "Default Queue competition must remain database-backed"
+        );
+        assertTrue(
+            Files.isRegularFile(Path.of(
+                "../gen/src/main/java/org/flow/gen/flow/tables/"
+                    + "DispatchQueueMessagesTable.java"
+            )),
+            "Default Queue table must come from generated JOOQ sources"
+        );
+    }
+
+    @Test
     void taskCapabilitiesKeepOrchestrationOutOfWorkers() throws IOException {
         Path taskDomain = CORE.resolve("domains/tasks");
         Path runner = CORE.resolve("runner");

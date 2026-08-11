@@ -4,6 +4,7 @@
 package org.flow.gen.flow;
 
 
+import org.flow.gen.flow.tables.DispatchQueueMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExternalTaskTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
@@ -26,6 +27,7 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index IDX_DISPATCH_QUEUE_MESSAGES_PENDING = Internal.createIndex(DSL.name("idx_dispatch_queue_messages_pending"), DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES, new OrderField[] { DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES.QUEUE_NAME, DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES.CREATED_AT, DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES.ID }, false);
     public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_ID, ExecutionsTable.EXECUTIONS.FLOW_REVERSION }, false);
     public static final Index IDX_EXTERNAL_TASK_EXECUTION = Internal.createIndex(DSL.name("idx_external_task_execution"), ExternalTaskTable.EXTERNAL_TASK, new OrderField[] { ExternalTaskTable.EXTERNAL_TASK.COMPANY_ID, ExternalTaskTable.EXTERNAL_TASK.EXECUTION_ID }, false);
     public static final Index IDX_EXTERNAL_TASK_WAITING = Internal.createIndex(DSL.name("idx_external_task_waiting"), ExternalTaskTable.EXTERNAL_TASK, new OrderField[] { ExternalTaskTable.EXTERNAL_TASK.COMPANY_ID, ExternalTaskTable.EXTERNAL_TASK.STATUS, ExternalTaskTable.EXTERNAL_TASK.CREATED_AT }, false);

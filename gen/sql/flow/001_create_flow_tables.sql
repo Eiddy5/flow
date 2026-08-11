@@ -490,3 +490,21 @@ CREATE INDEX IF NOT EXISTS idx_external_task_waiting
 
 CREATE INDEX IF NOT EXISTS idx_external_task_execution
     ON external_task (company_id, execution_id);
+
+CREATE TABLE IF NOT EXISTS dispatch_queue_messages (
+    id            varchar(64) NOT NULL,
+    queue_name    varchar(250) NOT NULL,
+    event_key     text,
+    payload       jsonb NOT NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+
+    CONSTRAINT pk_dispatch_queue_messages
+        PRIMARY KEY (id),
+    CONSTRAINT ck_dispatch_queue_messages_id
+        CHECK (length(btrim(id)) > 0),
+    CONSTRAINT ck_dispatch_queue_messages_payload
+        CHECK (jsonb_typeof(payload) = 'object')
+);
+
+CREATE INDEX IF NOT EXISTS idx_dispatch_queue_messages_pending
+    ON dispatch_queue_messages (queue_name, created_at, id);

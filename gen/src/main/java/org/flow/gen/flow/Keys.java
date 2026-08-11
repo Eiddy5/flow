@@ -4,12 +4,14 @@
 package org.flow.gen.flow;
 
 
+import org.flow.gen.flow.records.DispatchQueueMessagesRecord;
 import org.flow.gen.flow.records.ExecutionsRecord;
 import org.flow.gen.flow.records.ExternalTaskRecord;
 import org.flow.gen.flow.records.FlowDraftsRecord;
 import org.flow.gen.flow.records.FlowTasksRecord;
 import org.flow.gen.flow.records.FlowsRecord;
 import org.flow.gen.flow.records.TaskRunRecord;
+import org.flow.gen.flow.tables.DispatchQueueMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExternalTaskTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
@@ -33,6 +35,7 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
+    public static final UniqueKey<DispatchQueueMessagesRecord> PK_DISPATCH_QUEUE_MESSAGES = Internal.createUniqueKey(DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES, DSL.name("pk_dispatch_queue_messages"), new TableField[] { DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES.ID }, true);
     public static final UniqueKey<ExecutionsRecord> PK_EXECUTIONS = Internal.createUniqueKey(ExecutionsTable.EXECUTIONS, DSL.name("pk_executions"), new TableField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.ID }, true);
     public static final UniqueKey<ExecutionsRecord> UQ_EXECUTIONS_FLOW = Internal.createUniqueKey(ExecutionsTable.EXECUTIONS, DSL.name("uq_executions_flow"), new TableField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.ID, ExecutionsTable.EXECUTIONS.FLOW_ID, ExecutionsTable.EXECUTIONS.FLOW_REVERSION }, true);
     public static final UniqueKey<ExecutionsRecord> UQ_EXECUTIONS_ID = Internal.createUniqueKey(ExecutionsTable.EXECUTIONS, DSL.name("uq_executions_id"), new TableField[] { ExecutionsTable.EXECUTIONS.ID }, true);

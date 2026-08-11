@@ -7,6 +7,7 @@ package org.flow.gen.flow;
 import java.util.Arrays;
 import java.util.List;
 
+import org.flow.gen.flow.tables.DispatchQueueMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExternalTaskTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
@@ -31,6 +32,11 @@ public class Public extends SchemaImpl {
      * The reference instance of <code>public</code>
      */
     public static final Public PUBLIC = new Public();
+
+    /**
+     * The table <code>public.dispatch_queue_messages</code>.
+     */
+    public final DispatchQueueMessagesTable DISPATCH_QUEUE_MESSAGES = DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES;
 
     /**
      * The table <code>public.executions</code>.
@@ -78,6 +84,7 @@ public class Public extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
+            DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES,
             ExecutionsTable.EXECUTIONS,
             ExternalTaskTable.EXTERNAL_TASK,
             FlowDraftsTable.FLOW_DRAFTS,
@@ -94,6 +101,6 @@ public class Public extends SchemaImpl {
 
     @Override
     public String getDbName() {
-        return "flow_loop_codegen";
+        return "flow";
     }
 }
