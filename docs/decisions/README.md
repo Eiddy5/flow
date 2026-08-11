@@ -37,6 +37,13 @@
   生产代码。
 - [`ADR 0012`](0012-separate-executor-and-worker-from-core.md)：Executor、Worker 与
   Core 平级。
+- [`ADR 0046`](0046-define-typed-dispatch-queue-framework.md)：在 Gradle Core 中建立
+  与 Core、Executor、Worker 平级的类型化 Dispatch Queue Interface；业务 Module
+  拥有 Event，具体 Adapter 拥有存储、恢复和消费机制，当前运行链路保持同步。
+- [`ADR 0047`](0047-implement-default-dispatch-queue.md)：以具名 `flow` JOOQ、JSONB、
+  `FOR UPDATE SKIP LOCKED` 和周期轮询实现 Default Dispatch Queue；同步发布直接使用
+  Event 的可空 DSL 或 Queue 自有事务，异步发布始终使用自有事务；Queue 通过
+  `JsonFactory` 和 `Class<T>` 统一完成不含 DSL 的 Event JSONB 快照与恢复。
 - [`ADR 0023`](0023-discover-task-extensions-with-service-loader.md)：已被 ADR 0026
   取代的 ServiceLoader 历史方案。
 - [`ADR 0024`](0024-separate-runnable-and-branch-task-capabilities.md)：Task 运行能力

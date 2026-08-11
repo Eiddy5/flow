@@ -86,8 +86,8 @@ Flow 数据库结构修改 `gen/sql/flow/001_create_flow_tables.sql`，生成器
 
 ### `core/`
 
-完整的非 HTTP Flow 模块。它保存领域、用例、Executor、Worker、插件扩展、具名
-Flow 数据源与 JOOQ 装配、PostgreSQL Repository 以及 DataPilot 兼容适配。Core
+完整的非 HTTP Flow 模块。它保存领域、用例、Executor、Worker、Queue 契约、插件
+扩展、具名 Flow 数据源与 JOOQ 装配、PostgreSQL Repository 以及 DataPilot 兼容适配。Core
 不包含 `Application`、HTTP Controller、HTTP 参数绑定或静态资源，可以由 CSES 等
 宿主通过 Server 的传递依赖直接注入和调用公开 Service。
 
@@ -135,6 +135,7 @@ core/src/main/java/org/cses/flow/
 ├── executor/         # 单轮调度、OrchestrationTask 解释、状态机、保存与 Worker 投递协调
 ├── extensions/       # 可插拔的工作流能力扩展
 ├── infrastructure/   # Flow 数据库、Repository 与 DataPilot 适配
+├── queues/           # 类型化 Event、Dispatch Queue 契约与订阅生命周期
 └── worker/           # RunnableTask 调用、Worker 投递与关联结果信封
 
 server/src/main/java/org/cses/flow/
@@ -164,8 +165,9 @@ Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务�
 ### `core/`
 
 工作流核心。它保存与 HTTP、数据库产品和外部中间件无关的业务模型、统一 State
-及迁移规则、用例入口、事务内 Handler 和持久化端口。Execution 的编排推进计算
-与 Worker 调度不放在 `core`，分别由同级的 `executor` 和 `worker` 包负责。
+及迁移规则、用例入口、事务内 Handler 和持久化端口。Execution 的编排推进计算、
+Worker 调度与异步消息传输契约不放在 `core`，分别由同级的 `executor`、`worker`
+和 `queues` 包负责。
 
 外部调用方优先通过 `core/services` 使用核心能力，不能越过 Service 直接组合
 Handler、Repository 或领域内部状态。
@@ -293,6 +295,39 @@ Core CommandHandler 负责用例校验和加载精确 Flow Reversion，不再保
 ExecutionHandler；推进、恢复或取消已有 Execution 时，Handler 先通过
 ExecutionRepository 锁定读取聚合。
 
+### `queues/`
+
+类型化异步消息传输契约。它与 `core`、`executor` 和 `worker` 平级，只保存公开
+Interface；除 `Event.dsl()` 使用 JOOQ `DSLContext` 表达可空调用方事务外，不包含
+存储、序列化或中间件产品实现：
+
+```text
+queues/
+├── Queue.java
+├── DispatchQueue.java
+├── QueueSubscription.java
+├── QueueException.java
+└── event/
+    ├── Event.java
+    └── DispatchEvent.java
+```
+
+业务 Module 拥有具体 Event 的字段、key 和内部业务分类；每个 Event 契约对应一个
+类型化 Dispatch Queue。`DispatchQueue` 提供单条与批量、同步与异步发布，并使用
+Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次注册的暂停、恢复
+和关闭生命周期。`Event` 直接提供可空 `dsl()`：非空值只供同步发布加入调用方事务，
+`null` 表示由具体 Adapter 决定事务；它不是业务字段，也不能进入持久化消息。
+
+本目录不执行 JOOQ SQL，也不保存消息表、JSONB 转换、后台轮询器、ACK、重试或具体
+Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护，Queue 不建立中心
+类型目录。
+
+当前 Executor 与 Worker 仍使用同步调用，不依赖 Queue Interface。具体 Queue Adapter
+放入对应基础设施目录；Default Adapter 已独立确认事务、持久化和周期轮询消费生命
+周期，但尚未接入业务运行链路。完整决策见
+[`ADR 0046`](decisions/0046-define-typed-dispatch-queue-framework.md) 与
+[`ADR 0047`](decisions/0047-implement-default-dispatch-queue.md)。
+
 ### `worker/`
 
 Task Worker 调度边界。它与 `core` 平级，保存：
@@ -399,6 +434,8 @@ Java Class 转换为字符串 DTO。
 ```text
 core/src/main/java/org/cses/flow/infrastructure/
 ├── jooq/            # 具名 flow 数据源和 JOOQ 装配
+├── queues/          # Default Dispatch Queue、JsonFactory 类型恢复与周期轮询
+│   └── entries/     # 排除 DSL 的 Queue Message JOOQ/JSONB Entry
 ├── repositories/    # Repository 的具体生产实现
 │   └── <业务模块>/
 │       └── postgres/
@@ -415,15 +452,20 @@ server/src/main/java/org/cses/flow/infrastructure/
 
 - Repository 的 PostgreSQL、DataPilot 等生产实现。
 - `entries` 子包中的数据库 Entry，以及 Entry 与领域对象之间的转换。
-- 消息队列、缓存、远程服务等技术适配器。
+- `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；它直接读取 Event 的
+  可空 `dsl()` 选择同步事务，使用项目现有 `JsonFactory` 把 Event 重组为排除 DSL 的
+  JSONB Queue Entry，并通过装配时传入的 `Class<T>` 恢复业务类型。Adapter 使用具名
+  `flow` JOOQ、周期轮询和 `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue
+  自有事务且不携带调用方 DSL。
+- 缓存、远程服务等其他技术适配器。
 - 只与具体框架或外部系统有关的配置和连接代码。
 
 基础设施实现 Core 定义的端口，可以依赖 Core；Core 领域对象和状态机不能反向依赖
 DataPilot、JOOQ Record 或具体数据库实现。
 
-JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository 必须在自己的
-`entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中完成数据库字段与领域
-对象的双向转换。详细规则见
+JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository 或数据库 Queue
+Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中
+完成数据库字段与项目对象的转换。详细规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
 
 跨模块测试使用的内存 Repository 和无连接基础设施替身只放在
@@ -516,6 +558,13 @@ controller/plugins
 infrastructure
   -> core/repositories 等核心端口
   -> 具名 flow JOOQ、PostgreSQL 或其他外部技术
+
+infrastructure/queues
+  -> queues 的类型化 Event、发布和订阅契约
+  -> 具名 flow JOOQ 与 gen 生成的 Queue Message 表类型
+
+queues/event
+  -> JOOQ DSLContext 类型（只表达同步发布可空事务）
 ```
 
 核心依赖方向：
@@ -527,13 +576,17 @@ infrastructure
   不依赖 CSES Approval。完整边界见
   [`ADR 0038`](decisions/0038-keep-approval-business-in-cses.md)。
 - `server` 只能通过公开 Core 能力提供 HTTP 和启动装配；`executor`、`worker`、
-  `extensions`、`infrastructure` 与 `core` Java 包共同位于 Gradle `core` 模块。
+  `queues`、`extensions`、`infrastructure` 与 `core` Java 包共同位于 Gradle `core`
+  模块。
 - `core/services` 通过 Handler 调用 `core/serializers`，由定义反序列化器把严格
   YAML 一次性物化为 Flow；领域对象不直接依赖 Jackson。
 - `core/plugins` 可以依赖 Task 领域类型和统一模型校验；具体扩展实现依赖其公开
   Plugin 契约，
   `core/plugins` 不能反向依赖 `extensions`。
 - `core` 不能依赖 `controller` 或具体基础设施实现。
+- `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；它只为
+  `Event.dsl()` 依赖 JOOQ `DSLContext` 类型，不执行 SQL。当前 Executor 与 Worker
+  运行链路也尚未依赖 Queue。
 - `core` 内不能重新建立 `executors` 或 `workers` 技术目录。
 - 具体扩展实现和 Worker 不能接管 Executor 的 Execution 状态推进。
 - Controller 不能绕过 Core Service 直接访问 Repository。
@@ -561,6 +614,10 @@ infrastructure
 | Task 能力接口及 RunnableTask 直接调用契约 | `core/src/main/java/org/cses/flow/core/domains/tasks/` |
 | Execution 编排推进、单轮上下文或 nexts 批次逻辑 | `core/src/main/java/org/cses/flow/executor/` |
 | Worker 调度器、投递信封或关联结果信封 | `core/src/main/java/org/cses/flow/worker/` |
+| 类型化 Event、Dispatch Queue 与订阅生命周期契约 | `core/src/main/java/org/cses/flow/queues/` |
+| Queue Event 分类 Interface | `core/src/main/java/org/cses/flow/queues/event/` |
+| Default Dispatch Queue、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
+| Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
 | Flow YAML 数据源配置、JOOQ 与数据库接线 | `core/src/main/java/org/cses/flow/infrastructure/jooq/` |

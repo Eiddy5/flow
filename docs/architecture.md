@@ -51,6 +51,7 @@ flowchart LR
         subgraph coreRuntime ["领域与运行时"]
             domains["FlowDraft / Flow / Execution / TaskRun / State"]
             repositoryPorts["Core Repository 端口"]
+            queueContracts["DispatchQueue / QueueSubscription"]
             executor["DefaultExecutor + ExecutorService"]
             worker["WorkerDispatcher"]
             pluginRuntime["PluginRegistry / RegisteredPlugin / PluginMetadata"]
@@ -65,6 +66,7 @@ flowchart LR
 
         subgraph infrastructure ["基础设施适配"]
             postgresRepositories["PostgreSQL Repositories + Entries"]
+            defaultQueue["DefaultDispatchQueue + JsonFactory / Class"]
             jooqBoundary["具名 flow JOOQ"]
         end
     end
@@ -120,9 +122,12 @@ flowchart LR
     inProjectPlugins -.->|"Micronaut 编译期发现"| pluginRuntime
 
     postgresRepositories -.->|"实现"| repositoryPorts
+    defaultQueue -.->|"实现"| queueContracts
     commandExecutor -->|"开启写事务"| jooqBoundary
     queryHandlers -->|"开启读事务"| jooqBoundary
     postgresRepositories --> generatedJooq
+    defaultQueue --> generatedJooq
+    defaultQueue -->|"JSONB / 周期轮询 / FOR UPDATE SKIP LOCKED"| jooqBoundary
     jooqBoundary -->|"DSLContext / SQL"| postgres
     migrations -.->|"启动前由部署人员手工执行"| postgres
     postgres -.->|"构建期读取 schema 并生成"| generatedJooq
@@ -137,9 +142,9 @@ flowchart LR
 
     class browser,externalCaller caller
     class micronautApp,staticAssets,demoController,pluginController,sessionBinder inboundNode
-    class flowService,executionService,externalTaskService,pluginService,commandExecutor,commandHandlers,queryHandlers,yamlParser,domains,repositoryPorts,executor,worker,pluginRuntime,pluginSchema coreNode
+    class flowService,executionService,externalTaskService,pluginService,commandExecutor,commandHandlers,queryHandlers,yamlParser,domains,repositoryPorts,queueContracts,executor,worker,pluginRuntime,pluginSchema coreNode
     class autoTask,pauseTask,parallelTask,inProjectPlugins extensionNode
-    class postgresRepositories,jooqBoundary,migrations,generatedJooq adapterNode
+    class postgresRepositories,defaultQueue,jooqBoundary,migrations,generatedJooq adapterNode
     class postgres,consul storeNode
 ```
 
@@ -149,6 +154,18 @@ Worker、扩展与 Infrastructure；`server` 是只保留 HTTP 与启动职责�
 `api` 传递暴露 Core。Server 既可独立启动，也可完整嵌入 CSES，两者不是独立微服务。
 Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只使用具名 `flow` 数据源。
 开发期基线变化后需要重建该数据库，不提供旧 Schema 或旧数据的升级路径。
+Core 提供尚未接入 Executor/Worker 主运行流程的类型化 Dispatch Queue Interface，
+并已有使用 `dispatch_queue_messages` 表的 Default Adapter。业务 Module 仍需为具体
+Event 提供可空 `dsl()`、确定的 `Class<T>` 和具名 Bean；Event 内部 `eventType` 仍由
+业务自行维护。当前没有 Execution Event、Queue Bean 或运行链路连线。
+
+`DefaultDispatchQueue` 直接读取 `Event.dsl()`：同步整批 Event 必须全部返回 `null`，
+或全部返回同一个 `DSLContext` 实例；前者使用 Queue 自有事务，后者加入调用方事务。
+Default Queue 使用项目现有 `JsonFactory` 把业务 Event 重组为排除 DSL 的 JSONB Queue
+Entry，并用装配时传入的 `Class<T>` 恢复类型。异步发布始终在独立事务中提交，后台
+任务只携带 Entry，不携带 Event 的 DSL。每个 Subscription 使用虚拟线程周期轮询
+数据库，并在领取事务内通过 `FOR UPDATE SKIP LOCKED` 竞争、调用 Consumer 和删除
+消息；Queue 不根据 Consumer 的普通业务异常安排重新投递。
 
 ## 核心业务流程图
 
@@ -290,4 +307,5 @@ flowchart TD
 - [`core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java`](../core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java)
 - [`core/src/main/java/org/cses/flow/infrastructure/jooq/`](../core/src/main/java/org/cses/flow/infrastructure/jooq/)
 - [`core/src/main/java/org/cses/flow/infrastructure/repositories/`](../core/src/main/java/org/cses/flow/infrastructure/repositories/)
+- [`core/src/main/java/org/cses/flow/infrastructure/queues/`](../core/src/main/java/org/cses/flow/infrastructure/queues/)
 - [`gen/sql/flow/001_create_flow_tables.sql`](../gen/sql/flow/001_create_flow_tables.sql)

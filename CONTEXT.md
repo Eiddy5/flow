@@ -155,6 +155,33 @@ _Avoid_: Process, workflow instance
 FlowDraft、Session 或 DSLContext。
 _Avoid_: Execution cursor, transaction context, persisted next queue
 
+**Queue Event**:
+由所属业务 Module 定义、可交给 Flow Queue 异步传输的类型化内容；业务自身拥有其
+字段、key 和内部分类，并直接提供只供同步发布使用的可空 `DSLContext`。DSL 不是
+业务事实，不进入持久化 Event；Queue 也不把 Event 转换为统一业务 Message 或结果信封。
+_Avoid_: generic Message, Queue Record, transport envelope
+
+**Dispatch Queue**:
+把每个 Queue Event 交给一个竞争 Consumer 的异步传输能力；多个 Consumer 只增加
+并发度，不形成广播，也不负责判断接收端业务是否完成。
+_Avoid_: Broadcast Queue, Command Bus, business retry manager
+
+**Queue Subscription**:
+一个 Consumer 在 Dispatch Queue 上的活动注册；它独立拥有暂停、恢复和关闭生命
+周期，同一注册内的 Consumer 串行接收 Queue Event。
+_Avoid_: Queue Consumer, ACK handle, business subscription
+
+**Default Dispatch Queue**:
+Dispatch Queue 当前基于 PostgreSQL 的默认 Adapter；它把 Event 的业务 JSON object
+作为 JSONB 写入 `dispatch_queue_messages`，由 Subscription 周期轮询并使用
+`FOR UPDATE SKIP LOCKED` 竞争一行，在领取事务内调用 Consumer 并删除。它直接使用
+Event 的可空 `dsl()` 或开启自有同步事务；异步发布始终使用自有事务且不携带 DSL。
+Default Queue 使用项目 `JsonFactory` 重组排除 DSL 的 Queue Entry，并通过装配时指定
+的 `Class<T>` 恢复业务 Event；内部 `eventType` 仍由业务自己解释。普通 Consumer
+异常仍完成删除；只有领取事务未提交时原行重新可见，因此崩溃恢复可能再次调用
+Consumer。
+_Avoid_: storage-specific public Queue name, Transactional Outbox, Retry Queue, Exactly-once Queue
+
 **TaskRun**:
 Execution 实际执行某个 Task 时产生的真实实例。Executor Scheduling Cycle 可以
 先在 nexts 中构造 CREATED TaskRun，但只有 `onNexts` 经 Execution 聚合接受后

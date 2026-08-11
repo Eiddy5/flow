@@ -83,8 +83,8 @@ XxxObject -> JooqPojo -> JooqObject
 | `buildUpdateMap()` | 构造完整对象更新使用的非主键、非空字段 Map |
 | `get(Field)` | 按 JOOQ Field 读取转换后的字段值 |
 
-Repository 应优先使用这些生成能力，不得为每张表重复实现反射、字段名转换、
-JSON 转换或主键过滤。
+具体数据库 Adapter（包括 Repository）应优先使用这些生成能力，不得为每张表重复
+实现反射、字段名转换、JSON 转换或主键过滤。
 
 ### `buildInsertMap()` 的当前行为
 
@@ -105,8 +105,8 @@ JSON 转换或主键过滤。
 
 ## 3. 必须通过 XxxEntry 使用生成对象
 
-业务 Repository 不得直接把生成的 `XxxObject` 当作项目持久化模型使用。每一张被
-业务使用的表都必须建立一个语义清晰的 `XxxEntry`，并继承对应生成对象。
+业务数据库 Adapter 不得直接把生成的 `XxxObject` 当作项目持久化模型使用。每一张
+被业务使用的表都必须建立一个语义清晰的 `XxxEntry`，并继承对应生成对象。
 
 例如 `flows` 表生成了 `FlowsObject`，项目中应建立：
 
@@ -133,7 +133,7 @@ ExternalTaskObject -> ExternalTaskEntry
 
 ### 禁止直接使用
 
-以下代码不得出现在具体 Repository 之外的业务代码中：
+以下代码不得出现在具体数据库 Adapter 之外的业务代码中：
 
 ```java
 FlowsObject object = new FlowsObject();
@@ -146,14 +146,14 @@ Core Domain、Service、Handler、Controller 和 Command 不得直接依赖：
 org.flow.gen.flow.*
 ```
 
-生成的 Table、Field 和 Keys 只能出现在具体 Repository 实现及必要的数据库映射
-测试中；生成的 `XxxObject` 只能作为 `entries` 子包中 `XxxEntry` 的父类使用。
-Repository 的数据读写结果必须经过 Entry，不能绕过 Entry 直接返回或保存
+生成的 Table、Field 和 Keys 只能出现在具体数据库 Adapter 实现及必要的数据库
+映射测试中；生成的 `XxxObject` 只能作为 `entries` 子包中 `XxxEntry` 的父类使用。
+数据库 Adapter 的数据读写结果必须经过 Entry，不能绕过 Entry 直接返回或保存
 `XxxObject`。
 
 ## 4. Entry 目录
 
-`XxxEntry` 必须放在它所属的具体 Repository 实现下面的 `entries` 子包中。
+`XxxEntry` 必须放在它所属的具体数据库 Adapter 实现下面的 `entries` 子包中。
 
 推荐结构：
 
@@ -176,6 +176,16 @@ core/src/main/java/org/cses/flow/infrastructure/
 infrastructure/repositories/executions/postgres/entries/
 infrastructure/repositories/externaltasks/postgres/entries/
 ```
+
+非 Repository 的数据库 Adapter 同样把 Entry 放在自身实现下，例如：
+
+```text
+infrastructure/queues/entries/
+```
+
+Default Dispatch Queue 的 `JsonFactory`、`Class<T>` 和 DSL 排除规则由
+[`ADR 0047`](../decisions/0047-implement-default-dispatch-queue.md) 定义，本文只约束
+其 Queue Message 生成对象仍必须通过上述 `entries` 中的 Entry 使用。
 
 Entry 不放在：
 
@@ -289,7 +299,7 @@ public final class ExternalTaskEntry extends ExternalTaskObject {
 
 项目自有 Java 类型的时间点统一为 Unix timestamp 毫秒值 `long/Long`，完整规则
 见 [`project-development.md`](project-development.md)。PostgreSQL
-`timestamptz` 对应的 `OffsetDateTime` 只允许出现在生成代码和 Entry/Repository
+`timestamptz` 对应的 `OffsetDateTime` 只允许出现在生成代码和 Entry/数据库 Adapter
 转换边界；Entry 写入时使用 `Instant.ofEpochMilli(...)` 转换，重建时使用
 `toInstant().toEpochMilli()`，不得把日期时间对象返回给 Core。
 
@@ -519,10 +529,10 @@ Entry 列表暴露给 Core 调用方。
 
 ## 13. 开发与审查清单
 
-新增或修改 JOOQ Repository 时逐项检查：
+新增或修改 JOOQ 数据库 Adapter（包括 Repository）时逐项检查：
 
 1. 是否使用 `org.flow.gen.flow` 下的当前生成类。
-2. 是否在具体 Repository 实现的 `entries` 子包建立了 `XxxEntry`。
+2. 是否在具体数据库 Adapter 实现的 `entries` 子包建立了 `XxxEntry`。
 3. Entry 是否继承正确的 `XxxObject`。
 4. Domain 与 Entry 的双向转换是否集中在 Entry。
 5. Core 是否完全不知道 JOOQ 生成类型和 Entry。
