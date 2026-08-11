@@ -21,12 +21,14 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import static org.flow.gen.flow.Tables.DISPATCH_QUEUE_MESSAGES;
+import static org.flow.gen.flow.Tables.FLOW_QUEUES;
 
 /**
  * Production-like named Flow datasource fixture for Queue load tests.
  */
 final class QueueLoadEnvironment implements AutoCloseable {
+
+    private static final String DISPATCH_QUEUE_TYPE = "DISPATCH";
 
     private final ApplicationContext context;
     private final JOOQ jooq;
@@ -147,14 +149,16 @@ final class QueueLoadEnvironment implements AutoCloseable {
 
     int pendingMessages(String queueName) {
         return jooq.runReturn(dsl -> dsl.fetchCount(
-            dsl.selectFrom(DISPATCH_QUEUE_MESSAGES)
-                .where(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.eq(queueName))
+            dsl.selectFrom(FLOW_QUEUES)
+                .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+                .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
         ));
     }
 
     int deleteMessages(String queueName) {
-        return jooq.runReturn(dsl -> dsl.deleteFrom(DISPATCH_QUEUE_MESSAGES)
-            .where(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.eq(queueName))
+        return jooq.runReturn(dsl -> dsl.deleteFrom(FLOW_QUEUES)
+            .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
             .execute());
     }
 
@@ -197,12 +201,9 @@ final class QueueLoadEnvironment implements AutoCloseable {
             closeExecutor.shutdownNow();
         }
         try {
-            jooq.run(dsl -> dsl.deleteFrom(DISPATCH_QUEUE_MESSAGES)
-                .where(
-                    DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.startsWith(
-                        queuePrefix
-                    )
-                )
+            jooq.run(dsl -> dsl.deleteFrom(FLOW_QUEUES)
+                .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+                .and(FLOW_QUEUES.QUEUE_NAME.startsWith(queuePrefix))
                 .execute());
         } catch (RuntimeException exception) {
             failure = combine(failure, exception);

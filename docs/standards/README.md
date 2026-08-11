@@ -22,6 +22,7 @@
 | [`project-development.md`](project-development.md) | 技术 ID、Java 类型、timestamp、复用与重构 |
 | [`domain-object-modeling.md`](domain-object-modeling.md) | 领域术语、对象角色、聚合、状态机、不变量和语义所有权的通用建模方法 |
 | [`command-executor.md`](command-executor.md) | 项目写操作、Session、Command、Handler 和事务约束 |
+| [`postgresql-schema.md`](postgresql-schema.md) | PostgreSQL 基线入口、按表文件隔离和表命名规则 |
 | [`jooq.md`](jooq.md) | JOOQ 生成类、Entry、查询映射和持久化边界 |
 | [`json.md`](json.md) | JSON 公共能力和分层使用规则 |
 | [`uc-testing.md`](uc-testing.md) | UC 与真实用户路径的测试、证据和报告规则 |

@@ -4,20 +4,20 @@
 package org.flow.gen.flow;
 
 
-import org.flow.gen.flow.records.DispatchQueueMessagesRecord;
 import org.flow.gen.flow.records.ExecutionsRecord;
-import org.flow.gen.flow.records.ExternalTaskRecord;
+import org.flow.gen.flow.records.ExternalTasksRecord;
 import org.flow.gen.flow.records.FlowDraftsRecord;
+import org.flow.gen.flow.records.FlowQueuesRecord;
 import org.flow.gen.flow.records.FlowTasksRecord;
 import org.flow.gen.flow.records.FlowsRecord;
-import org.flow.gen.flow.records.TaskRunRecord;
-import org.flow.gen.flow.tables.DispatchQueueMessagesTable;
+import org.flow.gen.flow.records.TaskRunsRecord;
 import org.flow.gen.flow.tables.ExecutionsTable;
-import org.flow.gen.flow.tables.ExternalTaskTable;
+import org.flow.gen.flow.tables.ExternalTasksTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
+import org.flow.gen.flow.tables.FlowQueuesTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
-import org.flow.gen.flow.tables.TaskRunTable;
+import org.flow.gen.flow.tables.TaskRunsTable;
 import org.jooq.TableField;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
@@ -35,18 +35,18 @@ public class Keys {
     // UNIQUE and PRIMARY KEY definitions
     // -------------------------------------------------------------------------
 
-    public static final UniqueKey<DispatchQueueMessagesRecord> PK_DISPATCH_QUEUE_MESSAGES = Internal.createUniqueKey(DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES, DSL.name("pk_dispatch_queue_messages"), new TableField[] { DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES.ID }, true);
     public static final UniqueKey<ExecutionsRecord> PK_EXECUTIONS = Internal.createUniqueKey(ExecutionsTable.EXECUTIONS, DSL.name("pk_executions"), new TableField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.ID }, true);
     public static final UniqueKey<ExecutionsRecord> UQ_EXECUTIONS_FLOW = Internal.createUniqueKey(ExecutionsTable.EXECUTIONS, DSL.name("uq_executions_flow"), new TableField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.ID, ExecutionsTable.EXECUTIONS.FLOW_ID, ExecutionsTable.EXECUTIONS.FLOW_REVERSION }, true);
     public static final UniqueKey<ExecutionsRecord> UQ_EXECUTIONS_ID = Internal.createUniqueKey(ExecutionsTable.EXECUTIONS, DSL.name("uq_executions_id"), new TableField[] { ExecutionsTable.EXECUTIONS.ID }, true);
-    public static final UniqueKey<ExternalTaskRecord> PK_EXTERNAL_TASK = Internal.createUniqueKey(ExternalTaskTable.EXTERNAL_TASK, DSL.name("pk_external_task"), new TableField[] { ExternalTaskTable.EXTERNAL_TASK.COMPANY_ID, ExternalTaskTable.EXTERNAL_TASK.ID }, true);
-    public static final UniqueKey<ExternalTaskRecord> UQ_EXTERNAL_TASK_TASK_RUN = Internal.createUniqueKey(ExternalTaskTable.EXTERNAL_TASK, DSL.name("uq_external_task_task_run"), new TableField[] { ExternalTaskTable.EXTERNAL_TASK.COMPANY_ID, ExternalTaskTable.EXTERNAL_TASK.TASK_RUN_ID }, true);
+    public static final UniqueKey<ExternalTasksRecord> PK_EXTERNAL_TASKS = Internal.createUniqueKey(ExternalTasksTable.EXTERNAL_TASKS, DSL.name("pk_external_tasks"), new TableField[] { ExternalTasksTable.EXTERNAL_TASKS.COMPANY_ID, ExternalTasksTable.EXTERNAL_TASKS.ID }, true);
+    public static final UniqueKey<ExternalTasksRecord> UQ_EXTERNAL_TASKS_TASK_RUN = Internal.createUniqueKey(ExternalTasksTable.EXTERNAL_TASKS, DSL.name("uq_external_tasks_task_run"), new TableField[] { ExternalTasksTable.EXTERNAL_TASKS.COMPANY_ID, ExternalTasksTable.EXTERNAL_TASKS.TASK_RUN_ID }, true);
     public static final UniqueKey<FlowDraftsRecord> PK_FLOW_DRAFTS = Internal.createUniqueKey(FlowDraftsTable.FLOW_DRAFTS, DSL.name("pk_flow_drafts"), new TableField[] { FlowDraftsTable.FLOW_DRAFTS.COMPANY_ID, FlowDraftsTable.FLOW_DRAFTS.ID }, true);
+    public static final UniqueKey<FlowQueuesRecord> PK_FLOW_QUEUES = Internal.createUniqueKey(FlowQueuesTable.FLOW_QUEUES, DSL.name("pk_flow_queues"), new TableField[] { FlowQueuesTable.FLOW_QUEUES.ID }, true);
     public static final UniqueKey<FlowTasksRecord> PK_FLOW_TASKS = Internal.createUniqueKey(FlowTasksTable.FLOW_TASKS, DSL.name("pk_flow_tasks"), new TableField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_ID, FlowTasksTable.FLOW_TASKS.FLOW_REVERSION, FlowTasksTable.FLOW_TASKS.ID }, true);
     public static final UniqueKey<FlowTasksRecord> UQ_FLOW_TASKS_KEY = Internal.createUniqueKey(FlowTasksTable.FLOW_TASKS, DSL.name("uq_flow_tasks_key"), new TableField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_ID, FlowTasksTable.FLOW_TASKS.FLOW_REVERSION, FlowTasksTable.FLOW_TASKS.KEY }, true);
     public static final UniqueKey<FlowsRecord> PK_FLOWS = Internal.createUniqueKey(FlowsTable.FLOWS, DSL.name("pk_flows"), new TableField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.ID, FlowsTable.FLOWS.REVERSION }, true);
     public static final UniqueKey<FlowsRecord> UQ_FLOWS_COMPANY_KEY_REVERSION = Internal.createUniqueKey(FlowsTable.FLOWS, DSL.name("uq_flows_company_key_reversion"), new TableField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.KEY, FlowsTable.FLOWS.REVERSION }, true);
-    public static final UniqueKey<TaskRunRecord> PK_TASK_RUN = Internal.createUniqueKey(TaskRunTable.TASK_RUN, DSL.name("pk_task_run"), new TableField[] { TaskRunTable.TASK_RUN.ID }, true);
-    public static final UniqueKey<TaskRunRecord> UQ_TASK_RUN_EXECUTION_ID = Internal.createUniqueKey(TaskRunTable.TASK_RUN, DSL.name("uq_task_run_execution_id"), new TableField[] { TaskRunTable.TASK_RUN.EXECUTION_ID, TaskRunTable.TASK_RUN.ID }, true);
-    public static final UniqueKey<TaskRunRecord> UQ_TASK_RUN_ORDER = Internal.createUniqueKey(TaskRunTable.TASK_RUN, DSL.name("uq_task_run_order"), new TableField[] { TaskRunTable.TASK_RUN.EXECUTION_ID, TaskRunTable.TASK_RUN.ORDER }, true);
+    public static final UniqueKey<TaskRunsRecord> PK_TASK_RUNS = Internal.createUniqueKey(TaskRunsTable.TASK_RUNS, DSL.name("pk_task_runs"), new TableField[] { TaskRunsTable.TASK_RUNS.ID }, true);
+    public static final UniqueKey<TaskRunsRecord> UQ_TASK_RUNS_EXECUTION_ID = Internal.createUniqueKey(TaskRunsTable.TASK_RUNS, DSL.name("uq_task_runs_execution_id"), new TableField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.ID }, true);
+    public static final UniqueKey<TaskRunsRecord> UQ_TASK_RUNS_ORDER = Internal.createUniqueKey(TaskRunsTable.TASK_RUNS, DSL.name("uq_task_runs_order"), new TableField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.ORDER }, true);
 }

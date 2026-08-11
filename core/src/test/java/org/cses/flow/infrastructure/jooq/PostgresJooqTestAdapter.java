@@ -13,11 +13,11 @@ import java.sql.SQLException;
 import java.util.List;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
-import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
+import static org.flow.gen.flow.Tables.EXTERNAL_TASKS;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
-import static org.flow.gen.flow.Tables.TASK_RUN;
+import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 /**
  * Test transaction boundary backed by the PostgreSQL UC database.
@@ -97,11 +97,11 @@ public final class PostgresJooqTestAdapter extends JOOQ {
 
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
-            dsl.deleteFrom(EXTERNAL_TASK)
-                .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
+            dsl.deleteFrom(EXTERNAL_TASKS)
+                .where(EXTERNAL_TASKS.COMPANY_ID.eq(companyId))
                 .execute();
-            dsl.deleteFrom(TASK_RUN)
-                .where(TASK_RUN.EXECUTION_ID.in(
+            dsl.deleteFrom(TASK_RUNS)
+                .where(TASK_RUNS.EXECUTION_ID.in(
                     dsl.select(EXECUTIONS.ID)
                         .from(EXECUTIONS)
                         .where(EXECUTIONS.COMPANY_ID.eq(companyId))

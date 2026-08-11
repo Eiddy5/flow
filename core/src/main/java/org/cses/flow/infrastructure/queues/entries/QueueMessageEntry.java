@@ -1,8 +1,8 @@
 package org.cses.flow.infrastructure.queues.entries;
 
 import org.cses.flow.queues.event.Event;
-import org.flow.gen.flow.pojos.DispatchQueueMessagesObject;
-import org.flow.gen.flow.records.DispatchQueueMessagesRecord;
+import org.flow.gen.flow.pojos.FlowQueuesObject;
+import org.flow.gen.flow.records.FlowQueuesRecord;
 import org.jooq.JSONB;
 import org.paas.common.util.StringUtil;
 import org.paas.json.JsonObject;
@@ -10,12 +10,12 @@ import org.paas.json.JsonObject;
 import java.util.Objects;
 
 /**
- * Persistence entry for one pending Default Dispatch Queue message.
+ * Persistence entry for one message in the shared Queue table.
  */
-public final class DispatchQueueMessageEntry
-    extends DispatchQueueMessagesObject {
+public final class QueueMessageEntry extends FlowQueuesObject {
 
-    public static DispatchQueueMessageEntry create(
+    public static QueueMessageEntry create(
+        String queueType,
         String queueName,
         Event event
     ) {
@@ -23,8 +23,12 @@ public final class DispatchQueueMessageEntry
         JsonObject payload = JsonObject.From(event);
         payload.remove("dsl");
 
-        DispatchQueueMessageEntry entry = new DispatchQueueMessageEntry();
+        QueueMessageEntry entry = new QueueMessageEntry();
         entry.id = StringUtil.newId();
+        entry.queueType = Objects.requireNonNull(
+            queueType,
+            "queueType"
+        );
         entry.queueName = Objects.requireNonNull(queueName, "queueName");
         entry.eventKey = event.key();
         entry.payload = JSONB.valueOf(
@@ -33,12 +37,13 @@ public final class DispatchQueueMessageEntry
         return entry;
     }
 
-    public static DispatchQueueMessageEntry fromRecord(
-        DispatchQueueMessagesRecord record
+    public static QueueMessageEntry fromRecord(
+        FlowQueuesRecord record
     ) {
         Objects.requireNonNull(record, "record");
-        DispatchQueueMessageEntry entry = new DispatchQueueMessageEntry();
+        QueueMessageEntry entry = new QueueMessageEntry();
         entry.id = record.getId();
+        entry.queueType = record.getQueueType();
         entry.queueName = record.getQueueName();
         entry.eventKey = record.getEventKey();
         entry.payload = record.getPayload();

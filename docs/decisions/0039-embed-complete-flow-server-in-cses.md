@@ -71,8 +71,8 @@ Flow 同时仍需保留独立启动能力。若 CSES 直接消费当前 Server�
   PostgreSQL；不得回退到 CSES 的 `default` 数据源。
 - CSES 只提供标准 `datasources.flow.*` 连接属性；Micronaut 和 PAAS 按 ADR 0040
   自动创建具名 DataSource、JOOQ Configuration 和 `org.x9.jooq.JOOQ`。
-- `gen/sql/flow/001_create_flow_tables.sql` 是唯一完整 Schema 基线，由开发或部署
-  人员在启动应用前手工执行。
+- `gen/sql/flow/001_create_flow_tables.sql` 是唯一完整 Schema 入口，由开发或部署
+  人员在启动应用前手工执行；入口与表级脚本布局由 ADR 0048 定义。
 - Flow Server 不依赖 Flyway，不复制 `db/migration/flow` 资源，不创建 Schema
   History 表，也不在启动时创建、修改或删除数据库对象。
 - 提供了 Flow 数据源但未执行当前基线时，数据库装配或首次业务访问明确失败；应用

@@ -1,9 +1,9 @@
 package org.cses.flow.infrastructure.queues;
 
-import org.cses.flow.infrastructure.queues.entries.DispatchQueueMessageEntry;
+import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
 import org.cses.flow.queues.QueueException;
 import org.cses.flow.queues.event.DispatchEvent;
-import org.flow.gen.flow.records.DispatchQueueMessagesRecord;
+import org.flow.gen.flow.records.FlowQueuesRecord;
 import org.jooq.DSLContext;
 import org.jooq.InsertSetMoreStep;
 import org.x9.jooq.JOOQ;
@@ -14,12 +14,14 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-import static org.flow.gen.flow.Tables.DISPATCH_QUEUE_MESSAGES;
+import static org.flow.gen.flow.Tables.FLOW_QUEUES;
 
 /**
  * PostgreSQL operations hidden behind the Default Dispatch Queue.
  */
 final class PostgresQueueStore<T extends DispatchEvent> {
+
+    static final String DISPATCH_QUEUE_TYPE = "DISPATCH";
 
     private final String queueName;
     private final JOOQ jooq;
@@ -53,17 +55,18 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         return event;
     }
 
-    List<DispatchQueueMessageEntry> prepare(T event) {
+    List<QueueMessageEntry> prepare(T event) {
         return prepare(List.of(requireEvent(event)));
     }
 
-    List<DispatchQueueMessageEntry> prepare(List<T> events) {
-        List<DispatchQueueMessageEntry> entries = new ArrayList<>(
+    List<QueueMessageEntry> prepare(List<T> events) {
+        List<QueueMessageEntry> entries = new ArrayList<>(
             events.size()
         );
         for (T event : events) {
             try {
-                entries.add(DispatchQueueMessageEntry.create(
+                entries.add(QueueMessageEntry.create(
+                    DISPATCH_QUEUE_TYPE,
                     queueName,
                     event
                 ));
@@ -80,7 +83,7 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         return List.copyOf(entries);
     }
 
-    void publish(List<DispatchQueueMessageEntry> entries) {
+    void publish(List<QueueMessageEntry> entries) {
         if (entries.isEmpty()) {
             return;
         }
@@ -95,7 +98,7 @@ final class PostgresQueueStore<T extends DispatchEvent> {
 
     void publish(
         DSLContext dsl,
-        List<DispatchQueueMessageEntry> entries
+        List<QueueMessageEntry> entries
     ) {
         if (dsl == null) {
             throw new QueueException("Transactional DSLContext is required");
@@ -131,11 +134,11 @@ final class PostgresQueueStore<T extends DispatchEvent> {
 
     private void insert(
         DSLContext dsl,
-        List<DispatchQueueMessageEntry> entries
+        List<QueueMessageEntry> entries
     ) {
-        DispatchQueueMessageEntry first = entries.getFirst();
-        InsertSetMoreStep<DispatchQueueMessagesRecord> insert = dsl
-            .insertInto(DISPATCH_QUEUE_MESSAGES)
+        QueueMessageEntry first = entries.getFirst();
+        InsertSetMoreStep<FlowQueuesRecord> insert = dsl
+            .insertInto(FLOW_QUEUES)
             .set(first.buildInsertMap());
         for (int index = 1; index < entries.size(); index++) {
             insert = insert.newRecord()
@@ -149,12 +152,13 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         Consumer<T> consumer,
         BooleanSupplier deliveryAllowed
     ) {
-        DispatchQueueMessagesRecord record = dsl
-            .selectFrom(DISPATCH_QUEUE_MESSAGES)
-            .where(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.eq(queueName))
+        FlowQueuesRecord record = dsl
+            .selectFrom(FLOW_QUEUES)
+            .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
             .orderBy(
-                DISPATCH_QUEUE_MESSAGES.CREATED_AT.asc(),
-                DISPATCH_QUEUE_MESSAGES.ID.asc()
+                FLOW_QUEUES.CREATED_AT.asc(),
+                FLOW_QUEUES.ID.asc()
             )
             .limit(1)
             .forUpdate()
@@ -164,8 +168,7 @@ final class PostgresQueueStore<T extends DispatchEvent> {
             return DeliveryAttempt.empty();
         }
 
-        DispatchQueueMessageEntry entry =
-            DispatchQueueMessageEntry.fromRecord(record);
+        QueueMessageEntry entry = QueueMessageEntry.fromRecord(record);
         T event;
         try {
             event = entry.toEvent(eventType);
@@ -191,8 +194,10 @@ final class PostgresQueueStore<T extends DispatchEvent> {
             deliveryFailure = exception;
         }
 
-        int deleted = dsl.deleteFrom(DISPATCH_QUEUE_MESSAGES)
-            .where(DISPATCH_QUEUE_MESSAGES.ID.eq(entry.getId()))
+        int deleted = dsl.deleteFrom(FLOW_QUEUES)
+            .where(FLOW_QUEUES.ID.eq(entry.getId()))
+            .and(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
             .execute();
         if (deleted != 1) {
             throw new QueueException(

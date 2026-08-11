@@ -67,6 +67,8 @@ Skill 内复制第二套项目规则。`references/` 和 `scripts/` 只在工作
 gen/
 ├── sql/
 │   └── flow/                 # Flow 开发期 PostgreSQL 完整建表基线
+│       ├── 001_create_flow_tables.sql # psql 完整入口与显式执行顺序
+│       └── tables/           # 一张表一个同名 SQL，包含表、约束和索引
 └── src/main/
     ├── java/
     │   ├── org/flow/builder/ # JOOQ Generator 启动和配置
@@ -74,7 +76,9 @@ gen/
     └── resources/            # 生成器配置
 ```
 
-Flow 数据库结构修改 `gen/sql/flow/001_create_flow_tables.sql`，生成器逻辑放在
+Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入口，具体表结构
+修改位于 `gen/sql/flow/tables/<table_name>.sql`。表文件隔离与命名规则见
+[`docs/standards/postgresql-schema.md`](standards/postgresql-schema.md)。生成器逻辑放在
 `gen/src/main/java/org/flow/builder/`，生成结果位于
 `gen/src/main/java/org/flow/gen/flow/`。生成结果不能手工修改，业务代码不能放入
 `gen`。生成类的使用规则见
@@ -320,7 +324,9 @@ Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次�
 
 本目录不执行 JOOQ SQL，也不保存消息表、JSONB 转换、后台轮询器、ACK、重试或具体
 Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护，Queue 不建立中心
-类型目录。
+类型目录。当前只定义 Dispatch Interface；Broadcast Interface、消费游标和保留清理
+尚未定义。数据库 Adapter 的所有传输类别共用 `flow_queues` 载荷表，并通过
+`queue_type + queue_name` 逻辑隔离；未来专属消费状态可以独立建表，但不拆分载荷表。
 
 当前 Executor 与 Worker 仍使用同步调用，不依赖 Queue Interface。具体 Queue Adapter
 放入对应基础设施目录；Default Adapter 已独立确认事务、持久化和周期轮询消费生命
@@ -434,8 +440,8 @@ Java Class 转换为字符串 DTO。
 ```text
 core/src/main/java/org/cses/flow/infrastructure/
 ├── jooq/            # 具名 flow 数据源和 JOOQ 装配
-├── queues/          # Default Dispatch Queue、JsonFactory 类型恢复与周期轮询
-│   └── entries/     # 排除 DSL 的 Queue Message JOOQ/JSONB Entry
+├── queues/          # Default Dispatch Queue、统一消息表、JsonFactory 类型恢复与周期轮询
+│   └── entries/     # 排除 DSL、包含 queue_type 与 queue_name 的 Queue Message Entry
 ├── repositories/    # Repository 的具体生产实现
 │   └── <业务模块>/
 │       └── postgres/
@@ -454,9 +460,11 @@ server/src/main/java/org/cses/flow/infrastructure/
 - `entries` 子包中的数据库 Entry，以及 Entry 与领域对象之间的转换。
 - `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；它直接读取 Event 的
   可空 `dsl()` 选择同步事务，使用项目现有 `JsonFactory` 把 Event 重组为排除 DSL 的
-  JSONB Queue Entry，并通过装配时传入的 `Class<T>` 恢复业务类型。Adapter 使用具名
-  `flow` JOOQ、周期轮询和 `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue
-  自有事务且不携带调用方 DSL。
+  JSONB Queue Entry，并通过装配时传入的 `Class<T>` 恢复业务类型。所有传输类别的
+  Entry 写入统一 `flow_queues`，用可扩展 `queue_type + queue_name` 隔离；当前
+  Default Adapter 固定使用 `DISPATCH`。Adapter 使用具名 `flow` JOOQ、周期轮询和
+  `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务且不携带调用方
+  DSL。
 - 缓存、远程服务等其他技术适配器。
 - 只与具体框架或外部系统有关的配置和连接代码。
 
@@ -561,7 +569,7 @@ infrastructure
 
 infrastructure/queues
   -> queues 的类型化 Event、发布和订阅契约
-  -> 具名 flow JOOQ 与 gen 生成的 Queue Message 表类型
+  -> 具名 flow JOOQ 与 gen 生成的统一 Queue Message 表类型
 
 queues/event
   -> JOOQ DSLContext 类型（只表达同步发布可空事务）
@@ -616,8 +624,8 @@ queues/event
 | Worker 调度器、投递信封或关联结果信封 | `core/src/main/java/org/cses/flow/worker/` |
 | 类型化 Event、Dispatch Queue 与订阅生命周期契约 | `core/src/main/java/org/cses/flow/queues/` |
 | Queue Event 分类 Interface | `core/src/main/java/org/cses/flow/queues/event/` |
-| Default Dispatch Queue、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
-| Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
+| Default Dispatch Queue、统一消息表、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
+| 包含 `queue_type + queue_name` 的统一 Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
 | Flow YAML 数据源配置、JOOQ 与数据库接线 | `core/src/main/java/org/cses/flow/infrastructure/jooq/` |
@@ -629,7 +637,8 @@ queues/event
 | Core 生产代码对应测试 | 与生产包一致的 `core/src/test/java/` |
 | 跨模块测试夹具 | `core/src/testFixtures/java/` |
 | HTTP 与启动装配测试 | 与生产包一致的 `server/src/test/java/` |
-| 开发期数据库建表基线 | `gen/sql/flow/001_create_flow_tables.sql` |
+| 开发期数据库建表基线入口 | `gen/sql/flow/001_create_flow_tables.sql` |
+| 单表建表、约束和索引 | `gen/sql/flow/tables/<table_name>.sql` |
 | 开发或测试规范 | `docs/standards/` |
 | 架构决策 | `docs/decisions/` |
 | UC 场景 | `docs/uc/<领域>/` |

@@ -2,18 +2,18 @@ package org.cses.flow.infrastructure.repositories.externaltasks.postgres.entries
 
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
-import org.flow.gen.flow.pojos.ExternalTaskObject;
-import org.flow.gen.flow.records.ExternalTaskRecord;
+import org.flow.gen.flow.pojos.ExternalTasksObject;
+import org.flow.gen.flow.records.ExternalTasksRecord;
 import org.paas.json.JsonObject;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
 
-import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
+import static org.flow.gen.flow.Tables.EXTERNAL_TASKS;
 
-public final class ExternalTaskEntry extends ExternalTaskObject {
+public final class ExternalTaskEntry extends ExternalTasksObject {
 
-    public static ExternalTaskEntry fromRecord(ExternalTaskRecord record) {
+    public static ExternalTaskEntry fromRecord(ExternalTasksRecord record) {
         ExternalTaskEntry entry = new ExternalTaskEntry();
         entry.companyId = record.getCompanyId();
         entry.id = record.getId();
@@ -21,7 +21,7 @@ public final class ExternalTaskEntry extends ExternalTaskObject {
         entry.taskRunId = record.getTaskRunId();
         entry.status = record.getStatus();
         entry.outputs = JsonObject.Parse(
-            record.get(EXTERNAL_TASK.OUTPUTS).data()
+            record.get(EXTERNAL_TASKS.OUTPUTS).data()
         );
         entry.lockVersion = record.getLockVersion();
         entry.createdAt = record.getCreatedAt();

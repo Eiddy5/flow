@@ -2,18 +2,18 @@ package org.cses.flow.infrastructure.repositories.executions.postgres.entries;
 
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.State;
-import org.flow.gen.flow.pojos.TaskRunObject;
-import org.flow.gen.flow.records.TaskRunRecord;
+import org.flow.gen.flow.pojos.TaskRunsObject;
+import org.flow.gen.flow.records.TaskRunsRecord;
 import org.paas.json.JsonObject;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
 
-import static org.flow.gen.flow.Tables.TASK_RUN;
+import static org.flow.gen.flow.Tables.TASK_RUNS;
 
-public final class TaskRunEntry extends TaskRunObject {
+public final class TaskRunEntry extends TaskRunsObject {
 
-    public static TaskRunEntry fromRecord(TaskRunRecord record) {
+    public static TaskRunEntry fromRecord(TaskRunsRecord record) {
         TaskRunEntry entry = new TaskRunEntry();
         entry.id = record.getId();
         entry.executionId = record.getExecutionId();
@@ -24,10 +24,10 @@ public final class TaskRunEntry extends TaskRunObject {
         entry.startAt = record.getStartAt();
         entry.endAt = record.getEndAt();
         entry.inputs = JsonObject.Parse(
-            record.get(TASK_RUN.INPUTS).data()
+            record.get(TASK_RUNS.INPUTS).data()
         );
         entry.outputs = JsonObject.Parse(
-            record.get(TASK_RUN.OUTPUTS).data()
+            record.get(TASK_RUNS.OUTPUTS).data()
         );
         entry.error = record.getError();
         entry.order = record.getOrder();

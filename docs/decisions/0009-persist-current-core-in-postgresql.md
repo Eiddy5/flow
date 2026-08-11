@@ -31,7 +31,7 @@ ADR 0008 已确定 Flow 定义域后续迁移到 `FlowDraft + Flow Reversion`。
   时由 `FlowDraft.raw` 替换该过渡格式。
 - `executions` 增加 `lock_version`。首次保存为 0，修改已有聚合时必须恰好加一。
   同一命令事务内允许同一版本多次 flush，以支持 Worker 外键记录的中间保存。
-- 迁移遗留的 `external_task.lock_version` 使用严格 compare-and-set，一次更新
+- 迁移遗留的 `external_tasks.lock_version` 使用严格 compare-and-set，一次更新
   必须恰好加一；新 PAUSE 恢复不再依赖该表。
 - 写操作从当前 `DSLContext` 的事务数据读取 Session，生成 creator/updater 审计；
   `CommandExecutor` 负责在命令事务期间绑定并在结束后恢复 Session。

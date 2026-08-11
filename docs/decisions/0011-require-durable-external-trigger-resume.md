@@ -60,7 +60,7 @@ Execution 与 TaskRun 已经完整持久化暂停运行事实。使用它们的�
 
 ## 后果
 
-- `executions`、`task_run` 和 Flow 定义必须完整支持持久化重建。
+- `executions`、`task_runs` 和 Flow 定义必须完整支持持久化重建。
 - 外部能力必须保存准确的 executionId 和 taskRunId；不能只保存页面对象或内存
   回调。
 - 恢复测试应通过 TaskRun 历史复核等待点和最终结果。

@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.flow.gen.flow.Tables.DISPATCH_QUEUE_MESSAGES;
+import static org.flow.gen.flow.Tables.FLOW_QUEUES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -29,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
     matches = ".+"
 )
 final class DefaultDispatchQueueTransactionIntegrationTest {
+
+    private static final String DISPATCH_QUEUE_TYPE = "DISPATCH";
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -47,8 +49,9 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
         for (DefaultDispatchQueue<TestEvent> queue : queues) {
             queue.close();
         }
-        database.run(dsl -> dsl.deleteFrom(DISPATCH_QUEUE_MESSAGES)
-            .where(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.startsWith(queuePrefix))
+        database.run(dsl -> dsl.deleteFrom(FLOW_QUEUES)
+            .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(FLOW_QUEUES.QUEUE_NAME.startsWith(queuePrefix))
             .execute());
     }
 
@@ -165,10 +168,11 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
         ));
 
         JsonObject payload = database.runReturn(dsl -> JsonObject.Parse(
-            dsl.select(DISPATCH_QUEUE_MESSAGES.PAYLOAD)
-                .from(DISPATCH_QUEUE_MESSAGES)
-                .where(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.eq(queueName))
-                .fetchSingle(DISPATCH_QUEUE_MESSAGES.PAYLOAD)
+            dsl.select(FLOW_QUEUES.PAYLOAD)
+                .from(FLOW_QUEUES)
+                .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+                .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
+                .fetchSingle(FLOW_QUEUES.PAYLOAD)
                 .data()
         ));
         assertEquals("json-key", payload.getString("key"));
@@ -190,8 +194,9 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
 
     private int pending(String queueName) {
         return database.runReturn(dsl -> dsl.fetchCount(
-            DISPATCH_QUEUE_MESSAGES,
-            DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.eq(queueName)
+            FLOW_QUEUES,
+            FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE)
+                .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
         ));
     }
 

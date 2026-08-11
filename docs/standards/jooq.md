@@ -49,11 +49,13 @@ import org.flow.gen.flow.pojos.FlowsObject;
 `org.flow.gen.flow` 下的文件由 JOOQ Generator 生成，禁止直接手工修改。数据库结构
 改变后应修改数据库脚本并重新生成代码，不能在生成类中补业务方法。
 
-`gen` 是 JOOQ 生成代码和数据库脚本的源码归属。开发期唯一 Schema 来源是
-`gen/sql/flow/001_create_flow_tables.sql`；开发或部署人员必须在应用启动前手工执行
-该基线，`core` 和 `server` 不复制迁移资源，也不自动创建或升级 Schema。基线变化时必须重建
-开发数据库并重新生成 JOOQ，不为旧 Schema 或旧数据编写升级脚本。业务代码仍不能
-依赖 Generator 或 JOOQ Codegen 实现。
+`gen` 是 JOOQ 生成代码和数据库脚本的源码归属。开发期 Schema 由
+`gen/sql/flow/001_create_flow_tables.sql` 完整入口与
+`gen/sql/flow/tables/<table_name>.sql` 表级脚本共同定义；文件隔离和表命名遵循
+[`postgresql-schema.md`](postgresql-schema.md)。开发或部署人员必须在应用启动前
+手工执行完整入口，`core` 和 `server` 不复制迁移资源，也不自动创建或升级 Schema。
+基线变化时必须重建开发数据库并重新生成 JOOQ，不为旧 Schema 或旧数据编写升级
+脚本。业务代码仍不能依赖 Generator 或 JOOQ Codegen 实现。
 
 Flow 运行时中的 `org.x9.jooq.JOOQ`、JOOQ `Configuration` 和 `DataSource` 必须
 使用 `@Named("flow")` 绑定。宿主应用即使同时存在 `default`、`mattermost` 等数据
@@ -118,16 +120,16 @@ public final class FlowEntry extends FlowsObject {
 命名关系：
 
 ```text
-FlowsObject       -> FlowEntry
-ExecutionsObject  -> ExecutionEntry
-TaskRunObject     -> TaskRunEntry
-ExternalTaskObject -> ExternalTaskEntry
+FlowsObject        -> FlowEntry
+ExecutionsObject   -> ExecutionEntry
+TaskRunsObject     -> TaskRunEntry
+ExternalTasksObject -> ExternalTaskEntry
 ```
 
 `XxxObject` 的名称来自数据库表，`XxxEntry` 的名称应表达项目中的持久化语义，不
 要求机械保留表名的单复数形式。
 
-`ExternalTaskObject -> ExternalTaskEntry` 只记录当前迁移遗留的映射实例。ADR
+`ExternalTasksObject -> ExternalTaskEntry` 只记录当前迁移遗留的映射实例。ADR
 0016 已移除 ExternalTask 的目标领域地位；新 PAUSE/Resume 代码不得以该示例新增
 依赖。
 
@@ -185,7 +187,11 @@ infrastructure/queues/entries/
 
 Default Dispatch Queue 的 `JsonFactory`、`Class<T>` 和 DSL 排除规则由
 [`ADR 0047`](../decisions/0047-implement-default-dispatch-queue.md) 定义，本文只约束
-其 Queue Message 生成对象仍必须通过上述 `entries` 中的 Entry 使用。
+其 Queue Message 生成对象仍必须通过上述 `entries` 中的 Entry 使用。数据库 Queue
+Adapter 的 Event payload 统一映射到 `flow_queues`，使用
+`queue_type + queue_name` 作为传输类别与逻辑 Queue 的查询边界；不得为 Dispatch 或
+Broadcast 复制专属消息载荷表。未来某种消费方式需要游标、确认或保留状态时，可以在
+对应 Adapter 下建立独立状态 Entry，但消息载荷仍归统一 Entry。
 
 Entry 不放在：
 
@@ -256,12 +262,12 @@ package org.cses.flow.infrastructure.repositories.externaltasks.postgres.entries
 
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
-import org.flow.gen.flow.pojos.ExternalTaskObject;
+import org.flow.gen.flow.pojos.ExternalTasksObject;
 import org.paas.json.JsonObject;
 
 import java.util.Map;
 
-public final class ExternalTaskEntry extends ExternalTaskObject {
+public final class ExternalTaskEntry extends ExternalTasksObject {
 
     public static ExternalTaskEntry fromDomain(ExternalTask task) {
         ExternalTaskEntry entry = new ExternalTaskEntry();
@@ -441,9 +447,9 @@ ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
     .and(EXECUTIONS.ID.eq(executionId))
     .fetchOne(ExecutionEntry::fromRecord);
 
-List<TaskRunEntry> taskRuns = dsl.selectFrom(TASK_RUN)
-    .where(TASK_RUN.EXECUTION_ID.eq(executionId))
-    .orderBy(TASK_RUN.CREATED_AT)
+List<TaskRunEntry> taskRuns = dsl.selectFrom(TASK_RUNS)
+    .where(TASK_RUNS.EXECUTION_ID.eq(executionId))
+    .orderBy(TASK_RUNS.CREATED_AT)
     .fetch(TaskRunEntry::fromRecord);
 ```
 

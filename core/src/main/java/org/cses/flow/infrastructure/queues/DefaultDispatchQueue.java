@@ -1,6 +1,6 @@
 package org.cses.flow.infrastructure.queues;
 
-import org.cses.flow.infrastructure.queues.entries.DispatchQueueMessageEntry;
+import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
 import org.cses.flow.queues.DispatchQueue;
 import org.cses.flow.queues.QueueException;
 import org.cses.flow.queues.QueueSubscription;
@@ -105,7 +105,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
     public void emit(T event) {
         requireOpen();
         T accepted = store.requireEvent(event);
-        List<DispatchQueueMessageEntry> entries = store.prepare(accepted);
+        List<QueueMessageEntry> entries = store.prepare(accepted);
         publishSynchronously(List.of(accepted), entries);
         signalAvailable();
     }
@@ -114,7 +114,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
     public void emit(List<T> events) {
         requireOpen();
         List<T> accepted = store.snapshot(events);
-        List<DispatchQueueMessageEntry> entries = store.prepare(accepted);
+        List<QueueMessageEntry> entries = store.prepare(accepted);
         publishSynchronously(accepted, entries);
         signalAvailable();
     }
@@ -123,7 +123,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
     public CompletionStage<Void> emitAsync(T event) {
         try {
             requireOpen();
-            List<DispatchQueueMessageEntry> entries = store.prepare(event);
+            List<QueueMessageEntry> entries = store.prepare(event);
             return submitAsync(entries);
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(queueFailure(
@@ -138,7 +138,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
         try {
             requireOpen();
             List<T> accepted = store.snapshot(events);
-            List<DispatchQueueMessageEntry> entries = store.prepare(accepted);
+            List<QueueMessageEntry> entries = store.prepare(accepted);
             return submitAsync(entries);
         } catch (RuntimeException exception) {
             return CompletableFuture.failedFuture(queueFailure(
@@ -223,7 +223,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
 
     private void publishSynchronously(
         List<T> events,
-        List<DispatchQueueMessageEntry> entries
+        List<QueueMessageEntry> entries
     ) {
         if (entries.isEmpty()) {
             return;
@@ -263,7 +263,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
     }
 
     private CompletionStage<Void> submitAsync(
-        List<DispatchQueueMessageEntry> entries
+        List<QueueMessageEntry> entries
     ) {
         lifecycleLock.lock();
         try {

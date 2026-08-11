@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.flow.gen.flow.Tables.DISPATCH_QUEUE_MESSAGES;
+import static org.flow.gen.flow.Tables.FLOW_QUEUES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -42,6 +42,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 )
 final class DefaultDispatchQueueIntegrationTest {
 
+    private static final String DISPATCH_QUEUE_TYPE = "DISPATCH";
+    private static final String BROADCAST_QUEUE_TYPE = "BROADCAST";
+
     @BeforeAll
     static void initializeJsonMapper() {
         JsonFactory.instance = JsonMapper.createDefault();
@@ -53,15 +56,34 @@ final class DefaultDispatchQueueIntegrationTest {
         "default-queue-test-" + StringUtil.newId();
     private final Set<DefaultDispatchQueue<TestEvent>> queues =
         ConcurrentHashMap.newKeySet();
+    private final Set<String> broadcastMessageIds =
+        ConcurrentHashMap.newKeySet();
 
     @AfterEach
     void closeQueuesAndDeleteMessages() {
         for (DefaultDispatchQueue<TestEvent> queue : queues) {
             queue.close();
         }
-        database.run(dsl -> dsl.deleteFrom(DISPATCH_QUEUE_MESSAGES)
-            .where(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.startsWith(queuePrefix))
-            .execute());
+        try {
+            database.run(dsl -> {
+                dsl.deleteFrom(FLOW_QUEUES)
+                    .where(FLOW_QUEUES.QUEUE_TYPE.eq(
+                        DISPATCH_QUEUE_TYPE
+                    ))
+                    .and(FLOW_QUEUES.QUEUE_NAME.startsWith(queuePrefix))
+                    .execute();
+                if (!broadcastMessageIds.isEmpty()) {
+                    dsl.deleteFrom(FLOW_QUEUES)
+                        .where(FLOW_QUEUES.QUEUE_TYPE.eq(
+                            BROADCAST_QUEUE_TYPE
+                        ))
+                        .and(FLOW_QUEUES.ID.in(broadcastMessageIds))
+                        .execute();
+                }
+            });
+        } finally {
+            broadcastMessageIds.clear();
+        }
     }
 
     @Test
@@ -96,6 +118,46 @@ final class DefaultDispatchQueueIntegrationTest {
         assertEquals(messageCount, deliveries.size());
         assertTrue(deliveries.values().stream()
             .allMatch(count -> count.get() == 1));
+    }
+
+    @Test
+    void dispatchConsumerIgnoresBroadcastRowsWithSameQueueName()
+        throws InterruptedException {
+        String name = queueName("queue-type-isolation");
+        DefaultDispatchQueue<TestEvent> queue = queue(name);
+        String broadcastMessageId = StringUtil.newId();
+        database.run(dsl -> dsl.insertInto(FLOW_QUEUES)
+            .set(FLOW_QUEUES.ID, broadcastMessageId)
+            .set(FLOW_QUEUES.QUEUE_TYPE, BROADCAST_QUEUE_TYPE)
+            .set(FLOW_QUEUES.QUEUE_NAME, name)
+            .set(FLOW_QUEUES.EVENT_KEY, "broadcast")
+            .set(
+                FLOW_QUEUES.PAYLOAD,
+                JSONB.valueOf(
+                    """
+                    {"key":"broadcast","value":"must-not-deliver"}
+                    """
+                )
+            )
+            .execute());
+        broadcastMessageIds.add(broadcastMessageId);
+        CountDownLatch dispatchDelivered = new CountDownLatch(1);
+        CountDownLatch broadcastDelivered = new CountDownLatch(1);
+        queue.subscribe(event -> {
+            if (event.value().equals("dispatch")) {
+                dispatchDelivered.countDown();
+            }
+            if (event.value().equals("must-not-deliver")) {
+                broadcastDelivered.countDown();
+            }
+        });
+
+        queue.emit(new TestEvent("dispatch", "dispatch"));
+
+        assertTrue(dispatchDelivered.await(10, TimeUnit.SECONDS));
+        awaitPending(name, 0);
+        assertFalse(broadcastDelivered.await(250, TimeUnit.MILLISECONDS));
+        assertEquals(1, pending(name, BROADCAST_QUEUE_TYPE));
     }
 
     @Test
@@ -154,12 +216,13 @@ final class DefaultDispatchQueueIntegrationTest {
     @Test
     void keepsOriginalMessageWhenPayloadCannotBeDecoded() {
         String name = queueName("decode-failure");
-        database.run(dsl -> dsl.insertInto(DISPATCH_QUEUE_MESSAGES)
-            .set(DISPATCH_QUEUE_MESSAGES.ID, StringUtil.newId())
-            .set(DISPATCH_QUEUE_MESSAGES.QUEUE_NAME, name)
-            .set(DISPATCH_QUEUE_MESSAGES.EVENT_KEY, "unreadable")
+        database.run(dsl -> dsl.insertInto(FLOW_QUEUES)
+            .set(FLOW_QUEUES.ID, StringUtil.newId())
+            .set(FLOW_QUEUES.QUEUE_TYPE, DISPATCH_QUEUE_TYPE)
+            .set(FLOW_QUEUES.QUEUE_NAME, name)
+            .set(FLOW_QUEUES.EVENT_KEY, "unreadable")
             .set(
-                DISPATCH_QUEUE_MESSAGES.PAYLOAD,
+                FLOW_QUEUES.PAYLOAD,
                 JSONB.valueOf(
                     """
                     {"key":"unreadable","value":{"nested":true}}
@@ -594,9 +657,14 @@ final class DefaultDispatchQueueIntegrationTest {
     }
 
     private int pending(String name) {
+        return pending(name, DISPATCH_QUEUE_TYPE);
+    }
+
+    private int pending(String name, String queueType) {
         return database.runReturn(dsl -> dsl.fetchCount(
-            DISPATCH_QUEUE_MESSAGES,
-            DISPATCH_QUEUE_MESSAGES.QUEUE_NAME.eq(name)
+            FLOW_QUEUES,
+            FLOW_QUEUES.QUEUE_TYPE.eq(queueType)
+                .and(FLOW_QUEUES.QUEUE_NAME.eq(name))
         ));
     }
 

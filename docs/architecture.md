@@ -155,17 +155,21 @@ Worker、扩展与 Infrastructure；`server` 是只保留 HTTP 与启动职责�
 Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只使用具名 `flow` 数据源。
 开发期基线变化后需要重建该数据库，不提供旧 Schema 或旧数据的升级路径。
 Core 提供尚未接入 Executor/Worker 主运行流程的类型化 Dispatch Queue Interface，
-并已有使用 `dispatch_queue_messages` 表的 Default Adapter。业务 Module 仍需为具体
-Event 提供可空 `dsl()`、确定的 `Class<T>` 和具名 Bean；Event 内部 `eventType` 仍由
-业务自行维护。当前没有 Execution Event、Queue Bean 或运行链路连线。
+并已有使用统一 `flow_queues` 表的 Default Adapter。该表以
+`queue_type + queue_name` 隔离传输类别和逻辑 Queue；当前 Adapter 只写入并领取
+`DISPATCH` 行。业务 Module 仍需为具体 Event 提供可空 `dsl()`、确定的 `Class<T>` 和
+具名 Bean；Event 内部 `eventType` 仍由业务自行维护。当前没有 Execution Event、Queue
+Bean 或运行链路连线，也没有 Broadcast Interface、消费游标或保留清理实现。
 
 `DefaultDispatchQueue` 直接读取 `Event.dsl()`：同步整批 Event 必须全部返回 `null`，
 或全部返回同一个 `DSLContext` 实例；前者使用 Queue 自有事务，后者加入调用方事务。
 Default Queue 使用项目现有 `JsonFactory` 把业务 Event 重组为排除 DSL 的 JSONB Queue
 Entry，并用装配时传入的 `Class<T>` 恢复类型。异步发布始终在独立事务中提交，后台
 任务只携带 Entry，不携带 Event 的 DSL。每个 Subscription 使用虚拟线程周期轮询
-数据库，并在领取事务内通过 `FOR UPDATE SKIP LOCKED` 竞争、调用 Consumer 和删除
-消息；Queue 不根据 Consumer 的普通业务异常安排重新投递。
+数据库，并在领取事务内按 `queue_type = 'DISPATCH'`、`queue_name` 通过
+`FOR UPDATE SKIP LOCKED` 竞争、调用 Consumer 和删除消息；Queue 不根据 Consumer 的
+普通业务异常安排重新投递。未来 Broadcast 消息载荷仍写入 `flow_queues`，所需的
+广播专属投递状态单独保存，不拆分消息载荷表。
 
 ## 核心业务流程图
 
@@ -309,3 +313,4 @@ flowchart TD
 - [`core/src/main/java/org/cses/flow/infrastructure/repositories/`](../core/src/main/java/org/cses/flow/infrastructure/repositories/)
 - [`core/src/main/java/org/cses/flow/infrastructure/queues/`](../core/src/main/java/org/cses/flow/infrastructure/queues/)
 - [`gen/sql/flow/001_create_flow_tables.sql`](../gen/sql/flow/001_create_flow_tables.sql)
+- [`gen/sql/flow/tables/`](../gen/sql/flow/tables/)

@@ -15,7 +15,9 @@ Flow 后续需要在 Execution、Worker 和其他运行能力之间稳定传递�
 
 Queue 的公开 Seam 需要保持类型安全：业务 Module 应拥有具体 Event 及其内部业务
 分类，Queue 只表达传输类别和订阅生命周期。首个已确认场景是多个等价 Consumer 对
-同一 Event Queue 进行竞争消费；广播、路由键和虚拟分片尚没有本轮需求。
+同一 Event Queue 进行竞争消费；广播、路由键和虚拟分片尚没有本轮 Interface 需求。
+传输类别是 Queue 基础设施的逻辑维度，不要求每种类别各建一张消息载荷表；数据库
+Adapter 的统一存储决策由 ADR 0047 规定。
 
 ## 备选方案
 
@@ -49,7 +51,9 @@ Queue 可以用字符串区分全部消息，但中心目录需要了解每个�
   事务，返回 `null` 表示没有调用方事务。
 - `dsl()` 是一次发布的基础设施上下文，不是 Event 业务事实。它不能进入持久化 payload、
   不能用于区分业务 Event 类型，也不改变业务 Module 对字段和内部 `eventType` 的所有权。
-- `DispatchEvent` 是 `Event` 的分类 Interface，表示适用于竞争消费。
+- `DispatchEvent` 是 `Event` 的分类 Interface，表示适用于竞争消费。它与未来可能新增的
+  `BroadcastEvent` 等 Queue 分类相互独立，但不是业务 Event 内部 `eventType` 的中心
+  目录。
 - `Queue<T extends Event>` 只公开实现决定的 `queueName()` 和独立的关闭生命周期。
 - `DispatchQueue<T extends DispatchEvent>` 公开单条与批量的同步 `emit`、返回
   `CompletionStage<Void>` 的异步 `emitAsync`，以及接收 Java
@@ -88,8 +92,10 @@ Queue 可以用字符串区分全部消息，但中心目录需要了解每个�
 
 ### 当前范围
 
-- 本轮不定义 Broadcast、Keyed Dispatch、VNode Dispatch、QueueFactory 或同步本地
-  Listener。
+- 本轮不定义 Broadcast Queue Interface、广播消费游标和消息保留清理，也不定义 Keyed
+  Dispatch、VNode Dispatch、QueueFactory 或同步本地 Listener。未来增加 Broadcast
+  能力时复用统一消息载荷表；广播专属游标或投递状态若确有需要，放入独立状态表，不能
+  反向拆分 Event payload。
 - 本轮不提供抽象实现、测试 Adapter、数据库 Adapter、Micronaut Queue Bean、数据库表
   或后台消费线程。
 - 当前 `DefaultExecutor -> WorkerDispatcher` 同步调用和 WorkerTask/Result 协议保持
@@ -109,8 +115,8 @@ Queue 可以用字符串区分全部消息，但中心目录需要了解每个�
   可以在同一 Seam 下替换。
 - 独立 QueueSubscription 把 Java Consumer 的业务回调与注册生命周期分开，不要求
   Consumer 理解 Queue 状态或确认协议。
-- 只定义当前真实需要的 Dispatch，避免在没有调用方和 Adapter 时复制完整消息平台
-  能力。
+- 只定义当前真实需要的 Dispatch，避免在没有调用方和 Adapter 时提前建立广播游标、
+  保留清理等完整消息平台能力；这不意味着数据库消息载荷按传输类别拆表。
 
 ## 后果
 

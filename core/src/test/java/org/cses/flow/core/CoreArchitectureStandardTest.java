@@ -348,7 +348,7 @@ class CoreArchitectureStandardTest {
             defaultQueue.resolve("PostgresQueueStore.java"),
             defaultQueue.resolve("PollingQueueSubscription.java"),
             defaultQueue.resolve(
-                "entries/DispatchQueueMessageEntry.java"
+                "entries/QueueMessageEntry.java"
             )
         )) {
             assertTrue(
@@ -378,7 +378,7 @@ class CoreArchitectureStandardTest {
         assertTrue(
             Files.isRegularFile(Path.of(
                 "../gen/src/main/java/org/flow/gen/flow/tables/"
-                    + "DispatchQueueMessagesTable.java"
+                    + "FlowQueuesTable.java"
             )),
             "Default Queue table must come from generated JOOQ sources"
         );

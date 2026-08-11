@@ -22,7 +22,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
-import static org.flow.gen.flow.Tables.TASK_RUN;
+import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 @Singleton
 @Requires(
@@ -73,10 +73,10 @@ public final class ExecutionPostgresRepository
         if (entry == null) {
             return Optional.empty();
         }
-        List<TaskRun> taskRuns = dsl.selectFrom(TASK_RUN)
-            .where(TASK_RUN.EXECUTION_ID.eq(executionId))
-            .and(TASK_RUN.DELETED_AT.isNull())
-            .orderBy(TASK_RUN.ORDER.asc())
+        List<TaskRun> taskRuns = dsl.selectFrom(TASK_RUNS)
+            .where(TASK_RUNS.EXECUTION_ID.eq(executionId))
+            .and(TASK_RUNS.DELETED_AT.isNull())
+            .orderBy(TASK_RUNS.ORDER.asc())
             .fetch(TaskRunEntry::fromRecord)
             .stream()
             .map(TaskRunEntry::toDomain)
@@ -123,8 +123,8 @@ public final class ExecutionPostgresRepository
             .and(EXECUTIONS.ID.eq(execution.id()))
             .forUpdate()
             .fetchOne(ExecutionEntry::fromRecord);
-        List<TaskRunEntry> storedTaskRuns = dsl.selectFrom(TASK_RUN)
-            .where(TASK_RUN.EXECUTION_ID.eq(execution.id()))
+        List<TaskRunEntry> storedTaskRuns = dsl.selectFrom(TASK_RUNS)
+            .where(TASK_RUNS.EXECUTION_ID.eq(execution.id()))
             .fetch(TaskRunEntry::fromRecord);
         Map<String, TaskRunEntry> storedTaskRunsById =
             new LinkedHashMap<>();
@@ -194,8 +194,8 @@ public final class ExecutionPostgresRepository
         Map<String, TaskRunEntry> storedTaskRuns,
         OffsetDateTime now
     ) {
-        dsl.deleteFrom(TASK_RUN)
-            .where(TASK_RUN.EXECUTION_ID.eq(execution.id()))
+        dsl.deleteFrom(TASK_RUNS)
+            .where(TASK_RUNS.EXECUTION_ID.eq(execution.id()))
             .execute();
         List<TaskRun> taskRuns = execution.taskRuns();
         for (int index = 0; index < taskRuns.size(); index++) {
@@ -208,7 +208,7 @@ public final class ExecutionPostgresRepository
                 stored == null ? now : stored.createdAt,
                 now
             );
-            dsl.insertInto(TASK_RUN)
+            dsl.insertInto(TASK_RUNS)
                 .set(entry.buildInsertMap())
                 .execute();
         }

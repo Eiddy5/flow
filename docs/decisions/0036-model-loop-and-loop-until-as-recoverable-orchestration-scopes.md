@@ -193,15 +193,15 @@ stateDiagram-v2
 
 ```mermaid
 erDiagram
-    EXECUTIONS ||--o{ TASK_RUN : owns
-    TASK_RUN ||--o{ TASK_RUN : parent_of
+    EXECUTIONS ||--o{ TASK_RUNS : owns
+    TASK_RUNS ||--o{ TASK_RUNS : parent_of
 
     EXECUTIONS {
         varchar id UK
         varchar company_id PK
     }
 
-    TASK_RUN {
+    TASK_RUNS {
         varchar id PK
         varchar execution_id UK
         varchar task_id
@@ -258,7 +258,7 @@ JSONB。数据库不创建外键；Execution 聚合批次校验、Repository 同
   循环体的合法重复运行。
 - Executor 按具体运行范围查找 TaskRun，并从循环轮次历史完成收敛判断；PostgreSQL
   基线、JOOQ 映射和运行历史视图共同保存并展示 iteration。
-- TaskRun 和 task_run 当前没有 iteration，需要同步 Domain、基线、JOOQ 和 Entry。
+- TaskRun 和 `task_runs` 当前没有 iteration，需要同步 Domain、基线、JOOQ 和 Entry。
 - Plugin 测试目录和 Schema 测试需要注册并覆盖 Loop、Loop Until。
 
 ## 后果

@@ -36,8 +36,11 @@ psql <测试数据库连接串> \
   -f gen/sql/flow/001_create_flow_tables.sql
 ```
 
-当前基线要求 `dispatch_queue_messages.payload` 为 `jsonb`，且顶层必须是 JSON object；
-负载测试不兼容仍使用 `bytea` 的旧测试数据库，应先按开发基线规则重建。
+当前基线要求统一 `flow_queues.payload` 为 `jsonb`，且顶层必须是 JSON object；
+`queue_type + queue_name` 是 Queue 隔离边界。当前负载场景只生产和消费
+`queue_type = 'DISPATCH'` 的行，不验证 Broadcast Interface、消费游标或保留清理。
+负载测试不兼容仍按传输类别拆分载荷表或使用 `bytea` payload 的旧测试数据库，应先按
+开发基线规则重建。
 
 通过以下环境变量提供连接信息：
 
@@ -223,7 +226,8 @@ drain、shutdown 是否在宽松 timeout 内结束。
 - PostgreSQL 断连、主备切换、事务提交结果不确定或连接池故障。
 - 不兼容 `Class<T>`/Event JSON 结构、坏 payload、慢 Consumer 和 Consumer 内嵌套
   数据库事务。
-- 六小时以上 soak、千万级消息表膨胀、autovacuum、WAL 和容量趋势。
+- 六小时以上 soak、千万级统一消息表膨胀、不同 `queue_type` 的负载干扰、autovacuum、
+  WAL 和容量趋势。
 
 这些场景必须在隔离环境中单独执行，并结合业务幂等、连接池余量、数据库监控和故障注入
 结果完成生产容量认证。不得用 smoke profile 的 TPS 或一次本地大参数结果给出生产容量

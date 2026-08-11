@@ -41,9 +41,10 @@
   与 Core、Executor、Worker 平级的类型化 Dispatch Queue Interface；业务 Module
   拥有 Event，具体 Adapter 拥有存储、恢复和消费机制，当前运行链路保持同步。
 - [`ADR 0047`](0047-implement-default-dispatch-queue.md)：以具名 `flow` JOOQ、JSONB、
-  `FOR UPDATE SKIP LOCKED` 和周期轮询实现 Default Dispatch Queue；同步发布直接使用
-  Event 的可空 DSL 或 Queue 自有事务，异步发布始终使用自有事务；Queue 通过
-  `JsonFactory` 和 `Class<T>` 统一完成不含 DSL 的 Event JSONB 快照与恢复。
+  `FOR UPDATE SKIP LOCKED` 和周期轮询实现 Default Dispatch Queue；所有传输类别共享
+  `flow_queues`，由 `queue_type + queue_name` 逻辑隔离，当前只实现 `DISPATCH`；
+  同步发布直接使用 Event 的可空 DSL 或 Queue 自有事务，异步发布始终使用自有事务；
+  Queue 通过 `JsonFactory` 和 `Class<T>` 统一完成不含 DSL 的 Event JSONB 快照与恢复。
 - [`ADR 0023`](0023-discover-task-extensions-with-service-loader.md)：已被 ADR 0026
   取代的 ServiceLoader 历史方案。
 - [`ADR 0024`](0024-separate-runnable-and-branch-task-capabilities.md)：Task 运行能力
@@ -157,12 +158,16 @@
 
 ## 持久化、时间与并发
 
+- [`ADR 0048`](0048-isolate-schema-ddl-and-pluralize-table-names.md)：保留单一开发期
+  Schema 入口，按表隔离 DDL，表名使用小写蛇形且最后一个单词为以 `s` 结尾的复数；
+  `task_runs` 与 `external_tasks` 同步进入 JOOQ 和 Adapter 边界。
 - [`ADR 0039`](0039-embed-complete-flow-server-in-cses.md)：Flow 使用具名数据库，
   但不再携带或执行 Flyway；启动前由部署人员手工执行完整建表基线。
 - [`ADR 0038`](0038-keep-approval-business-in-cses.md)：Approval 持久化属于 CSES，
   不进入 Flow Schema 或 Flow 事务。
-- [`ADR 0033`](0033-use-single-development-database-baseline.md)：开发期只维护一份
-  完整 PostgreSQL 建表基线；Schema 变化后显式重建数据库，不保留旧数据升级路径。
+- [`ADR 0033`](0033-use-single-development-database-baseline.md)：开发期只维护一个
+  完整 PostgreSQL 逻辑基线；Schema 变化后显式重建数据库，不保留旧数据升级路径；
+  物理文件布局由 ADR 0048 修订。
 - [`ADR 0034`](0034-persist-state-as-one-jsonb-value.md)：使用单一 `state jsonb`
   保存完整 State，通过表达式索引查询 current，不保留冗余 status。
 - [`ADR 0009`](0009-persist-current-core-in-postgresql.md)：Core 聚合 PostgreSQL

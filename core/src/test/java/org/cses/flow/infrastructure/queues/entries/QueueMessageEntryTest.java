@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
-final class DispatchQueueMessageEntryTest {
+final class QueueMessageEntryTest {
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -23,18 +23,22 @@ final class DispatchQueueMessageEntryTest {
     }
 
     @Test
-    void createsTechnicalIdentityAndSnapshotsJsonPayload() {
+    void createsTypedTechnicalIdentityAndSnapshotsJsonPayload() {
         TestEvent source = new TestEvent(
             null,
             "original",
             DSL.using(SQLDialect.POSTGRES)
         );
 
-        DispatchQueueMessageEntry entry =
-            DispatchQueueMessageEntry.create("", source);
+        QueueMessageEntry entry = QueueMessageEntry.create(
+            "DISPATCH",
+            "",
+            source
+        );
         source.setValue("changed");
 
         assertFalse(entry.getId().isBlank());
+        assertEquals("DISPATCH", entry.getQueueType());
         assertEquals("", entry.getQueueName());
         assertNull(entry.getEventKey());
         assertEquals("original", entry.payloadJson().getString("value"));

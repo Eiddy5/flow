@@ -16,10 +16,11 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
 1. 阅读 `AGENTS.md`。
 2. 阅读 `docs/project-structure.md` 和
    `docs/standards/project-development.md`。
-3. 阅读 `docs/standards/`、`docs/decisions/` 和 `docs/uc/` 中与当前领域、
-   数据库、JOOQ、生命周期及架构有关的资料。
-4. 检查 `gen/sql/flow/001_create_flow_tables.sql` 当前基线；不要从已删除的历史
-   迁移反推目标模型。
+3. 阅读 `docs/standards/postgresql-schema.md`，再阅读 `docs/standards/`、
+   `docs/decisions/` 和 `docs/uc/` 中与当前领域、数据库、JOOQ、生命周期及架构
+   有关的资料。
+4. 检查 `gen/sql/flow/001_create_flow_tables.sql` 完整入口及其显式包含的
+   `gen/sql/flow/tables/*.sql` 当前基线；不要从已删除的历史迁移反推目标模型。
 5. 仅在需要核对术语、类型、状态值或查询路径时检查应用模型。
 6. 按以下优先级判断事实来源：用户最新明确决定、已确认的项目文档和 ADR、
    当前 Schema 基线、当前实现。发现冲突时，先说明冲突再修改 SQL。
@@ -172,25 +173,28 @@ DEFAULT now()
   表达关系。
 - 根据实际查询路径增加租户查询、状态队列、父子遍历、有序读取和历史查询索引。
 - 将 JSON 类型、状态、版本和软删除一致性检查放在表定义附近。
-- 表、字段、索引和约束统一使用小写蛇形命名。
+- 表结构文件隔离与表命名遵循 `docs/standards/postgresql-schema.md`；字段、索引和
+  约束继续使用小写蛇形命名。
 
 ## 维护开发期基线 SQL
 
-当前项目处于允许丢弃旧数据的开发阶段，完整 Schema 只维护在：
+当前项目处于允许丢弃旧数据的开发阶段，完整 Schema 由一个入口和按表隔离的脚本
+共同维护：
 
 ```text
 gen/sql/flow/001_create_flow_tables.sql
+gen/sql/flow/tables/<table_name>.sql
 ```
 
-新增、删除或修改表、字段、索引和约束时直接修改这份基线。不要新增日期目录、增量
+修改表、字段、索引和约束时只编辑该表的同名脚本。新增表时新增同名脚本，并在完整
+入口中显式加入一次；入口只编排表脚本，不直接定义表。不要新增日期目录、增量
 ALTER 脚本、回填脚本或旧模型兼容分支。基线变化后显式重建开发数据库并重新生成
 JOOQ；不要在应用启动时自动删表或清库。
 
-让每条语句都能重复执行：
-
-- `CREATE TABLE IF NOT EXISTS`
-- `CREATE [UNIQUE] INDEX IF NOT EXISTS`
-- 基线不写数据更新或回填
+每个表脚本使用 `CREATE TABLE IF NOT EXISTS`，所属索引使用
+`CREATE [UNIQUE] INDEX IF NOT EXISTS`；约束与表定义放在同一条建表语句中。完整入口
+使用 `BEGIN` / `COMMIT` 保证一次建表的原子性。具体文件与命名完成条件只由
+`docs/standards/postgresql-schema.md` 定义。
 
 `IF NOT EXISTS` 只能保证相同基线重复执行安全，不能修正名称相同但定义不同的已有
 对象。修改后的基线只支持空数据库；旧数据库和旧数据不在开发期兼容范围。进入需要
@@ -201,8 +205,8 @@ JOOQ；不要在应用启动时自动删表或清库。
 执行当前项目规范要求的静态检查：
 
 ```bash
-rg -n "FOREIGN KEY|REFERENCES|CONSTRAINT fk_" <sql-file>
-rg -n "_at\s+bigint" <sql-file>
+rg -n "FOREIGN KEY|REFERENCES|CONSTRAINT fk_" gen/sql/flow/tables
+rg -n "_at\s+bigint" gen/sql/flow/tables
 ```
 
 按照当前项目规则，两项检查都不应匹配任何内容。
@@ -216,8 +220,11 @@ rg -n "_at\s+bigint" <sql-file>
 
 验证脚本必须：
 
+- 确认每个表文件只定义一张同名表，入口恰好包含全部表文件；
+- 确认所有表名是小写蛇形，且最后一个单词按项目规则使用复数；
 - 成功执行完整基线；
 - 再次成功执行同一基线；
+- 确认最终数据库表集合与表文件集合一致；
 - 确认 PostgreSQL 外键数量为零；
 - 确认所有 `*_at` 字段都是 `timestamptz`；
 - 删除临时数据库容器。
@@ -239,6 +246,6 @@ Schema 与 JOOQ/Repository 契约一致。
 - 选择的 PostgreSQL 特性及其理由。
 - 关键查询路径及对应索引。
 - 已执行的验证。
-- 完整基线 SQL 的可点击链接。
+- 完整基线入口及本次修改的表级 SQL 可点击链接。
 
 不要声称已经实现未实际完成的 Repository 接入、数据迁移或运行时行为。

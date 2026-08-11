@@ -4,13 +4,13 @@
 package org.flow.gen.flow;
 
 
-import org.flow.gen.flow.tables.DispatchQueueMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
-import org.flow.gen.flow.tables.ExternalTaskTable;
+import org.flow.gen.flow.tables.ExternalTasksTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
+import org.flow.gen.flow.tables.FlowQueuesTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
-import org.flow.gen.flow.tables.TaskRunTable;
+import org.flow.gen.flow.tables.TaskRunsTable;
 
 
 /**
@@ -20,24 +20,24 @@ import org.flow.gen.flow.tables.TaskRunTable;
 public class Tables {
 
     /**
-     * The table <code>public.dispatch_queue_messages</code>.
-     */
-    public static final DispatchQueueMessagesTable DISPATCH_QUEUE_MESSAGES = DispatchQueueMessagesTable.DISPATCH_QUEUE_MESSAGES;
-
-    /**
      * The table <code>public.executions</code>.
      */
     public static final ExecutionsTable EXECUTIONS = ExecutionsTable.EXECUTIONS;
 
     /**
-     * The table <code>public.external_task</code>.
+     * The table <code>public.external_tasks</code>.
      */
-    public static final ExternalTaskTable EXTERNAL_TASK = ExternalTaskTable.EXTERNAL_TASK;
+    public static final ExternalTasksTable EXTERNAL_TASKS = ExternalTasksTable.EXTERNAL_TASKS;
 
     /**
      * The table <code>public.flow_drafts</code>.
      */
     public static final FlowDraftsTable FLOW_DRAFTS = FlowDraftsTable.FLOW_DRAFTS;
+
+    /**
+     * The table <code>public.flow_queues</code>.
+     */
+    public static final FlowQueuesTable FLOW_QUEUES = FlowQueuesTable.FLOW_QUEUES;
 
     /**
      * The table <code>public.flow_tasks</code>.
@@ -50,7 +50,7 @@ public class Tables {
     public static final FlowsTable FLOWS = FlowsTable.FLOWS;
 
     /**
-     * The table <code>public.task_run</code>.
+     * The table <code>public.task_runs</code>.
      */
-    public static final TaskRunTable TASK_RUN = TaskRunTable.TASK_RUN;
+    public static final TaskRunsTable TASK_RUNS = TaskRunsTable.TASK_RUNS;
 }

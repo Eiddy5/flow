@@ -3,7 +3,8 @@
 ## 状态
 
 Accepted（基线改由人工执行、Flow Server 不再使用 Flyway 的条款由
-[`ADR 0039`](0039-embed-complete-flow-server-in-cses.md) 修订）
+[`ADR 0039`](0039-embed-complete-flow-server-in-cses.md) 修订；单一物理文件布局由
+[`ADR 0048`](0048-isolate-schema-ddl-and-pluralize-table-names.md) 修订）
 
 ## 背景
 

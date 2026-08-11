@@ -107,7 +107,7 @@ final class FlowDatabaseIntegrationTest {
             password
         )) {
             assertTrue(tableExists(connection, "flows"));
-            assertTrue(tableExists(connection, "task_run"));
+            assertTrue(tableExists(connection, "task_runs"));
             assertEquals(1, tenantDrafts(connection, companyId));
             removeTenantDraft(connection, companyId);
         }
@@ -167,7 +167,7 @@ final class FlowDatabaseIntegrationTest {
             password
         )) {
             assertFalse(tableExists(connection, "flows"));
-            assertFalse(tableExists(connection, "task_run"));
+            assertFalse(tableExists(connection, "task_runs"));
         }
     }
 
@@ -186,7 +186,7 @@ final class FlowDatabaseIntegrationTest {
                 "Execute gen/sql/flow/001_create_flow_tables.sql before "
                     + "running the Flow PostgreSQL integration test"
             );
-            assertTrue(tableExists(connection, "task_run"));
+            assertTrue(tableExists(connection, "task_runs"));
         }
     }
 

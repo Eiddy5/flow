@@ -172,7 +172,7 @@ date 严格递增。
 
 ### 持久化
 
-- 按 ADR 0034，`executions.state` 和 `task_run.state` 各自使用一个非空 JSONB
+- 按 ADR 0034，`executions.state` 和 `task_runs.state` 各自使用一个非空 JSONB
   对象保存完整 `current + history`，不再拆分 `status` 或 `state_history`。
 - Repository Entry 对完整 State 做一次编解码，并通过
   `State.rehydrate(current, history)` 恢复和校验领域值对象。

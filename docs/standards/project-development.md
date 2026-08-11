@@ -239,6 +239,8 @@ Handler、工具类或领域对象。
   [`../project-structure.md`](../project-structure.md) 和
   [`../decisions/README.md`](../decisions/README.md) 中对应的架构决策。
 - 涉及 JSON 时阅读 [`json.md`](json.md)；手写代码统一使用 `org.paas.json`。
+- 涉及 PostgreSQL 表、约束、索引或基线文件时阅读
+  [`postgresql-schema.md`](postgresql-schema.md)。
 - 涉及 Command、Handler、Session 或写事务时阅读
   [`command-executor.md`](command-executor.md)。
 - 涉及 JOOQ、Entry 或持久化映射时阅读 [`jooq.md`](jooq.md)。

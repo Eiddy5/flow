@@ -37,7 +37,7 @@ Execution 与 TaskRun 在领域中持有同一个不可分割的 `State` 值对�
 
 采用方案二。
 
-`executions` 和 `task_run` 各自只保存一个非空 `state jsonb` 字段，JSON 结构直接
+`executions` 和 `task_runs` 各自只保存一个非空 `state jsonb` 字段，JSON 结构直接
 对应领域 `State`：
 
 ```json
@@ -62,7 +62,7 @@ Execution 与 TaskRun 在领域中持有同一个不可分割的 `State` 值对�
   `(execution_id, (state ->> 'current'))` 表达式索引，不增加冗余生成列。
 - Entry 使用一个专用 Codec 在完整 `State` 与 JSONB 之间双向转换，不在
   Repository 中分别读写 current 和 history。
-- `external_task.status` 属于 ExternalTask 自身的遗留生命周期，不是统一
+- `external_tasks.status` 属于 ExternalTask 自身的遗留生命周期，不是统一
   `State`，不受本决策影响。
 - 按 ADR 0033 直接修改唯一开发期建表基线；已有开发数据库必须重建。
 
@@ -82,7 +82,7 @@ Execution 与 TaskRun 在领域中持有同一个不可分割的 `State` 值对�
 
 - Repository 往返能够以一个字段无损恢复完整 State。
 - SQL 查询当前状态必须使用 `state ->> 'current'`，不能再引用
-  `executions.status`、`task_run.status` 或 `state_history`。
+  `executions.status`、`task_runs.status` 或 `state_history`。
 - 如果未来出现大量按 History 事件查询、归档或分析的需求，需要重新评估独立事件表
   或专用读模型，不能在主表增加第二个当前状态事实来源。
 - 本次不提供旧 Schema 或旧数据迁移；开发环境重建数据库并重新生成 JOOQ。

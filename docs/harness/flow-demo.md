@@ -16,9 +16,9 @@
 
 ## 数据库准备
 
-Demo 使用当前 Flow PostgreSQL Schema。空数据库执行
-`gen/sql/flow/001_create_flow_tables.sql`；开发期基线变化后，已有数据库需要显式
-重建，不提供增量升级或旧数据迁移。字段说明见
+Demo 使用当前 Flow PostgreSQL Schema。空数据库通过 psql 执行完整入口
+`gen/sql/flow/001_create_flow_tables.sql`；该入口会包含 `tables/` 下的表级脚本。
+开发期基线变化后，已有数据库需要显式重建，不提供增量升级或旧数据迁移。字段说明见
 [`postgresql-repositories.md`](postgresql-repositories.md)。
 
 默认连接为：

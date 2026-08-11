@@ -1,4 +1,4 @@
-# ADR 0047：实现 Default Dispatch Queue Adapter
+# ADR 0047：实现 Default Dispatch Queue Adapter 与统一消息表
 
 ## 状态
 
@@ -6,6 +6,8 @@ Accepted
 
 本决策修订 ADR 0046 “当前范围”中暂不提供数据库 Adapter、消息表和后台消费线程的
 阶段性结论；ADR 0046 的类型化 Queue Interface 与业务 Event 所有权决策保持不变。
+Queue 的消息载荷统一存入 `flow_queues`，传输类别和逻辑 Queue 分别通过
+`queue_type` 与 `queue_name` 区分，不为 Dispatch、Broadcast 等类别复制载荷表。
 
 ## 背景
 
@@ -67,18 +69,22 @@ Consumer；Consumer 正常返回或抛出普通运行时异常后都删除消息
 
 ## 决策
 
-采用事务内竞争锁定、Event 直接提供同步 DSL，以及 Default Queue 统一 JSONB 转换。
+采用事务内竞争锁定、Event 直接提供同步 DSL、Default Queue 统一 JSONB 转换，以及
+跨传输类别共享的 Queue Message 表。
 
 ### 数据模型
 
-一行 `dispatch_queue_messages` 表示一个已经被 Default Dispatch Queue 接受、尚未完成
-一次传输尝试的 Dispatch Event。消息没有可更新状态；行存在即待交付，完成传输后
-物理删除。
+一行 `flow_queues` 保存一个 Queue Event 的持久化载荷。`queue_type` 是可扩展的
+传输类别，初始定义 `DISPATCH` 并为未来广播预留 `BROADCAST`；`queue_name` 在类别内
+标识逻辑 Queue，两者共同形成消息的 Queue 归属。当前只实现 Dispatch Adapter，因此
+目前只生产和领取 `queue_type = 'DISPATCH'` 的行。Dispatch 消息没有可更新状态；
+行存在即待交付，完成传输后物理删除。
 
 ```mermaid
 erDiagram
-    DISPATCH_QUEUE_MESSAGES {
+    FLOW_QUEUES {
         varchar id PK
+        varchar queue_type "nonblank transport category"
         varchar queue_name
         text event_key "nullable diagnostic snapshot"
         jsonb payload "JSON object"
@@ -86,13 +92,23 @@ erDiagram
     }
 ```
 
-- `id` 是应用通过 `StringUtil.newId()` 生成的消息记录身份。
-- `queue_name` 标识类型化逻辑 Queue。Default Adapter 允许空字符串，但不允许
-  `null`。
+- `id` 是应用通过 `StringUtil.newId()` 生成的消息记录身份；
+  `pk_flow_queues` 将其作为表主键，`ck_flow_queues_id` 保证其非空白。
+- `queue_type` 是 Queue 基础设施拥有的可扩展传输类别，非空且去除首尾空白后必须仍有
+  内容。`DISPATCH` 是当前实现使用的值，`BROADCAST` 是已预留的下一类语义；数据库不以
+  枚举约束封死取值，后续 Adapter 可以定义新的非空白类别。它不等同于业务 Event
+  payload 内部的 `eventType`，也不形成业务 Event 类型目录。DDL 使用
+  `varchar(32) NOT NULL` 和 `CHECK (length(btrim(queue_type)) > 0)`，不设置默认值，写入
+  Adapter 必须显式给出类别；该非空白不变量由
+  `ck_flow_queues_type` 保证。
+- `queue_name` 在 `queue_type` 内标识类型化逻辑 Queue。Default Adapter 允许空字符串，
+  但不允许 `null`；同名的 Dispatch 与未来 Broadcast Queue 因 `queue_type` 不同而彼此
+  隔离。
 - `event_key` 保存 Event 在发布时返回的可空业务 key 快照，只用于诊断，不参与路由、
   顺序、唯一性或去重。
 - `payload` 是 Default Queue 使用项目现有 `JsonFactory` 从 Event 业务字段构造的
-  JSON object；列使用 PostgreSQL `jsonb`，并由表约束保证顶层类型为 object。
+  JSON object；列使用 PostgreSQL `jsonb`，并由 `ck_flow_queues_payload`
+  保证顶层类型为 object。
 - Queue Entry 构造必须显式排除 `DSLContext`。`dsl()` 是一次同步发布的事务上下文，
   不是 Event 业务事实，不进入 JSONB，也不会到达 Consumer。
 - Default Queue 在装配时接收确定的 `Class<T>`，领取消息后使用该 Class 和
@@ -100,12 +116,19 @@ erDiagram
 - 业务 Event 可以自行保存和解释内部 `eventType`；它只是 payload 的业务字段，
   不参与 Queue 路由、类型选择或消费策略。
 - `created_at` 只用于待交付扫描。普通 Dispatch 不承诺全局或严格 FIFO 顺序。
-- 表不保存 `company_id`、状态、尝试次数、Lease、消费历史、软删除或审计字段。
-  租户及业务类型属于 Event payload。
+- 当前 Dispatch 链路不在消息行保存 `company_id`、状态、尝试次数、Lease、消费历史、
+  软删除或审计字段。租户及业务类型属于 Event payload。
 
 Queue 不按 Event 内部字段查询 payload，因此不为 `payload` 建立 GIN 索引；待交付扫描
-只依赖 `(queue_name, created_at, id)`。JSONB 是可重建 Event 的持久化快照，不把业务
-字段所有权转移给 Queue。
+依赖 `idx_flow_queues_pending (queue_type, queue_name, created_at, id)`。JSONB 是可重建
+Event 的持久化快照，不把业务字段所有权转移给 Queue。`flow_queues` 是所有 Queue
+传输类别的唯一消息
+载荷表，不按传输类别新增专属载荷表。
+
+Broadcast Queue Interface、广播消费游标、投递状态和保留清理仍不在当前实现范围。
+未来实现 Broadcast 时，其 Event payload 仍写入 `flow_queues`，并使用
+`queue_type = 'BROADCAST'`；如果一对多投递确实需要每个订阅者的游标、确认或保留状态，
+这些专属状态使用独立表保存，不把消息载荷复制到另一张 Broadcast 消息表。
 
 ### 同步发布与事务
 
@@ -135,7 +158,10 @@ Queue 不按 Event 内部字段查询 payload，因此不为 `payload` 建立 GI
   `pollIntervalMillis` 由具体 Default Adapter 配置，不进入 Core Queue Interface。
 - 多个 Subscription 和多个 JVM 使用
   `FOR UPDATE SKIP LOCKED` 竞争同一逻辑 Queue 的行；索引
-  `(queue_name, created_at, id)` 支持待交付扫描。
+  `idx_flow_queues_pending (queue_type, queue_name, created_at, id)` 支持待交付扫描。
+  Default Dispatch Queue
+  领取时同时固定 `queue_type = 'DISPATCH'` 和自身 `queue_name`，不会读取未来的
+  Broadcast 消息。
 - Consumer 在领取事务内调用，因此一次活跃回调会占用一个数据库连接并持有消息行锁。
 - Consumer 正常返回或抛出 `RuntimeException` 后都删除消息并提交；异常仅记录日志，
   Subscription 继续轮询。Queue 不据此判断业务成功。
@@ -184,6 +210,8 @@ Queue 不按 Event 内部字段查询 payload，因此不为 `payload` 建立 GI
   DSL 发布重载；Default Queue 同时负责确保该基础设施成员不进入持久化 Entry。
 - `DefaultDispatchQueue` 的小型 Interface 隐藏 JSONB 重组、数据库锁、周期轮询和
   生命周期协调，为调用方提供更深的 Queue Module。
+- 单一 `flow_queues` 保存所有传输类别的 Event payload，避免为 Dispatch、Broadcast
+  重复相同 Schema；`queue_type + queue_name` 又保持各类逻辑 Queue 的查询隔离。
 
 ## 后果
 
@@ -194,7 +222,11 @@ Queue 不按 Event 内部字段查询 payload，因此不为 `payload` 建立 GI
 - 业务 Event 必须兼容 PAAS `JsonFactory`，并实现可空 `dsl()`；事务 DSL 只服务同步
   发布，持久化与恢复后的 Event 均不包含它。
 - 使用相同 `queue_name` 的全部 Queue 实例必须使用相同且 wire-compatible 的
-  `Class<T>`。Queue 不持久化类名、不协商版本，也不管理业务 `eventType`。
+  `Class<T>`；该约束限定在相同 `queue_type` 内。Queue 不持久化类名、不协商版本，
+  也不管理业务 `eventType`。
+- 当前仅实现 `DISPATCH` 的写入、轮询和删除。`BROADCAST` 作为预留类别只表示共享
+  存储边界已经固定，不表示 Broadcast Interface、消费游标或清理任务已经可用；开放的
+  `queue_type` 取值也不构成已实现能力清单。
 - 同步批量发布不能混用事务；`emitAsync` 不能与调用方业务写入原子提交。
 - 已有开发数据库必须按 ADR 0033 重建并重新生成 JOOQ；应用仍不自动迁移 Schema。
 - 并发完整性与基础性能使用独立的

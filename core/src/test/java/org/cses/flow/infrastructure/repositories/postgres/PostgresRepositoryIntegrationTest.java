@@ -44,11 +44,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
-import static org.flow.gen.flow.Tables.EXTERNAL_TASK;
+import static org.flow.gen.flow.Tables.EXTERNAL_TASKS;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
-import static org.flow.gen.flow.Tables.TASK_RUN;
+import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 @EnabledIfEnvironmentVariable(
     named = "FLOW_POSTGRES_TEST_URL",
@@ -77,11 +77,11 @@ final class PostgresRepositoryIntegrationTest {
     @AfterEach
     void removeTestTenant() {
         write(dsl -> {
-            dsl.deleteFrom(EXTERNAL_TASK)
-                .where(EXTERNAL_TASK.COMPANY_ID.eq(companyId))
+            dsl.deleteFrom(EXTERNAL_TASKS)
+                .where(EXTERNAL_TASKS.COMPANY_ID.eq(companyId))
                 .execute();
-            dsl.deleteFrom(TASK_RUN)
-                .where(TASK_RUN.EXECUTION_ID.in(
+            dsl.deleteFrom(TASK_RUNS)
+                .where(TASK_RUNS.EXECUTION_ID.in(
                     dsl.select(EXECUTIONS.ID)
                         .from(EXECUTIONS)
                         .where(EXECUTIONS.COMPANY_ID.eq(companyId))
@@ -252,13 +252,13 @@ final class PostgresRepositoryIntegrationTest {
             storedExecutionState.getObjects("history").size()
         );
         JsonObject storedTaskRunState = read(dsl -> JsonObject.Parse(
-            dsl.select(TASK_RUN.STATE)
-                .from(TASK_RUN)
-                .where(TASK_RUN.EXECUTION_ID.eq(execution.id()))
-                .and(TASK_RUN.ID.eq(
+            dsl.select(TASK_RUNS.STATE)
+                .from(TASK_RUNS)
+                .where(TASK_RUNS.EXECUTION_ID.eq(execution.id()))
+                .and(TASK_RUNS.ID.eq(
                     execution.taskRuns().getFirst().id()
                 ))
-                .fetchOne(TASK_RUN.STATE)
+                .fetchOne(TASK_RUNS.STATE)
                 .data()
         ));
         assertEquals(
@@ -420,13 +420,13 @@ final class PostgresRepositoryIntegrationTest {
         int splitStateColumnCount = read(dsl -> dsl.fetchCount(
             columns,
             tableSchema.eq("public")
-                .and(tableName.in("executions", "task_run"))
+                .and(tableName.in("executions", "task_runs"))
                 .and(columnName.in("status", "state_history"))
         ));
         int stateJsonbColumnCount = read(dsl -> dsl.fetchCount(
             columns,
             tableSchema.eq("public")
-                .and(tableName.in("executions", "task_run"))
+                .and(tableName.in("executions", "task_runs"))
                 .and(columnName.eq("state"))
                 .and(dataType.eq("jsonb"))
         ));

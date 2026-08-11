@@ -159,6 +159,8 @@ _Avoid_: Execution cursor, transaction context, persisted next queue
 由所属业务 Module 定义、可交给 Flow Queue 异步传输的类型化内容；业务自身拥有其
 字段、key 和内部分类，并直接提供只供同步发布使用的可空 `DSLContext`。DSL 不是
 业务事实，不进入持久化 Event；Queue 也不把 Event 转换为统一业务 Message 或结果信封。
+数据库 Adapter 将不同传输类别的 Event payload 统一保存在 `flow_queues`，类别和
+逻辑 Queue 分别由 `queue_type` 与 `queue_name` 表达。
 _Avoid_: generic Message, Queue Record, transport envelope
 
 **Dispatch Queue**:
@@ -173,13 +175,16 @@ _Avoid_: Queue Consumer, ACK handle, business subscription
 
 **Default Dispatch Queue**:
 Dispatch Queue 当前基于 PostgreSQL 的默认 Adapter；它把 Event 的业务 JSON object
-作为 JSONB 写入 `dispatch_queue_messages`，由 Subscription 周期轮询并使用
-`FOR UPDATE SKIP LOCKED` 竞争一行，在领取事务内调用 Consumer 并删除。它直接使用
-Event 的可空 `dsl()` 或开启自有同步事务；异步发布始终使用自有事务且不携带 DSL。
+作为 JSONB 写入统一 `flow_queues`，并固定 `queue_type = 'DISPATCH'`；Subscription
+按 `queue_type + queue_name` 周期轮询并使用 `FOR UPDATE SKIP LOCKED` 竞争一行，在领取
+事务内调用 Consumer 并删除。它直接使用 Event 的可空 `dsl()` 或开启自有同步事务；
+异步发布始终使用自有事务且不携带 DSL。
 Default Queue 使用项目 `JsonFactory` 重组排除 DSL 的 Queue Entry，并通过装配时指定
 的 `Class<T>` 恢复业务 Event；内部 `eventType` 仍由业务自己解释。普通 Consumer
 异常仍完成删除；只有领取事务未提交时原行重新可见，因此崩溃恢复可能再次调用
 Consumer。
+Broadcast 未来同样复用 `flow_queues` 并使用 `BROADCAST` 类型；当前不提供其
+Interface、消费游标或保留清理，未来专属投递状态应放入独立表而不是拆分消息载荷。
 _Avoid_: storage-specific public Queue name, Transactional Outbox, Retry Queue, Exactly-once Queue
 
 **TaskRun**:

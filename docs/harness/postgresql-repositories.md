@@ -13,11 +13,11 @@ erDiagram
     FLOWS ||--o{ FLOW_TASKS : "由 company_id + id + reversion 拥有"
     FLOWS ||--o{ EXECUTIONS : "绑定精确 Flow Reversion"
     FLOW_TASKS o|--o{ FLOW_TASKS : "parent_id 形成任务树"
-    EXECUTIONS ||--o{ TASK_RUN : "execution_id 形成运行历史"
-    FLOW_TASKS ||--o{ TASK_RUN : "task_id 指向定义快照"
-    TASK_RUN o|--o{ TASK_RUN : "parent_id 形成运行树"
-    EXECUTIONS ||--o{ EXTERNAL_TASK : "创建外部等待记录"
-    TASK_RUN ||--o| EXTERNAL_TASK : "一个 TaskRun 至多一个等待记录"
+    EXECUTIONS ||--o{ TASK_RUNS : "execution_id 形成运行历史"
+    FLOW_TASKS ||--o{ TASK_RUNS : "task_id 指向定义快照"
+    TASK_RUNS o|--o{ TASK_RUNS : "parent_id 形成运行树"
+    EXECUTIONS ||--o{ EXTERNAL_TASKS : "创建外部等待记录"
+    TASK_RUNS ||--o| EXTERNAL_TASKS : "一个 TaskRun 至多一个等待记录"
 
     FLOW_DRAFTS {
         varchar company_id PK
@@ -57,7 +57,7 @@ erDiagram
         bigint lock_version
     }
 
-    TASK_RUN {
+    TASK_RUNS {
         varchar id PK
         varchar execution_id
         varchar task_id
@@ -66,7 +66,7 @@ erDiagram
         integer order
     }
 
-    EXTERNAL_TASK {
+    EXTERNAL_TASKS {
         varchar company_id PK
         varchar id PK
         varchar execution_id
@@ -86,12 +86,17 @@ outputs 保存运行事实，完整 State 以
 
 ## 准备数据库
 
-开发期只维护一份完整建表基线。在空的 PostgreSQL 数据库执行：
+开发期只维护一个完整建表基线入口；入口会在同一事务中包含全部表级脚本。在空的
+PostgreSQL 数据库执行：
 
 ```bash
-psql "$FLOW_POSTGRES_TEST_URL" \
+FLOW_POSTGRES_PSQL_URL=postgresql://flow:flow@localhost:5432/flow \
+psql "$FLOW_POSTGRES_PSQL_URL" \
   -f gen/sql/flow/001_create_flow_tables.sql
 ```
+
+`psql` 使用 libpq 连接 URI；不要把下方 Java 测试使用的 `jdbc:postgresql:` URL
+直接传给它。
 
 基线使用 `IF NOT EXISTS`，因此相同内容可以重复执行；它不会修正已经存在但定义
 不同的对象。基线发生变化后必须显式重建开发数据库，不执行 ALTER、回填或旧数据
