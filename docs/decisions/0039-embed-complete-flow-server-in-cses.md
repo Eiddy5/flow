@@ -62,7 +62,7 @@ Flow 同时仍需保留独立启动能力。若 CSES 直接消费当前 Server�
 - 嵌入时 Flow Controller 与 CSES Controller 共享 CSES 的 HTTP Server、应用身份、
   认证会话和平台配置。
 - Flow 的应用名、端口、Consul 和独立运行开关只放在
-  `application-flow-standalone.yml` 与 `bootstrap-flow-standalone.yaml`；基础
+  `application-flow-standalone.yml` 与 `bootstrap.yaml`；基础
   `application.yml` 只保存不会改变宿主全局行为的 `flow.*` 配置。
 
 ### 数据库与手工建表

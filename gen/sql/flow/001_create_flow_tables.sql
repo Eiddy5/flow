@@ -12,6 +12,6 @@ BEGIN;
 \ir tables/executions.sql
 \ir tables/task_runs.sql
 \ir tables/external_tasks.sql
-\ir tables/flow_queues.sql
+\ir tables/queues.sql
 
 COMMIT;

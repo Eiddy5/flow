@@ -10,18 +10,27 @@ import org.paas.session.User;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Immutable invocation context for one {@link RunnableTask}.
  *
  * <p>The variables map carries invocation-scoped runtime values. The Executor
- * places the current {@link Execution} and actual TaskRun inputs in reserved
- * entries before the context crosses into a RunnableTask.</p>
+ * places the current {@link Execution}, exact TaskRun identity and actual
+ * TaskRun inputs in reserved entries before the context crosses into a
+ * RunnableTask.</p>
  */
 public final class RunContext {
 
     /** Reserved variable containing the current Flow execution aggregate. */
     public static final String EXECUTION_VARIABLE = "$flow.execution";
+
+    /** Reserved variable containing the exact current TaskRun id. */
+    public static final String TASK_RUN_ID_VARIABLE = "$flow.taskRunId";
+
+    /** Reserved variable containing the current TaskRun's optional parent. */
+    public static final String PARENT_TASK_RUN_ID_VARIABLE =
+        "$flow.parentTaskRunId";
 
     /** Reserved variable containing the actual inputs for this TaskRun. */
     public static final String INPUTS_VARIABLE = "$flow.inputs";
@@ -78,6 +87,39 @@ public final class RunContext {
             );
         }
         return execution.id();
+    }
+
+    /**
+     * Returns the exact TaskRun id for this RunnableTask invocation.
+     */
+    public String taskRunId() {
+        Object value = variables.get(TASK_RUN_ID_VARIABLE);
+        if (!(value instanceof String taskRunId) || taskRunId.isBlank()) {
+            throw new IllegalStateException(
+                "RunContext variables must contain a TaskRun id under "
+                    + TASK_RUN_ID_VARIABLE
+            );
+        }
+        return taskRunId;
+    }
+
+    /**
+     * Returns the immediate parent TaskRun id for a nested invocation.
+     * Top-level RunnableTasks have no parent.
+     */
+    public Optional<String> parentTaskRunId() {
+        Object value = variables.get(PARENT_TASK_RUN_ID_VARIABLE);
+        if (value == null) {
+            return Optional.empty();
+        }
+        if (!(value instanceof String parentTaskRunId)
+            || parentTaskRunId.isBlank()) {
+            throw new IllegalStateException(
+                "RunContext variable " + PARENT_TASK_RUN_ID_VARIABLE
+                    + " must contain a non-blank TaskRun id"
+            );
+        }
+        return Optional.of(parentTaskRunId);
     }
 
     public Map<String, Object> inputs() {

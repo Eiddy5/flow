@@ -35,7 +35,6 @@ final class ServerModuleArchitectureTest {
     private static boolean isServerSource(Path relativePath) {
         String path = relativePath.toString().replace('\\', '/');
         return path.equals("Application.java")
-            || path.startsWith("controller/")
-            || path.startsWith("infrastructure/session/");
+            || path.startsWith("controller/");
     }
 }

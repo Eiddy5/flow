@@ -147,7 +147,6 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew :server:run
 
 ```text
 MICRONAUT_ENVIRONMENTS=flow-standalone,dev
-MICRONAUT_ENVIRONMENTS=flow-standalone,demo
 ```
 
 生产依赖应使用普通 Maven JAR 和依赖元数据，不使用 `shadowJar` 作为 CSES 依赖。

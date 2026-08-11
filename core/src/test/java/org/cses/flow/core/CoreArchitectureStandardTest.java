@@ -363,6 +363,9 @@ class CoreArchitectureStandardTest {
         String store = Files.readString(
             defaultQueue.resolve("PostgresQueueStore.java")
         );
+        String entry = Files.readString(defaultQueue.resolve(
+            "entries/QueueMessageEntry.java"
+        ));
         assertTrue(
             queue.contains("implements DispatchQueue<T>")
                 && queue.contains("Class<T> eventType")
@@ -376,9 +379,19 @@ class CoreArchitectureStandardTest {
             "Default Queue competition must remain database-backed"
         );
         assertTrue(
+            store.contains(
+                ".fetchOneInto(QueueMessageEntry.class)"
+            )
+                && !store.contains("QueuesRecord")
+                && !entry.contains("QueuesRecord")
+                && !entry.contains("fromRecord("),
+            "Default Queue reads must map complete rows directly into "
+                + "QueueMessageEntry"
+        );
+        assertTrue(
             Files.isRegularFile(Path.of(
                 "../gen/src/main/java/org/flow/gen/flow/tables/"
-                    + "FlowQueuesTable.java"
+                    + "QueuesTable.java"
             )),
             "Default Queue table must come from generated JOOQ sources"
         );
@@ -449,14 +462,20 @@ class CoreArchitectureStandardTest {
                     "private final Map<String, Object> variables;"
                 )
                 && runContext.contains("EXECUTION_VARIABLE")
+                && runContext.contains("TASK_RUN_ID_VARIABLE")
                 && runContext.contains("INPUTS_VARIABLE")
+                && runContext.contains("public String taskRunId()")
                 && !runContext.contains("private final WorkerTask")
                 && !runContext.contains("private final TaskRun")
                 && !runContext.contains("private final Execution")
-                && !runContext.contains("String taskRunId")
+                && !runContext.contains("private final String taskRunId")
                 && !runContext.contains("BeanContext")
                 && !runContext.contains("getBean(")
-                && !dispatcher.contains("BeanContext"),
+                && !dispatcher.contains("BeanContext")
+                && dispatcher.contains(
+                    "RunContext.TASK_RUN_ID_VARIABLE"
+                )
+                && dispatcher.contains("workerTask.taskRunId()"),
             "RunContext must remain scoped to one RunnableTask invocation"
         );
         assertTrue(
@@ -564,27 +583,6 @@ class CoreArchitectureStandardTest {
         assertTrue(
             invalid.isEmpty(),
             () -> "Java development standard violations: " + invalid
-        );
-    }
-
-    @Test
-    void productionSourcesDoNotContainInMemoryAdapters()
-        throws IOException {
-
-        List<String> invalid;
-        try (var paths = Files.walk(MAIN_JAVA)) {
-            invalid = paths
-                .filter(path -> path.toString().endsWith(".java"))
-                .filter(path ->
-                    path.getFileName().toString().startsWith("InMemory")
-                )
-                .map(Path::toString)
-                .toList();
-        }
-
-        assertTrue(
-            invalid.isEmpty(),
-            () -> "In-memory adapters found in production: " + invalid
         );
     }
 

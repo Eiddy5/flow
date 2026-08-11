@@ -25,7 +25,7 @@ consul:
   client:
     registration:
       enabled: false
-    defaultZone: "http://192.168.6.6:8500" # prod
+#    defaultZone: "http://192.168.6.6:8500" # prod
 #    defaultZone: "http://consul-pre.jinqidongli.com/" # pre
 #    defaultZone: [ "http://193.168.2.100:32267" ]  # dev
 #    defaultZone: [ "http://consul-test-2-0.consul-test-2.consul.svc.cluster.local:8500" ] # dev (打包使用)

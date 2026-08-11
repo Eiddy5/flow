@@ -98,7 +98,7 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 ### `server/`
 
 Flow 的薄 HTTP 服务和可启动 Micronaut 应用。它通过 `api(project(":core"))` 传递
-暴露完整 Core，只保存 `Application`、Controller、HTTP Session Binder、静态资源
+暴露完整 Core，只保存 `Application`、Controller、静态资源
 和运行配置。Server 既可由自身 `Application` 独立启动，也可作为普通 JAR 进入
 CSES 的 ApplicationContext；模块边界见
 [`ADR 0042`](decisions/0042-split-core-from-http-server.md)，两种运行形态见
@@ -144,9 +144,7 @@ core/src/main/java/org/cses/flow/
 
 server/src/main/java/org/cses/flow/
 ├── Application.java  # Micronaut 应用启动入口和组合根
-├── controller/       # HTTP/Web 入站接口
-└── infrastructure/
-    └── session/      # HTTP 入站使用的 PAAS Session 适配
+└── controller/       # HTTP/Web 入站接口
 ```
 
 ### `Application.java`
@@ -163,8 +161,8 @@ Web 入站适配层，负责：
 - 将稳定的业务结果或异常转换为 HTTP 响应。
 
 Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务编排。当前
-`controller/plugins` 桥接全局只读插件查询，`controller/demo` 只负责 Flow Studio
-演示协议。
+`controller/plugins` 桥接全局只读插件查询。Flow Server 不内置演示页面或 Demo 运行时；
+HTTP 入站只保留生产协议。
 
 ### `core/`
 
@@ -325,7 +323,7 @@ Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次�
 本目录不执行 JOOQ SQL，也不保存消息表、JSONB 转换、后台轮询器、ACK、重试或具体
 Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护，Queue 不建立中心
 类型目录。当前只定义 Dispatch Interface；Broadcast Interface、消费游标和保留清理
-尚未定义。数据库 Adapter 的所有传输类别共用 `flow_queues` 载荷表，并通过
+尚未定义。数据库 Adapter 的所有传输类别共用 `queues` 载荷表，并通过
 `queue_type + queue_name` 逻辑隔离；未来专属消费状态可以独立建表，但不拆分载荷表。
 
 当前 Executor 与 Worker 仍使用同步调用，不依赖 Queue Interface。具体 Queue Adapter
@@ -349,13 +347,15 @@ worker/
 `RunResult` 归属于 `core/domains/tasks`；它们离开 Task 定义没有独立意义。
 Worker 只消费这些能力：接收包装 RunnableTask 的不可变 `WorkerTask`，为一次
 调用创建包含 Session、DSLContext 和只读 `variables` 的 `RunContext`，其中保留键
-`$flow.execution` 保存当前 `Execution`，`$flow.inputs` 保存当前 TaskRun 的实际输入；
-`RunContext` 通过 `executionId()` 和 `inputs()` 提供类型化便捷访问，再直接调用具体 Task 的
+`$flow.execution` 保存当前 `Execution`，`$flow.taskRunId` 和可选的
+`$flow.parentTaskRunId` 保存当前/直接父 TaskRun 的调用期技术身份，`$flow.inputs`
+保存当前 TaskRun 的实际输入；`RunContext` 通过 `executionId()`、`taskRunId()`、
+`parentTaskRunId()` 和 `inputs()` 提供类型化便捷访问，再直接调用具体 Task 的
 `run(RunContext)`，返回使用统一 `State.Type targetState` 的
 `WorkerTaskResult`。结果只允许 COMPLETED 或 TERMINATED；PAUSED 只由 Executor
 处理明确的 Pause OrchestrationTask 时产生。Worker 不发现或选择
 WorkerTaskHandler，也不能推进或修改 Execution、TaskRun 状态、决定下一项 Task 或
-伪造 State History。
+伪造 State History；上述身份不作为新状态写入 Flow、Execution 或 TaskRun。
 
 ### `extensions/`
 
@@ -448,10 +448,8 @@ core/src/main/java/org/cses/flow/infrastructure/
 │           ├── XxxPostgresRepository.java
 │           └── entries/
 │               └── XxxEntry.java
-└── datapilot/       # Core/Demo 的历史兼容接线
+└── datapilot/       # Flow DataPilot 兼容接线
 
-server/src/main/java/org/cses/flow/infrastructure/
-└── session/         # HTTP 入站使用的 PAAS Session 适配
 ```
 
 适合放入：
@@ -461,7 +459,7 @@ server/src/main/java/org/cses/flow/infrastructure/
 - `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；它直接读取 Event 的
   可空 `dsl()` 选择同步事务，使用项目现有 `JsonFactory` 把 Event 重组为排除 DSL 的
   JSONB Queue Entry，并通过装配时传入的 `Class<T>` 恢复业务类型。所有传输类别的
-  Entry 写入统一 `flow_queues`，用可扩展 `queue_type + queue_name` 隔离；当前
+  Entry 写入统一 `queues`，用可扩展 `queue_type + queue_name` 隔离；当前
   Default Adapter 固定使用 `DISPATCH`。Adapter 使用具名 `flow` JOOQ、周期轮询和
   `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务且不携带调用方
   DSL。
@@ -476,9 +474,9 @@ Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry
 完成数据库字段与项目对象的转换。详细规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
 
-跨模块测试使用的内存 Repository 和无连接基础设施替身只放在
-`core/src/testFixtures/java`，模块私有测试替身放在对应模块的 `src/test/java`；它们
-都不能作为生产 Bean 放入 `src/main`。相关决策见
+跨模块测试夹具只放在 `core/src/testFixtures/java`，模块私有测试替身放在对应模块的
+`src/test/java`；测试夹具不能作为生产 Bean 放入 `src/main`。数据库集成测试统一使用
+PostgreSQL 测试适配器，单元测试替身只保留在测试类内部。相关决策见
 [`docs/decisions/0007-keep-test-adapters-out-of-production.md`](decisions/0007-keep-test-adapters-out-of-production.md)。
 
 ## Server 资源目录
@@ -487,10 +485,7 @@ Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry
 server/src/main/resources/
 ├── application.yml       # 独立和嵌入形态共享的安全 flow.* 默认配置
 ├── application-flow-standalone.yml # Flow 独立启动的应用与端口配置
-├── application-demo.yml  # 统一 Demo 页面、会话与数据库模式配置
 ├── bootstrap-flow-standalone.yaml # Flow 独立启动的 Consul 等早期配置
-├── bootstrap-demo.yml    # 按 Demo 数据库模式切换平台早期配置
-├── flow-demo/            # 由同一 Flow 服务托管的 Demo 页面静态资源
 ├── logback.xml           # 日志配置
 └── jiguang.json          # 当前业务资源配置
 ```
@@ -629,7 +624,7 @@ queues/event
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
 | Flow YAML 数据源配置、JOOQ 与数据库接线 | `core/src/main/java/org/cses/flow/infrastructure/jooq/` |
-| Core/Demo 的 DataPilot 接线 | `core/src/main/java/org/cses/flow/infrastructure/datapilot/` |
+| Flow 的 DataPilot 接线 | `core/src/main/java/org/cses/flow/infrastructure/datapilot/` |
 | Flow 自有 OrchestrationTask | `core/src/main/java/org/cses/flow/extensions/flow/<TypeName>.java` |
 | 标注 `@Plugin` 的独立项目内 Task 扩展 | `core/src/main/java/org/cses/flow/extensions/<extension-name>/<ExtensionName>.java` |
 | RunnableTask 具体执行逻辑 | 对应扩展目录中的具体类 |

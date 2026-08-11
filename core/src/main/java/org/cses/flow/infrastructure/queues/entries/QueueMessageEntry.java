@@ -1,8 +1,7 @@
 package org.cses.flow.infrastructure.queues.entries;
 
 import org.cses.flow.queues.event.Event;
-import org.flow.gen.flow.pojos.FlowQueuesObject;
-import org.flow.gen.flow.records.FlowQueuesRecord;
+import org.flow.gen.flow.pojos.QueuesObject;
 import org.jooq.JSONB;
 import org.paas.common.util.StringUtil;
 import org.paas.json.JsonObject;
@@ -12,7 +11,7 @@ import java.util.Objects;
 /**
  * Persistence entry for one message in the shared Queue table.
  */
-public final class QueueMessageEntry extends FlowQueuesObject {
+public final class QueueMessageEntry extends QueuesObject {
 
     public static QueueMessageEntry create(
         String queueType,
@@ -34,20 +33,6 @@ public final class QueueMessageEntry extends FlowQueuesObject {
         entry.payload = JSONB.valueOf(
             payload.toJson()
         );
-        return entry;
-    }
-
-    public static QueueMessageEntry fromRecord(
-        FlowQueuesRecord record
-    ) {
-        Objects.requireNonNull(record, "record");
-        QueueMessageEntry entry = new QueueMessageEntry();
-        entry.id = record.getId();
-        entry.queueType = record.getQueueType();
-        entry.queueName = record.getQueueName();
-        entry.eventKey = record.getEventKey();
-        entry.payload = record.getPayload();
-        entry.createdAt = record.getCreatedAt();
         return entry;
     }
 

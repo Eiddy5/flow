@@ -160,8 +160,6 @@ PAAS 公共能力演进。
 - 新代码不得复制存量写法。
 - 修改相关类或链路时，应在不改变对外 JSON 契约的前提下迁移到 PAAS JSON，并
   补充序列化、反序列化和异常输入测试。
-- `FlowDemoControllerTest` 当前直接创建 `ObjectMapper` 解析 HTTP JSON 响应，
-  后续修改该测试时应迁移到 PAAS JSON。
 
 ## 7. 开发与审查清单
 

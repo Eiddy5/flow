@@ -40,6 +40,18 @@ public final class Execution implements Lockable<Execution> {
     }
 
     /**
+     * Creates a new Execution with a caller-owned stable technical id.
+     */
+    public static Execution create(
+        String id,
+        String companyId,
+        String flowId,
+        long flowReversion
+    ) {
+        return new Execution(id, companyId, flowId, flowReversion, false);
+    }
+
+    /**
      * Rehydrates a complete aggregate from a trusted persistence adapter.
      */
     public static Execution rehydrate(String id, String companyId, String flowId, long flowReversion, State state, long lockVersion, List<TaskRun> taskRuns) {

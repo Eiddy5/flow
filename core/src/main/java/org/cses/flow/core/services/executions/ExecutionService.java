@@ -56,6 +56,28 @@ public final class ExecutionService {
         );
     }
 
+    /**
+     * Idempotently materializes a pending Execution for a trusted host that
+     * has already persisted the stable id and exact Flow reversion. This is
+     * not a historical-version selector for ordinary new executions.
+     */
+    public <S extends Session<U>, U extends User> Execution createPending(
+            S session,
+            String executionId,
+            String flowId,
+            long flowReversion
+    ) {
+        return commandExecutor.execute(
+                session,
+                new CreateExecutionCommand(
+                    executionId,
+                    flowId,
+                    flowReversion,
+                    false
+                )
+        );
+    }
+
     public <S extends Session<U>, U extends User> Execution cancel(
             S session,
             String executionId

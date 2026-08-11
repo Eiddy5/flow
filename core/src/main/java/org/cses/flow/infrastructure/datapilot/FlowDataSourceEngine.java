@@ -8,7 +8,7 @@ import org.dataPilot.conf.DbType;
 import org.dataPilot.conf.option.DbDataSourceOption;
 import org.dataPilot.datasource.DataSourceKeyProvider;
 import org.dataPilot.micronaut.MicronautDataSourceEngine;
-import org.jooq.impl.SchemaImpl;
+import org.flow.gen.flow.Public;
 import org.paas.session.Session;
 import org.paas.session.User;
 @Secondary
@@ -27,7 +27,7 @@ public final class FlowDataSourceEngine
 
     @Override
     public void registerDataSources() {
-        defineDbDataSource(postgreSqlOption());
+        defineDbDataSource(flowDatasource());
     }
 
     @Override
@@ -38,12 +38,12 @@ public final class FlowDataSourceEngine
         );
     }
 
-    DbDataSourceOption postgreSqlOption() {
+    DbDataSourceOption flowDatasource() {
         DbDataSourceOption option = new DbDataSourceOption();
         option.dbName = "flow";
         option.name = "default";
-        option.title = "Flow PostgreSQL";
-        option.jooqSchema = new SchemaImpl("public");
+        option.title = "flow 数据源";
+        option.jooqSchema = Public.PUBLIC;
         option.type = DataSourceType.orm;
         option.dbType = DbType.postgresql;
         return option;

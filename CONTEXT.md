@@ -17,7 +17,7 @@ _Avoid_: FlowWithSource, generic Draft, Draft status, Raw Flow, parsed Flow, Flo
 _Avoid_: Flow Version, Revision, Draft, mutable Flow
 
 **Current Flow Reversion**:
-某个 Flow 同一 `id` 下最大的 reversion；只有该最大 reversion 尚未删除时，它才供新 Execution 启动绑定。最大 reversion 已删除时不存在可启动的当前 Flow，不能回退到旧 reversion。
+某个 Flow 同一 `id` 下最大的 reversion；只有该最大 reversion 尚未删除时，它才供普通的新 Execution 启动绑定。最大 reversion 已删除时不存在可启动的当前 Flow，不能回退到旧 reversion；已经由外部业务持久承诺的精确 Execution Binding 按其原 Flow Reversion 物化，不属于普通新启动。
 _Avoid_: Current Flow Version, Only version, mutable version
 
 **Flow Deletion**:
@@ -68,7 +68,8 @@ _Avoid_: Node, Activity
 **Runnable Task**:
 继承 Task 并实现 RunnableTask 能力的具体步骤定义；它把实际工作写在
 `run(RunContext)` 中，只有这种 Task 才能形成 WorkerTask 并交给 Worker。它不能
-读取或改变 Execution、TaskRun、nexts 或分支编排状态。
+改变 Execution、TaskRun、nexts 或分支编排状态；只能读取本次调用所需的
+运行输入和技术身份。
 _Avoid_: WorkerTaskHandler, executable OrchestrationTask, generic Task execution
 
 **Orchestration Task**:
@@ -79,10 +80,13 @@ PARALLEL 和未来规则确认后的 LOOP、LOOP UNTIL、SUBFLOW。它没有实�
 _Avoid_: BranchTask, runnable orchestration, structural WorkerTask
 
 **Run Context**:
-每次只服务一个 RunnableTask 调用的临时不可变上下文，只提供当前 Session、命令
-DSLContext 和本次实际 inputs。它不包含 Task、WorkerTask、Execution、TaskRun、
-taskRunId 或状态修改入口，也不持久化或跨 Task 复用。
-_Avoid_: WorkerContext, Execution context, TaskRun snapshot, persisted context
+每次只服务一个 RunnableTask 调用的临时不可变上下文，提供当前 Session、命令
+DSLContext、本次实际 inputs，以及 `executionId()`、`taskRunId()` 和可选的
+`parentTaskRunId()` 调用期技术身份。`taskRunId` 标识当前 RunnableTask 的
+TaskRun，`parentTaskRunId` 只标识其直接父 TaskRun；两者都不暴露 TaskRun 聚合
+或状态修改能力。variables 中的 Execution 也只是本次调用的运行时引用，
+Task 不得通过它推进状态。Run Context 不持久化，也不跨 Task 复用。
+_Avoid_: WorkerContext, Persisted Execution Context, TaskRun Snapshot, State Mutation Handle
 
 **Ordered Task Children**:
 普通 Task 完成后按定义顺序选择和运行的直接子 Task；前一个已选择子 Task 的完整
@@ -148,6 +152,10 @@ _Avoid_: LogTask, Audit Log, logging service
 Flow Reversion 被启动后形成的一次完整运行实例；它永久绑定启动时的 `flowId + flowReversion`，保存生命周期状态和有序 TaskRun 历史，并且可以同时拥有多个活动 TaskRun。Execution 不是移动游标，实际执行路径由 TaskRun 事实表达。
 _Avoid_: Process, workflow instance
 
+**Durable Execution Materialization**:
+可信外部业务把已经持久承诺的 `executionId + flowId + flowReversion` 精确、幂等地物化为待运行 Execution；它不重新选择 Current Flow Reversion，也不允许普通调用方任意启动历史 Reversion。
+_Avoid_: Historical Flow Start, Latest Flow Fallback, Execution Retry Copy
+
 **Executor Scheduling Cycle**:
 以一个 Execution 及其精确 Flow Reversion 为输入、从已有 TaskRun 事实重建下一
 批工作并推进到下一个可提交点的一次可恢复调度循环。循环内的 ExecutorContext
@@ -159,7 +167,7 @@ _Avoid_: Execution cursor, transaction context, persisted next queue
 由所属业务 Module 定义、可交给 Flow Queue 异步传输的类型化内容；业务自身拥有其
 字段、key 和内部分类，并直接提供只供同步发布使用的可空 `DSLContext`。DSL 不是
 业务事实，不进入持久化 Event；Queue 也不把 Event 转换为统一业务 Message 或结果信封。
-数据库 Adapter 将不同传输类别的 Event payload 统一保存在 `flow_queues`，类别和
+数据库 Adapter 将不同传输类别的 Event payload 统一保存在 `queues`，类别和
 逻辑 Queue 分别由 `queue_type` 与 `queue_name` 表达。
 _Avoid_: generic Message, Queue Record, transport envelope
 
@@ -175,7 +183,7 @@ _Avoid_: Queue Consumer, ACK handle, business subscription
 
 **Default Dispatch Queue**:
 Dispatch Queue 当前基于 PostgreSQL 的默认 Adapter；它把 Event 的业务 JSON object
-作为 JSONB 写入统一 `flow_queues`，并固定 `queue_type = 'DISPATCH'`；Subscription
+作为 JSONB 写入统一 `queues`，并固定 `queue_type = 'DISPATCH'`；Subscription
 按 `queue_type + queue_name` 周期轮询并使用 `FOR UPDATE SKIP LOCKED` 竞争一行，在领取
 事务内调用 Consumer 并删除。它直接使用 Event 的可空 `dsl()` 或开启自有同步事务；
 异步发布始终使用自有事务且不携带 DSL。
@@ -183,7 +191,7 @@ Default Queue 使用项目 `JsonFactory` 重组排除 DSL 的 Queue Entry，并�
 的 `Class<T>` 恢复业务 Event；内部 `eventType` 仍由业务自己解释。普通 Consumer
 异常仍完成删除；只有领取事务未提交时原行重新可见，因此崩溃恢复可能再次调用
 Consumer。
-Broadcast 未来同样复用 `flow_queues` 并使用 `BROADCAST` 类型；当前不提供其
+Broadcast 未来同样复用 `queues` 并使用 `BROADCAST` 类型；当前不提供其
 Interface、消费游标或保留清理，未来专属投递状态应放入独立表而不是拆分消息载荷。
 _Avoid_: storage-specific public Queue name, Transactional Outbox, Retry Queue, Exactly-once Queue
 

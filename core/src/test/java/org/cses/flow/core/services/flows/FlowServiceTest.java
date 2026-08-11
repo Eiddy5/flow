@@ -1,14 +1,12 @@
 package org.cses.flow.core.services.flows;
 
-import io.micronaut.context.ApplicationContext;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
-
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,24 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlowServiceTest {
 
-    private static final Map<String, Object> PROPERTIES = Map.of(
-        "flow.memory.enabled", true,
-        "datasources.default.enabled", false,
-        "flyway.datasources.default.enabled", false,
-        "micronaut.config-client.enabled", false,
-        "consul.client.registration.enabled", false,
-        "grpc.server.enabled", false,
-        "thrift.server.enabled", false,
-        "pulsar.consumer.enabled", false,
-        "jooq.send-event", false
-    );
-
     @Test
     void savesOpaqueInvalidDraftAndRejectsOnlyAtDeployment() {
-        try (ApplicationContext context =
-                 ApplicationContext.run(PROPERTIES)) {
-            FlowService service = context.getBean(FlowService.class);
-            Session<User> session = session("company-1");
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            FlowService service = fixture.flowService();
+            Session<User> session = fixture.sessionForExactCompany("company-1");
             String invalidRaw = "key: [not-valid";
 
             FlowDraft draft = service.saveDraft(
@@ -60,10 +45,9 @@ class FlowServiceTest {
 
     @Test
     void deletedLatestReversionDoesNotFallBackToOlderFlow() {
-        try (ApplicationContext context =
-                 ApplicationContext.run(PROPERTIES)) {
-            FlowService service = context.getBean(FlowService.class);
-            Session<User> session = session("company-1");
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            FlowService service = fixture.flowService();
+            Session<User> session = fixture.sessionForExactCompany("company-1");
             FlowDraft draft = service.saveDraft(
                 session,
                 validYaml("first")
@@ -111,12 +95,4 @@ class FlowServiceTest {
             """.formatted(description);
     }
 
-    private static Session<User> session(String companyId) {
-        User user = new User();
-        user.setId("user-1");
-        user.setCompanyId(companyId);
-        Session<User> session = new Session<>();
-        session.setUser(user);
-        return session;
-    }
 }

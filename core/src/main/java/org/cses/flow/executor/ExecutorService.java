@@ -117,6 +117,7 @@ public final class ExecutorService {
                 workerTasks.add(new WorkerTask(
                     context.execution().id(),
                     taskRun.id(),
+                    taskRun.parentId().orElse(null),
                     task,
                     taskRun.inputs(),
                     Map.of(

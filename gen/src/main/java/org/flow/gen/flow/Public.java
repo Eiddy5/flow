@@ -10,9 +10,9 @@ import java.util.List;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExternalTasksTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
-import org.flow.gen.flow.tables.FlowQueuesTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
+import org.flow.gen.flow.tables.QueuesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.jooq.Catalog;
 import org.jooq.Table;
@@ -49,11 +49,6 @@ public class Public extends SchemaImpl {
     public final FlowDraftsTable FLOW_DRAFTS = FlowDraftsTable.FLOW_DRAFTS;
 
     /**
-     * The table <code>public.flow_queues</code>.
-     */
-    public final FlowQueuesTable FLOW_QUEUES = FlowQueuesTable.FLOW_QUEUES;
-
-    /**
      * The table <code>public.flow_tasks</code>.
      */
     public final FlowTasksTable FLOW_TASKS = FlowTasksTable.FLOW_TASKS;
@@ -62,6 +57,11 @@ public class Public extends SchemaImpl {
      * The table <code>public.flows</code>.
      */
     public final FlowsTable FLOWS = FlowsTable.FLOWS;
+
+    /**
+     * The table <code>public.queues</code>.
+     */
+    public final QueuesTable QUEUES = QueuesTable.QUEUES;
 
     /**
      * The table <code>public.task_runs</code>.
@@ -87,9 +87,9 @@ public class Public extends SchemaImpl {
             ExecutionsTable.EXECUTIONS,
             ExternalTasksTable.EXTERNAL_TASKS,
             FlowDraftsTable.FLOW_DRAFTS,
-            FlowQueuesTable.FLOW_QUEUES,
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,
+            QueuesTable.QUEUES,
             TaskRunsTable.TASK_RUNS
         );
     }

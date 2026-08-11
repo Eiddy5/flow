@@ -29,7 +29,6 @@ public final class PostgresExternalTriggerRunner {
     private static final int MAX_TRIGGER_ROUNDS = 32;
 
     private static final Map<String, Object> PROPERTIES = Map.of(
-        "flow.memory.enabled", false,
         "datasources.default.enabled", false,
         "flyway.datasources.default.enabled", false,
         "micronaut.config-client.enabled", false,

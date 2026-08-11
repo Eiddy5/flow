@@ -1,6 +1,5 @@
 package org.cses.flow.infrastructure.repositories.flows.postgres;
 
-import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
@@ -25,11 +24,6 @@ import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
 
 @Singleton
-@Requires(
-    property = "flow.memory.enabled",
-    value = "false",
-    defaultValue = "false"
-)
 public final class FlowPostgresRepository implements FlowRepository {
 
     private final JacksonMapper jacksonMapper;

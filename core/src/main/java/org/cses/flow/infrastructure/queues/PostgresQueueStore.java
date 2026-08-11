@@ -3,9 +3,7 @@ package org.cses.flow.infrastructure.queues;
 import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
 import org.cses.flow.queues.QueueException;
 import org.cses.flow.queues.event.DispatchEvent;
-import org.flow.gen.flow.records.FlowQueuesRecord;
 import org.jooq.DSLContext;
-import org.jooq.InsertSetMoreStep;
 import org.x9.jooq.JOOQ;
 
 import java.util.ArrayList;
@@ -14,7 +12,7 @@ import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 
-import static org.flow.gen.flow.Tables.FLOW_QUEUES;
+import static org.flow.gen.flow.Tables.QUEUES;
 
 /**
  * PostgreSQL operations hidden behind the Default Dispatch Queue.
@@ -137,8 +135,8 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         List<QueueMessageEntry> entries
     ) {
         QueueMessageEntry first = entries.getFirst();
-        InsertSetMoreStep<FlowQueuesRecord> insert = dsl
-            .insertInto(FLOW_QUEUES)
+        var insert = dsl
+            .insertInto(QUEUES)
             .set(first.buildInsertMap());
         for (int index = 1; index < entries.size(); index++) {
             insert = insert.newRecord()
@@ -152,23 +150,22 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         Consumer<T> consumer,
         BooleanSupplier deliveryAllowed
     ) {
-        FlowQueuesRecord record = dsl
-            .selectFrom(FLOW_QUEUES)
-            .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
-            .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
+        QueueMessageEntry entry = dsl
+            .selectFrom(QUEUES)
+            .where(QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(QUEUES.QUEUE_NAME.eq(queueName))
             .orderBy(
-                FLOW_QUEUES.CREATED_AT.asc(),
-                FLOW_QUEUES.ID.asc()
+                QUEUES.CREATED_AT.asc(),
+                QUEUES.ID.asc()
             )
             .limit(1)
             .forUpdate()
             .skipLocked()
-            .fetchOne();
-        if (record == null || !deliveryAllowed.getAsBoolean()) {
+            .fetchOneInto(QueueMessageEntry.class);
+        if (entry == null || !deliveryAllowed.getAsBoolean()) {
             return DeliveryAttempt.empty();
         }
 
-        QueueMessageEntry entry = QueueMessageEntry.fromRecord(record);
         T event;
         try {
             event = entry.toEvent(eventType);
@@ -194,10 +191,10 @@ final class PostgresQueueStore<T extends DispatchEvent> {
             deliveryFailure = exception;
         }
 
-        int deleted = dsl.deleteFrom(FLOW_QUEUES)
-            .where(FLOW_QUEUES.ID.eq(entry.getId()))
-            .and(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
-            .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
+        int deleted = dsl.deleteFrom(QUEUES)
+            .where(QUEUES.ID.eq(entry.getId()))
+            .and(QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(QUEUES.QUEUE_NAME.eq(queueName))
             .execute();
         if (deleted != 1) {
             throw new QueueException(

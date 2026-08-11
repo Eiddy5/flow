@@ -14,7 +14,7 @@ final class FlowDataSourceEngineTest {
     @Test
     void configuresFlowPostgreSqlDataSource() {
         FlowDataSourceEngine engine = new FlowDataSourceEngine();
-        DbDataSourceOption option = engine.postgreSqlOption();
+        DbDataSourceOption option = engine.flowDatasource();
 
         assertEquals("flow", option.dbName);
         assertEquals("default", option.name);

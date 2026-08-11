@@ -2,6 +2,7 @@ package org.cses.flow.infrastructure.queues;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
+import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
 import org.cses.flow.queues.DispatchQueue;
 import org.cses.flow.queues.QueueException;
 import org.cses.flow.queues.QueueSubscription;
@@ -28,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static org.flow.gen.flow.Tables.FLOW_QUEUES;
+import static org.flow.gen.flow.Tables.QUEUES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -66,18 +67,18 @@ final class DefaultDispatchQueueIntegrationTest {
         }
         try {
             database.run(dsl -> {
-                dsl.deleteFrom(FLOW_QUEUES)
-                    .where(FLOW_QUEUES.QUEUE_TYPE.eq(
+                dsl.deleteFrom(QUEUES)
+                    .where(QUEUES.QUEUE_TYPE.eq(
                         DISPATCH_QUEUE_TYPE
                     ))
-                    .and(FLOW_QUEUES.QUEUE_NAME.startsWith(queuePrefix))
+                    .and(QUEUES.QUEUE_NAME.startsWith(queuePrefix))
                     .execute();
                 if (!broadcastMessageIds.isEmpty()) {
-                    dsl.deleteFrom(FLOW_QUEUES)
-                        .where(FLOW_QUEUES.QUEUE_TYPE.eq(
+                    dsl.deleteFrom(QUEUES)
+                        .where(QUEUES.QUEUE_TYPE.eq(
                             BROADCAST_QUEUE_TYPE
                         ))
-                        .and(FLOW_QUEUES.ID.in(broadcastMessageIds))
+                        .and(QUEUES.ID.in(broadcastMessageIds))
                         .execute();
                 }
             });
@@ -125,20 +126,14 @@ final class DefaultDispatchQueueIntegrationTest {
         throws InterruptedException {
         String name = queueName("queue-type-isolation");
         DefaultDispatchQueue<TestEvent> queue = queue(name);
-        String broadcastMessageId = StringUtil.newId();
-        database.run(dsl -> dsl.insertInto(FLOW_QUEUES)
-            .set(FLOW_QUEUES.ID, broadcastMessageId)
-            .set(FLOW_QUEUES.QUEUE_TYPE, BROADCAST_QUEUE_TYPE)
-            .set(FLOW_QUEUES.QUEUE_NAME, name)
-            .set(FLOW_QUEUES.EVENT_KEY, "broadcast")
-            .set(
-                FLOW_QUEUES.PAYLOAD,
-                JSONB.valueOf(
-                    """
-                    {"key":"broadcast","value":"must-not-deliver"}
-                    """
-                )
-            )
+        QueueMessageEntry broadcast = QueueMessageEntry.create(
+            BROADCAST_QUEUE_TYPE,
+            name,
+            new TestEvent("broadcast", "must-not-deliver")
+        );
+        String broadcastMessageId = broadcast.getId();
+        database.run(dsl -> dsl.insertInto(QUEUES)
+            .set(broadcast.buildInsertMap())
             .execute());
         broadcastMessageIds.add(broadcastMessageId);
         CountDownLatch dispatchDelivered = new CountDownLatch(1);
@@ -216,19 +211,18 @@ final class DefaultDispatchQueueIntegrationTest {
     @Test
     void keepsOriginalMessageWhenPayloadCannotBeDecoded() {
         String name = queueName("decode-failure");
-        database.run(dsl -> dsl.insertInto(FLOW_QUEUES)
-            .set(FLOW_QUEUES.ID, StringUtil.newId())
-            .set(FLOW_QUEUES.QUEUE_TYPE, DISPATCH_QUEUE_TYPE)
-            .set(FLOW_QUEUES.QUEUE_NAME, name)
-            .set(FLOW_QUEUES.EVENT_KEY, "unreadable")
-            .set(
-                FLOW_QUEUES.PAYLOAD,
-                JSONB.valueOf(
-                    """
-                    {"key":"unreadable","value":{"nested":true}}
-                    """
-                )
-            )
+        QueueMessageEntry unreadable = QueueMessageEntry.create(
+            DISPATCH_QUEUE_TYPE,
+            name,
+            new TestEvent("unreadable", "placeholder")
+        );
+        unreadable.setPayload(JSONB.valueOf(
+            """
+            {"key":"unreadable","value":{"nested":true}}
+            """
+        ));
+        database.run(dsl -> dsl.insertInto(QUEUES)
+            .set(unreadable.buildInsertMap())
             .execute());
         PostgresQueueStore<TestEvent> store = new PostgresQueueStore<>(
             name,
@@ -662,9 +656,9 @@ final class DefaultDispatchQueueIntegrationTest {
 
     private int pending(String name, String queueType) {
         return database.runReturn(dsl -> dsl.fetchCount(
-            FLOW_QUEUES,
-            FLOW_QUEUES.QUEUE_TYPE.eq(queueType)
-                .and(FLOW_QUEUES.QUEUE_NAME.eq(name))
+            QUEUES,
+            QUEUES.QUEUE_TYPE.eq(queueType)
+                .and(QUEUES.QUEUE_NAME.eq(name))
         ));
     }
 

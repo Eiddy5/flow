@@ -954,4 +954,4 @@ public class ExampleRepository {
 | 索引模型 | [`TaskEntity.java`](server/src/main/java/org/cses/server/service/taskManage/domain/task/entity/TaskEntity.java) |
 | 全局搜索 | [`DocGlobalSearchIndex.java`](server/src/main/java/org/cses/server/service/doc/repositories/searcher/DocGlobalSearchIndex.java) |
 | 数据变更拦截 | [`TaskPermissionRecipientInterceptor.java`](server/src/main/java/org/cses/server/service/taskManage/domain/task/notify/TaskPermissionRecipientInterceptor.java) |
-| Consul 配置入口 | [`server/src/main/resources/bootstrap-flow-standalone.yaml`](../../server/src/main/resources/bootstrap-flow-standalone.yaml) |
+| Consul 配置入口 | [`../../server/src/main/resources/bootstrap.yaml`](../../server/src/main/resources/bootstrap.yaml) |

@@ -10,24 +10,12 @@ import org.jooq.meta.jaxb.*;
 public class JOOQFlowGenerator {
 
     public static void main(String[] args) throws Exception {
-        String jdbcUrl = environment(
-            "FLOW_JOOQ_JDBC_URL",
-            "jdbc:postgresql://localhost:5432/flow"
-        );
-        String jdbcUser = environment("FLOW_JOOQ_JDBC_USER", "flow");
-        String jdbcPassword = environment("FLOW_JOOQ_JDBC_PASSWORD", "flow");
         Configuration configuration = new Configuration()
-//                .withJdbc(new Jdbc()
-//                        .withDriver("org.postgresql.Driver")
-//                        .withUrl("jdbc:postgresql://192.168.6.34:5432/cses")
-//                        .withUser("postgres")
-//                        .withPassword("postgres")
-//                )
                 .withJdbc(new Jdbc()
                         .withDriver("org.postgresql.Driver")
-                        .withUrl(jdbcUrl)
-                        .withUser(jdbcUser)
-                        .withPassword(jdbcPassword)
+                        .withUrl("dbc:postgresql://localhost:5432/flow")
+                        .withUser("flow")
+                        .withPassword("flow")
                 )
                 .withGenerator(new Generator()
                         .withName("org.jooq.codegen.ext.generator.ExtJavaGenerator")

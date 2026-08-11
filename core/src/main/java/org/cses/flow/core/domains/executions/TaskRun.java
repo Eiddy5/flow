@@ -129,9 +129,8 @@ public final class TaskRun implements Identified {
 
     private TaskRun(TaskRun source) {
         this.id = source.id;
-        // The memory adapter uses copies as persistence round-trips. Recreate
-        // the reference so orchestration tests cannot accidentally pass by
-        // relying on String object identity.
+        // Recreate the reference so orchestration tests cannot accidentally
+        // pass by relying on String object identity.
         this.taskId = new String(source.taskId);
         this.parentId = source.parentId;
         this.iteration = source.iteration;

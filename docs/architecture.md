@@ -18,17 +18,14 @@
 ```mermaid
 flowchart LR
     subgraph clients ["调用方"]
-        browser["Flow Studio 浏览器"]
+        browser["Flow API 客户端"]
         externalCaller["外部业务能力"]
     end
 
     subgraph server ["server 模块：HTTP 服务与启动"]
         subgraph inbound ["入站与应用装配"]
             micronautApp["Application / Micronaut Netty"]
-            staticAssets["Flow Demo 静态资源"]
-            demoController["FlowDemoController"]
             pluginController["PluginController"]
-            sessionBinder["SessionArgumentBinder"]
         end
     end
 
@@ -80,12 +77,7 @@ flowchart LR
     consul["Consul 配置与服务注册"]
 
     browser -->|"HTTP / JSON"| micronautApp
-    micronautApp --> staticAssets
-    micronautApp --> demoController
     micronautApp --> pluginController
-    sessionBinder -->|"绑定租户与用户 Session"| demoController
-    demoController --> flowService
-    demoController --> executionService
     pluginController --> pluginService
     externalCaller -.->|"兼容外部恢复入口"| externalTaskService
 
@@ -141,7 +133,7 @@ flowchart LR
     classDef storeNode fill:#E8EEF5,stroke:#60758A,color:#21313F
 
     class browser,externalCaller caller
-    class micronautApp,staticAssets,demoController,pluginController,sessionBinder inboundNode
+    class micronautApp,pluginController inboundNode
     class flowService,executionService,externalTaskService,pluginService,commandExecutor,commandHandlers,queryHandlers,yamlParser,domains,repositoryPorts,queueContracts,executor,worker,pluginRuntime,pluginSchema coreNode
     class autoTask,pauseTask,parallelTask,inProjectPlugins extensionNode
     class postgresRepositories,defaultQueue,jooqBoundary,migrations,generatedJooq adapterNode
@@ -155,7 +147,7 @@ Worker、扩展与 Infrastructure；`server` 是只保留 HTTP 与启动职责�
 Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只使用具名 `flow` 数据源。
 开发期基线变化后需要重建该数据库，不提供旧 Schema 或旧数据的升级路径。
 Core 提供尚未接入 Executor/Worker 主运行流程的类型化 Dispatch Queue Interface，
-并已有使用统一 `flow_queues` 表的 Default Adapter。该表以
+并已有使用统一 `queues` 表的 Default Adapter。该表以
 `queue_type + queue_name` 隔离传输类别和逻辑 Queue；当前 Adapter 只写入并领取
 `DISPATCH` 行。业务 Module 仍需为具体 Event 提供可空 `dsl()`、确定的 `Class<T>` 和
 具名 Bean；Event 内部 `eventType` 仍由业务自行维护。当前没有 Execution Event、Queue
@@ -168,7 +160,7 @@ Entry，并用装配时传入的 `Class<T>` 恢复类型。异步发布始终在
 任务只携带 Entry，不携带 Event 的 DSL。每个 Subscription 使用虚拟线程周期轮询
 数据库，并在领取事务内按 `queue_type = 'DISPATCH'`、`queue_name` 通过
 `FOR UPDATE SKIP LOCKED` 竞争、调用 Consumer 和删除消息；Queue 不根据 Consumer 的
-普通业务异常安排重新投递。未来 Broadcast 消息载荷仍写入 `flow_queues`，所需的
+普通业务异常安排重新投递。未来 Broadcast 消息载荷仍写入 `queues`，所需的
 广播专属投递状态单独保存，不拆分消息载荷表。
 
 ## 核心业务流程图
@@ -303,7 +295,7 @@ flowchart TD
 
 ## 主要源码依据
 
-- [`server/src/main/java/org/cses/flow/controller/demo/FlowDemoController.java`](../server/src/main/java/org/cses/flow/controller/demo/FlowDemoController.java)
+- [`server/src/main/java/org/cses/flow/controller/plugins/PluginController.java`](../server/src/main/java/org/cses/flow/controller/plugins/PluginController.java)
 - [`core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java)
 - [`core/src/main/java/org/cses/flow/core/handlers/executions/CreateExecutionHandler.java`](../core/src/main/java/org/cses/flow/core/handlers/executions/CreateExecutionHandler.java)
 - [`core/src/main/java/org/cses/flow/executor/DefaultExecutor.java`](../core/src/main/java/org/cses/flow/executor/DefaultExecutor.java)

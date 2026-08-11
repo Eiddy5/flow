@@ -36,7 +36,7 @@ psql <测试数据库连接串> \
   -f gen/sql/flow/001_create_flow_tables.sql
 ```
 
-当前基线要求统一 `flow_queues.payload` 为 `jsonb`，且顶层必须是 JSON object；
+当前基线要求统一 `queues.payload` 为 `jsonb`，且顶层必须是 JSON object；
 `queue_type + queue_name` 是 Queue 隔离边界。当前负载场景只生产和消费
 `queue_type = 'DISPATCH'` 的行，不验证 Broadcast Interface、消费游标或保留清理。
 负载测试不兼容仍按传输类别拆分载荷表或使用 `bytea` payload 的旧测试数据库，应先按

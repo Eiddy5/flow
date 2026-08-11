@@ -1,6 +1,5 @@
 package org.cses.flow.infrastructure.repositories.externaltasks.postgres;
 
-import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
@@ -17,11 +16,6 @@ import java.util.Optional;
 import static org.flow.gen.flow.Tables.EXTERNAL_TASKS;
 
 @Singleton
-@Requires(
-    property = "flow.memory.enabled",
-    value = "false",
-    defaultValue = "false"
-)
 public final class ExternalTaskPostgresRepository
     implements ExternalTaskRepository {
 

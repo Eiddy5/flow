@@ -17,6 +17,8 @@ import org.cses.flow.executor.ExecutorContext;
 import org.paas.session.Session;
 import org.paas.session.User;
 
+import java.util.Optional;
+
 @Singleton
 public final class CreateExecutionHandler implements CommandHandler<
     Session<User>,
@@ -57,24 +59,45 @@ public final class CreateExecutionHandler implements CommandHandler<
         String companyId = SessionValidation.requireCompanyId(
             context.getSession()
         );
-        Flow flow = FlowHandlerSupport.requireLatestFlow(
-            flowRepository,
-            context.getDsl(),
+        CreateExecutionCommand command = context.getCommand();
+        Optional<Execution> existing = existing(
+            context,
             companyId,
-            context.getCommand().flowId()
+            command
         );
+        if (existing.isPresent()) {
+            return existing.get().copy();
+        }
+
+        Flow flow = command.expectedFlowReversion() == null
+            ? FlowHandlerSupport.requireLatestFlow(
+                flowRepository,
+                context.getDsl(),
+                companyId,
+                command.flowId()
+            )
+            : FlowHandlerSupport.requireFlow(
+                flowRepository,
+                context.getDsl(),
+                companyId,
+                command.flowId(),
+                command.expectedFlowReversion()
+            );
         if (flow.isDeleted()) {
             throw new WorkflowException(
-                "Only the latest undeleted Flow can start an Execution: "
+                "Only an undeleted Flow can start an Execution: "
                     + flow.id()
             );
         }
-        Execution execution = Execution.create(
-            companyId,
-            flow.id(),
-            flow.reversion()
-        );
-        if (!context.getCommand().startImmediately()) {
+        Execution execution = command.executionId() == null
+            ? Execution.create(companyId, flow.id(), flow.reversion())
+            : Execution.create(
+                command.executionId(),
+                companyId,
+                flow.id(),
+                flow.reversion()
+            );
+        if (!command.startImmediately()) {
             executionRepository.save(context.getDsl(), execution);
             return execution.copy();
         }
@@ -83,5 +106,36 @@ public final class CreateExecutionHandler implements CommandHandler<
             context.getDsl(),
             new ExecutorContext(flow, execution)
         );
+    }
+
+    private Optional<Execution> existing(
+        CommandContext<
+            Session<User>,
+            User,
+            Execution,
+            CreateExecutionCommand
+        > context,
+        String companyId,
+        CreateExecutionCommand command
+    ) {
+        if (command.executionId() == null) {
+            return Optional.empty();
+        }
+        Optional<Execution> existing = executionRepository.findById(
+            context.getDsl(),
+            companyId,
+            command.executionId()
+        );
+        existing.ifPresent(execution -> {
+            if (!execution.flowId().equals(command.flowId())
+                || execution.flowReversion()
+                    != command.expectedFlowReversion()) {
+                throw new WorkflowException(
+                    "Execution id already belongs to another Flow reference: "
+                        + command.executionId()
+                );
+            }
+        });
+        return existing;
     }
 }

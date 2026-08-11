@@ -1,6 +1,5 @@
 package org.cses.flow.infrastructure.repositories.flows.postgres;
 
-import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -15,11 +14,6 @@ import java.util.Optional;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 
 @Singleton
-@Requires(
-    property = "flow.memory.enabled",
-    value = "false",
-    defaultValue = "false"
-)
 public final class FlowDraftPostgresRepository
     implements FlowDraftRepository {
 

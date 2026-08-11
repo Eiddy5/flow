@@ -1,11 +1,11 @@
 micronaut:
   config-client:
-    enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
+    enabled: true
 
 consul:
   client:
     registration:
-      enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
+      enabled: true
       preferIpAddress: true
       check:
         deregister-critical-service-after: 1m
@@ -16,7 +16,7 @@ consul:
     #    defaultZone: [ "http://192.168.6.6:8500" ] # prod
     #    defaultZone: [ "http://consul-test-2-0.consul-test-2.consul.svc.cluster.local:8500" ] # dev (打包使用)
     config:
-      enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
+      enabled: true
       format: "YAML"
       datacenter: "beijing"
       separator: "/"
@@ -24,7 +24,7 @@ consul:
       path: "x9-config-flow"
     watch:
       service:
-        enabled: ${FLOW_DEMO_PLATFORM_MANAGED:false}
+        enabled: true
     blocking-queries:
       max-wait-duration: 10m
       delay-duration: 50ms

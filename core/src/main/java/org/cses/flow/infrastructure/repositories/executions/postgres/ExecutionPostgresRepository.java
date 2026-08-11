@@ -1,6 +1,5 @@
 package org.cses.flow.infrastructure.repositories.executions.postgres;
 
-import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
@@ -25,11 +24,6 @@ import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 @Singleton
-@Requires(
-    property = "flow.memory.enabled",
-    value = "false",
-    defaultValue = "false"
-)
 public final class ExecutionPostgresRepository
     implements ExecutionRepository {
 

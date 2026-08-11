@@ -7,17 +7,21 @@ import org.cses.flow.core.domains.tasks.Task;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Immutable Executor-to-Worker envelope for one RunnableTask invocation.
  *
  * <p>The variables map contains additional runtime values plus the reserved
- * {@link RunContext#INPUTS_VARIABLE} entry populated from the TaskRun inputs.</p>
+ * {@link RunContext#INPUTS_VARIABLE} entry populated from the TaskRun inputs.
+ * {@link WorkerDispatcher} injects the envelope's exact taskRunId and optional
+ * parent TaskRun id into invocation-only {@link RunContext} entries.</p>
  */
 public final class WorkerTask {
 
     private final String executionId;
     private final String taskRunId;
+    private final String parentTaskRunId;
     private final RunnableTask runnableTask;
     private final Map<String, Object> variables;
 
@@ -27,7 +31,7 @@ public final class WorkerTask {
         Task task,
         Map<String, Object> inputs
     ) {
-        this(executionId, taskRunId, task, inputs, Map.of());
+        this(executionId, taskRunId, null, task, inputs, Map.of());
     }
 
     public WorkerTask(
@@ -37,8 +41,20 @@ public final class WorkerTask {
         Map<String, ?> inputs,
         Map<String, ?> variables
     ) {
+        this(executionId, taskRunId, null, task, inputs, variables);
+    }
+
+    public WorkerTask(
+        String executionId,
+        String taskRunId,
+        String parentTaskRunId,
+        Task task,
+        Map<String, ?> inputs,
+        Map<String, ?> variables
+    ) {
         this.executionId = requireText(executionId, "Execution id");
         this.taskRunId = requireText(taskRunId, "TaskRun id");
+        this.parentTaskRunId = optionalText(parentTaskRunId);
         Task taskDefinition = Objects.requireNonNull(task, "task");
         if (!(taskDefinition instanceof RunnableTask capability)) {
             throw new IllegalArgumentException(
@@ -50,10 +66,12 @@ public final class WorkerTask {
         Map<String, Object> runtimeVariables = new LinkedHashMap<>();
         if (variables != null) {
             variables.forEach((key, value) -> {
-                if (RunContext.INPUTS_VARIABLE.equals(key)) {
+                if (RunContext.INPUTS_VARIABLE.equals(key)
+                    || RunContext.TASK_RUN_ID_VARIABLE.equals(key)
+                    || RunContext.PARENT_TASK_RUN_ID_VARIABLE.equals(key)) {
                     throw new IllegalArgumentException(
-                        "Worker variables must not contain reserved input "
-                            + "variable: " + RunContext.INPUTS_VARIABLE
+                        "Worker variables must not contain reserved variable: "
+                            + key
                     );
                 }
                 runtimeVariables.put(
@@ -80,6 +98,10 @@ public final class WorkerTask {
         return taskRunId;
     }
 
+    public Optional<String> parentTaskRunId() {
+        return Optional.ofNullable(parentTaskRunId);
+    }
+
     public RunnableTask runnableTask() {
         return runnableTask;
     }
@@ -103,5 +125,9 @@ public final class WorkerTask {
             );
         }
         return value.trim();
+    }
+
+    private static String optionalText(String value) {
+        return value == null ? null : requireText(value, "Parent TaskRun id");
     }
 }

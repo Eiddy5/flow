@@ -1,8 +1,8 @@
 package org.cses.flow.core;
 
-import io.micronaut.context.ApplicationContext;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.PluginRegistry;
+import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.flow.Pause;
@@ -12,8 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -21,25 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FlowCoreWiringTest {
 
     @Test
-    void micronautWiresMemoryCommandAndQueryChains() {
-        Map<String, Object> properties = Map.of(
-            "flow.memory.enabled", true,
-            "datasources.default.enabled", false,
-            "flyway.datasources.default.enabled", false,
-            "micronaut.config-client.enabled", false,
-            "consul.client.registration.enabled", false,
-            "grpc.server.enabled", false,
-            "thrift.server.enabled", false,
-            "pulsar.consumer.enabled", false,
-            "jooq.send-event", false
-        );
-
-        try (ApplicationContext context =
-                 ApplicationContext.run(properties)) {
-            FlowService service = context.getBean(FlowService.class);
-            PluginRegistry registry = context.getBean(
-                PluginRegistry.class
-            );
+    void micronautWiresPostgresCommandAndQueryChains() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            FlowService service = fixture.flowService();
+            PluginRegistry registry = fixture.pluginRegistry();
             assertSame(
                 AutomaticTask.class,
                 registry.resolve(AutomaticTask.class.getName(), Task.class)
@@ -56,7 +39,9 @@ class FlowCoreWiringTest {
                 Log.class,
                 registry.resolve(Log.class.getName(), Task.class)
             );
-            Session<User> session = session("wiring-company");
+            Session<User> session = fixture.sessionForExactCompany(
+                "wiring-company"
+            );
 
             var draft = service.saveDraft(
                 session,
@@ -91,12 +76,4 @@ class FlowCoreWiringTest {
         }
     }
 
-    private static Session<User> session(String companyId) {
-        User user = new User();
-        user.setId("wiring-user");
-        user.setCompanyId(companyId);
-        Session<User> session = new Session<>();
-        session.setUser(user);
-        return session;
-    }
 }

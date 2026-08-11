@@ -16,6 +16,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class ExecutionTest {
 
     @Test
+    void createsAnExecutionWithACallerProvidedStableId() {
+        Execution execution = Execution.create(
+            "execution-stable-1",
+            "execution-domain-company",
+            "execution-domain-flow",
+            3
+        );
+
+        assertEquals("execution-stable-1", execution.id());
+        assertEquals("execution-domain-company", execution.companyId());
+        assertEquals("execution-domain-flow", execution.flowId());
+        assertEquals(3L, execution.flowReversion());
+    }
+
+    @Test
     void createTaskRunShouldGenerateStableChildIdentity() {
         Execution execution = Execution.create(
             "execution-domain-company",

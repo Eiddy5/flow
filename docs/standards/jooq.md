@@ -188,7 +188,7 @@ infrastructure/queues/entries/
 Default Dispatch Queue 的 `JsonFactory`、`Class<T>` 和 DSL 排除规则由
 [`ADR 0047`](../decisions/0047-implement-default-dispatch-queue.md) 定义，本文只约束
 其 Queue Message 生成对象仍必须通过上述 `entries` 中的 Entry 使用。数据库 Queue
-Adapter 的 Event payload 统一映射到 `flow_queues`，使用
+Adapter 的 Event payload 统一映射到 `queues`，使用
 `queue_type + queue_name` 作为传输类别与逻辑 Queue 的查询边界；不得为 Dispatch 或
 Broadcast 复制专属消息载荷表。未来某种消费方式需要游标、确认或保留状态时，可以在
 对应 Adapter 下建立独立状态 Entry，但消息载荷仍归统一 Entry。

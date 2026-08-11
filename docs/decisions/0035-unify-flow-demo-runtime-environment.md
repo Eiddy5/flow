@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Superseded by [`ADR 0049`](0049-remove-demo-and-memory-runtime-modes.md)
 
 ## 背景
 

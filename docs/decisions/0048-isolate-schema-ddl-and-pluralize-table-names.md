@@ -95,7 +95,7 @@ erDiagram
         varchar execution_id
         varchar task_run_id UK
     }
-    FLOW_QUEUES {
+    QUEUES {
         varchar id PK
         varchar queue_type
         varchar queue_name
@@ -103,7 +103,7 @@ erDiagram
 ```
 
 图中均为逻辑关系。Flow 仍不创建 PostgreSQL 外键，跨表归属由聚合校验、同事务
-写入、租户条件和 Repository 重建保证。`flow_drafts` 与 `flow_queues` 在当前
+写入、租户条件和 Repository 重建保证。`flow_drafts` 与 `queues` 在当前
 Schema 中没有需要数据库强制的直接关系。
 
 ## 理由

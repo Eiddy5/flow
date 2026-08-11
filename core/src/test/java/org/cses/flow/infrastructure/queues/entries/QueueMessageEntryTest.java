@@ -11,6 +11,8 @@ import org.paas.json.JsonFactory;
 import org.paas.json.JsonObject;
 import org.paas.json.SerializableObject;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -43,6 +45,13 @@ final class QueueMessageEntryTest {
         assertNull(entry.getEventKey());
         assertEquals("original", entry.payloadJson().getString("value"));
         assertFalse(entry.payloadJson().has("dsl"));
+
+        Map<String, Object> insertValues = entry.buildInsertMap();
+        assertEquals(entry.getId(), insertValues.get("id"));
+        assertEquals("DISPATCH", insertValues.get("queue_type"));
+        assertEquals("", insertValues.get("queue_name"));
+        assertEquals(entry.getPayload(), insertValues.get("payload"));
+        assertFalse(insertValues.containsKey("created_at"));
 
         JsonObject returned = entry.payloadJson();
         returned.put("value", "returned-change");

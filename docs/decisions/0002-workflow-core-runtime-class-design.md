@@ -73,8 +73,10 @@ ExecutionService
 ```
 
 - Controller 位于 Core 外。
-- `CreateExecutionHandler` 加载最新已部署 Flow，并调用
-  `Execution.create(...)` 创建 CREATED Execution。
+- `CreateExecutionHandler` 的兼容入口加载最新已部署 Flow，并调用
+  `Execution.create(...)` 创建 CREATED Execution。需要可靠恢复的调用方同时提供稳定
+  Execution id 和精确 Flow reversion；同租户、同 id、同 Flow 引用的重放返回原
+  Execution，不同 Flow id 或 reversion 的重放拒绝冲突，避免重试漂移到 latest。
 - `ExecutorContext` 只保存精确 Flow、Execution 和本轮增量；
   `DefaultExecutor` 管理中间聚合保存和 Worker 调用。
 - `ExecutorService` 只管理状态与编排，不访问 Repository，不执行 Task。

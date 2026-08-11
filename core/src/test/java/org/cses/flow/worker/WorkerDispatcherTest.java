@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class WorkerDispatcherTest {
 
@@ -139,9 +140,17 @@ final class WorkerDispatcherTest {
         Map<String, Object> sourceInputs = new LinkedHashMap<>();
         sourceInputs.put("payload", "original");
         Execution execution = execution("execution-1");
-        WorkerTask workerTask = new WorkerTask(
+        WorkerTask firstWorkerTask = new WorkerTask(
             "execution-1",
             "task-run-1",
+            "parent-run-1",
+            task,
+            sourceInputs,
+            Map.of(RunContext.EXECUTION_VARIABLE, execution)
+        );
+        WorkerTask secondWorkerTask = new WorkerTask(
+            "execution-1",
+            "task-run-2",
             task,
             sourceInputs,
             Map.of(RunContext.EXECUTION_VARIABLE, execution)
@@ -153,9 +162,9 @@ final class WorkerDispatcherTest {
         WorkerTaskResult first = dispatcher.dispatch(
             session,
             dsl,
-            workerTask
+            firstWorkerTask
         );
-        dispatcher.dispatch(session, dsl, workerTask);
+        dispatcher.dispatch(session, dsl, secondWorkerTask);
 
         assertEquals(
             Map.of("payload", "original"),
@@ -166,10 +175,23 @@ final class WorkerDispatcherTest {
         assertSame(session, task.contexts.getFirst().session());
         assertSame(dsl, task.contexts.getFirst().dsl());
         assertEquals("execution-1", task.contexts.getFirst().executionId());
+        assertEquals("task-run-1", task.contexts.getFirst().taskRunId());
+        assertEquals("task-run-2", task.contexts.get(1).taskRunId());
+        assertEquals(
+            "parent-run-1",
+            task.contexts.getFirst().parentTaskRunId().orElseThrow()
+        );
+        assertTrue(task.contexts.get(1).parentTaskRunId().isEmpty());
         assertSame(
             execution,
             task.contexts.getFirst().variables().get(
                 RunContext.EXECUTION_VARIABLE
+            )
+        );
+        assertEquals(
+            "task-run-1",
+            task.contexts.getFirst().variables().get(
+                RunContext.TASK_RUN_ID_VARIABLE
             )
         );
         assertEquals(
@@ -190,6 +212,41 @@ final class WorkerDispatcherTest {
             () -> task.contexts.getFirst().inputs().put(
                 "payload",
                 "mutated"
+            )
+        );
+    }
+
+    @Test
+    void rejectsCallerProvidedTaskRunIdentityVariable() {
+        AutomaticTask task = AutomaticTask.builder()
+            .id("task-1")
+            .key("automatic")
+            .build();
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new WorkerTask(
+                "execution-1",
+                "task-run-1",
+                task,
+                Map.of(),
+                Map.of(
+                    RunContext.TASK_RUN_ID_VARIABLE,
+                    "spoofed-task-run"
+                )
+            )
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new WorkerTask(
+                "execution-1",
+                "task-run-1",
+                task,
+                Map.of(),
+                Map.of(
+                    RunContext.PARENT_TASK_RUN_ID_VARIABLE,
+                    "spoofed-parent-run"
+                )
             )
         );
     }

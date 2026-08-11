@@ -2,10 +2,10 @@ package org.cses.flow.extensions.log;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
-import io.micronaut.context.ApplicationContext;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.executions.ExecutionService;
 import org.cses.flow.core.services.externaltasks.ExternalTaskService;
 import org.cses.flow.core.services.flows.FlowService;
@@ -25,27 +25,14 @@ class LogFlowIntegrationTest {
     @Test
     void rendersDependencyOutputThroughTheExecutorAndWorkerChain() {
         LogCapture logs = LogCapture.start();
-        try (logs;
-             ApplicationContext context = ApplicationContext.run(Map.of(
-                 "flow.memory.enabled", true,
-                 "datasources.default.enabled", false,
-                 "flyway.datasources.default.enabled", false,
-                 "micronaut.config-client.enabled", false,
-                 "consul.client.registration.enabled", false,
-                 "consul.client.watch.service.enabled", false,
-                 "grpc.server.enabled", false,
-                 "thrift.server.enabled", false,
-                 "pulsar.consumer.enabled", false,
-                 "jooq.send-event", false
-             ))) {
-            FlowService flowService = context.getBean(FlowService.class);
-            ExecutionService executionService = context.getBean(
-                ExecutionService.class
+        try (logs; WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            FlowService flowService = fixture.flowService();
+            ExecutionService executionService = fixture.executionService();
+            ExternalTaskService externalTaskService =
+                fixture.externalTaskService();
+            Session<User> session = fixture.sessionForExactCompany(
+                "log-company"
             );
-            ExternalTaskService externalTaskService = context.getBean(
-                ExternalTaskService.class
-            );
-            Session<User> session = session();
             var draft = flowService.saveDraft(session, """
                 key: log-integration-flow
                 tasks:
@@ -86,15 +73,6 @@ class LogFlowIntegrationTest {
             assertTrue(completed.activeTaskRuns().isEmpty());
             assertTrue(externalTaskService.waitingTasks(session).isEmpty());
         }
-    }
-
-    private static Session<User> session() {
-        User user = new User();
-        user.setId("log-user");
-        user.setCompanyId("log-company");
-        Session<User> session = new Session<>();
-        session.setUser(user);
-        return session;
     }
 
     private static final class LogCapture implements AutoCloseable {

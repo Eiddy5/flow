@@ -9,8 +9,8 @@ Flow Core 的 PostgreSQL Repository 不通过 DataPilot 选择数据库。宿主
 DataSource 和 JOOQ。
 Schema 由部署人员在启动前手工执行完整基线，Flow 不使用 Flyway。
 
-`core/src/main/java/org/cses/flow/infrastructure/datapilot` 只保留 Core/Demo 的
-历史兼容适配；它不能代替 Flow Core 的 `datasources.flow` 配置。
+`core/src/main/java/org/cses/flow/infrastructure/datapilot` 只保留 Flow 的
+DataPilot 兼容接线；它不能代替 Flow Core 的 `datasources.flow` 配置。
 
 ## 1. DataPilot 在项目中的定位
 

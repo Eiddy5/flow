@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.flow.gen.flow.Tables.FLOW_QUEUES;
+import static org.flow.gen.flow.Tables.QUEUES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -49,9 +49,9 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
         for (DefaultDispatchQueue<TestEvent> queue : queues) {
             queue.close();
         }
-        database.run(dsl -> dsl.deleteFrom(FLOW_QUEUES)
-            .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
-            .and(FLOW_QUEUES.QUEUE_NAME.startsWith(queuePrefix))
+        database.run(dsl -> dsl.deleteFrom(QUEUES)
+            .where(QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+            .and(QUEUES.QUEUE_NAME.startsWith(queuePrefix))
             .execute());
     }
 
@@ -168,11 +168,11 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
         ));
 
         JsonObject payload = database.runReturn(dsl -> JsonObject.Parse(
-            dsl.select(FLOW_QUEUES.PAYLOAD)
-                .from(FLOW_QUEUES)
-                .where(FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
-                .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
-                .fetchSingle(FLOW_QUEUES.PAYLOAD)
+            dsl.select(QUEUES.PAYLOAD)
+                .from(QUEUES)
+                .where(QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE))
+                .and(QUEUES.QUEUE_NAME.eq(queueName))
+                .fetchSingle(QUEUES.PAYLOAD)
                 .data()
         ));
         assertEquals("json-key", payload.getString("key"));
@@ -194,9 +194,9 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
 
     private int pending(String queueName) {
         return database.runReturn(dsl -> dsl.fetchCount(
-            FLOW_QUEUES,
-            FLOW_QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE)
-                .and(FLOW_QUEUES.QUEUE_NAME.eq(queueName))
+            QUEUES,
+            QUEUES.QUEUE_TYPE.eq(DISPATCH_QUEUE_TYPE)
+                .and(QUEUES.QUEUE_NAME.eq(queueName))
         ));
     }
 

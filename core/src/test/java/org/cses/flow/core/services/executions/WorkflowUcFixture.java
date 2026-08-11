@@ -6,6 +6,7 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.services.externaltasks.ExternalTaskService;
 import org.cses.flow.core.services.externaltasks.PostgresExternalTriggerRunner;
 import org.cses.flow.core.services.flows.FlowService;
@@ -25,7 +26,6 @@ import java.util.Set;
 public final class WorkflowUcFixture implements AutoCloseable {
 
     private static final Map<String, Object> PROPERTIES = Map.of(
-        "flow.memory.enabled", false,
         "datasources.default.enabled", false,
         "flyway.datasources.default.enabled", false,
         "micronaut.config-client.enabled", false,
@@ -127,6 +127,10 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     public ExternalTaskService externalTaskService() {
         return externalTaskService;
+    }
+
+    public PluginRegistry pluginRegistry() {
+        return context.getBean(PluginRegistry.class);
     }
 
     public Session<User> session() {
