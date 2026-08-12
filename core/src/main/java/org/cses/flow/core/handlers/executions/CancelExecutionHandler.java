@@ -12,7 +12,7 @@ import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
-import org.cses.flow.executor.DefaultExecutor;
+import org.cses.flow.executor.ExecutionRunner;
 import org.cses.flow.executor.ExecutorContext;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -27,17 +27,17 @@ public final class CancelExecutionHandler implements CommandHandler<
 
     private final ExecutionRepository executionRepository;
     private final FlowRepository flowRepository;
-    private final DefaultExecutor defaultExecutor;
+    private final ExecutionRunner executionRunner;
 
     @Inject
     public CancelExecutionHandler(
         ExecutionRepository executionRepository,
         FlowRepository flowRepository,
-        DefaultExecutor defaultExecutor
+        ExecutionRunner executionRunner
     ) {
         this.executionRepository = executionRepository;
         this.flowRepository = flowRepository;
-        this.defaultExecutor = defaultExecutor;
+        this.executionRunner = executionRunner;
     }
 
     @Override
@@ -72,7 +72,7 @@ public final class CancelExecutionHandler implements CommandHandler<
             execution.flowId(),
             execution.flowReversion()
         );
-        return defaultExecutor.cancel(
+        return executionRunner.cancel(
             context.getSession(),
             context.getDsl(),
             new ExecutorContext(flow, execution)

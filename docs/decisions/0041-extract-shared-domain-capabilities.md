@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（ExternalTask 能力映射已随 ADR 0016 清理；其余共享能力继续有效）
 
 本决策补充 ADR 0002、ADR 0022 中已有的身份、审计、软删除和乐观锁语义，不改变
 各聚合的业务边界、持久化结构或用户可观察生命周期。
@@ -59,8 +59,8 @@ Flow Core 中多个领域对象都拥有稳定技术 ID，Flow 与 FlowDraft 还
 - `identifiedBy(...)` 判断候选 ID 是否指向当前对象；
 - `requireIdentifier(...)` 在身份不匹配时明确拒绝。
 
-Flow、FlowDraft、Execution、Task、TaskRun 和 ExternalTask 使用该能力。值对象
-ActorRef 不实现该能力，因为它表达审计引用值，而不是具有独立生命周期的实体。
+Flow、FlowDraft、Execution、Task 和 TaskRun 使用该能力。值对象 ActorRef 不实现
+该能力，因为它表达审计引用值，而不是具有独立生命周期的实体。
 
 ### Auditable
 
@@ -96,8 +96,8 @@ Flow 与 FlowDraft 使用该能力。领域对象必须拒绝倒退的时间，�
 - `hasLockVersion(...)` 判断预期版本；
 - `requireLockVersion(...)` 在版本冲突时明确拒绝。
 
-FlowDraft、Execution 与 ExternalTask 使用该能力。Execution 仍遵守一个已持久化
-聚合在同一命令内最多推进一次版本的既有规则；TaskRun 不独立持有乐观锁。对同时
+FlowDraft 与 Execution 使用该能力。Execution 仍遵守一个已持久化聚合在同一命令
+内最多推进一次版本的既有规则；TaskRun 不独立持有乐观锁。对同时
 具备审计和锁能力的 FlowDraft，一次审计更新、修改或删除只推进一次版本。
 
 ### ActorRef
@@ -113,7 +113,6 @@ ActorRef 是共享的不可变值对象。`ActorRef.from(Session)` 以当前用�
 | Flow | 是 | 是 | 是 | 否 |
 | FlowDraft | 是 | 是 | 是 | 是 |
 | Execution | 是 | 否 | 否 | 是 |
-| ExternalTask | 是 | 否 | 否 | 是 |
 | Task | 是 | 否 | 否 | 否 |
 | TaskRun | 是 | 否 | 否 | 否 |
 

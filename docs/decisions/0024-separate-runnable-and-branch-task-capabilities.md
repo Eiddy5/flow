@@ -70,13 +70,14 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
     并行批次。
 - `ExecutorService.handle(...)` 是 Task 能力分支的状态推进循环：每批 TaskRun
   并入 Execution 后，RunnableTask 暂存 WorkerTask 并返回提交边界；BranchTask
-  直接完成或等待，非等待分支随后立即继续推导下一批 TaskRun。DefaultExecutor
-  不再调用 BranchTask 状态推进入口，只负责保存、兼容等待资源和 Worker 投递。
+  直接完成或等待，非等待分支随后立即继续推导下一批 TaskRun。ExecutionRunner
+  不调用 BranchTask 状态推进入口，只负责保存和 Worker 投递；DefaultExecutor 的
+  当前 Queue 路由职责由 ADR 0051 定义。
 - TaskExtension 与通用 Plugin 只负责类型注册、创建、重建和类型专有 properties，
   与 RunnableTask/BranchTask 的运行能力正交。外部 Runnable Task 插件把执行逻辑
   写在具体 Task 类的 `run` 方法中，只需通过 Plugin SPI 注册 TaskExtension。
-- 现存 ExternalTask 是待移除的兼容入口。迁移期间，其创建和取消由 Executor
-  在 PAUSE 分支状态已落入 Execution 后协调，不得重新放回 Worker 或 RunnableTask。
+- ExternalTask 兼容入口已按 ADR 0016 删除。PAUSE 等待只由 Execution 中的
+  TaskRun 表达，不得在 Worker 或 RunnableTask 中建立第二套等待资源。
 
 ## 理由
 

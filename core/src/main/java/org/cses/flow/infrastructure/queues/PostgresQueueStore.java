@@ -184,12 +184,7 @@ final class PostgresQueueStore<T extends DispatchEvent> {
             );
         }
 
-        RuntimeException deliveryFailure = null;
-        try {
-            consumer.accept(event);
-        } catch (RuntimeException exception) {
-            deliveryFailure = exception;
-        }
+        consumer.accept(event);
 
         int deleted = dsl.deleteFrom(QUEUES)
             .where(QUEUES.ID.eq(entry.getId()))
@@ -204,8 +199,7 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         }
         return DeliveryAttempt.delivered(
             entry.getId(),
-            entry.getEventKey(),
-            deliveryFailure
+            entry.getEventKey()
         );
     }
 
@@ -222,24 +216,21 @@ final class PostgresQueueStore<T extends DispatchEvent> {
     record DeliveryAttempt(
         boolean delivered,
         String messageId,
-        String eventKey,
-        RuntimeException failure
+        String eventKey
     ) {
 
         static DeliveryAttempt empty() {
-            return new DeliveryAttempt(false, null, null, null);
+            return new DeliveryAttempt(false, null, null);
         }
 
         static DeliveryAttempt delivered(
             String messageId,
-            String eventKey,
-            RuntimeException failure
+            String eventKey
         ) {
             return new DeliveryAttempt(
                 true,
                 messageId,
-                eventKey,
-                failure
+                eventKey
             );
         }
     }

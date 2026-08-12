@@ -5,7 +5,6 @@ package org.flow.gen.flow;
 
 
 import org.flow.gen.flow.tables.ExecutionsTable;
-import org.flow.gen.flow.tables.ExternalTasksTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -23,11 +22,6 @@ public class Tables {
      * The table <code>public.executions</code>.
      */
     public static final ExecutionsTable EXECUTIONS = ExecutionsTable.EXECUTIONS;
-
-    /**
-     * The table <code>public.external_tasks</code>.
-     */
-    public static final ExternalTasksTable EXTERNAL_TASKS = ExternalTasksTable.EXTERNAL_TASKS;
 
     /**
      * The table <code>public.flow_drafts</code>.

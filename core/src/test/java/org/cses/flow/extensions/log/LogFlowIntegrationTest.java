@@ -7,7 +7,6 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.executions.ExecutionService;
-import org.cses.flow.core.services.externaltasks.ExternalTaskService;
 import org.cses.flow.core.services.flows.FlowService;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
@@ -28,9 +27,7 @@ class LogFlowIntegrationTest {
         try (logs; WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             FlowService flowService = fixture.flowService();
             ExecutionService executionService = fixture.executionService();
-            ExternalTaskService externalTaskService =
-                fixture.externalTaskService();
-            Session<User> session = fixture.sessionForExactCompany(
+            Session<User> session = fixture.sessionFor(
                 "log-company"
             );
             var draft = flowService.saveDraft(session, """
@@ -57,21 +54,20 @@ class LogFlowIntegrationTest {
             Flow flow = flowService.deploy(session, draft.id());
 
             Execution started = executionService.create(session, flow.id());
-            var waiting = externalTaskService.waitingTasks(session)
-                .stream()
-                .filter(task -> task.executionId().equals(started.id()))
-                .findFirst()
-                .orElseThrow();
-            Execution completed = externalTaskService.complete(
+            var waiting = fixture.waitingForExecution(
                 session,
-                waiting.id(),
+                started.id()
+            );
+            Execution completed = fixture.resume(
+                session,
+                waiting,
                 Map.of("result", "ready")
             );
 
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(List.of("处理结果：ready"), logs.messages());
             assertTrue(completed.activeTaskRuns().isEmpty());
-            assertTrue(externalTaskService.waitingTasks(session).isEmpty());
+            assertTrue(fixture.pausedTaskRuns(session).isEmpty());
         }
     }
 

@@ -2,8 +2,8 @@
 
 ## 目的
 
-验证 Flow、Execution、TaskRun 和 ExternalTask 的真实 PostgreSQL 往返、JSONB
-转换、跨版本 Task id 复用，以及乐观锁冲突。
+验证 Flow、Execution 和 TaskRun 的真实 PostgreSQL 往返、JSONB 转换、跨版本
+Task id 复用，以及乐观锁冲突。
 
 当前完整关系模型：
 
@@ -16,8 +16,6 @@ erDiagram
     EXECUTIONS ||--o{ TASK_RUNS : "execution_id 形成运行历史"
     FLOW_TASKS ||--o{ TASK_RUNS : "task_id 指向定义快照"
     TASK_RUNS o|--o{ TASK_RUNS : "parent_id 形成运行树"
-    EXECUTIONS ||--o{ EXTERNAL_TASKS : "创建外部等待记录"
-    TASK_RUNS ||--o| EXTERNAL_TASKS : "一个 TaskRun 至多一个等待记录"
 
     FLOW_DRAFTS {
         varchar company_id PK
@@ -66,14 +64,6 @@ erDiagram
         integer order
     }
 
-    EXTERNAL_TASKS {
-        varchar company_id PK
-        varchar id PK
-        varchar execution_id
-        varchar task_run_id UK
-        varchar status
-        bigint lock_version
-    }
 ```
 
 图中的关系都是逻辑关系。数据库不创建外键，由复合身份、唯一约束、应用校验和
@@ -107,12 +97,11 @@ PostgreSQL 的所有时间点列使用 `timestamptz`，JOOQ 生成模型对应
 或 Repository 边界双向转换。
 
 测试只使用随机 companyId，不会清空或删除数据库中的其他租户数据。
-UC 测试默认保留本场景创建的 Flow、Execution、TaskRun 和 ExternalTask 数据，
-便于在本地 PostgreSQL 中观察真实入库结果。场景中出现 PAUSE 时，夹具先关闭
-启动 Server 的 ApplicationContext，再由独立 External Trigger
-ApplicationContext 从 PostgreSQL 恢复并推进，因此完成型场景结束后不应存在
-PAUSED TaskRun 或 WAITING ExternalTask；稳定暂停期间 Execution 为 PAUSED，合法
-Resume 先形成 RESTARTED 事实，再由 Executor 恢复为 RUNNING 并继续推进。
+UC 测试默认保留本场景创建的 Flow、Execution 和 TaskRun 数据，便于在本地
+PostgreSQL 中观察真实入库结果。跨 Server 场景会显式关闭启动 Execution 的
+ApplicationContext，再由新的 ApplicationContext 使用精确的
+`executionId + taskRunId` 从 PostgreSQL 恢复并推进。完成型场景结束后不应存在
+PAUSED TaskRun；PAUSE 不再创建独立等待表记录。
 如需在 CI 或一次性验证后清理，
 显式设置 `FLOW_POSTGRES_TEST_CLEANUP=true`；清理范围只限本次夹具创建的随机
 companyId。

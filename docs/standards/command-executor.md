@@ -17,6 +17,13 @@ Controller（Core 外）
   -> Domain
 ```
 
+Execution 启动是已确认的异步例外：`ExecutionService` 直接构造 Executor Module
+拥有的 `Create` Command 并投递到持久化 `ExecutorCommand` Queue；
+`DefaultExecutor` 只把 Queue 消息路由给 `ExecutorCommandHandler`，不进入 Core
+`CommandExecutor`。可信调用方继续既有 `CREATED` Execution 时，Service 使用
+`CommandExecutor.execute(..., completion)` 在同一命令事务内完成 Queue 投递；
+Handler 仍不得嵌套调用 CommandExecutor。
+
 复杂读取不进入 CommandExecutor，固定由 Service 调用 QueryHandler。
 
 ## 泛型契约
@@ -52,6 +59,9 @@ Controller（Core 外）
 - Handler 和 Repository 必须使用 `CommandContext.getDsl()`。
 - Handler、Domain 和 Repository 不得自行开启新事务。
 - Handler 内不得再次调用 `CommandExecutor`。
+- `CommandExecutor.execute(..., BiConsumer<R, DSLContext>)` 只用于 Service 在
+  Handler 返回后、事务提交前补充必须与 Core 写操作原子完成的传输受理；回调不得
+  再次执行领域写逻辑或嵌套 CommandExecutor。
 - Command 校验、Handler 执行或 Repository 操作抛出异常时，异常继续传播并回滚事务。
 
 ## Command 规则
@@ -72,7 +82,8 @@ Controller（Core 外）
 - Handler 名称必须包含动作和领域，例如 `DeployFlowHandler`。
 - 一个 Command 必须且只能注册一个 Handler。
 - Handler 按“加载聚合、调用领域行为、保存聚合、返回结果”的顺序编排。
-- Handler 不保存请求级可变状态，不直接发布事件。
+- Handler 不保存请求级可变状态，也不直接发布 Queue Event；Execution 启动由
+  `ExecutionService` 投递 Executor Command。
 - 重复 Handler 注册和缺失 Handler 都必须立即失败。
 
 ## Query 规则

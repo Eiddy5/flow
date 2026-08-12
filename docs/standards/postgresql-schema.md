@@ -32,7 +32,7 @@ gen/sql/flow/
 - 表名的最后一个单词使用复数形式。为了让静态校验确定可重复，Flow 表名的最后
   一个单词必须以 `s` 结尾；不使用 `people` 等不以 `s` 结尾的不规则复数。
 - 约束和索引名称中的表名前缀使用相同的完整复数表名，例如
-  `pk_task_runs`、`idx_external_tasks_waiting`。
+  `pk_task_runs`、`idx_task_runs_execution`。
 - 字段名表达单行引用时仍使用单数，例如 `task_run_id` 指向一个 TaskRun，不随表名
   机械复数化。
 

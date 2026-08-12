@@ -316,9 +316,6 @@ class Uc09LoopOrchestrationTest {
             assertTrue(fixture.executionService().executions(
                 fixture.session()
             ).isEmpty());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
         }
     }
 
@@ -330,14 +327,7 @@ class Uc09LoopOrchestrationTest {
         WorkflowUcFixture fixture,
         Flow flow
     ) {
-        Execution started = fixture.executionService().create(
-            fixture.session(),
-            flow.id()
-        );
-        return fixture.executionService().execution(
-            fixture.session(),
-            started.id()
-        ).orElseThrow();
+        return fixture.startAndAwait(flow);
     }
 
     private static void assertSuccessfulIterations(
@@ -419,9 +409,6 @@ class Uc09LoopOrchestrationTest {
     ) {
         assertEquals(State.Type.SUCCESS, execution.state().current());
         assertTrue(execution.unfinishedTaskRuns().isEmpty());
-        assertTrue(fixture.externalTaskService().waitingTasks(
-            fixture.session()
-        ).isEmpty());
     }
 
     private static void assertFailedWithoutPendingWork(
@@ -430,9 +417,6 @@ class Uc09LoopOrchestrationTest {
     ) {
         assertEquals(State.Type.FAILED, execution.state().current());
         assertTrue(execution.unfinishedTaskRuns().isEmpty());
-        assertTrue(fixture.externalTaskService().waitingTasks(
-            fixture.session()
-        ).isEmpty());
     }
 
     private static Task task(Flow flow, String key) {

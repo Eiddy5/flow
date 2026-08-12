@@ -66,7 +66,7 @@ ExecutionService
   -> CommandExecutor
   -> CreateExecutionHandler
   -> Execution.create(...)
-  -> DefaultExecutor
+  -> ExecutionRunner
   -> ExecutorService.handleNext/onNexts
   -> WorkerDispatcher
   -> WorkerTaskHandler
@@ -78,7 +78,8 @@ ExecutionService
   Execution id 和精确 Flow reversion；同租户、同 id、同 Flow 引用的重放返回原
   Execution，不同 Flow id 或 reversion 的重放拒绝冲突，避免重试漂移到 latest。
 - `ExecutorContext` 只保存精确 Flow、Execution 和本轮增量；
-  `DefaultExecutor` 管理中间聚合保存和 Worker 调用。
+  `ExecutionRunner` 管理中间聚合保存和 Worker 调用；`DefaultExecutor` 的当前
+  Queue 路由职责由 ADR 0051 定义。
 - `ExecutorService` 只管理状态与编排，不访问 Repository，不执行 Task。
 - `handleNext()` 只暂存下一批 TaskRun 计划；`onNexts()` 才启动首次 Execution、
   把批次并入聚合并形成 WorkerTask。
@@ -105,7 +106,7 @@ ExecutionService
 - 审批、表单、工单等外部能力保存 executionId 和 taskRunId，并通过
   `ExecutionService.resume(...)` 提交结果。
 - `ResumeExecutionHandler` 在同一命令事务内加载绑定的 Execution 与确定
-  Flow Reversion，校验 PauseTask 契约后调用 `DefaultExecutor.resume(...)`。
+  Flow Reversion，校验 PauseTask 契约后调用 `ExecutionRunner.resume(...)`。
 - resume 直接完成原 WAITING PAUSE TaskRun，不能再次执行 PAUSE Worker。
 - TaskRun 完成后，`ExecutorService` 自动调用下一轮 `handleNext()`。
 - 外部能力不能直接修改 Execution、TaskRun、路由或下一 Task。
@@ -121,7 +122,7 @@ ExecutionService
 
 - JOOQ DSLContext 由 `CommandExecutor` 建立，命令是事务边界。
 - 一个命令可以连续执行多个同步 Task，直到遇到 PAUSE、失败或终态。
-- `DefaultExecutor` 可以在同一事务内中间保存 Execution/TaskRun，使
+- `ExecutionRunner` 可以在同一事务内中间保存 Execution/TaskRun，使
   Worker 保存带外键的 Task 业务记录。
 - 中间保存不等于提交。
 - Execution 聚合只持有一个 `lockVersion`；修改已有 Execution 的命令最多

@@ -19,7 +19,7 @@ class FlowServiceTest {
     void savesOpaqueInvalidDraftAndRejectsOnlyAtDeployment() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             FlowService service = fixture.flowService();
-            Session<User> session = fixture.sessionForExactCompany("company-1");
+            Session<User> session = fixture.sessionFor("company-1");
             String invalidRaw = "key: [not-valid";
 
             FlowDraft draft = service.saveDraft(
@@ -47,7 +47,7 @@ class FlowServiceTest {
     void deletedLatestReversionDoesNotFallBackToOlderFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             FlowService service = fixture.flowService();
-            Session<User> session = fixture.sessionForExactCompany("company-1");
+            Session<User> session = fixture.sessionFor("company-1");
             FlowDraft draft = service.saveDraft(
                 session,
                 validYaml("first")

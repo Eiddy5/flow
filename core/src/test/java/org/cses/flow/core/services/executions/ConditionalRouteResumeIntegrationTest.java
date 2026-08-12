@@ -1,12 +1,10 @@
-package org.cses.flow.core.services.externaltasks;
+package org.cses.flow.core.services.executions;
 
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
-import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.tasks.RunResult;
@@ -14,7 +12,6 @@ import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
-import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,183 +20,136 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTaskRunRef;
 
-/**
- * UC: docs/uc/flow/UC-06 用户提交外派结果后的条件路径.md
- */
-class Uc06ConditionalRouteTest {
+class ConditionalRouteResumeIntegrationTest {
 
     @Test
-    void s1RunsOnlyApprovedBranch() {
+    void approvedOutputRunsOnlyApprovedBranch() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            RouteScenario scenario = start(fixture, "uc06-s1-flow");
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                scenario.externalTask().id(),
+            RouteScenario scenario = start(
+                fixture,
+                "conditional-resume-approved-flow"
+            );
+            Execution completed = fixture.resume(
+                scenario.pausedTaskRun(),
                 Map.of("decision", "APPROVED")
             );
 
-            // PASS-S1-01
             assertEquals(
                 Map.of("decision", "APPROVED"),
                 run(completed, task(scenario.flow(), "approval-decision"))
                     .outputs()
             );
-            // PASS-S1-02
             assertEquals(
                 State.Type.SUCCESS,
                 run(completed, task(scenario.flow(), "approve")).state().current()
             );
-            // PASS-S1-03
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s2RunsOnlyRejectedBranch() {
+    void rejectedOutputRunsOnlyRejectedBranch() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            RouteScenario scenario = start(fixture, "uc06-s2-flow");
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                scenario.externalTask().id(),
+            RouteScenario scenario = start(
+                fixture,
+                "conditional-resume-rejected-flow"
+            );
+            Execution completed = fixture.resume(
+                scenario.pausedTaskRun(),
                 Map.of("decision", "REJECTED")
             );
 
-            // PASS-S2-01
             assertEquals(
                 Map.of("decision", "REJECTED"),
                 run(completed, task(scenario.flow(), "approval-decision"))
                     .outputs()
             );
-            // PASS-S2-02
             assertEquals(
                 State.Type.SUCCESS,
                 run(completed, task(scenario.flow(), "reject")).state().current()
             );
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s3NoMatchCompletesWithoutCreatingCandidateRuns() {
+    void unmatchedOutputCompletesWithoutCandidateRuns() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            RouteScenario scenario = start(fixture, "uc06-s3-flow");
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                scenario.externalTask().id(),
+            RouteScenario scenario = start(
+                fixture,
+                "conditional-resume-unmatched-flow"
+            );
+            Execution completed = fixture.resume(
+                scenario.pausedTaskRun(),
                 Map.of("decision", "UNKNOWN")
             );
 
-            // PASS-S3-01
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
-            // PASS-S3-02
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(3, completed.taskRuns().size());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s4RejectsInvalidRouteWhenDeployingFlow() {
+    void missingOutputDoesNotSelectAnyBranch() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            // PASS-S4-01
-            FlowDraft draft = fixture.flowService().saveDraft(
-                fixture.session(),
-                routeYaml(
-                    "uc06-s4-flow",
-                    "outputs.decision =="
-                )
+            RouteScenario scenario = start(
+                fixture,
+                "conditional-resume-missing-output-flow"
             );
-            IllegalArgumentException failure = assertThrows(
-                IllegalArgumentException.class,
-                () -> fixture.flowService().deploy(
-                    fixture.session(),
-                    draft.id()
-                )
-            );
-            assertTrue(failure.getMessage().contains("route expression"));
-            assertTrue(
-                fixture.flowService()
-                    .latestFlow(fixture.session(), draft.id())
-                    .isEmpty()
-            );
-            assertTrue(
-                fixture.executionService().executions(fixture.session())
-                    .isEmpty()
-            );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
-        }
-    }
-
-    @Test
-    void s5MissingOutputDoesNotSelectAnyBranch() {
-        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            RouteScenario scenario = start(fixture, "uc06-s5-flow");
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                scenario.externalTask().id(),
+            Execution completed = fixture.resume(
+                scenario.pausedTaskRun(),
                 Map.of()
             );
 
-            // PASS-S5-01
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
-            // PASS-S5-02
             assertTrue(
                 run(completed, task(scenario.flow(), "approval-decision"))
                     .outputs().isEmpty()
             );
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s6RouteComparisonIsCaseSensitive() {
+    void routeComparisonIsCaseSensitive() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            RouteScenario scenario = start(fixture, "uc06-s6-flow");
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                scenario.externalTask().id(),
+            RouteScenario scenario = start(
+                fixture,
+                "conditional-resume-case-sensitive-flow"
+            );
+            Execution completed = fixture.resume(
+                scenario.pausedTaskRun(),
                 Map.of("decision", "approved")
             );
 
-            // PASS-S6-01
             assertEquals(
                 "approved",
                 run(completed, task(scenario.flow(), "approval-decision"))
                     .outputs().get("decision")
             );
-            // PASS-S6-02
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s7ExternalTaskIdRoutesOnlyItsOwningExecution() {
+    void taskRunIdRoutesOnlyOwningExecution() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(routeYaml(
-                "uc06-s7-flow",
+                "conditional-resume-isolation-flow",
                 "outputs.decision == \"APPROVED\""
             ));
             Execution first = fixture.executionService().create(
@@ -211,22 +161,19 @@ class Uc06ConditionalRouteTest {
                 flow.id()
             );
             fixture.restartServer();
-            ExternalTask firstExternal = waiting(fixture, first);
-            ExternalTask secondExternal = waiting(fixture, second);
+            PausedTaskRunRef firstPause = waiting(fixture, first);
+            PausedTaskRunRef secondPause = waiting(fixture, second);
 
-            Execution selected = fixture.externalTaskService().complete(
-                fixture.session(),
-                secondExternal.id(),
+            Execution selected = fixture.resume(
+                secondPause,
                 Map.of("decision", "APPROVED")
             );
 
-            // PASS-S7-01
             assertEquals(second.id(), selected.id());
             assertEquals(
                 State.Type.SUCCESS,
                 run(selected, task(flow, "approve")).state().current()
             );
-            // PASS-S7-02
             Execution untouched = fixture.executionService().execution(
                 fixture.session(),
                 first.id()
@@ -238,27 +185,20 @@ class Uc06ConditionalRouteTest {
             );
             assertTrue(untouched.taskRuns().getFirst().outputs().isEmpty());
             assertEquals(
-                ExternalTaskStatus.WAITING,
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    firstExternal.id()
-                ).orElseThrow().status()
+                State.Type.PAUSED,
+                fixture.taskRun(firstPause).state().current()
             );
 
             fixture.restartServer();
-            ExternalTask remaining =
+            PausedTaskRunRef remaining =
                 fixture.waitingForExecution(first.id());
-            Execution firstCompleted =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    remaining.id(),
-                    Map.of("decision", "APPROVED")
+            Execution firstCompleted = fixture.resume(
+                remaining,
+                Map.of("decision", "APPROVED")
             );
             assertEquals(State.Type.SUCCESS, firstCompleted.state().current());
             assertEquals(State.Type.SUCCESS, selected.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
@@ -282,18 +222,11 @@ class Uc06ConditionalRouteTest {
         );
     }
 
-    private static ExternalTask waiting(
+    private static PausedTaskRunRef waiting(
         WorkflowUcFixture fixture,
         Execution execution
     ) {
-        return fixture.externalTaskService().waitingTasks(
-            fixture.session()
-        ).stream()
-            .filter(task ->
-                task.executionId().equals(execution.id())
-            )
-            .findFirst()
-            .orElseThrow();
+        return fixture.waitingForExecution(execution.id());
     }
 
     private static Task task(Flow flow, String key) {
@@ -338,7 +271,7 @@ class Uc06ConditionalRouteTest {
                   - key: decision
                     type: STRING
               - key: route-decision
-                type: org.cses.flow.core.services.externaltasks.Uc06ConditionalRouteTest.ResumeDecisionTask
+                type: org.cses.flow.core.services.executions.ConditionalRouteResumeIntegrationTest.ResumeDecisionTask
                 dependOn:
                   - approval-decision
                 outputs:
@@ -354,7 +287,7 @@ class Uc06ConditionalRouteTest {
             """.formatted(key, approveRoute);
     }
 
-    /** Copies a resumed decision into a normal parent output for UC routing. */
+    /** Copies a resumed decision into a normal parent routing output. */
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
@@ -383,16 +316,16 @@ class Uc06ConditionalRouteTest {
 
         private final Flow flow;
         private final Execution execution;
-        private final ExternalTask externalTask;
+        private final PausedTaskRunRef pausedTaskRun;
 
         private RouteScenario(
             Flow flow,
             Execution execution,
-            ExternalTask externalTask
+            PausedTaskRunRef pausedTaskRun
         ) {
             this.flow = flow;
             this.execution = execution;
-            this.externalTask = externalTask;
+            this.pausedTaskRun = pausedTaskRun;
         }
 
         private Flow flow() {
@@ -403,8 +336,8 @@ class Uc06ConditionalRouteTest {
             return execution;
         }
 
-        private ExternalTask externalTask() {
-            return externalTask;
+        private PausedTaskRunRef pausedTaskRun() {
+            return pausedTaskRun;
         }
     }
 }

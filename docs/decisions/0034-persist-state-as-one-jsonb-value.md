@@ -62,8 +62,6 @@ Execution 与 TaskRun 在领域中持有同一个不可分割的 `State` 值对�
   `(execution_id, (state ->> 'current'))` 表达式索引，不增加冗余生成列。
 - Entry 使用一个专用 Codec 在完整 `State` 与 JSONB 之间双向转换，不在
   Repository 中分别读写 current 和 history。
-- `external_tasks.status` 属于 ExternalTask 自身的遗留生命周期，不是统一
-  `State`，不受本决策影响。
 - 按 ADR 0033 直接修改唯一开发期建表基线；已有开发数据库必须重建。
 
 本决策修订 ADR 0017 的“持久化”字段结构，其 State 值对象、History 语义及领域

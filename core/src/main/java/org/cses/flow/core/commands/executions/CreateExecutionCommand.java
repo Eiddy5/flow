@@ -9,43 +9,31 @@ public final class CreateExecutionCommand implements Command<Execution> {
     private final String executionId;
     private final String flowId;
     private final Long expectedFlowReversion;
-    private final boolean startImmediately;
 
     public CreateExecutionCommand(String flowId) {
-        this(null, flowId, null, true);
-    }
-
-    public CreateExecutionCommand(
-        String flowId,
-        boolean startImmediately
-    ) {
-        this(null, flowId, null, startImmediately);
+        this(null, flowId, null);
     }
 
     public CreateExecutionCommand(
         String executionId,
         String flowId,
-        long expectedFlowReversion,
-        boolean startImmediately
+        long expectedFlowReversion
     ) {
         this(
             executionId,
             flowId,
-            Long.valueOf(expectedFlowReversion),
-            startImmediately
+            Long.valueOf(expectedFlowReversion)
         );
     }
 
     private CreateExecutionCommand(
         String executionId,
         String flowId,
-        Long expectedFlowReversion,
-        boolean startImmediately
+        Long expectedFlowReversion
     ) {
         this.executionId = executionId;
         this.flowId = flowId;
         this.expectedFlowReversion = expectedFlowReversion;
-        this.startImmediately = startImmediately;
     }
 
     public String executionId() {
@@ -58,10 +46,6 @@ public final class CreateExecutionCommand implements Command<Execution> {
 
     public Long expectedFlowReversion() {
         return expectedFlowReversion;
-    }
-
-    public boolean startImmediately() {
-        return startImmediately;
     }
 
     @Override

@@ -23,7 +23,6 @@ public final class ExecutorContext {
     private final Flow flow;
     private final List<TaskRun> nexts;
     private final List<WorkerTask> workerTasks;
-    private final List<TaskRun> pausedTaskRuns;
     private final List<String> orchestrationCompletions;
     private final List<State.Type> states;
     private boolean executionUpdated;
@@ -40,7 +39,6 @@ public final class ExecutorContext {
         }
         this.nexts = new ArrayList<>();
         this.workerTasks = new ArrayList<>();
-        this.pausedTaskRuns = new ArrayList<>();
         this.orchestrationCompletions = new ArrayList<>();
         this.states = new ArrayList<>();
         this.states.add(execution.state().current());
@@ -64,10 +62,6 @@ public final class ExecutorContext {
 
     public List<WorkerTask> workerTasks() {
         return List.copyOf(workerTasks);
-    }
-
-    public List<TaskRun> pausedTaskRuns() {
-        return List.copyOf(pausedTaskRuns);
     }
 
     public List<String> orchestrationCompletions() {
@@ -115,19 +109,6 @@ public final class ExecutorContext {
     List<WorkerTask> takeWorkerTasks() {
         List<WorkerTask> staged = List.copyOf(workerTasks);
         workerTasks.clear();
-        return staged;
-    }
-
-    void stagePausedTaskRun(TaskRun taskRun) {
-        pausedTaskRuns.add(Objects.requireNonNull(
-            taskRun,
-            "taskRun"
-        ));
-    }
-
-    List<TaskRun> takePausedTaskRuns() {
-        List<TaskRun> staged = List.copyOf(pausedTaskRuns);
-        pausedTaskRuns.clear();
         return staged;
     }
 

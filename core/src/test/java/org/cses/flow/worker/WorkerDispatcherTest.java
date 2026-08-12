@@ -66,6 +66,30 @@ final class WorkerDispatcherTest {
     }
 
     @Test
+    void propagatesUnexpectedTaskException() {
+        FailingTask task = FailingTask.builder()
+            .id("task-1")
+            .key("failing")
+            .build();
+
+        IllegalStateException exception = assertThrows(
+            IllegalStateException.class,
+            () -> dispatcher.dispatch(
+                new Session<User>(),
+                DSL.using(SQLDialect.POSTGRES),
+                new WorkerTask(
+                    "execution-1",
+                    "task-run-1",
+                    task,
+                    Map.of()
+                )
+            )
+        );
+
+        assertEquals("unexpected-task-failure", exception.getMessage());
+    }
+
+    @Test
     void rejectsOrchestrationTasksBeforeWorkerDispatch() {
         Pause task = Pause.builder()
             .id("task-1")
@@ -266,6 +290,17 @@ final class WorkerDispatcherTest {
                 "payload",
                 context.inputs().get("payload")
             ));
+        }
+    }
+
+    @SuperBuilder
+    @NoArgsConstructor
+    private static final class FailingTask
+        extends Task implements RunnableTask {
+
+        @Override
+        public RunResult run(RunContext context) {
+            throw new IllegalStateException("unexpected-task-failure");
         }
     }
 

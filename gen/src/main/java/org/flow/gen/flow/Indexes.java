@@ -5,7 +5,6 @@ package org.flow.gen.flow;
 
 
 import org.flow.gen.flow.tables.ExecutionsTable;
-import org.flow.gen.flow.tables.ExternalTasksTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -28,8 +27,6 @@ public class Indexes {
     // -------------------------------------------------------------------------
 
     public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_ID, ExecutionsTable.EXECUTIONS.FLOW_REVERSION }, false);
-    public static final Index IDX_EXTERNAL_TASKS_EXECUTION = Internal.createIndex(DSL.name("idx_external_tasks_execution"), ExternalTasksTable.EXTERNAL_TASKS, new OrderField[] { ExternalTasksTable.EXTERNAL_TASKS.COMPANY_ID, ExternalTasksTable.EXTERNAL_TASKS.EXECUTION_ID }, false);
-    public static final Index IDX_EXTERNAL_TASKS_WAITING = Internal.createIndex(DSL.name("idx_external_tasks_waiting"), ExternalTasksTable.EXTERNAL_TASKS, new OrderField[] { ExternalTasksTable.EXTERNAL_TASKS.COMPANY_ID, ExternalTasksTable.EXTERNAL_TASKS.STATUS, ExternalTasksTable.EXTERNAL_TASKS.CREATED_AT }, false);
     public static final Index IDX_FLOW_DRAFTS_CREATOR_ID = Internal.createIndex(DSL.name("idx_flow_drafts_creator_id"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.CREATOR_ID }, false);
     public static final Index IDX_FLOW_DRAFTS_CURRENT = Internal.createIndex(DSL.name("idx_flow_drafts_current"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.COMPANY_ID, FlowDraftsTable.FLOW_DRAFTS.ID }, false);
     public static final Index IDX_FLOW_DRAFTS_DELETER_ID = Internal.createIndex(DSL.name("idx_flow_drafts_deleter_id"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.DELETER_ID }, false);

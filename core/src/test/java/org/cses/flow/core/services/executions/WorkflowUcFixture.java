@@ -3,12 +3,10 @@ package org.cses.flow.core.services.executions;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
+import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.plugins.PluginRegistry;
-import org.cses.flow.core.services.externaltasks.ExternalTaskService;
-import org.cses.flow.core.services.externaltasks.PostgresExternalTriggerRunner;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
@@ -21,7 +19,11 @@ import org.x9.jooq.JOOQ;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 public final class WorkflowUcFixture implements AutoCloseable {
 
@@ -40,10 +42,8 @@ public final class WorkflowUcFixture implements AutoCloseable {
     private ApplicationContext context;
     private FlowService flowService;
     private ExecutionService executionService;
-    private ExternalTaskService externalTaskService;
     private final Session<User> session;
     private final PostgresJooqTestAdapter jooq;
-    private final boolean triggerWaitingOnClose;
     private final boolean cleanupOnClose;
     private final Map<String, Object> properties;
     private final Object[] singletons;
@@ -51,14 +51,12 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     private WorkflowUcFixture(
         PostgresJooqTestAdapter jooq,
-        boolean triggerWaitingOnClose,
         String companyId,
         boolean cleanupOnClose,
         Map<String, Object> additionalProperties,
         Object... singletons
     ) {
         this.jooq = jooq;
-        this.triggerWaitingOnClose = triggerWaitingOnClose;
         this.cleanupOnClose = cleanupOnClose;
         Map<String, Object> mergedProperties =
             new java.util.LinkedHashMap<>(PROPERTIES);
@@ -77,29 +75,28 @@ public final class WorkflowUcFixture implements AutoCloseable {
     }
 
     public static WorkflowUcFixture open() {
-        return open(false, true, null, Map.of());
+        return open(true, null, Map.of());
     }
 
     public static WorkflowUcFixture openLeavingWaiting(
         String companyId
     ) {
-        return open(false, false, companyId, Map.of());
+        return open(false, companyId, Map.of());
     }
 
     public static WorkflowUcFixture openWithSingletons(
         Object... singletons
     ) {
-        return open(false, true, null, Map.of(), singletons);
+        return open(true, null, Map.of(), singletons);
     }
 
     public static WorkflowUcFixture openWithProperties(
         Map<String, Object> properties
     ) {
-        return open(false, true, null, properties);
+        return open(true, null, properties);
     }
 
     private static WorkflowUcFixture open(
-        boolean triggerWaitingOnClose,
         boolean cleanupOnClose,
         String companyId,
         Map<String, Object> properties,
@@ -109,7 +106,6 @@ public final class WorkflowUcFixture implements AutoCloseable {
             PostgresJooqTestAdapter.fromEnvironment();
         return new WorkflowUcFixture(
             jooq,
-            triggerWaitingOnClose,
             companyId,
             cleanupOnClose,
             properties,
@@ -123,10 +119,6 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     public ExecutionService executionService() {
         return executionService;
-    }
-
-    public ExternalTaskService externalTaskService() {
-        return externalTaskService;
     }
 
     public PluginRegistry pluginRegistry() {
@@ -161,18 +153,96 @@ public final class WorkflowUcFixture implements AutoCloseable {
         return flowService.deploy(session, draft.id());
     }
 
-    public ExternalTask waiting(Execution execution) {
+    /**
+     * Starts a Flow and waits until its asynchronous first drive reaches an
+     * observable stable state. Tests for Queue acceptance use create directly.
+     */
+    public Execution startAndAwait(Flow flow) {
+        return startAndAwait(session, flow);
+    }
+
+    public Execution startAndAwait(
+        Session<User> startSession,
+        Flow flow
+    ) {
+        Execution accepted = executionService.create(
+            startSession,
+            flow.id()
+        );
+        return awaitStable(startSession, accepted.id());
+    }
+
+    public Execution awaitStable(Execution accepted) {
+        return awaitStable(session, accepted.id());
+    }
+
+    public Execution awaitStable(String executionId) {
+        return awaitStable(session, executionId);
+    }
+
+    public Execution awaitStable(
+        Session<User> querySession,
+        String executionId
+    ) {
+        return awaitExecution(
+            querySession,
+            executionId,
+            execution -> execution.isTerminal()
+                || execution.state().isPaused()
+        );
+    }
+
+    public Execution awaitExecution(
+        Session<User> querySession,
+        String executionId,
+        Predicate<Execution> expected
+    ) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        Execution observed = null;
+        while (System.nanoTime() < deadline) {
+            Optional<Execution> current = executionService.execution(
+                querySession,
+                executionId
+            );
+            if (current.isPresent()) {
+                observed = current.orElseThrow();
+                if (expected.test(observed)) {
+                    return observed;
+                }
+            }
+            awaitChangeSignal(deadline);
+        }
+        throw new IllegalStateException(
+            "Execution did not reach the expected state: "
+                + executionId
+                + ", last state="
+                + (observed == null ? "missing" : observed.state().current())
+        );
+    }
+
+    public PausedTaskRunRef waiting(Execution execution) {
         return waitingForExecution(execution.id());
     }
 
-    public ExternalTask waitingForExecution(String executionId) {
-        List<ExternalTask> waiting = externalTaskService.waitingTasks(session)
-            .stream()
+    public PausedTaskRunRef waitingForExecution(String executionId) {
+        return waitingForExecution(session, executionId);
+    }
+
+    public PausedTaskRunRef waitingForExecution(
+        Session<User> querySession,
+        String executionId
+    ) {
+        awaitExecution(
+            querySession,
+            executionId,
+            execution -> execution.state().isPaused()
+        );
+        List<PausedTaskRunRef> waiting = pausedTaskRuns(querySession).stream()
             .filter(task -> task.executionId().equals(executionId))
             .toList();
         if (waiting.size() != 1) {
             throw new IllegalStateException(
-                "Expected one WAITING ExternalTask for Execution "
+                "Expected one PAUSED TaskRun for Execution "
                     + executionId
                     + " but found "
                     + waiting.size()
@@ -181,35 +251,65 @@ public final class WorkflowUcFixture implements AutoCloseable {
         return waiting.getFirst();
     }
 
-    public ExternalTask waitingForOutput(
+    public PausedTaskRunRef waitingForOutput(
         String executionId,
         String output
     ) {
-        return externalTaskService.waitingTasks(session).stream()
+        return waitingForOutput(session, executionId, output);
+    }
+
+    public PausedTaskRunRef waitingForOutput(
+        Session<User> querySession,
+        String executionId,
+        String output
+    ) {
+        awaitExecution(
+            querySession,
+            executionId,
+            execution -> execution.state().isPaused()
+        );
+        return pausedTaskRuns(querySession).stream()
             .filter(task -> task.executionId().equals(executionId))
-            .filter(task -> declaresOutput(task, output))
+            .filter(task -> declaresOutput(querySession, task, output))
             .findFirst()
             .orElseThrow(() -> new IllegalStateException(
-                "No WAITING ExternalTask for Execution "
+                "No PAUSED TaskRun for Execution "
                     + executionId
                     + " and output "
                     + output
             ));
     }
 
+    public List<PausedTaskRunRef> pausedTaskRuns() {
+        return pausedTaskRuns(session);
+    }
+
+    public List<PausedTaskRunRef> pausedTaskRuns(
+        Session<User> querySession
+    ) {
+        return executionService.executions(querySession).stream()
+            .flatMap(execution -> execution.pausedTaskRuns().stream()
+                .map(taskRun -> new PausedTaskRunRef(
+                    execution.id(),
+                    taskRun.id()
+                )))
+            .toList();
+    }
+
     private boolean declaresOutput(
-        ExternalTask externalTask,
+        Session<User> querySession,
+        PausedTaskRunRef pausedTaskRun,
         String output
     ) {
         Execution execution = executionService.execution(
-            session,
-            externalTask.executionId()
+            querySession,
+            pausedTaskRun.executionId()
         ).orElseThrow(() -> new IllegalStateException(
-            "ExternalTask references a missing Execution: "
-                + externalTask.id()
+            "Paused TaskRun references a missing Execution: "
+                + pausedTaskRun.taskRunId()
         ));
         Flow flow = flowService.flow(
-            session,
+            querySession,
             execution.flowId(),
             execution.flowReversion()
         ).orElseThrow(() -> new IllegalStateException(
@@ -217,7 +317,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
                 + execution.id()
         ));
         String taskId = execution.requireTaskRun(
-            externalTask.taskRunId()
+            pausedTaskRun.taskRunId()
         ).taskId();
         return flow.findTask(taskId)
             .orElseThrow(() -> new IllegalStateException(
@@ -226,23 +326,59 @@ public final class WorkflowUcFixture implements AutoCloseable {
             .declaresOutput(output);
     }
 
-    public Execution completeAfterRestart(
+    public Execution resume(
+        PausedTaskRunRef pausedTaskRun,
+        Map<String, ?> outputs
+    ) {
+        return resume(session, pausedTaskRun, outputs);
+    }
+
+    public Execution resume(
+        Session<User> resumeSession,
+        PausedTaskRunRef pausedTaskRun,
+        Map<String, ?> outputs
+    ) {
+        return executionService.resume(
+            resumeSession,
+            pausedTaskRun.executionId(),
+            pausedTaskRun.taskRunId(),
+            outputs
+        );
+    }
+
+    public TaskRun taskRun(
+        Session<User> querySession,
+        PausedTaskRunRef pausedTaskRun
+    ) {
+        return executionService.execution(
+            querySession,
+            pausedTaskRun.executionId()
+        ).orElseThrow(() -> new IllegalStateException(
+            "Execution does not exist: " + pausedTaskRun.executionId()
+        )).requireTaskRun(pausedTaskRun.taskRunId());
+    }
+
+    public TaskRun taskRun(PausedTaskRunRef pausedTaskRun) {
+        return taskRun(session, pausedTaskRun);
+    }
+
+    public Execution resumeAfterRestart(
         String executionId,
         Map<String, Object> outputs
     ) {
         restartServer();
-        ExternalTask task = waitingForExecution(executionId);
-        return externalTaskService.complete(session, task.id(), outputs);
+        PausedTaskRunRef task = waitingForExecution(executionId);
+        return resume(task, outputs);
     }
 
-    public Execution completeAfterRestart(
+    public Execution resumeAfterRestart(
         String executionId,
         String output,
         Map<String, Object> outputs
     ) {
         restartServer();
-        ExternalTask task = waitingForOutput(executionId, output);
-        return externalTaskService.complete(session, task.id(), outputs);
+        PausedTaskRunRef task = waitingForOutput(executionId, output);
+        return resume(task, outputs);
     }
 
     public static String pauseYaml(
@@ -276,9 +412,6 @@ public final class WorkflowUcFixture implements AutoCloseable {
     public void close() {
         try {
             closeServer();
-            if (triggerWaitingOnClose) {
-                PostgresExternalTriggerRunner.completeWaiting(companyIds);
-            }
         } finally {
             if (cleanupOnClose && jooq.cleanupEnabled()) {
                 companyIds.forEach(jooq::removeTenant);
@@ -301,7 +434,6 @@ public final class WorkflowUcFixture implements AutoCloseable {
         context.start();
         flowService = context.getBean(FlowService.class);
         executionService = context.getBean(ExecutionService.class);
-        externalTaskService = context.getBean(ExternalTaskService.class);
     }
 
     private void closeServer() {
@@ -310,7 +442,6 @@ public final class WorkflowUcFixture implements AutoCloseable {
             context = null;
             flowService = null;
             executionService = null;
-            externalTaskService = null;
         }
     }
 
@@ -333,5 +464,30 @@ public final class WorkflowUcFixture implements AutoCloseable {
         Session<User> session = new Session<>();
         session.setUser(user);
         return session;
+    }
+
+    private static void awaitChangeSignal(long deadline) {
+        long remaining = deadline - System.nanoTime();
+        if (remaining <= 0) {
+            return;
+        }
+        try {
+            new CountDownLatch(1).await(
+                Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(10)),
+                TimeUnit.NANOSECONDS
+            );
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                "Interrupted while awaiting Execution state",
+                exception
+            );
+        }
+    }
+
+    public record PausedTaskRunRef(
+        String executionId,
+        String taskRunId
+    ) {
     }
 }

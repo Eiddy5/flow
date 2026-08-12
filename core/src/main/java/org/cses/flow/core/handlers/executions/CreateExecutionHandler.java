@@ -12,8 +12,6 @@ import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
-import org.cses.flow.executor.DefaultExecutor;
-import org.cses.flow.executor.ExecutorContext;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -29,17 +27,14 @@ public final class CreateExecutionHandler implements CommandHandler<
 
     private final FlowRepository flowRepository;
     private final ExecutionRepository executionRepository;
-    private final DefaultExecutor defaultExecutor;
 
     @Inject
     public CreateExecutionHandler(
         FlowRepository flowRepository,
-        ExecutionRepository executionRepository,
-        DefaultExecutor defaultExecutor
+        ExecutionRepository executionRepository
     ) {
         this.flowRepository = flowRepository;
         this.executionRepository = executionRepository;
-        this.defaultExecutor = defaultExecutor;
     }
 
     @Override
@@ -97,15 +92,8 @@ public final class CreateExecutionHandler implements CommandHandler<
                 flow.id(),
                 flow.reversion()
             );
-        if (!command.startImmediately()) {
-            executionRepository.save(context.getDsl(), execution);
-            return execution.copy();
-        }
-        return defaultExecutor.execute(
-            context.getSession(),
-            context.getDsl(),
-            new ExecutorContext(flow, execution)
-        );
+        executionRepository.save(context.getDsl(), execution);
+        return execution.copy();
     }
 
     private Optional<Execution> existing(

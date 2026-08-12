@@ -21,10 +21,10 @@ ADR 0046 已建立类型化 Dispatch Queue 契约，并让 `Event` 直接提供�
 业务 Queue 提供外置事务解析器或编解码 Interface。Default Queue 只需绑定一个确定的
 业务 `Class<T>`，就可以统一构造 JSONB Queue Entry 并恢复 Event。
 
-本 Adapter 只负责稳定传输，不判断 Consumer 的业务处理结果，也不建立 ACK、Lease、
-重试次数或业务结果记录。已确认的恢复边界是：普通 Consumer 异常表示本次传输尝试
-已经结束，不重新投递；只有进程崩溃、连接中断或事务提交失败使领取事务没有完成时，
-原消息继续保留并可被再次领取。
+本 Adapter 只负责稳定传输，不判断 Consumer 的业务处理结果，也不建立显式 ACK、
+Lease、重试次数或业务结果记录。Consumer 正常返回即确认；Consumer 抛出异常表示本次
+领取事务没有完成，原消息继续保留并可被再次领取。该结论由 ADR 0051 修订，以满足
+持久化业务 Command 不得因普通进程内异常而丢失的要求。
 
 ## 备选方案
 
@@ -41,7 +41,7 @@ Lease 可以缩短数据库事务并恢复失联 Consumer，但会引入确认�
 ### 方案三：事务内竞争锁定、调用 Consumer 并删除
 
 一个领取事务使用 `FOR UPDATE SKIP LOCKED` 锁定一条消息，在同一事务内恢复并调用
-Consumer；Consumer 正常返回或抛出普通运行时异常后都删除消息并提交。进程或连接
+Consumer；只有 Consumer 正常返回才删除消息并提交。Consumer 抛出异常、进程或连接
 在提交前异常终止时事务回滚，原消息重新可见。
 
 ### 同步事务来源
@@ -163,8 +163,9 @@ Broadcast Queue Interface、广播消费游标、投递状态和保留清理仍�
   领取时同时固定 `queue_type = 'DISPATCH'` 和自身 `queue_name`，不会读取未来的
   Broadcast 消息。
 - Consumer 在领取事务内调用，因此一次活跃回调会占用一个数据库连接并持有消息行锁。
-- Consumer 正常返回或抛出 `RuntimeException` 后都删除消息并提交；异常仅记录日志，
-  Subscription 继续轮询。Queue 不据此判断业务成功。
+- Consumer 正常返回后删除消息并提交；抛出 `RuntimeException` 时领取事务回滚，消息
+  保持待交付，Subscription 等待下一轮后重试。Queue 仍不判断业务结果，Consumer 必须
+  把已处理的确定性业务失败转换为正常返回的业务状态。
 - `JsonFactory` 无法按 Queue 的 `Class<T>` 恢复 Event，表示传输尚未到达 Consumer；
   领取事务回滚并保留原消息，Subscription 按普通基础设施失败等待下一轮轮询，不把
   错误 payload 静默删除。
@@ -203,7 +204,8 @@ Broadcast Queue Interface、广播消费游标、投递状态和保留清理仍�
 
 - PostgreSQL 行锁直接提供跨 Subscription、跨 JVM 的竞争领取，不需要进程内协调器。
 - 未提交事务由数据库自动恢复，保留了进程崩溃时的待交付消息。
-- 普通 Consumer 异常仍完成删除，遵守 Queue 不判断业务成功、不做业务重试的边界。
+- Consumer 只有正常返回才确认，避免持久化 Command 因进程内异常被静默丢弃；Queue
+  不区分异常类型，也不维护业务重试状态。
 - 直接复用 PAAS `JsonFactory` 和 `Class<T>`，让 JSONB 构造与类型恢复集中在 Default
   Queue，无需为当前唯一协议维护业务编解码 Interface。
 - Event 直接提供可空 DSL，让同步发布可以加入业务事务，无需外置事务解析 Interface 或
@@ -232,5 +234,4 @@ Broadcast Queue Interface、广播消费游标、投递状态和保留清理仍�
 - 并发完整性与基础性能使用独立的
   [`dispatchQueueLoadTest`](../harness/dispatch-queue-load-test.md) 场景验证，不进入普通
   `test`、`check` 或 `build` 链路，也不替代多节点故障注入和生产容量认证。
-- 当前 Executor/Worker 同步链路不变。具体业务 Event、Bean 和运行链路接入需要单独
-  实现和验证。
+- Execution 启动链路由 ADR 0051 接入该 Queue；Worker 在独立的消费事务内同步运行。

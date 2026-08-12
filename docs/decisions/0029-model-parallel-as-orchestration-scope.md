@@ -138,8 +138,6 @@ CREATED / RUNNING / PAUSED / COMPLETED / WARNING / CANCELLED / FAILED / TERMINAT
 - 恢复 Pause 时先把目标 Pause TaskRun 恢复为 `RUNNING`，再由 Executor 状态机
   完成并继续推进；Execution 在恢复前后都保持 `RUNNING`。该条由 ADR 0031 修订。
 - 稳定暂停点由 Executor 检查 TaskRun 事实得出，不能再通过 Execution 状态推断。
-- ExternalTask 自身的 `WAITING` 是外部任务技术生命周期，不属于 `State.Type`，
-  本决策不修改它。
 
 ### concurrent 契约
 
@@ -189,12 +187,11 @@ Parallel 新增可选字段 `concurrent`：
 ## 后果
 
 - 删除 `BranchTask` 和 `ParallelTask`，迁移全部代码、YAML、Demo 和测试类型地址。
-- `State.Type.WAITING` 破坏迁移为 `PAUSED`；已有 Execution、TaskRun 和
-  ExternalTask 运行事实一次性清空，不做兼容迁移。
+- `State.Type.WAITING` 破坏迁移为 `PAUSED`；当时已有的运行事实一次性清空，不做
+  兼容迁移。
 - ExecutorContext 使用 paused TaskRun 词汇，并增加编排作用域完成这一瞬时计划；
   该计划仍不持久化。
 - Executor 必须在搜索分支时区分“依赖待完成”和“依赖确定未选择”。
-- PostgreSQL 约束必须分别限制 Execution 与 TaskRun 的可用状态；ExternalTask
-  `WAITING` 约束保持不变。
+- PostgreSQL 约束必须分别限制 Execution 与 TaskRun 的可用状态。
 - 当前同步 WorkerDispatcher 只能验证调度事实，不能证明 `concurrent` 的物理消费
   上限；该字段在队列消费者改造完成前不会改变实际 Worker 投递。

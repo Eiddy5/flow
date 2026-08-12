@@ -2,8 +2,6 @@ package org.cses.flow.infrastructure.repositories.postgres;
 
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
-import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
@@ -13,7 +11,6 @@ import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.repositories.executions.postgres.ExecutionPostgresRepository;
-import org.cses.flow.infrastructure.repositories.externaltasks.postgres.ExternalTaskPostgresRepository;
 import org.cses.flow.infrastructure.repositories.flows.postgres.FlowPostgresRepository;
 import org.cses.flow.infrastructure.repositories.flows.postgres.FlowDraftPostgresRepository;
 import org.cses.flow.extensions.flow.Pause;
@@ -44,7 +41,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
-import static org.flow.gen.flow.Tables.EXTERNAL_TASKS;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
@@ -65,8 +61,6 @@ final class PostgresRepositoryIntegrationTest {
         new FlowDraftPostgresRepository();
     private final ExecutionPostgresRepository executionRepository =
         new ExecutionPostgresRepository();
-    private final ExternalTaskPostgresRepository externalTaskRepository =
-        new ExternalTaskPostgresRepository();
     private final String companyId = "repository-test-" + StringUtil.newId();
 
     @BeforeAll
@@ -77,9 +71,6 @@ final class PostgresRepositoryIntegrationTest {
     @AfterEach
     void removeTestTenant() {
         write(dsl -> {
-            dsl.deleteFrom(EXTERNAL_TASKS)
-                .where(EXTERNAL_TASKS.COMPANY_ID.eq(companyId))
-                .execute();
             dsl.deleteFrom(TASK_RUNS)
                 .where(TASK_RUNS.EXECUTION_ID.in(
                     dsl.select(EXECUTIONS.ID)
@@ -299,37 +290,6 @@ final class PostgresRepositoryIntegrationTest {
             return null;
         }));
 
-        ExternalTask externalTask = ExternalTask.create(
-            companyId,
-            execution.id(),
-            execution.taskRuns().getFirst().id()
-        );
-        write(dsl -> {
-            externalTaskRepository.save(dsl, externalTask);
-            return null;
-        });
-        ExternalTask waiting = read(dsl ->
-            externalTaskRepository.findWaitingByTaskRunId(
-                dsl,
-                companyId,
-                execution.taskRuns().getFirst().id()
-            ).orElseThrow()
-        );
-        waiting.complete(Map.of("approved", "yes"));
-        write(dsl -> {
-            externalTaskRepository.save(dsl, waiting);
-            return null;
-        });
-        ExternalTask completed = read(dsl ->
-            externalTaskRepository.findById(
-                dsl,
-                companyId,
-                externalTask.id()
-            ).orElseThrow()
-        );
-        assertEquals(ExternalTaskStatus.COMPLETED, completed.status());
-        assertEquals(Map.of("approved", "yes"), completed.outputs());
-        assertTrue(completed.lockVersion() > 0);
     }
 
     @Test

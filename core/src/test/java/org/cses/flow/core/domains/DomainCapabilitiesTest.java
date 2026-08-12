@@ -4,7 +4,6 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.expressions.Express;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
@@ -33,7 +32,6 @@ final class DomainCapabilitiesTest {
         assertTrue(Identified.class.isAssignableFrom(Flow.class));
         assertTrue(Identified.class.isAssignableFrom(FlowDraft.class));
         assertTrue(Identified.class.isAssignableFrom(Execution.class));
-        assertTrue(Identified.class.isAssignableFrom(ExternalTask.class));
         assertTrue(Identified.class.isAssignableFrom(Task.class));
         assertTrue(Identified.class.isAssignableFrom(TaskRun.class));
         assertTrue(Auditable.class.isAssignableFrom(Flow.class));
@@ -42,7 +40,6 @@ final class DomainCapabilitiesTest {
         assertTrue(Deletable.class.isAssignableFrom(FlowDraft.class));
         assertTrue(Lockable.class.isAssignableFrom(FlowDraft.class));
         assertTrue(Lockable.class.isAssignableFrom(Execution.class));
-        assertTrue(Lockable.class.isAssignableFrom(ExternalTask.class));
 
         assertFalse(Auditable.class.isAssignableFrom(Execution.class));
         assertFalse(Deletable.class.isAssignableFrom(Execution.class));

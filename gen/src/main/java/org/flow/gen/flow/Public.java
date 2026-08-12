@@ -8,7 +8,6 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.flow.gen.flow.tables.ExecutionsTable;
-import org.flow.gen.flow.tables.ExternalTasksTable;
 import org.flow.gen.flow.tables.FlowDraftsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -37,11 +36,6 @@ public class Public extends SchemaImpl {
      * The table <code>public.executions</code>.
      */
     public final ExecutionsTable EXECUTIONS = ExecutionsTable.EXECUTIONS;
-
-    /**
-     * The table <code>public.external_tasks</code>.
-     */
-    public final ExternalTasksTable EXTERNAL_TASKS = ExternalTasksTable.EXTERNAL_TASKS;
 
     /**
      * The table <code>public.flow_drafts</code>.
@@ -85,7 +79,6 @@ public class Public extends SchemaImpl {
     public final List<Table<?>> getTables() {
         return Arrays.asList(
             ExecutionsTable.EXECUTIONS,
-            ExternalTasksTable.EXTERNAL_TASKS,
             FlowDraftsTable.FLOW_DRAFTS,
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,

@@ -3,6 +3,7 @@ package org.cses.flow.infrastructure.jooq;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
+import org.cses.flow.executor.commands.ExecutorCommand;
 import org.x9.jooq.JOOQ;
 import org.x9.jooq.intf.JooqRunnable;
 import org.x9.jooq.intf.JooqRunnableResult;
@@ -13,10 +14,10 @@ import java.sql.SQLException;
 import java.util.List;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
-import static org.flow.gen.flow.Tables.EXTERNAL_TASKS;
 import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
+import static org.flow.gen.flow.Tables.QUEUES;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 /**
@@ -97,8 +98,15 @@ public final class PostgresJooqTestAdapter extends JOOQ {
 
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
-            dsl.deleteFrom(EXTERNAL_TASKS)
-                .where(EXTERNAL_TASKS.COMPANY_ID.eq(companyId))
+            dsl.deleteFrom(QUEUES)
+                .where(QUEUES.QUEUE_NAME.eq(
+                    ExecutorCommand.QUEUE_NAME
+                ))
+                .and(DSL.field(
+                    "{0} ->> 'companyId'",
+                    String.class,
+                    QUEUES.PAYLOAD
+                ).eq(companyId))
                 .execute();
             dsl.deleteFrom(TASK_RUNS)
                 .where(TASK_RUNS.EXECUTION_ID.in(

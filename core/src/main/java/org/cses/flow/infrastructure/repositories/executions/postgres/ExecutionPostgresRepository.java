@@ -40,6 +40,7 @@ public final class ExecutionPostgresRepository
             .where(EXECUTIONS.COMPANY_ID.eq(companyId))
             .and(EXECUTIONS.ID.eq(executionId))
             .and(EXECUTIONS.DELETED_AT.isNull())
+            .forShare()
             .fetchOne(ExecutionEntry::fromRecord);
         return toDomain(dsl, executionId, entry);
     }

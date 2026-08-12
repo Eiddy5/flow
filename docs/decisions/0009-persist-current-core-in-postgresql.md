@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted（过渡性；ExternalTask 持久化边界已由 ADR 0016 取代）
+Accepted（ExternalTask 持久化条款由 ADR 0016 取代，并已于 2026-08-12 删除；
+其余聚合持久化条款继续有效）
 
 ## 背景
 
@@ -31,8 +32,8 @@ ADR 0008 已确定 Flow 定义域后续迁移到 `FlowDraft + Flow Reversion`。
   时由 `FlowDraft.raw` 替换该过渡格式。
 - `executions` 增加 `lock_version`。首次保存为 0，修改已有聚合时必须恰好加一。
   同一命令事务内允许同一版本多次 flush，以支持 Worker 外键记录的中间保存。
-- 迁移遗留的 `external_tasks.lock_version` 使用严格 compare-and-set，一次更新
-  必须恰好加一；新 PAUSE 恢复不再依赖该表。
+- 本决策实施时，`external_tasks.lock_version` 使用严格 compare-and-set；该过渡
+  Repository 与表已按 ADR 0016 删除，不再属于当前持久化边界。
 - 写操作从当前 `DSLContext` 的事务数据读取 Session，生成 creator/updater 审计；
   `CommandExecutor` 负责在命令事务期间绑定并在结束后恢复 Session。
 - 审计检索列使用 varchar，与 PAAS Session 的 String 用户 id 契约一致，不在
@@ -52,6 +53,6 @@ ADR 0008 的最终存储模型。
   部分唯一索引和 CAS。
 - 完成 ADR 0008 的领域迁移时，需要同时替换 Flow Repository 契约、Draft 内容
   格式和 `version` 术语。
-- ExternalTask Repository 与表只服务迁移遗留，目标 PAUSE 等待由
-  ExecutionRepository 持久化的 WAITING TaskRun 表达，后续删除遗留表时不得影响
-  Execution Resume。
+- ExternalTask Repository、Entry、JOOQ 类型与表已经删除。PAUSE 等待只由
+  ExecutionRepository 持久化的 Pause TaskRun 表达，Execution Resume 不依赖额外
+  等待聚合。

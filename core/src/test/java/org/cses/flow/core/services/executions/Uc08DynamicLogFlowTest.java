@@ -2,12 +2,18 @@ package org.cses.flow.core.services.executions;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
@@ -35,11 +41,8 @@ class Uc08DynamicLogFlowTest {
                 description: render one dynamic log
                 tasks:
                   - key: prepare
-                    type: org.cses.flow.extensions.flow.Pause
-                    pause:
-                      key: create-prepare
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
-                    resume:
+                    type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
+                    outputs:
                       - key: result
                         type: STRING
                   - key: write-log
@@ -53,15 +56,7 @@ class Uc08DynamicLogFlowTest {
                       - write-log
                 """);
 
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                fixture.waiting(started).id(),
-                Map.of("result", "ready")
-            );
+            Execution completed = fixture.startAndAwait(flow);
             Task target = task(flow, "write-log");
             Task observe = task(flow, "observe");
 
@@ -80,9 +75,6 @@ class Uc08DynamicLogFlowTest {
                 logs.messages()
             );
             assertTrue(completed.activeTaskRuns().isEmpty());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
         }
     }
 
@@ -139,11 +131,8 @@ class Uc08DynamicLogFlowTest {
                 description: missing log expression value
                 tasks:
                   - key: prepare
-                    type: org.cses.flow.extensions.flow.Pause
-                    pause:
-                      key: create-prepare
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
-                    resume:
+                    type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
+                    outputs:
                       - key: available
                         type: STRING
                   - key: write-log
@@ -157,15 +146,7 @@ class Uc08DynamicLogFlowTest {
                       - write-log
                 """);
 
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
-            Execution failed = fixture.externalTaskService().complete(
-                fixture.session(),
-                fixture.waiting(started).id(),
-                Map.of("available", "ready")
-            );
+            Execution failed = fixture.startAndAwait(flow);
             Task target = task(flow, "write-log");
             Task neverRun = task(flow, "never-run");
             TaskRun targetRun = run(failed, target);
@@ -181,9 +162,25 @@ class Uc08DynamicLogFlowTest {
                 message.contains("{{") || message.contains("null")
             ));
             assertTrue(failed.activeTaskRuns().isEmpty());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+        }
+    }
+
+    /** Supplies deterministic predecessor output through the normal worker. */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static final class LogInputTask
+        extends Task implements RunnableTask {
+
+        @Override
+        public RunResult run(RunContext context) {
+            return switch (key()) {
+                case "prepare" -> RunResult.success(Map.of(
+                    outputs().getFirst().getKey(),
+                    "ready"
+                ));
+                default -> RunResult.success(Map.of());
+            };
         }
     }
 

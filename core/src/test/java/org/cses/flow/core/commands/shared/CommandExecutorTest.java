@@ -64,6 +64,40 @@ class CommandExecutorTest {
     }
 
     @Test
+    void completesTransportAcceptanceInsideTheCommandScope() {
+        TextHandler handler = new TextHandler();
+        DSLContext dsl = mockDsl();
+        CommandExecutor executor = commandExecutor(
+            mockJooq(dsl),
+            new CommandHandlerRegistry(List.of(handler))
+        );
+        TestSession session = session("user-1");
+        AtomicBoolean completed = new AtomicBoolean();
+
+        String result = executor.execute(
+            session,
+            new TextCommand("flow"),
+            (handled, transactionalDsl) -> {
+                assertEquals("handled:flow", handled);
+                assertSame(dsl, transactionalDsl);
+                assertSame(
+                    session,
+                    transactionalDsl.configuration().data(Session.class)
+                );
+                assertNotNull(transactionalDsl.configuration().data(
+                    CommandContext.class
+                ));
+                completed.set(true);
+            }
+        );
+
+        assertEquals("handled:flow", result);
+        assertTrue(completed.get());
+        assertNull(dsl.configuration().data(Session.class));
+        assertNull(dsl.configuration().data(CommandContext.class));
+    }
+
+    @Test
     void rejectsDuplicateHandlersForTheSameCommand() {
         TextHandler first = new TextHandler();
         TextHandler second = new TextHandler();

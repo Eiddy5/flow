@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted
+Accepted（ExternalTask 迁移遗留已于 2026-08-12 删除；运行状态细节由
+ADR 0029 与 ADR 0031 修订）
 
 ## 背景
 
@@ -61,7 +62,7 @@ PAUSE TaskRun 进入 WAITING。外部能力保存 `executionId + taskRunId`，�
   - Execution 和目标 TaskRun 的 `state.current()` 均为 `WAITING`。
   - TaskRun 对应的 Task 类型是 PAUSE。
   - outputs 满足该 PAUSE Task 的输出契约。
-- 校验通过后，Handler 由 `DefaultExecutor.resume(...)` 调用 Execution 聚合
+- 校验通过后，Handler 由 `ExecutionRunner.resume(...)` 调用 Execution 聚合
   完成原 TaskRun，并与 `ExecutorService` 通过单轮 ExecutorContext 推进到下一
   稳定态或终态。
 - 外部能力不能提交 Flow Reversion、路由结果、下一 Task 或目标 Execution
@@ -92,10 +93,8 @@ PAUSE TaskRun 进入 WAITING。外部能力保存 `executionId + taskRunId`，�
 
 - 新代码不得以 ExternalTask id 作为 PAUSE 的公开恢复身份，也不得把
   ExternalTask 作为目标领域聚合继续扩展。
-- 当前 `externaltasks` 包、Repository、表和测试属于迁移遗留；本轮小范围重构
-  允许它们暂时兼容调用统一 Resume Handler，后续应独立删除。
-- ADR 0024 已删除 PauseTaskHandler；ExternalTask 兼容记录暂由 Executor 协调，
-  仍属于后续迁移项，不得因此降低本文目标语义。
+- `externaltasks` 包、Repository、Entry、表、生成代码和兼容测试已经删除；Executor
+  不再创建、完成或取消重复等待记录。
 - PAUSE 的核心测试应改为通过 `ExecutionService.resume(...)` 恢复确定
   `executionId + taskRunId`。
 - 面向用户的审批待办、受派和权限由审批能力的集成 UC 验证，Flow Core 的 resume

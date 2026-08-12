@@ -98,7 +98,10 @@ final class CreateExecutionHandlerTest {
         FlowRepository flows,
         ExecutionRepository executions
     ) {
-        return new CreateExecutionHandler(flows, executions, null);
+        return new CreateExecutionHandler(
+            flows,
+            executions
+        );
     }
 
     private static CreateExecutionCommand pending(
@@ -109,8 +112,7 @@ final class CreateExecutionHandlerTest {
         return new CreateExecutionCommand(
             executionId,
             flowId,
-            flowReversion,
-            false
+            flowReversion
         );
     }
 

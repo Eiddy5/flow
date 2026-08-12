@@ -1,12 +1,10 @@
-package org.cses.flow.core.services.externaltasks;
+package org.cses.flow.core.services.executions;
 
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
-import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.domains.tasks.RunResult;
@@ -14,7 +12,6 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.annotations.Plugin;
-import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.junit.jupiter.api.Test;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
@@ -26,29 +23,23 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTaskRunRef;
 
-/**
- * UC: docs/uc/flow/UC-04 用户处理外派任务并恢复流程.md
- */
-class Uc04ExternalTaskResumeTest {
+class ExecutionResumeIntegrationTest {
 
     @Test
-    void s1UserQueriesAndCompletesSingleExternalTask() {
+    void resumesSinglePausedTaskRun() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s1-flow",
+                    "execution-resume-single-flow",
                     "外部恢复 Flow",
                     true
                 )
             );
 
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
 
-            // PASS-S1-01
             assertEquals(State.Type.PAUSED, started.state().current());
             assertEquals(
                 State.Type.PAUSED,
@@ -57,56 +48,47 @@ class Uc04ExternalTaskResumeTest {
             assertEquals(2, started.taskRuns().size());
 
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
-            assertEquals(ExternalTaskStatus.WAITING, externalTask.status());
             assertEquals(
-                started.id(),
-                externalTask.executionId()
+                State.Type.PAUSED,
+                fixture.taskRun(pausedTaskRun).state().current()
             );
+            assertEquals(started.id(), pausedTaskRun.executionId());
 
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
-                    Map.of("decision", "APPROVED")
-                );
-            // PASS-S1-02
+            Execution completed = fixture.resume(
+                pausedTaskRun,
+                Map.of("decision", "APPROVED")
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(completed.taskRuns().stream()
                 .allMatch(run ->
                     run.state().current() == State.Type.SUCCESS
                 ));
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s9FreshServerQueriesAndCompletesThePersistedWaitingTask() {
-        String companyId = "uc04-s9-" + StringUtil.newId();
+    void freshServerResumesPersistedPausedTaskRun() {
+        String companyId = "execution-resume-restart-" + StringUtil.newId();
         String executionId;
         try (WorkflowUcFixture starter =
             WorkflowUcFixture.openLeavingWaiting(companyId)) {
 
             Flow flow = starter.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s9-flow",
+                    "execution-resume-restart-flow",
                     "跨 server 持久化恢复 Flow",
                     true
                 )
             );
-            Execution started = starter.executionService().create(
-                starter.session(),
-                flow.id()
-            );
+            Execution started = starter.startAndAwait(flow);
 
             assertEquals(State.Type.PAUSED, started.state().current());
             assertEquals(
                 1,
-                starter.externalTaskService().waitingTasks(starter.session())
-                    .size()
+                starter.pausedTaskRuns().size()
             );
             executionId = started.id();
         }
@@ -114,15 +96,13 @@ class Uc04ExternalTaskResumeTest {
         try (WorkflowUcFixture verifier = WorkflowUcFixture.open()) {
             Session<User> session =
                 verifier.sessionForExactCompany(companyId);
-            ExternalTask waiting = verifier.externalTaskService()
-                .waitingTasks(session)
-                .stream()
-                .filter(task -> task.executionId().equals(executionId))
-                .findFirst()
-                .orElseThrow();
-            Execution completed = verifier.externalTaskService().complete(
+            PausedTaskRunRef waiting = verifier.waitingForExecution(
                 session,
-                waiting.id(),
+                executionId
+            );
+            Execution completed = verifier.resume(
+                session,
+                waiting,
                 Map.of("decision", "APPROVED")
             );
 
@@ -138,7 +118,7 @@ class Uc04ExternalTaskResumeTest {
                     .toList()
             );
             assertTrue(
-                verifier.externalTaskService().waitingTasks(session).isEmpty()
+                verifier.pausedTaskRuns(session).isEmpty()
             );
 
             verifier.restartServer();
@@ -149,55 +129,46 @@ class Uc04ExternalTaskResumeTest {
             assertEquals(State.Type.SUCCESS, persisted.state().current());
             assertEquals(3, persisted.taskRuns().size());
             assertTrue(
-                verifier.externalTaskService().waitingTasks(session).isEmpty()
+                verifier.pausedTaskRuns(session).isEmpty()
             );
         }
     }
 
     @Test
-    void s2CompletesAndResumesWithoutRunningPauseWorkerAgain() {
+    void resumeDoesNotRunPauseWorkerAgain() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s2-flow",
+                    "execution-resume-worker-once-flow",
                     "外部恢复 Flow",
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
 
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
-                    Map.of("decision", "approved")
-                );
+            Execution completed = fixture.resume(
+                pausedTaskRun,
+                Map.of("decision", "approved")
+            );
 
-            ExternalTask completedExternalTask =
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow();
+            TaskRun completedPause = completed.requireTaskRun(
+                pausedTaskRun.taskRunId()
+            );
             assertEquals(
-                ExternalTaskStatus.COMPLETED,
-                completedExternalTask.status()
+                State.Type.SUCCESS,
+                completedPause.state().current()
             );
             assertEquals(
                 Map.of("decision", "approved"),
-                completedExternalTask.outputs()
+                completedPause.outputs()
             );
-            // PASS-S2-01
             assertEquals(
-                completedExternalTask.outputs(),
+                completedPause.outputs(),
                 completed.taskRuns().getFirst().outputs()
             );
-            // PASS-S2-02
             assertEquals(
                 flow.allTasks().stream().map(Task::id).toList(),
                 completed.taskRuns().stream().map(TaskRun::taskId).toList()
@@ -212,62 +183,61 @@ class Uc04ExternalTaskResumeTest {
             );
             assertEquals(started.id(), completed.id());
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertEquals(1L, completed.lockVersion());
+            assertEquals(
+                started.lockVersion() + 1,
+                completed.lockVersion()
+            );
             // 重复完成由 S4 独立覆盖。
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
+                () -> fixture.resume(
+                    pausedTaskRun,
                     Map.of("decision", "approved")
                 )
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s3RejectsInvalidInputWithoutChangingWaitingState() {
+    void invalidOutputsKeepPausedTaskRunWaiting() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s3-flow",
+                    "execution-resume-invalid-outputs-flow",
                     "非法输入恢复 Flow",
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
 
-            // PASS-S3-01
             assertThrows(
                 IllegalArgumentException.class,
-                () -> fixture.externalTaskService().complete(
+                () -> fixture.executionService().resume(
                     fixture.session(),
+                    started.id(),
                     " ",
                     Map.of()
                 )
             );
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
+                () -> fixture.executionService().resume(
                     fixture.session(),
-                    "missing-external-task-id",
+                    started.id(),
+                    "missing-task-run-id",
                     Map.of()
                 )
             );
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
+                () -> fixture.executionService().resume(
                     fixture.session(),
-                    externalTask.id(),
+                    started.id(),
+                    pausedTaskRun.taskRunId(),
                     null
                 )
             );
@@ -276,75 +246,53 @@ class Uc04ExternalTaskResumeTest {
                 fixture.session(),
                 started.id()
             ).orElseThrow();
-            ExternalTask externalReloaded =
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow();
-            // PASS-S3-02
+            TaskRun pauseReloaded = reloaded.requireTaskRun(
+                pausedTaskRun.taskRunId()
+            );
             assertEquals(State.Type.PAUSED, reloaded.state().current());
             assertEquals(started.lockVersion(), reloaded.lockVersion());
             assertEquals(2, reloaded.taskRuns().size());
             assertEquals(
                 State.Type.PAUSED,
-                reloaded.taskRuns().getFirst().state().current()
+                pauseReloaded.state().current()
             );
-            assertEquals(Map.of(), reloaded.taskRuns().getFirst().outputs());
-            assertEquals(ExternalTaskStatus.WAITING, externalReloaded.status());
-            assertEquals(
-                externalTask.lockVersion(),
-                externalReloaded.lockVersion()
-            );
-            assertEquals(Map.of(), externalReloaded.outputs());
+            assertEquals(Map.of(), pauseReloaded.outputs());
 
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
-                    Map.of("decision", "APPROVED")
-                );
+            Execution completed = fixture.resume(
+                pausedTaskRun,
+                Map.of("decision", "APPROVED")
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s4RejectsRepeatedCompletionWithoutChangingCompletedData() {
+    void repeatedResumeDoesNotChangeCompletedData() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s4-flow",
+                    "execution-resume-repeat-flow",
                     "重复恢复 Flow",
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
-                    Map.of("decision", "approved")
-                );
-            ExternalTask completedExternal =
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow();
+            Execution completed = fixture.resume(
+                pausedTaskRun,
+                Map.of("decision", "approved")
+            );
+            TaskRun completedPause = completed.requireTaskRun(
+                pausedTaskRun.taskRunId()
+            );
 
-            // PASS-S4-01
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
+                () -> fixture.resume(
+                    pausedTaskRun,
                     Map.of("decision", "rejected")
                 )
             );
@@ -353,12 +301,9 @@ class Uc04ExternalTaskResumeTest {
                 fixture.session(),
                 completed.id()
             ).orElseThrow();
-            ExternalTask externalReloaded =
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow();
-            // PASS-S4-02
+            TaskRun pauseReloaded = reloaded.requireTaskRun(
+                pausedTaskRun.taskRunId()
+            );
             assertEquals(State.Type.SUCCESS, reloaded.state().current());
             assertEquals(completed.lockVersion(), reloaded.lockVersion());
             assertEquals(3, reloaded.taskRuns().size());
@@ -368,126 +313,99 @@ class Uc04ExternalTaskResumeTest {
             );
             assertEquals(
                 Map.of("decision", "approved"),
-                reloaded.taskRuns().getFirst().outputs()
+                pauseReloaded.outputs()
             );
             assertEquals(
-                completedExternal.status(),
-                externalReloaded.status()
+                completedPause.state(),
+                pauseReloaded.state()
             );
             assertEquals(
-                completedExternal.outputs(),
-                externalReloaded.outputs()
+                completedPause.outputs(),
+                pauseReloaded.outputs()
             );
-            assertEquals(
-                completedExternal.lockVersion(),
-                externalReloaded.lockVersion()
-            );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s5RejectsCrossTenantReadAndCompletion() {
+    void resumeIsTenantScoped() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s5-flow",
+                    "execution-resume-tenant-flow",
                     "租户隔离恢复 Flow",
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
             Session<User> otherCompany =
                 fixture.sessionFor("company-2");
 
-            // PASS-S5-01
             assertTrue(
-                fixture.externalTaskService().waitingTasks(
-                    otherCompany
-                ).isEmpty()
+                fixture.pausedTaskRuns(otherCompany).isEmpty()
             );
             assertTrue(
-                fixture.externalTaskService().externalTask(
+                fixture.executionService().execution(
                     otherCompany,
-                    externalTask.id()
+                    started.id()
                 ).isEmpty()
             );
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
+                () -> fixture.executionService().resume(
                     otherCompany,
-                    externalTask.id(),
+                    started.id(),
+                    pausedTaskRun.taskRunId(),
                     Map.of("decision", "approved")
                 )
             );
 
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
-                    Map.of("decision", "APPROVED")
-                );
-            // PASS-S5-02
+            Execution completed = fixture.resume(
+                pausedTaskRun,
+                Map.of("decision", "APPROVED")
+            );
             assertEquals(
                 State.Type.SUCCESS,
                 completed.state().current()
             );
             assertEquals(
-                ExternalTaskStatus.COMPLETED,
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow().status()
+                State.Type.SUCCESS,
+                completed.requireTaskRun(
+                    pausedTaskRun.taskRunId()
+                ).state().current()
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s6ExternalTaskIdSelectsOnlyItsOwningExecution() {
+    void taskRunIdSelectsOnlyOwningExecution() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s6-flow",
+                    "execution-resume-select-flow",
                     "恢复目标隔离 Flow",
                     true
                 )
             );
-            Execution first = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
-            Execution second = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution first = fixture.startAndAwait(flow);
+            Execution second = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask firstExternal =
+            PausedTaskRunRef firstPause =
                 fixture.waitingForExecution(first.id());
-            ExternalTask secondExternal =
+            PausedTaskRunRef secondPause =
                 fixture.waitingForExecution(second.id());
 
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    secondExternal.id(),
-                    Map.of("decision", "approved")
-                );
+            Execution completed = fixture.resume(
+                secondPause,
+                Map.of("decision", "approved")
+            );
 
-            // PASS-S6-01
             assertEquals(second.id(), completed.id());
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            // PASS-S6-02
             assertEquals(
                 State.Type.PAUSED,
                 fixture.executionService().execution(
@@ -496,22 +414,18 @@ class Uc04ExternalTaskResumeTest {
                 ).orElseThrow().state().current()
             );
             assertEquals(
-                ExternalTaskStatus.WAITING,
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    firstExternal.id()
-                ).orElseThrow().status()
+                State.Type.PAUSED,
+                fixture.taskRun(firstPause).state().current()
             );
 
             fixture.restartServer();
-            ExternalTask remaining =
+            PausedTaskRunRef remaining =
                 fixture.waitingForExecution(first.id());
-            Execution firstCompleted =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    remaining.id(),
-                    Map.of("decision", "APPROVED")
-                );
+            assertEquals(firstPause.taskRunId(), remaining.taskRunId());
+            Execution firstCompleted = fixture.resume(
+                remaining,
+                Map.of("decision", "APPROVED")
+            );
             assertEquals(State.Type.SUCCESS, firstCompleted.state().current());
             assertEquals(
                 State.Type.SUCCESS,
@@ -520,40 +434,33 @@ class Uc04ExternalTaskResumeTest {
                     second.id()
                 ).orElseThrow().state().current()
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s7RejectsCompletionAfterExecutionCancellation() {
+    void cancelledExecutionRejectsResume() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
-                    "uc04-s7-flow",
+                    "execution-resume-cancelled-flow",
                     "取消后恢复 Flow",
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
             fixture.executionService().cancel(
                 fixture.session(),
                 started.id()
             );
 
-            // PASS-S7-01
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
+                () -> fixture.resume(
+                    pausedTaskRun,
                     Map.of("decision", "approved")
                 )
             );
@@ -562,12 +469,6 @@ class Uc04ExternalTaskResumeTest {
                 fixture.session(),
                 started.id()
             ).orElseThrow();
-            ExternalTask externalReloaded =
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow();
-            // PASS-S7-02
             assertEquals(State.Type.KILLED, canceled.state().current());
             assertEquals(2, canceled.taskRuns().size());
             assertEquals(
@@ -575,20 +476,20 @@ class Uc04ExternalTaskResumeTest {
                 canceled.taskRuns().getFirst().state().current()
             );
             assertEquals(
-                ExternalTaskStatus.CANCELED,
-                externalReloaded.status()
+                State.Type.KILLED,
+                canceled.requireTaskRun(
+                    pausedTaskRun.taskRunId()
+                ).state().current()
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s8ResumeFailureRollsBackExternalTaskAndExecution() {
+    void downstreamFailureRollsBackResume() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy("""
-                key: uc04-s8-flow
+                key: execution-resume-rollback-flow
                 description: 恢复异常回滚
                 tasks:
                   - key: wait-confirmation
@@ -600,48 +501,39 @@ class Uc04ExternalTaskResumeTest {
                       - key: decision
                         type: STRING
                   - key: explode
-                    type: org.cses.flow.core.services.externaltasks.Uc04ExternalTaskResumeTest.ThrowingTask
+                    type: org.cses.flow.core.services.executions.ExecutionResumeIntegrationTest.ThrowingTask
                 """);
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask externalTask =
+            PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
 
-            // PASS-S8-01
             IllegalStateException failure = assertThrows(
                 IllegalStateException.class,
-                () -> fixture.externalTaskService().complete(
-                    fixture.session(),
-                    externalTask.id(),
+                () -> fixture.resume(
+                    pausedTaskRun,
                     Map.of("decision", "approved")
                 )
             );
-            assertEquals("uc04-s8-worker-failure", failure.getMessage());
+            assertEquals(
+                "execution-resume-worker-failure",
+                failure.getMessage()
+            );
 
             Execution reloaded = fixture.executionService().execution(
                 fixture.session(),
                 started.id()
             ).orElseThrow();
-            ExternalTask externalReloaded =
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    externalTask.id()
-                ).orElseThrow();
-            // PASS-S8-02
+            TaskRun pauseReloaded = reloaded.requireTaskRun(
+                pausedTaskRun.taskRunId()
+            );
             assertEquals(State.Type.PAUSED, reloaded.state().current());
             assertEquals(2, reloaded.taskRuns().size());
             assertEquals(
                 State.Type.PAUSED,
-                reloaded.taskRuns().getFirst().state().current()
+                pauseReloaded.state().current()
             );
-            assertEquals(
-                ExternalTaskStatus.WAITING,
-                externalReloaded.status()
-            );
-            assertTrue(externalReloaded.outputs().isEmpty());
+            assertTrue(pauseReloaded.outputs().isEmpty());
 
             Execution canceled = fixture.executionService().cancel(
                 fixture.session(),
@@ -652,9 +544,7 @@ class Uc04ExternalTaskResumeTest {
                 State.Type.KILLED,
                 canceled.taskRuns().getFirst().state().current()
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
@@ -666,7 +556,9 @@ class Uc04ExternalTaskResumeTest {
 
         @Override
         public RunResult run(RunContext context) {
-            throw new IllegalStateException("uc04-s8-worker-failure");
+            throw new IllegalStateException(
+                "execution-resume-worker-failure"
+            );
         }
     }
 

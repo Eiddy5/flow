@@ -10,6 +10,8 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
 
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Deterministic Task plugin used by UC-03.
@@ -19,6 +21,24 @@ import java.util.Map;
 @SuperBuilder
 @NoArgsConstructor
 public final class Uc03AutomaticTask extends Task implements RunnableTask {
+
+    private static volatile CountDownLatch blockingStarted =
+        new CountDownLatch(0);
+    private static volatile CountDownLatch blockingReleased =
+        new CountDownLatch(0);
+
+    static void blockNextRun() {
+        blockingStarted = new CountDownLatch(1);
+        blockingReleased = new CountDownLatch(1);
+    }
+
+    static boolean awaitBlockingRun() throws InterruptedException {
+        return blockingStarted.await(10, TimeUnit.SECONDS);
+    }
+
+    static void releaseBlockingRun() {
+        blockingReleased.countDown();
+    }
 
     @Override
     public RunResult run(RunContext context) {
@@ -43,8 +63,25 @@ public final class Uc03AutomaticTask extends Task implements RunnableTask {
             case "target-throw" -> throw new IllegalStateException(
                 "uc03-unhandled-failure"
             );
+            case "target-block" -> {
+                blockingStarted.countDown();
+                awaitRelease();
+                yield RunResult.success(Map.of());
+            }
             default -> RunResult.success(Map.of());
         };
+    }
+
+    private static void awaitRelease() {
+        try {
+            blockingReleased.await();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(
+                "Blocking UC Task was interrupted",
+                exception
+            );
+        }
     }
 
     private static Object nestedOutput(

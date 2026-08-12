@@ -64,7 +64,7 @@ Execution 与 TaskRun 已经完整持久化暂停运行事实。使用它们的�
 - 外部能力必须保存准确的 executionId 和 taskRunId；不能只保存页面对象或内存
   回调。
 - 恢复测试应通过 TaskRun 历史复核等待点和最终结果。
-- 当前依赖 ExternalTask 的跨 Server 测试属于迁移遗留，应改为调用
-  ExecutionService resume。
+- 跨 Server 测试直接调用 `ExecutionService.resume(...)`，不再创建或查询额外
+  等待对象。
 - 新增可外部恢复的 Task 类型时必须明确是否复用 Execution Resume；不得复制
   Execution 加载、校验和推进逻辑。

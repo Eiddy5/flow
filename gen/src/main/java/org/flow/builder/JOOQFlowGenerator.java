@@ -13,9 +13,12 @@ public class JOOQFlowGenerator {
         Configuration configuration = new Configuration()
                 .withJdbc(new Jdbc()
                         .withDriver("org.postgresql.Driver")
-                        .withUrl("dbc:postgresql://localhost:5432/flow")
-                        .withUser("flow")
-                        .withPassword("flow")
+                        .withUrl(environment(
+                                "FLOW_JOOQ_JDBC_URL",
+                                "jdbc:postgresql://localhost:5432/flow"
+                        ))
+                        .withUser(environment("FLOW_JOOQ_JDBC_USER", "flow"))
+                        .withPassword(environment("FLOW_JOOQ_JDBC_PASSWORD", "flow"))
                 )
                 .withGenerator(new Generator()
                         .withName("org.jooq.codegen.ext.generator.ExtJavaGenerator")

@@ -187,7 +187,6 @@ public final class ExecutorService {
                 context.execution().succeedTaskRun(taskRun.id(), taskRun.outputs());
             } else {
                 context.execution().pauseTaskRun(taskRun.id());
-                context.stagePausedTaskRun(taskRun);
             }
             context.captureState();
             return;

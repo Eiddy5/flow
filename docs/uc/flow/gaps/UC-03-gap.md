@@ -4,7 +4,7 @@
 
 - UC：`UC-03 用户运行自动流程`
 - 文档：[UC-03 用户运行自动流程.md](../UC-03%20用户运行自动流程.md)
-- 涉及场景：S4 Worker 派发抛出未处理异常
+- 涉及历史场景：Worker 派发抛出未处理异常
 
 ## UC 目的
 
@@ -13,14 +13,14 @@
 
 ## 目标业务与安全场景
 
-DefaultExecutor 会在 Worker 调用前中间保存 Execution。若 Worker 抛出异常，
+ExecutionRunner 会在 Worker 调用前中间保存 Execution。若 Worker 抛出异常，
 数据库实现应回滚这些中间保存；测试使用的内存实现也必须提供等价可观察语义，
 否则无法验证框架承诺。
 
 ## 项目现有能力
 
 - `CommandExecutor` 通过 JOOQ `runReturn` 建立命令事务边界。
-- `ExecutorService.handleNext/onNexts` 分离计划与应用，DefaultExecutor 严格
+- `ExecutorService.handleNext/onNexts` 分离计划与应用，ExecutionRunner 严格
   执行保存、派发、应用结果和继续调度。
 - ExecutorService 按稳定 Task id 的值比较重建可运行集合，能够适配持久化后
   对象引用变化。
@@ -31,7 +31,7 @@ DefaultExecutor 会在 Worker 调用前中间保存 Execution。若 Worker 抛�
 
 - 改造前的 `ExecutionHandler` 在调用 Worker 前通过
   `ExecutionRepository.save` 中间保存运行状态；当前职责已迁入
-  DefaultExecutor。
+  ExecutionRunner。
 - `InMemoryExecutionRepository` 使用独立 `ConcurrentHashMap`，不感知 JOOQ
   事务提交或回滚。
 - Worker 抛出异常时，JOOQ 事务可以回滚数据库操作，但已写入内存 Map 的聚合副本
@@ -54,6 +54,9 @@ DefaultExecutor 会在 Worker 调用前中间保存 Execution。若 Worker 抛�
 ## 当前状态与后续角色
 
 - 状态：`RESOLVED`
+- 2026-08-12 修订：Execution 启动已改为 Queue 异步受理。当前 UC-03 S3 要求首次
+  启动中的意外任务异常形成可查询的 FAILED Execution/TaskRun；同步恢复中的异常
+  仍沿用事务回滚语义。本文件以下内容只保留为旧实现的历史差距记录。
 - 处理结论：内存事务在命令开始时保存全部 Repository 隔离快照，Worker 未处理
   异常时逆序恢复；中间保存只在命令成功返回后对其他命令可见。
 - 复验证据：

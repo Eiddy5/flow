@@ -44,7 +44,7 @@ Snapshot 映射。
 - 删除 Snapshot、Reference 及与领域对象重复的生命周期类型。
 - Repository 保存和返回聚合副本，调用方必须通过领域方法改变状态。
 - Core 的技术目录使用 `flows`、`executions` 和必要的 `shared` 业务子包；
-  现存 `externaltasks` 仅为迁移遗留。
+  ADR 0016 已移除过渡性的 `externaltasks` 业务子包。
 - 技术 ID 统一为 `String`，由 `StringUtil.newId()` 生成；领域对象使用
   `class` 保护构造和行为。
 

@@ -18,6 +18,10 @@ import java.util.function.Consumer;
  * <p>When an implementation joins a caller-owned transaction, Queue
  * acceptance takes effect only if that transaction commits.</p>
  *
+ * <p>A Consumer acknowledges an Event only by returning normally. If it
+ * throws, the delivery transaction rolls back and the Event remains eligible
+ * for retry.</p>
+ *
  * @param <T> competing-consumer Event contract accepted by this Queue
  */
 public interface DispatchQueue<T extends DispatchEvent> extends Queue<T> {

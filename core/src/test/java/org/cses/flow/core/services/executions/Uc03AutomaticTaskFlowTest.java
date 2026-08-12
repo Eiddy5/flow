@@ -11,7 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -53,10 +52,8 @@ class Uc03AutomaticTaskFlowTest {
                 fixture.session(),
                 flow.id()
             );
-            Execution completed = fixture.executionService().execution(
-                fixture.session(),
-                created.id()
-            ).orElseThrow();
+            assertEquals(State.Type.CREATED, created.state().current());
+            Execution completed = fixture.awaitStable(created);
             Task prepare = task(flow, "prepare-input");
             Task target = task(flow, "target-success");
             Task observe = task(flow, "observe-output");
@@ -95,9 +92,6 @@ class Uc03AutomaticTaskFlowTest {
             assertEquals(1, completed.taskRunsForTask(target.id()).size());
             assertEquals(1, completed.taskRunsForTask(observe.id()).size());
             assertTrue(completed.activeTaskRuns().isEmpty());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
         }
     }
 
@@ -126,10 +120,8 @@ class Uc03AutomaticTaskFlowTest {
                 fixture.session(),
                 flow.id()
             );
-            Execution failed = fixture.executionService().execution(
-                fixture.session(),
-                created.id()
-            ).orElseThrow();
+            assertEquals(State.Type.CREATED, created.state().current());
+            Execution failed = fixture.awaitStable(created);
             Task prepare = task(flow, "prepare-input");
             Task target = task(flow, "target-fail");
             Task following = task(flow, "never-run");
@@ -144,14 +136,11 @@ class Uc03AutomaticTaskFlowTest {
             assertEquals(1, failed.taskRunsForTask(target.id()).size());
             assertTrue(failed.taskRunsForTask(following.id()).isEmpty());
             assertTrue(failed.activeTaskRuns().isEmpty());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
         }
     }
 
     @Test
-    void s3UnexpectedAutomaticTaskExceptionRollsBackTheStart() {
+    void s3UnexpectedAutomaticTaskExceptionBecomesAVisibleFailedRun() {
         try (WorkflowUcFixture fixture =
                  WorkflowUcFixture.openWithProperties(AUTO_TASK)) {
             Flow flow = fixture.deploy("""
@@ -167,27 +156,25 @@ class Uc03AutomaticTaskFlowTest {
                       - key: target-throw
                         type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
-            long before = fixture.executionService().executions(
-                fixture.session()
-            ).size();
+            Execution accepted = fixture.executionService().create(
+                fixture.session(),
+                flow.id()
+            );
+            Execution failed = fixture.awaitStable(accepted);
+            Task prepare = task(flow, "prepare-input");
+            Task target = task(flow, "target-throw");
 
-            IllegalStateException failure = assertThrows(
-                IllegalStateException.class,
-                () -> fixture.executionService().create(
-                    fixture.session(),
-                    flow.id()
-                )
-            );
-            assertEquals("uc03-unhandled-failure", failure.getMessage());
+            assertEquals(State.Type.CREATED, accepted.state().current());
+            assertEquals(State.Type.FAILED, failed.state().current());
+            assertEquals(State.Type.SUCCESS, run(failed, prepare).state().current());
+            assertEquals(State.Type.FAILED, run(failed, target).state().current());
+            assertTrue(run(failed, target).error().orElseThrow()
+                .contains("uc03-unhandled-failure"));
             assertEquals(
-                before,
-                fixture.executionService().executions(
-                    fixture.session()
-                ).size()
+                1,
+                failed.taskRunsForTask(target.id()).size()
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(failed.activeTaskRuns().isEmpty());
         }
     }
 

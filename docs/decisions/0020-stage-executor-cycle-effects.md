@@ -3,7 +3,8 @@
 ## 状态
 
 Accepted（nexts 两阶段应用继续有效；Task 能力分支及 ExecutorService 内部循环由
-ADR 0024 和后续已确认运行模型修订）
+ADR 0024 和后续已确认运行模型修订；DefaultExecutor 提交职责由 ADR 0051 迁移到
+ExecutionRunner）
 
 本决策修订 ADR 0002 中“创建 Handler 先启动 Execution、`handleNext` 直接创建
 TaskRun”的调用顺序，以及 ADR 0012 中由 Core `ExecutionHandler` 协调保存和
@@ -69,8 +70,8 @@ ADR 0006。
 - `nexts`：`handleNext` 解析出的下一批 CREATED TaskRun；应用时通过
   `taskId` 从精确 Flow Reversion 解析 Task 定义。
 - `workerTasks`：`onNexts` 应用后等待投递的不可变 WorkerTask。
-- `waitingTaskRuns`：Executor 已经推进到 WAITING、并等待 DefaultExecutor 在
-  聚合保存后创建兼容 ExternalTask 资源的 PAUSE TaskRun。
+- `orchestrationCompletions`：本轮搜索发现已收敛、等待 Executor 完成的编排作用域
+  TaskRun 身份。
 - `states`：本轮观察到的 Execution 状态序列，首项为上下文创建时的
   `State.Type`，相邻状态去重。
 
@@ -78,12 +79,11 @@ ADR 0006。
 持久化、权威的状态历史。Session 和 DSLContext 不进入 ExecutorContext，它们
 只在提交与 Worker 调用边界作为运行参数传递。
 
-Context 的字段集合固定为 `execution`、`flow`、`nexts`、`workerTasks`、
-`waitingTaskRuns` 和 `states`。它不保存来源字符串、异常副本、计划待消费标志或
-聚合 dirty 标记；如需来源诊断应使用结构化日志。异常沿调用栈抛出并触发事务
-回滚；计划、应用和 BranchTask 递进顺序由 `ExecutorService.handle(...)` 封装；
-是否存在未保存变化只在
-`DefaultExecutor.drive(...)` 调用栈内以局部变量维护。
+Context 的调度字段为 `execution`、`flow`、`nexts`、`workerTasks`、
+`orchestrationCompletions` 和 `states`，并显式记录本轮聚合是否更新。它不保存来源
+字符串、异常副本或持久化游标；如需来源诊断应使用结构化日志。异常沿调用栈抛出
+并触发事务回滚；计划、应用和 OrchestrationTask 递进顺序由
+`ExecutorService.process(...)` 封装。
 
 当前项目尚未定义延迟任务、子流程和 Loop 的正式运行协议与类型，因此本次不使用
 `List<Object>` 或空壳模型预占这些字段。相应能力确认后，应以明确的不可变效果
@@ -101,7 +101,7 @@ Context 的字段集合固定为 `execution`、`flow`、`nexts`、`workerTasks`�
 `onNexts` 遇到 BranchTask 时直接在 Executor 内启动并收敛对应 TaskRun；无需
 外部恢复的结构节点完成后，`handle` 立即进入下一轮 `handleNext`。PAUSE 先进入
 WAITING，再由下一轮空批次使 Execution 收敛到 WAITING。BranchTask 不形成
-WorkerTask，也不由 DefaultExecutor 调用第二个状态推进入口。
+WorkerTask，也不由 ExecutionRunner 调用第二个状态推进入口。
 
 `ExecutorService.handleNext(context)` 只执行以下动作：
 
@@ -123,8 +123,8 @@ Repository 或调用 Worker。
 3. 原子校验并合并尚未附着的 TaskRun。
 4. 校验每个 Task 恰好具有 RunnableTask 或 BranchTask 能力；只为 RunnableTask
    暂存 WorkerTask，BranchTask 由 Executor 直接推进。
-5. PAUSE 进入 WAITING 后暂存 waitingTaskRuns 效果，供聚合保存后创建兼容等待
-   资源；PARALLEL 等非等待 BranchTask 不进入该效果集合。
+5. 编排作用域收敛时暂存 `orchestrationCompletions`；PAUSE 等待直接由 Execution
+   与 TaskRun 状态表达，不创建额外等待资源。
 6. 同步 `states` 并返回 Execution 聚合是否发生变化。
 7. 当空批次代表流程已经收敛或只剩外部等待时，分别应用 COMPLETED 或 WAITING。
 
@@ -132,27 +132,28 @@ Repository 或调用 Worker。
 TaskRun 或非 CREATED TaskRun 都不能留下部分聚合变化。
 
 `handleNext` 与 `onNexts` 是 Executor 模块内部阶段，统一由 `handle` 按顺序并
-循环调用。外部调用方只通过 DefaultExecutor 的 execute、resume 和 cancel 入口
-推进，不承担阶段排序、BranchTask 递进或重复消费防护。
+循环调用。外部运行协调只通过 ExecutionRunner 的 execute、resume 和 cancel 入口
+推进，不承担阶段排序、BranchTask 递进或重复消费防护。DefaultExecutor 的当前职责
+由 ADR 0051 修订为 Executor Command Queue 路由。
 
-### DefaultExecutor
+### ExecutionRunner
 
-`DefaultExecutor` 是当前运行组件的统一提交边界。命令 Handler 负责校验用例、
+`ExecutionRunner` 是当前运行组件的统一提交边界。命令 Handler 负责校验用例、
 通过 `ExecutionRepository.lockById(...)` 按租户锁定读取已有 Execution，再加载
-其精确 Flow Reversion，然后把纯 ExecutorContext 交给 DefaultExecutor。新建
-Execution 尚无持久化行，不执行锁定读取。DefaultExecutor 负责：
+其精确 Flow Reversion，然后把纯 ExecutorContext 交给 ExecutionRunner。新建
+Execution 尚无持久化行，不执行锁定读取。ExecutionRunner 负责：
 
 1. 调用 `handle`，由其循环完成 `handleNext`、`onNexts` 与 BranchTask 状态推进。
 2. 根据 `handle` 的返回值和本次调用栈中的局部变更标记，通过
    ExecutionRepository 保存完整聚合。
-3. 在聚合保存后消费 waitingTaskRuns，为 PAUSE 创建兼容 ExternalTask 资源。
-4. 在 Worker 调用前保存 CREATED/RUNNING TaskRun，满足 Task 自有记录的外键
+3. 在 Worker 调用前保存 CREATED/RUNNING TaskRun，满足 Task 自有记录的外键
    前置条件。
-5. 投递本轮 WorkerTask，将 WorkerTaskResult 交回 ExecutorService 应用，再次
+4. 投递本轮 WorkerTask，将 WorkerTaskResult 交回 ExecutorService 应用，再次
    调用 `handle` 推导后续状态。
-6. 持续提交 Worker 边界，直到 Execution 到达等待、终态或当前没有可同步推进
+5. 持续提交 Worker 边界，直到 Execution 到达等待、终态或当前没有可同步推进
    的工作。
-7. 统一处理取消和等待资源清理；未处理异常继续向外抛出并回滚事务。
+6. 统一处理取消；同步恢复或取消中的未处理异常继续向外抛出并回滚事务。首次异步
+   启动中的确定性 RunnableTask 异常按 ADR 0051 记录为失败结果。
 
 Core 中不再保留另一个 `ExecutionHandler` 协调器，避免两个对象共同拥有保存和
 投递顺序。
@@ -160,25 +161,27 @@ Core 中不再保留另一个 `ExecutionHandler` 协调器，避免两个对象�
 ### 事务、投递与恢复
 
 当前 WorkerDispatcher 仍在 CommandExecutor 建立的 JOOQ 事务内同步调用；
-Repository 的中间 `save` 不是独立提交。Worker 抛出未处理异常时，命令事务回滚，
-异常不写入 Context，也不形成 TERMINATED 事实。
+Repository 的中间 `save` 不是独立提交。同步恢复或取消时，Worker 抛出的未处理异常
+使命令事务回滚，异常不写入 Context。由 Queue 消费触发的首次 `execute` 则把确定性
+RunnableTask 异常记录为 `FAILED`，使持久化启动 Command 可以正常确认而不会成为
+永久毒消息。
 
 PostgreSQL Repository 的 `lockById` 使用 Execution 行的 `FOR UPDATE` 锁，
 保存时继续使用行锁与 lockVersion CAS；修改已有 Execution 的一个命令仍最多
-增加一次 lockVersion。未来消息消费者若取代同步命令入口，必须在构建上下文前
-取得等价的租户隔离与并发控制。
+增加一次 lockVersion。ADR 0051 的消息消费者在构建上下文前取得同样的租户隔离与
+并发控制。
 
-本决策没有实现 durable outbox、远程 Worker、投递确认或 exactly-once。未来接入
-异步消息时，必须保持 `DefaultExecutor` 这一提交边界，并在同一数据库事务中把
-聚合更新与 outbox 事实一起保存；不能把“先提交数据库、后尽力发送”描述成原子
-投递。
+本决策没有实现远程 Worker 或 exactly-once。ADR 0051 让普通启动先由 Service 投递
+`Create`，再由 Handler 创建 Execution；可信 pending continuation 仍在同一
+PostgreSQL 事务中保存 Execution 与持久化 Dispatch Queue Command。运行提交边界由
+`ExecutionRunner` 保持。
 
 ## 调用顺序
 
 ```mermaid
 sequenceDiagram
     participant H as Command Handler
-    participant D as DefaultExecutor
+    participant D as ExecutionRunner
     participant S as ExecutorService
     participant C as ExecutorContext
     participant R as ExecutionRepository
@@ -216,12 +219,13 @@ sequenceDiagram
 - `ECTX-003`：`handleNext` 返回后 Execution 与 TaskRun 历史保持不变。
 - `ECTX-004`：`handle` 必须在形成下一批 nexts 前消费并清空当前批次。
 - `ECTX-005`：只有 `onNexts` 可以把调度产生的 TaskRun 批次并入 Execution。
-- `ECTX-006`：未保存聚合变化只存在于 DefaultExecutor 当前调用栈，不进入
+- `ECTX-006`：未保存聚合变化只存在于 ExecutionRunner 当前调用栈，不进入
   Context；State History 不因保存而重置。
 - `ECTX-007`：`states` 是本轮 Execution 状态增量，不替代
   `Execution.state.history`。
 - `ECTX-008`：Worker 投递前必须保存包含目标 TaskRun 的 Execution 聚合。
-- `ECTX-009`：未处理异常回滚命令，不伪造 TERMINATED 状态。
+- `ECTX-009`：同步恢复或取消中的未处理异常回滚命令；首次异步启动中的确定性
+  RunnableTask 异常按 ADR 0051 形成 FAILED 事实，不伪造其他终态。
 - `ECTX-010`：推进、恢复或取消已有 Execution 前，Handler 必须在当前事务中
   按租户锁定读取聚合。
 - `ECTX-011`：非等待 BranchTask 必须在 `handle` 内完成后继续推导 nexts；PAUSE

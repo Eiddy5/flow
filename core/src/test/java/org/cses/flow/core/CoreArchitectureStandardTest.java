@@ -37,7 +37,7 @@ class CoreArchitectureStandardTest {
     private static final Pattern NUMERIC_TECHNICAL_ID = Pattern.compile(
         "\\b(?:long|Long|UUID)\\s+"
             + "(?:id|flowId|taskId|executionId|taskRunId|"
-            + "externalTaskId|parentId)\\b"
+            + "parentId)\\b"
     );
     private static final Pattern NONSTANDARD_ID_GENERATOR = Pattern.compile(
         "UUID\\s*\\.\\s*randomUUID\\s*\\(\\)"
@@ -153,9 +153,21 @@ class CoreArchitectureStandardTest {
             ))
                 && Files.isRegularFile(FLOW.resolve(
                     "executor/DefaultExecutor.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/ExecutionRunner.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/handlers/ExecutorCommandHandler.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/commands/ExecutorCommand.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/commands/Create.java"
                 )),
-            "ExecutorService and DefaultExecutor must be in the top-level "
-                + "executor package"
+            "Executor command, routing, handling and state-machine runtime "
+                + "must stay in the top-level executor package"
         );
         assertTrue(
             Files.isRegularFile(FLOW.resolve(
@@ -212,9 +224,6 @@ class CoreArchitectureStandardTest {
                 "private final List<TaskRun> nexts;"
             )
                 && contextSource.contains(
-                    "private final List<TaskRun> pausedTaskRuns;"
-                )
-                && contextSource.contains(
                     "private final List<String> orchestrationCompletions;"
                 )
                 && !contextSource.contains("DSLContext")
@@ -225,8 +234,8 @@ class CoreArchitectureStandardTest {
                 && Files.notExists(CORE.resolve(
                     "handlers/executions/ExecutionHandler.java"
                 )),
-            "ExecutorContext must expose TaskRun nexts, pause effects, and "
-                + "orchestration completions "
+            "ExecutorContext must expose TaskRun nexts and orchestration "
+                + "completions "
                 + "without carrying transaction runtime objects"
         );
 
@@ -244,6 +253,30 @@ class CoreArchitectureStandardTest {
                     + " must lock the Execution before mutation"
             );
         }
+
+        String executionService = Files.readString(CORE.resolve(
+            "services/executions/ExecutionService.java"
+        ));
+        String defaultExecutor = Files.readString(FLOW.resolve(
+            "executor/DefaultExecutor.java"
+        ));
+        String commandHandler = Files.readString(FLOW.resolve(
+            "executor/handlers/ExecutorCommandHandler.java"
+        ));
+        assertTrue(
+            executionService.contains("Create.from(session, accepted)")
+                && executionService.contains("executorCommandQueue.emit(")
+                && defaultExecutor.contains(
+                    ".subscribe(commandHandler::handle)"
+                )
+                && !defaultExecutor.contains("ExecutionRepository")
+                && !defaultExecutor.contains("WorkerDispatcher")
+                && commandHandler.contains("case Create create")
+                && commandHandler.contains("executionRunner.execute("),
+            "ExecutionService must publish Executor Create commands, "
+                + "DefaultExecutor must only route them, and "
+                + "ExecutorCommandHandler must execute them"
+        );
     }
 
     @Test
@@ -440,6 +473,9 @@ class CoreArchitectureStandardTest {
         String defaultExecutor = Files.readString(executor.resolve(
             "DefaultExecutor.java"
         ));
+        String executionRunner = Files.readString(executor.resolve(
+            "ExecutionRunner.java"
+        ));
 
         assertTrue(
             Files.notExists(worker.resolve("WorkerContext.java"))
@@ -507,9 +543,16 @@ class CoreArchitectureStandardTest {
                 + "handle orchestration directly"
         );
         assertTrue(
-            defaultExecutor.contains("executorService.process(context)")
-                && !defaultExecutor.contains("dispatchBranch("),
-            "DefaultExecutor must submit Worker effects while "
+            defaultExecutor.contains(
+                ".subscribe(commandHandler::handle)"
+            )
+                && !defaultExecutor.contains("executorService")
+                && executionRunner.contains(
+                    "executorService.process(context)"
+                )
+                && !executionRunner.contains("dispatchBranch("),
+            "DefaultExecutor must only route Queue commands while "
+                + "ExecutionRunner submits Worker effects and "
                 + "ExecutorService owns OrchestrationTask state progression"
         );
     }

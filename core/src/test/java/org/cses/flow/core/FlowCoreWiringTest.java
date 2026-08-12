@@ -39,7 +39,7 @@ class FlowCoreWiringTest {
                 Log.class,
                 registry.resolve(Log.class.getName(), Task.class)
             );
-            Session<User> session = fixture.sessionForExactCompany(
+            Session<User> session = fixture.sessionFor(
                 "wiring-company"
             );
 

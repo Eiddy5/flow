@@ -182,7 +182,7 @@ final class ExecutorServiceTest {
         );
         assertEquals(2, context.workerTasks().size());
         assertTrue(context.nexts().isEmpty());
-        assertTrue(context.pausedTaskRuns().isEmpty());
+        assertTrue(execution.pausedTaskRuns().isEmpty());
     }
 
     @Test
@@ -214,7 +214,7 @@ final class ExecutorServiceTest {
             "create-confirmation",
             task(context.workerTasks().getFirst(), execution, flow).key()
         );
-        assertTrue(context.pausedTaskRuns().isEmpty());
+        assertTrue(execution.pausedTaskRuns().isEmpty());
 
         WorkerTask action = context.takeWorkerTasks().getFirst();
         executorService.dispatch(context, action);
@@ -228,7 +228,7 @@ final class ExecutorServiceTest {
             State.Type.PAUSED
         ));
         assertTrue(execution.state().is(State.Type.PAUSED));
-        assertEquals(1, context.pausedTaskRuns().size());
+        assertEquals(1, execution.pausedTaskRuns().size());
         assertTrue(context.nexts().isEmpty());
     }
 
@@ -350,7 +350,7 @@ final class ExecutorServiceTest {
             State.Type.PAUSED
         ));
         assertTrue(execution.state().is(State.Type.PAUSED));
-        assertEquals(2, context.pausedTaskRuns().size());
+        assertEquals(3, execution.pausedTaskRuns().size());
         assertTrue(context.nexts().isEmpty());
     }
 

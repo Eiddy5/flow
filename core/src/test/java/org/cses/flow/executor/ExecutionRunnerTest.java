@@ -7,8 +7,6 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
-import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -16,7 +14,6 @@ import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
-import org.cses.flow.core.repositories.externaltasks.ExternalTaskRepository;
 import org.cses.flow.worker.WorkerDispatcher;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -36,7 +33,7 @@ import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class DefaultExecutorTest {
+final class ExecutionRunnerTest {
 
     private static final AtomicReference<RunIdentity> CAPTURED_RUN =
         new AtomicReference<>();
@@ -73,15 +70,14 @@ final class DefaultExecutorTest {
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
         TestExecutionRepository repository = new TestExecutionRepository();
-        DefaultExecutor defaultExecutor = new DefaultExecutor(
+        ExecutionRunner executionRunner = new ExecutionRunner(
             repository,
             new ExecutorService(),
-            new WorkerDispatcher(),
-            new TestExternalTaskRepository()
+            new WorkerDispatcher()
         );
         DSLContext dsl = DSL.using(SQLDialect.POSTGRES);
 
-        Execution completed = defaultExecutor.execute(
+        Execution completed = executionRunner.execute(
             session(flow.companyId()),
             dsl,
             context
@@ -144,17 +140,14 @@ final class DefaultExecutorTest {
         ExecutorContext context = new ExecutorContext(flow, execution);
         TestExecutionRepository executionRepository =
             new TestExecutionRepository();
-        TestExternalTaskRepository externalTaskRepository =
-            new TestExternalTaskRepository();
-        DefaultExecutor defaultExecutor = new DefaultExecutor(
+        ExecutionRunner executionRunner = new ExecutionRunner(
             executionRepository,
             new ExecutorService(),
-            new WorkerDispatcher(),
-            externalTaskRepository
+            new WorkerDispatcher()
         );
         DSLContext dsl = DSL.using(SQLDialect.POSTGRES);
 
-        Execution waiting = defaultExecutor.execute(
+        Execution waiting = executionRunner.execute(
             session(flow.companyId()),
             dsl,
             context
@@ -169,13 +162,9 @@ final class DefaultExecutorTest {
             State.Type.SUCCESS
         ));
         assertTrue(context.workerTasks().isEmpty());
-        assertTrue(context.pausedTaskRuns().isEmpty());
         assertEquals(
             waiting.taskRuns().getFirst().id(),
-            externalTaskRepository.findWaiting(
-                dsl,
-                flow.companyId()
-            ).getFirst().taskRunId()
+            waiting.pausedTaskRuns().getFirst().id()
         );
     }
 
@@ -206,11 +195,10 @@ final class DefaultExecutorTest {
             flow.id(),
             flow.reversion()
         );
-        DefaultExecutor executor = new DefaultExecutor(
+        ExecutionRunner executor = new ExecutionRunner(
             new TestExecutionRepository(),
             new ExecutorService(),
-            new WorkerDispatcher(),
-            new TestExternalTaskRepository()
+            new WorkerDispatcher()
         );
 
         Execution waiting = executor.execute(
@@ -298,76 +286,10 @@ final class DefaultExecutorTest {
         }
     }
 
-    private static final class TestExternalTaskRepository
-        implements ExternalTaskRepository {
-
-        private final Map<ExternalTaskKey, ExternalTask> externalTasks =
-            new HashMap<>();
-
-        @Override
-        public Optional<ExternalTask> findById(
-            DSLContext dsl,
-            String companyId,
-            String externalTaskId
-        ) {
-            ExternalTask task = externalTasks.get(
-                new ExternalTaskKey(companyId, externalTaskId)
-            );
-            return task == null
-                ? Optional.empty()
-                : Optional.of(task.copy());
-        }
-
-        @Override
-        public Optional<ExternalTask> findWaitingByTaskRunId(
-            DSLContext dsl,
-            String companyId,
-            String taskRunId
-        ) {
-            return externalTasks.values().stream()
-                .filter(task -> task.companyId().equals(companyId))
-                .filter(task -> task.taskRunId().equals(taskRunId))
-                .filter(task -> task.status() == ExternalTaskStatus.WAITING)
-                .findFirst()
-                .map(ExternalTask::copy);
-        }
-
-        @Override
-        public List<ExternalTask> findWaiting(
-            DSLContext dsl,
-            String companyId
-        ) {
-            return externalTasks.values().stream()
-                .filter(task -> task.companyId().equals(companyId))
-                .filter(task -> task.status() == ExternalTaskStatus.WAITING)
-                .map(ExternalTask::copy)
-                .sorted(java.util.Comparator.comparing(ExternalTask::id))
-                .toList();
-        }
-
-        @Override
-        public void save(DSLContext dsl, ExternalTask externalTask) {
-            externalTasks.put(
-                new ExternalTaskKey(
-                    externalTask.companyId(),
-                    externalTask.id()
-                ),
-                externalTask.copy()
-            );
-        }
-    }
-
     private record ExecutionKey(String companyId, String executionId) {
         private ExecutionKey {
             Objects.requireNonNull(companyId);
             Objects.requireNonNull(executionId);
-        }
-    }
-
-    private record ExternalTaskKey(String companyId, String externalTaskId) {
-        private ExternalTaskKey {
-            Objects.requireNonNull(companyId);
-            Objects.requireNonNull(externalTaskId);
         }
     }
 

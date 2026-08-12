@@ -3,8 +3,6 @@ package org.cses.flow.core.services.executions;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
-import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -17,26 +15,22 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTaskRunRef;
 
-/**
- * UC: docs/uc/flow/UC-05 用户处理并行外派任务.md
- */
-class Uc05ParallelJoinTest {
+class ParallelPauseResumeIntegrationTest {
 
     @Test
-    void s1UserCompletesTwoWaitingBranchesAndJoinsOnce() {
+    void resumingBothParallelBranchesJoinsOnce() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(parallelYaml("uc05-s1-flow"));
-            Execution execution = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Flow flow = fixture.deploy(parallelYaml(
+                "parallel-resume-both-flow"
+            ));
+            Execution execution = fixture.startAndAwait(flow);
 
             TaskRun fork = run(execution, task(flow, "start-checks"));
             TaskRun backend = run(execution, task(flow, "backend-check"));
             TaskRun frontend = run(execution, task(flow, "frontend-check"));
 
-            // PASS-S1-01
             assertNotNull(execution.id());
             assertEquals(State.Type.PAUSED, execution.state().current());
             assertEquals(State.Type.PAUSED, fork.state().current());
@@ -46,79 +40,67 @@ class Uc05ParallelJoinTest {
             assertEquals(fork.id(), frontend.parentId().orElseThrow());
 
             fixture.restartServer();
-            // PASS-S1-02
             assertEquals(
-                ExternalTaskStatus.WAITING,
-                waiting(fixture, backend).status()
+                State.Type.PAUSED,
+                fixture.taskRun(waiting(fixture, backend)).state().current()
             );
             assertEquals(
-                ExternalTaskStatus.WAITING,
-                waiting(fixture, frontend).status()
+                State.Type.PAUSED,
+                fixture.taskRun(waiting(fixture, frontend)).state().current()
             );
 
-            fixture.externalTaskService().complete(
-                fixture.session(),
-                waiting(fixture, backend).id(),
+            fixture.resume(
+                waiting(fixture, backend),
                 Map.of("backendResult", "PASS")
             );
             fixture.restartServer();
-            ExternalTask remaining = fixture.waitingForOutput(
+            PausedTaskRunRef remaining = fixture.waitingForOutput(
                 execution.id(),
                 "frontendResult"
             );
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    remaining.id(),
-                    Map.of("frontendResult", "PASS")
-                );
+            Execution completed = fixture.resume(
+                remaining,
+                Map.of("frontendResult", "PASS")
+            );
 
-            // PASS-S1-03
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(1, countRuns(
                 completed,
                 task(flow, "join-checks")
             ));
             assertEquals(1, countRuns(completed, task(flow, "finish")));
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s2JoinsExactlyOnceAfterBothBranchesComplete() {
+    void joinOccursOnlyAfterBothBranchesResume() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(parallelYaml("uc05-s2-flow"));
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Flow flow = fixture.deploy(parallelYaml(
+                "parallel-resume-join-order-flow"
+            ));
+            Execution started = fixture.startAndAwait(flow);
             TaskRun backend = run(started, task(flow, "backend-check"));
             TaskRun frontend = run(started, task(flow, "frontend-check"));
             fixture.restartServer();
-            ExternalTask backendExternal = waiting(fixture, backend);
+            PausedTaskRunRef backendPause = waiting(fixture, backend);
 
-            Execution afterFirst = fixture.externalTaskService().complete(
-                fixture.session(),
-                backendExternal.id(),
+            Execution afterFirst = fixture.resume(
+                backendPause,
                 Map.of("backendResult", "PASS")
             );
-            // PASS-S2-01
             assertNoRun(afterFirst, task(flow, "join-checks"));
 
             fixture.restartServer();
-            ExternalTask frontendExternal = fixture.waitingForOutput(
+            PausedTaskRunRef frontendPause = fixture.waitingForOutput(
                 started.id(),
                 "frontendResult"
             );
-            Execution completed = fixture.externalTaskService().complete(
-                fixture.session(),
-                frontendExternal.id(),
+            Execution completed = fixture.resume(
+                frontendPause,
                 Map.of("frontendResult", "PASS")
             );
 
-            // PASS-S2-02
             assertEquals(1, countRuns(completed, task(flow, "join-checks")));
             assertEquals(
                 Map.of("backendResult", "PASS"),
@@ -128,12 +110,9 @@ class Uc05ParallelJoinTest {
                 Map.of("frontendResult", "PASS"),
                 run(completed, task(flow, "frontend-check")).outputs()
             );
-            // PASS-S2-03
             assertEquals(1, countRuns(completed, task(flow, "finish")));
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
             assertEquals(
                 List.of(
                     "start-checks",
@@ -152,23 +131,20 @@ class Uc05ParallelJoinTest {
     }
 
     @Test
-    void s3DoesNotJoinWhenOnlyOneBranchCompletes() {
+    void singleResumedBranchDoesNotJoin() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(parallelYaml("uc05-s3-flow"));
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Flow flow = fixture.deploy(parallelYaml(
+                "parallel-resume-single-branch-flow"
+            ));
+            Execution started = fixture.startAndAwait(flow);
             TaskRun backend = run(started, task(flow, "backend-check"));
             fixture.restartServer();
 
-            Execution current = fixture.externalTaskService().complete(
-                fixture.session(),
-                waiting(fixture, backend).id(),
+            Execution current = fixture.resume(
+                waiting(fixture, backend),
                 Map.of("backendResult", "PASS")
             );
 
-            // PASS-S3-01
             assertEquals(
                 State.Type.PAUSED,
                 run(current, task(flow, "frontend-check")).state().current()
@@ -177,51 +153,42 @@ class Uc05ParallelJoinTest {
             assertNoRun(current, task(flow, "finish"));
 
             fixture.restartServer();
-            ExternalTask remaining = fixture.waitingForOutput(
+            PausedTaskRunRef remaining = fixture.waitingForOutput(
                 started.id(),
                 "frontendResult"
             );
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    remaining.id(),
-                    Map.of("frontendResult", "PASS")
-                );
-            // PASS-S3-02
+            Execution completed = fixture.resume(
+                remaining,
+                Map.of("frontendResult", "PASS")
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(1, countRuns(completed, task(flow, "join-checks")));
             assertEquals(1, countRuns(completed, task(flow, "finish")));
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s4RejectsRepeatedBranchCompletionWithoutJoining() {
+    void repeatedResumeDoesNotJoinAgain() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(parallelYaml("uc05-s4-flow"));
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Flow flow = fixture.deploy(parallelYaml(
+                "parallel-resume-repeated-flow"
+            ));
+            Execution started = fixture.startAndAwait(flow);
             fixture.restartServer();
-            ExternalTask backend = waiting(
+            PausedTaskRunRef backend = waiting(
                 fixture,
                 run(started, task(flow, "backend-check"))
             );
-            fixture.externalTaskService().complete(
-                fixture.session(),
-                backend.id(),
+            fixture.resume(
+                backend,
                 Map.of("backendResult", "PASS")
             );
 
-            // PASS-S4-01
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
-                    fixture.session(),
-                    backend.id(),
+                () -> fixture.resume(
+                    backend,
                     Map.of("backendResult", "PASS")
                 )
             );
@@ -237,41 +204,36 @@ class Uc05ParallelJoinTest {
             assertNoRun(reloaded, task(flow, "finish"));
 
             fixture.restartServer();
-            ExternalTask remaining = fixture.waitingForOutput(
+            PausedTaskRunRef remaining = fixture.waitingForOutput(
                 started.id(),
                 "frontendResult"
             );
-            Execution completed =
-                fixture.externalTaskService().complete(
-                    fixture.session(),
-                    remaining.id(),
-                    Map.of("frontendResult", "PASS")
+            Execution completed = fixture.resume(
+                remaining,
+                Map.of("frontendResult", "PASS")
             );
-            // PASS-S4-02
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(1, countRuns(completed, task(flow, "join-checks")));
             assertEquals(1, countRuns(completed, task(flow, "finish")));
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s5BranchCompletionOrderDoesNotChangeJoinResult() {
+    void branchResumeOrderDoesNotChangeJoinResult() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(parallelYaml("uc05-s5-flow"));
+            Flow flow = fixture.deploy(parallelYaml(
+                "parallel-resume-reversed-order-flow"
+            ));
             Execution first = completeBoth(fixture, flow, true);
             Execution second = completeBoth(fixture, flow, false);
 
-            // PASS-S5-01
             assertEquals(
                 first.taskRuns().stream().map(TaskRun::taskId).toList(),
                 second.taskRuns().stream().map(TaskRun::taskId).toList()
             );
             assertEquals(State.Type.SUCCESS, first.state().current());
             assertEquals(State.Type.SUCCESS, second.state().current());
-            // PASS-S5-02
             assertEquals(1, countRuns(first, task(flow, "join-checks")));
             assertEquals(1, countRuns(second, task(flow, "join-checks")));
             assertEquals(
@@ -282,28 +244,24 @@ class Uc05ParallelJoinTest {
                 run(first, task(flow, "frontend-check")).outputs(),
                 run(second, task(flow, "frontend-check")).outputs()
             );
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
     @Test
-    void s6CancellationStopsRemainingBranchAndPreventsJoin() {
+    void cancellationStopsRemainingBranchAndPreventsJoin() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(parallelYaml("uc05-s6-flow"));
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Flow flow = fixture.deploy(parallelYaml(
+                "parallel-resume-cancellation-flow"
+            ));
+            Execution started = fixture.startAndAwait(flow);
             TaskRun backendRun = run(started, task(flow, "backend-check"));
             TaskRun frontendRun = run(started, task(flow, "frontend-check"));
             fixture.restartServer();
-            ExternalTask backend = waiting(fixture, backendRun);
-            ExternalTask frontend = waiting(fixture, frontendRun);
-            fixture.externalTaskService().complete(
-                fixture.session(),
-                backend.id(),
+            PausedTaskRunRef backend = waiting(fixture, backendRun);
+            PausedTaskRunRef frontend = waiting(fixture, frontendRun);
+            fixture.resume(
+                backend,
                 Map.of("backendResult", "PASS")
             );
 
@@ -312,25 +270,21 @@ class Uc05ParallelJoinTest {
                 started.id()
             );
 
-            // PASS-S6-01
             assertEquals(State.Type.KILLED, canceled.state().current());
             assertEquals(
                 State.Type.KILLED,
                 run(canceled, task(flow, "frontend-check")).state().current()
             );
             assertEquals(
-                ExternalTaskStatus.CANCELED,
-                fixture.externalTaskService().externalTask(
-                    fixture.session(),
-                    frontend.id()
-                ).orElseThrow().status()
+                State.Type.KILLED,
+                canceled.requireTaskRun(
+                    frontend.taskRunId()
+                ).state().current()
             );
-            // PASS-S6-02
             assertThrows(
                 WorkflowException.class,
-                () -> fixture.externalTaskService().complete(
-                    fixture.session(),
-                    frontend.id(),
+                () -> fixture.resume(
+                    frontend,
                     Map.of("frontendResult", "PASS")
                 )
             );
@@ -340,9 +294,7 @@ class Uc05ParallelJoinTest {
             ).orElseThrow();
             assertNoRun(reloaded, task(flow, "join-checks"));
             assertNoRun(reloaded, task(flow, "finish"));
-            assertTrue(fixture.externalTaskService().waitingTasks(
-                fixture.session()
-            ).isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
@@ -351,24 +303,19 @@ class Uc05ParallelJoinTest {
         Flow flow,
         boolean backendFirst
     ) {
-        Execution started = fixture.executionService().create(
-            fixture.session(),
-            flow.id()
-        );
+        Execution started = fixture.startAndAwait(flow);
         fixture.restartServer();
-        ExternalTask backend = waiting(
+        PausedTaskRunRef backend = waiting(
             fixture,
             run(started, task(flow, "backend-check"))
         );
-        ExternalTask frontend = waiting(
+        PausedTaskRunRef frontend = waiting(
             fixture,
             run(started, task(flow, "frontend-check"))
         );
         if (backendFirst) {
-            Execution afterFirst =
-                fixture.externalTaskService().complete(
-                fixture.session(),
-                backend.id(),
+            Execution afterFirst = fixture.resume(
+                backend,
                 Map.of("backendResult", "PASS")
             );
             assertNoRun(afterFirst, task(flow, "join-checks"));
@@ -377,16 +324,13 @@ class Uc05ParallelJoinTest {
                 started.id(),
                 "frontendResult"
             );
-            return fixture.externalTaskService().complete(
-                fixture.session(),
-                frontend.id(),
+            return fixture.resume(
+                frontend,
                 Map.of("frontendResult", "PASS")
             );
         }
-        Execution afterFirst =
-            fixture.externalTaskService().complete(
-            fixture.session(),
-            frontend.id(),
+        Execution afterFirst = fixture.resume(
+            frontend,
             Map.of("frontendResult", "PASS")
         );
         assertNoRun(afterFirst, task(flow, "join-checks"));
@@ -395,9 +339,8 @@ class Uc05ParallelJoinTest {
             started.id(),
             "backendResult"
         );
-        return fixture.externalTaskService().complete(
-            fixture.session(),
-            backend.id(),
+        return fixture.resume(
+            backend,
             Map.of("backendResult", "PASS")
         );
     }
@@ -443,13 +386,11 @@ class Uc05ParallelJoinTest {
             .count();
     }
 
-    private static ExternalTask waiting(
+    private static PausedTaskRunRef waiting(
         WorkflowUcFixture fixture,
         TaskRun taskRun
     ) {
-        return fixture.externalTaskService().waitingTasks(
-            fixture.session()
-        ).stream()
+        return fixture.pausedTaskRuns().stream()
             .filter(task -> task.taskRunId().equals(taskRun.id()))
             .findFirst()
             .orElseThrow();

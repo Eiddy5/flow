@@ -24,10 +24,7 @@ class ExecutionServiceResumeTest {
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             String pauseTaskRunId = started.taskRuns().getFirst().id();
 
             fixture.restartServer();
@@ -73,10 +70,7 @@ class ExecutionServiceResumeTest {
                     true
                 )
             );
-            Execution started = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution started = fixture.startAndAwait(flow);
             String pauseTaskRunId = started.taskRuns().getFirst().id();
 
             assertThrows(

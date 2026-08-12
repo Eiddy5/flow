@@ -15,7 +15,7 @@ import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
-import org.cses.flow.executor.DefaultExecutor;
+import org.cses.flow.executor.ExecutionRunner;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.extensions.flow.Pause;
 import org.jooq.DSLContext;
@@ -38,17 +38,17 @@ public final class ResumeExecutionHandler implements CommandHandler<
 
     private final ExecutionRepository executionRepository;
     private final FlowRepository flowRepository;
-    private final DefaultExecutor defaultExecutor;
+    private final ExecutionRunner executionRunner;
 
     @Inject
     public ResumeExecutionHandler(
         ExecutionRepository executionRepository,
         FlowRepository flowRepository,
-        DefaultExecutor defaultExecutor
+        ExecutionRunner executionRunner
     ) {
         this.executionRepository = executionRepository;
         this.flowRepository = flowRepository;
-        this.defaultExecutor = defaultExecutor;
+        this.executionRunner = executionRunner;
     }
 
     @Override
@@ -66,7 +66,7 @@ public final class ResumeExecutionHandler implements CommandHandler<
         > context
     ) {
         ResumeExecutionCommand command = context.getCommand();
-        return resume(
+        return resumeInCurrentTransaction(
             context.getSession(),
             context.getDsl(),
             command.executionId(),
@@ -75,11 +75,8 @@ public final class ResumeExecutionHandler implements CommandHandler<
         );
     }
 
-    /**
-     * Reuses the current transaction for temporary trigger compatibility.
-     * New external integrations must call ExecutionService.resume instead.
-     */
-    public <S extends Session<U>, U extends User> Execution resume(
+    private <S extends Session<U>, U extends User> Execution
+        resumeInCurrentTransaction(
         S session,
         DSLContext dsl,
         String executionId,
@@ -126,7 +123,7 @@ public final class ResumeExecutionHandler implements CommandHandler<
         }
         Map<String, Object> normalizedOutputs = pause.validateResume(outputs);
 
-        return defaultExecutor.resume(
+        return executionRunner.resume(
             session,
             dsl,
             new ExecutorContext(flow, execution),

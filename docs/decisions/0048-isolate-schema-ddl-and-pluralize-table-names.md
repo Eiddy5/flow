@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted（2026-08-11）
+Accepted（2026-08-11；ExternalTask 表及生成类型已于 2026-08-12 按 ADR 0016
+删除）
 
 本决策修订 ADR 0033 的单一物理文件布局，但保留单一开发期基线、允许丢弃旧开发
 数据和应用不自动迁移 Schema 的决策。
@@ -43,8 +44,8 @@ Accepted（2026-08-11）
   文件名与表名一致。
 - 表名统一使用小写 `snake_case`，最后一个单词使用复数。Flow 通过“最后一个单词
   以 `s` 结尾”执行确定性静态校验，不采用不以 `s` 结尾的不规则复数。
-- `task_run` 改为 `task_runs`，`external_task` 改为 `external_tasks`；对应约束、
-  索引、JOOQ 生成类型和数据库 Adapter 引用同步复数化。
+- `task_run` 改为 `task_runs`；本决策实施时仍存在的 `external_task` 同步改为
+  `external_tasks`，随后按 ADR 0016 与其 Repository、JOOQ 类型一并删除。
 - 字段仍按所引用的一行事实命名，因此 `task_run_id` 等单数关系字段保持不变。
 - 基线入口使用 `BEGIN` / `COMMIT`，任一表脚本失败时不保留半建 Schema。
 - 旧开发 Schema 和数据不提供原地改名或升级路径；开发数据库必须重建并重新生成
@@ -58,8 +59,6 @@ erDiagram
     FLOWS ||--o{ EXECUTIONS : versions
     EXECUTIONS ||--o{ TASK_RUNS : owns
     TASK_RUNS o|--o{ TASK_RUNS : parent_of
-    EXECUTIONS ||--o{ EXTERNAL_TASKS : legacy_waits
-    TASK_RUNS ||--o| EXTERNAL_TASKS : legacy_wait
 
     FLOW_DRAFTS {
         varchar company_id PK
@@ -89,12 +88,6 @@ erDiagram
         varchar task_id
         varchar parent_id
     }
-    EXTERNAL_TASKS {
-        varchar company_id PK
-        varchar id PK
-        varchar execution_id
-        varchar task_run_id UK
-    }
     QUEUES {
         varchar id PK
         varchar queue_type
@@ -118,7 +111,7 @@ Schema 中没有需要数据库强制的直接关系。
 - Schema 执行依赖 psql 对 `\ir` 的支持；现有部署和开发手册本来就使用
   `psql -f`，命令无需改变。
 - 新增表必须新增同名文件并显式加入入口，否则结构校验失败。
-- 表重命名后生成类变为 `TaskRuns*`、`ExternalTasks*`，表常量变为
-  `TASK_RUNS`、`EXTERNAL_TASKS`；领域类型 `TaskRun`、`ExternalTask` 保持单数。
+- `task_runs` 的生成类和表常量为 `TaskRuns*`、`TASK_RUNS`；已经删除的
+  `external_tasks` 不再产生 JOOQ 类型或 Adapter 引用。
 - 验证脚本必须复制完整 `gen/sql/flow` 目录，在容器内通过入口执行两次，并比较
   表文件集合与最终数据库表集合。

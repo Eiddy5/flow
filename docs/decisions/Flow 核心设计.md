@@ -27,6 +27,11 @@
 > Data 定义说明：本文 Input、Output 示例中的 Map、字符串列表和旧字段说明不再
 > 作为目标类模型依据。Data 基础接口及 Input、Output 具体对象以
 > [ADR 0019](0019-establish-basic-data-types.md) 为准。
+>
+> 启动事务说明：本文关于启动请求同步推进、框架异常整体回滚以及不自动重试的
+> 阶段性结论已被 [ADR 0051](0051-start-executions-through-dispatch-queue.md)
+> 取代。当前启动请求在同一事务保存 CREATED Execution 和持久化 Queue Command 后
+> 返回，消费者再异步推进；首次推进中的确定性任务异常形成 FAILED 运行事实。
 
 ## 1. 示例
 

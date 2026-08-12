@@ -123,15 +123,10 @@ public final class FlowEntry extends FlowsObject {
 FlowsObject        -> FlowEntry
 ExecutionsObject   -> ExecutionEntry
 TaskRunsObject     -> TaskRunEntry
-ExternalTasksObject -> ExternalTaskEntry
 ```
 
 `XxxObject` 的名称来自数据库表，`XxxEntry` 的名称应表达项目中的持久化语义，不
 要求机械保留表名的单复数形式。
-
-`ExternalTasksObject -> ExternalTaskEntry` 只记录当前迁移遗留的映射实例。ADR
-0016 已移除 ExternalTask 的目标领域地位；新 PAUSE/Resume 代码不得以该示例新增
-依赖。
 
 ### 禁止直接使用
 
@@ -176,7 +171,6 @@ core/src/main/java/org/cses/flow/infrastructure/
 
 ```text
 infrastructure/repositories/executions/postgres/entries/
-infrastructure/repositories/externaltasks/postgres/entries/
 ```
 
 非 Repository 的数据库 Adapter 同样把 Entry 放在自身实现下，例如：
@@ -255,48 +249,9 @@ Entry 和专用 Codec 中的 JSON/JSONB 转换必须同时遵守
 `FlowTaskEntry` 插件 properties 例外只能调用集中 `JacksonMapper` 的公开转换
 方法，Entry 仍不得直接使用 Jackson `ObjectMapper` 或注册 Module。
 
-示例：
-
-```java
-package org.cses.flow.infrastructure.repositories.externaltasks.postgres.entries;
-
-import org.cses.flow.core.domains.externaltasks.ExternalTask;
-import org.cses.flow.core.domains.externaltasks.ExternalTaskStatus;
-import org.flow.gen.flow.pojos.ExternalTasksObject;
-import org.paas.json.JsonObject;
-
-import java.util.Map;
-
-public final class ExternalTaskEntry extends ExternalTasksObject {
-
-    public static ExternalTaskEntry fromDomain(ExternalTask task) {
-        ExternalTaskEntry entry = new ExternalTaskEntry();
-        entry.companyId = task.companyId();
-        entry.id = task.id();
-        entry.executionId = task.executionId();
-        entry.taskRunId = task.taskRunId();
-        entry.status = task.status().name();
-        entry.outputs = JsonObject.FromMap(task.outputs());
-        entry.lockVersion = task.lockVersion();
-        return entry;
-    }
-
-    public ExternalTask toDomain() {
-        Map<String, Object> restoredOutputs = outputs == null
-            ? Map.of()
-            : outputs.asMap();
-        return ExternalTask.rehydrate(
-            id,
-            companyId,
-            executionId,
-            taskRunId,
-            ExternalTaskStatus.valueOf(status),
-            restoredOutputs,
-            lockVersion == null ? 0 : lockVersion
-        );
-    }
-}
-```
+例如，`FlowDraftEntry.fromDomain(...)` 把完整 FlowDraft 状态转换为生成对象字段，
+`FlowDraftEntry.toDomain()` 再使用 `FlowDraft.rehydrate(...)` 恢复同一领域事实。转换
+必须覆盖重建所需的全部字段，不能为了简化映射构造只有部分状态的领域对象。
 
 `toDomain` 必须使用领域对象已经确认的静态 `rehydrate(...)` 入口。持久化恢复
 不是普通业务创建，不得调用 `create(...)`，也不得通过 Factory、反射或直接修改

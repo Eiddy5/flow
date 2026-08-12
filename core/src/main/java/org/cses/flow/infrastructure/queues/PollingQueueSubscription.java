@@ -147,16 +147,6 @@ final class PollingQueueSubscription<T extends DispatchEvent>
                     }
                     if (!attempt.delivered()) {
                         awaitNextPoll();
-                    } else if (attempt.failure() != null) {
-                        LOGGER.warn(
-                            "Queue Consumer ended with an exception; message "
-                                + "was removed. queue={}, messageId={}, "
-                                + "eventKey={}",
-                            owner.queueName(),
-                            attempt.messageId(),
-                            attempt.eventKey(),
-                            attempt.failure()
-                        );
                     }
                 } catch (QueueException exception) {
                     LOGGER.error(

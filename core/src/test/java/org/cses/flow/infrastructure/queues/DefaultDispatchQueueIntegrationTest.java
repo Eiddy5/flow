@@ -156,16 +156,16 @@ final class DefaultDispatchQueueIntegrationTest {
     }
 
     @Test
-    void deletesAfterConsumerRuntimeFailureAndContinues()
+    void retainsAfterConsumerRuntimeFailureAndRetries()
         throws InterruptedException {
         String name = queueName("consumer-failure");
         DefaultDispatchQueue<TestEvent> queue = queue(name);
-        CountDownLatch attempted = new CountDownLatch(2);
+        CountDownLatch attempted = new CountDownLatch(3);
         AtomicInteger attempts = new AtomicInteger();
         queue.subscribe(event -> {
-            attempts.incrementAndGet();
+            int attempt = attempts.incrementAndGet();
             attempted.countDown();
-            if (event.value().equals("fail")) {
+            if (event.value().equals("fail") && attempt == 1) {
                 throw new IllegalStateException("business failure");
             }
         });
@@ -177,8 +177,7 @@ final class DefaultDispatchQueueIntegrationTest {
 
         assertTrue(attempted.await(10, TimeUnit.SECONDS));
         awaitPending(name, 0);
-        Thread.sleep(150L);
-        assertEquals(2, attempts.get());
+        assertEquals(3, attempts.get());
     }
 
     @Test
