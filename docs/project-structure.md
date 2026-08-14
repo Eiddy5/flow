@@ -274,12 +274,15 @@ repositories/flows/FlowRepository.java
 
 Execution 编排推进组件。它与 `core` 平级，负责：
 
-- 在 `executor/commands` 定义统一 `ExecutorCommand` 和具体 `Create` Command；
-  `ExecutionService` 创建并投递 `Create`，只等待 Queue 接受，不等待 Execution 创建或
-  运行完成。
-- `DefaultExecutor` 只负责订阅 Executor Command Queue 并将消息路由给
-  `executor/handlers/ExecutorCommandHandler`；Handler 恢复宿主 Session，并按具体
-  Executor Command 类型处理。
+- 在 `executor/commands` 定义统一 `ExecutionCommand` 和具体 `Create`、`Resume`、`Cancel`
+  Command；`ExecutionService` 创建并投递 Command，只等待 Queue 接受，不等待
+  Execution 创建或运行完成。
+- `DefaultExecutor` 同时订阅外部 Executor Command Queue 和内部 Executor Event Queue。
+  外部消息只路由给 `executor/handlers/ExecutionCommandEventHandler`；该 Handler 恢复
+  宿主 Session、校验并物化 Execution，然后原子投递 `ExecutorEvent`。
+- `executor/handlers/ExecutorEventHandler` 是内部状态循环的唯一处理器：每次领取一个
+  `ExecutorEvent`，从 Repository 锁定并加载精确 Flow/Execution，创建一个
+  `ExecutorContext`，推进一个周期，保存本轮变化，再把后续周期投回 Event Queue。
 - 使用 `ExecutorContext` 组合 Execution、精确 Flow、nexts、workerTasks、
   orchestrationCompletions、本轮 states 与变更标记；Session 和 DSLContext 不进入
   Context。
@@ -293,17 +296,18 @@ Execution 编排推进组件。它与 `core` 平级，负责：
   Pause 前置 Task 子树执行、Pause TaskRun 暂停、编排作用域推进和收敛；Pause
   自身不形成 WorkerTask，其 `pause` 字段中的 RunnableTask 仍按正常 Worker 链路执行。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
-- 由内部 `ExecutionRunner` 统一保存已更新聚合并投递 WorkerTask；Worker 结果应用后
-  再次进入 `ExecutorService.handle`。
+- 内部 `ExecutorEventHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
+  Worker 结果应用后通过新的 `ExecutorEvent` 再次进入下一周期。`ExecutorContext` 不
+  跨 Queue、不进入持久化载荷。
 
 `ExecutorService` 可以依赖 Core 领域对象与 Worker 稳定结果协议，但不定义第二
 套状态类型、不直接修改 State、不访问 Repository/JOOQ，也不执行 RunnableTask。
-`ExecutorCommandHandler` 依赖 Repository 端口和 `ExecutionRunner`，负责 Command
-分派、创建或锁定 Execution 以及加载精确 Flow Reversion；`ExecutionRunner` 依赖当前
-DSLContext 和 WorkerDispatcher，形成运行提交边界。`DefaultExecutor` 不依赖
-Repository、状态机或 Worker。Context 自身仍不保存任何可持久化状态。恢复或取消已有
-Execution 时，Core Handler 先通过 ExecutionRepository 锁定读取聚合，再调用
-`ExecutionRunner`。
+`ExecutionCommandEventHandler` 依赖 Repository 端口和内部 Event Queue，负责 Command
+分派、输入规范化、创建或锁定 Execution 以及加载精确 Flow Reversion；内部
+`ExecutorEventHandler` 依赖当前 DSLContext、ExecutorService、WorkerDispatcher 和
+Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor` 只负责两条 Queue
+的生命周期和路由。Context 自身仍不保存任何可持久化状态；恢复时由内部 Handler
+重新从 Execution.inputs 读取 Flow inputs。
 
 ### `queues/`
 
@@ -334,9 +338,10 @@ Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护�
 尚未定义。数据库 Adapter 的所有传输类别共用 `queues` 载荷表，并通过
 `queue_type + queue_name` 逻辑隔离；未来专属消费状态可以独立建表，但不拆分载荷表。
 
-当前 Execution 启动依赖 Dispatch Queue；命令消费后，Executor 与 Worker 在独立
-Command 事务中保持同步调用。具体 Queue Adapter 放入对应基础设施目录；Default
-Adapter 负责事务内持久化和周期轮询消费生命周期。完整决策见
+当前 Execution 启动和内部周期交接均依赖 Dispatch Queue；外部 Command Handler 与
+内部 Event Handler 各自在一个消费事务中完成自己的边界，Worker 在 Event 周期内同步
+调用。具体 Queue Adapter 放入对应基础设施目录；Default Adapter 负责事务内持久化和
+周期轮询消费生命周期。完整决策见
 [`ADR 0046`](decisions/0046-define-typed-dispatch-queue-framework.md) 与
 [`ADR 0047`](decisions/0047-implement-default-dispatch-queue.md)，Execution 接入见
 [`ADR 0051`](decisions/0051-start-executions-through-dispatch-queue.md)。
@@ -355,11 +360,12 @@ worker/
 `RunnableTask`、`OrchestrationTask` 及 Runnable 的直接调用契约 `RunContext`、
 `RunResult` 归属于 `core/domains/tasks`；它们离开 Task 定义没有独立意义。
 Worker 只消费这些能力：接收包装 RunnableTask 的不可变 `WorkerTask`，为一次
-调用创建包含 Session、DSLContext 和只读 `variables` 的 `RunContext`，其中保留键
+调用创建包含 Session 和只读 `variables` 的 `RunContext`，其中保留键
 `$flow.execution` 保存当前 `Execution`，`$flow.taskRunId` 和可选的
 `$flow.parentTaskRunId` 保存当前/直接父 TaskRun 的调用期技术身份，`$flow.inputs`
-保存当前 TaskRun 的实际输入；`RunContext` 通过 `executionId()`、`taskRunId()`、
-`parentTaskRunId()` 和 `inputs()` 提供类型化便捷访问，再直接调用具体 Task 的
+保存 Execution.inputs 中的 Flow 级输入，`$flow.taskInputs` 保存当前 TaskRun 的业务
+输入；`RunContext` 通过 `executionId()`、`taskRunId()`、`parentTaskRunId()`、
+`inputs()` 和 `taskInputs()` 提供类型化便捷访问，再直接调用具体 Task 的
 `run(RunContext)`，返回使用统一 `State.Type targetState` 的
 `WorkerTaskResult`。结果只允许 COMPLETED 或 TERMINATED；PAUSED 只由 Executor
 处理明确的 Pause OrchestrationTask 时产生。Worker 不发现或选择
@@ -471,7 +477,8 @@ core/src/main/java/org/cses/flow/infrastructure/
   Entry 写入统一 `queues`，用可扩展 `queue_type + queue_name` 隔离；当前
   Default Adapter 固定使用 `DISPATCH`。Adapter 使用具名 `flow` JOOQ、周期轮询和
   `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务且不携带调用方
-  DSL。`ExecutorCommandQueueFactory` 是具名 Executor Command Queue 的业务组合根。
+  DSL。`ExecutorCommandQueueFactory` 和 `ExecutorEventQueueFactory` 是两条具名
+  Executor Queue 的业务组合根。
 - 缓存、远程服务等其他技术适配器。
 - 只与具体框架或外部系统有关的配置和连接代码。
 
@@ -632,7 +639,7 @@ queues/event
 | 类型化 Event、Dispatch Queue 与订阅生命周期契约 | `core/src/main/java/org/cses/flow/queues/` |
 | Queue Event 分类 Interface | `core/src/main/java/org/cses/flow/queues/event/` |
 | Default Dispatch Queue、统一消息表、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
-| Executor Command Queue 的 Micronaut 组合根 | `core/src/main/java/org/cses/flow/infrastructure/queues/ExecutorCommandQueueFactory.java` |
+| Executor Command/Event Queue 的 Micronaut 组合根 | `core/src/main/java/org/cses/flow/infrastructure/queues/ExecutorCommandQueueFactory.java`、`ExecutorEventQueueFactory.java` |
 | 包含 `queue_type + queue_name` 的统一 Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |

@@ -1,7 +1,5 @@
 package org.cses.flow.core.runner;
 
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -89,10 +87,33 @@ final class RunContextTest {
         );
     }
 
+    @Test
+    void separatesExecutionInputsFromTaskRunInputs() {
+        RunContext context = context(Map.of(
+            RunContext.INPUTS_VARIABLE,
+            Map.of("amount", 1200),
+            RunContext.TASK_INPUTS_VARIABLE,
+            Map.of("outputs", Map.of("approved", true))
+        ));
+
+        assertEquals(Map.of("amount", 1200), context.inputs());
+        assertEquals(
+            Map.of("outputs", Map.of("approved", true)),
+            context.taskInputs()
+        );
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> context.inputs().put("amount", 1)
+        );
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> context.taskInputs().put("new", true)
+        );
+    }
+
     private static RunContext context(Map<String, ?> variables) {
         return RunContext.create(
             new Session<User>(),
-            DSL.using(SQLDialect.POSTGRES),
             variables
         );
     }

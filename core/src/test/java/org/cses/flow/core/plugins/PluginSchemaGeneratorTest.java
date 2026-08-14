@@ -41,7 +41,7 @@ class PluginSchemaGeneratorTest {
 
         assertEquals("日志", metadata.title());
         assertEquals(
-            "解析消息表达式并将结果写入应用日志",
+            "将模板消息写入应用日志",
             metadata.description()
         );
         assertEquals("string", message.get("type"));

@@ -13,6 +13,8 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
 
+import java.util.Map;
+
 /**
  * Idempotently stages a durable start command for a pending Execution.
  */
@@ -60,6 +62,12 @@ public final class ContinueExecutionHandler implements CommandHandler<
         ));
         if (!execution.state().is(State.Type.CREATED)) {
             return execution.copy();
+        }
+        Map<String, Object> inputs = context.getCommand().inputs();
+        boolean inputsChanged = !execution.inputs().equals(inputs);
+        execution.bindInputs(inputs);
+        if (inputsChanged) {
+            executionRepository.save(context.getDsl(), execution);
         }
         return execution.copy();
     }

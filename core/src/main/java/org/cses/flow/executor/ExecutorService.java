@@ -146,7 +146,7 @@ public final class ExecutorService {
         context.takeOrchestrationCompletions();
     }
 
-    void dispatch(ExecutorContext context, WorkerTask workerTask) {
+    public void dispatch(ExecutorContext context, WorkerTask workerTask) {
         requireExecution(context, workerTask.executionId());
         context.execution().startTaskRun(workerTask.taskRunId());
         context.captureState();
@@ -243,7 +243,7 @@ public final class ExecutorService {
         context.captureState();
     }
 
-    void applyResult(ExecutorContext context, WorkerTaskResult result) {
+    public void applyResult(ExecutorContext context, WorkerTaskResult result) {
         requireExecution(context, result.executionId());
         Execution execution = context.execution();
         TaskRun taskRun = execution.requireTaskRun(result.taskRunId());
@@ -268,12 +268,12 @@ public final class ExecutorService {
         context.captureState();
     }
 
-    void resume(ExecutorContext context, String taskRunId, Map<String, ?> outputs) {
+    public void resume(ExecutorContext context, String taskRunId, Map<String, ?> outputs) {
         context.execution().resumeTaskRun(taskRunId, outputs);
         context.captureState();
     }
 
-    void kill(ExecutorContext context) {
+    public void kill(ExecutorContext context) {
         context.execution().beginKilling();
         context.captureState();
     }
@@ -533,7 +533,7 @@ public final class ExecutorService {
         for (Task child : loop.tasks()) {
             if (!child.matchesRoute(
                 flowingContext,
-                context.flowInputs(),
+                context.execution().inputs(),
                 context.flowVariables()
             )) {
                 continue;
@@ -624,7 +624,7 @@ public final class ExecutorService {
         for (Task child : parent.tasks()) {
             if (!child.matchesRoute(
                 flowingContext,
-                context.flowInputs(),
+                context.execution().inputs(),
                 context.flowVariables()
             )) {
                 continue;
@@ -657,7 +657,7 @@ public final class ExecutorService {
         for (Task child : parent.tasks()) {
             if (!child.matchesRoute(
                 flowingContext,
-                context.flowInputs(),
+                context.execution().inputs(),
                 context.flowVariables()
             )) {
                 continue;
@@ -762,7 +762,7 @@ public final class ExecutorService {
         }
         if (!task.matchesRoute(
             childFlowingContext(parentTask, actualParentRun),
-            context.flowInputs(),
+            context.execution().inputs(),
             context.flowVariables()
         )) {
             return DependencyState.UNSELECTED;
@@ -882,9 +882,6 @@ public final class ExecutorService {
         IterationScope iterationScope
     ) {
         Map<String, Object> inputs = new LinkedHashMap<>();
-        if (!context.flowInputs().isEmpty()) {
-            inputs.put("flowInputs", context.flowInputs());
-        }
         if (parentOutputs != null && !parentOutputs.isEmpty()) {
             inputs.put("outputs", Map.copyOf(parentOutputs));
         }

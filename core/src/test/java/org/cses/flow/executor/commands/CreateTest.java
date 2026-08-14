@@ -31,24 +31,21 @@ final class CreateTest {
             "execution-1",
             "company-1",
             "flow-1",
-            7
-        );
-        Create command = Create.from(
-            session,
-            execution,
+            7,
             Map.of("amount", 1200.5)
-        )
+        );
+        Create command = Create.from(session, execution)
             .inTransaction(DSL.using(SQLDialect.POSTGRES));
 
         QueueMessageEntry entry = QueueMessageEntry.create(
             "DISPATCH",
-            ExecutorCommand.QUEUE_NAME,
+            ExecutionCommand.QUEUE_NAME,
             command
         );
-        ExecutorCommand restored = entry.toEvent(ExecutorCommand.class);
+        ExecutionCommand restored = entry.toEvent(ExecutionCommand.class);
 
         Create create = assertInstanceOf(Create.class, restored);
-        assertEquals(ExecutorCommand.Type.CREATE, create.getType());
+        assertEquals(ExecutionCommand.Type.CREATE, create.getType());
         assertEquals(execution.id(), create.getExecutionId());
         assertEquals(execution.companyId(), create.getCompanyId());
         assertEquals(execution.flowId(), create.getFlowId());

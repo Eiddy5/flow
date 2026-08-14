@@ -32,12 +32,13 @@ public @interface Example {
     String lang() default "yaml";
 
     /**
-     * Whether each source block is already a complete Task definition.
+     * Whether each source block is already a complete Flow definition.
      *
-     * <p>Consumers augment partial examples with a unique {@code key} and the
-     * declaring plugin's canonical {@code type}. Complete examples already
-     * contain both fields. Flow system identity fields are never added to or
-     * accepted from examples.</p>
+     * <p>Complete examples contain the Flow {@code key} and {@code tasks}
+     * fields and can be deployed without adding plugin fields. Flow and Task
+     * system identity fields are never added to or accepted from examples.
+     * {@code false} is retained for legacy metadata; new plugin examples
+     * should use complete Flow YAML.</p>
      */
     boolean full() default false;
 }

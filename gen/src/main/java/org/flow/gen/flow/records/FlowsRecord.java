@@ -248,31 +248,31 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     }
 
     /**
-     * Setter for <code>public.flows.variables</code>.[[before= ][]]
-     */
-    public void setVariables(JsonObject value) {
-        set(16, value == null ? null : value.toString());
-    }
-
-    /**
-     * Getter for <code>public.flows.variables</code>.[[before= ][]]
-     */
-    public JsonObject getVariables() {
-        return JsonObject.Parse((String) get(16));
-    }
-
-    /**
      * Setter for <code>public.flows.deleted</code>.
      */
     public void setDeleted(Boolean value) {
-        set(17, value);
+        set(16, value);
     }
 
     /**
      * Getter for <code>public.flows.deleted</code>.
      */
     public Boolean getDeleted() {
-        return (Boolean) get(17);
+        return (Boolean) get(16);
+    }
+
+    /**
+     * Setter for <code>public.flows.variables</code>.[[before= ][]]
+     */
+    public void setVariables(JsonObject value) {
+        set(17, value == null ? null : value.toString());
+    }
+
+    /**
+     * Getter for <code>public.flows.variables</code>.[[before= ][]]
+     */
+    public JsonObject getVariables() {
+        return JsonObject.Parse((String) get(17));
     }
 
     // -------------------------------------------------------------------------
@@ -298,7 +298,7 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     /**
      * Create a detached, initialised FlowsRecord
      */
-    public FlowsRecord(String id, String key, String companyId, Long reversion, String description, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JsonObjects inputs, JsonObjects outputs, JsonObject variables, Boolean deleted) {
+    public FlowsRecord(String id, String key, String companyId, Long reversion, String description, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JsonObjects inputs, JsonObjects outputs, Boolean deleted, JsonObject variables) {
         super(FlowsTable.FLOWS);
 
         setId(id);
@@ -317,8 +317,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         setDeletedAt(deletedAt);
         setInputs(inputs);
         setOutputs(outputs);
-        setVariables(variables);
         setDeleted(deleted);
+        setVariables(variables);
     }
 
 
@@ -346,8 +346,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
             setDeletedAt(value.deletedAt);
             setInputs(value.inputs);
             setOutputs(value.outputs);
-            setVariables(value.variables);
             setDeleted(value.deleted);
+            setVariables(value.variables);
         }
     }
 
@@ -369,8 +369,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         object.deletedAt = getDeletedAt();
         object.inputs = getInputs();
         object.outputs = getOutputs();
-        object.variables = getVariables();
         object.deleted = getDeleted();
+        object.variables = getVariables();
         return object;
     }
 
@@ -397,8 +397,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         pojo.deletedAt = getDeletedAt();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
-        pojo.variables = getVariables();
         pojo.deleted = getDeleted();
+        pojo.variables = getVariables();
         return pojo;
     }
 }

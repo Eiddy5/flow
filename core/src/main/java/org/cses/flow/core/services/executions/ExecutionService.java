@@ -4,18 +4,21 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.commands.CommandExecutor;
-import org.cses.flow.core.commands.executions.CancelExecutionCommand;
 import org.cses.flow.core.commands.executions.ContinueExecutionCommand;
 import org.cses.flow.core.commands.executions.CreateExecutionCommand;
-import org.cses.flow.core.commands.executions.ResumeExecutionCommand;
 import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.queries.executions.ExecutionQueryHandler;
 import org.cses.flow.core.queries.flows.FlowQueryHandler;
 import org.cses.flow.executor.commands.Create;
-import org.cses.flow.executor.commands.ExecutorCommand;
+import org.cses.flow.executor.commands.Cancel;
+import org.cses.flow.executor.commands.ExecutionCommand;
+import org.cses.flow.executor.commands.Resume;
+import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.queues.DispatchQueue;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -30,15 +33,15 @@ public final class ExecutionService {
     private final CommandExecutor commandExecutor;
     private final ExecutionQueryHandler queryHandler;
     private final FlowQueryHandler flowQueryHandler;
-    private final DispatchQueue<ExecutorCommand> executorCommandQueue;
+    private final DispatchQueue<ExecutionCommand> executorCommandQueue;
 
     @Inject
     public ExecutionService(
             CommandExecutor commandExecutor,
             ExecutionQueryHandler queryHandler,
             FlowQueryHandler flowQueryHandler,
-            @Named(ExecutorCommand.QUEUE_NAME)
-            DispatchQueue<ExecutorCommand> executorCommandQueue
+            @Named(ExecutionCommand.QUEUE_NAME)
+            DispatchQueue<ExecutionCommand> executorCommandQueue
     ) {
         this.commandExecutor = commandExecutor;
         this.queryHandler = queryHandler;
@@ -68,12 +71,12 @@ public final class ExecutionService {
         Execution accepted = Execution.create(
                 flow.companyId(),
                 flow.id(),
-                flow.reversion()
+                flow.reversion(),
+                normalizedInputs
         );
         executorCommandQueue.emit(Create.from(
                 session,
-                accepted,
-                normalizedInputs
+                accepted
         ));
         return accepted.copy();
     }
@@ -116,13 +119,25 @@ public final class ExecutionService {
     }
 
     public <S extends Session<U>, U extends User> Execution cancel(
-            S session,
-            String executionId
+        S session,
+        String executionId
     ) {
-        return commandExecutor.execute(
-                session,
-                new CancelExecutionCommand(executionId)
-        );
+        Execution current = queryHandler.execution(session, executionId)
+            .orElseThrow(() -> new WorkflowException(
+                "Execution does not exist: " + executionId
+            ));
+        if (current.isTerminal()) {
+            throw new WorkflowException(
+                "Cannot cancel terminal Execution: " + executionId
+            );
+        }
+        if (current.state().is(State.Type.KILLING)) {
+            throw new WorkflowException(
+                "Execution is already KILLING: " + executionId
+            );
+        }
+        executorCommandQueue.emit(Cancel.from(session, executionId));
+        return current.copy();
     }
 
     /**
@@ -161,11 +176,11 @@ public final class ExecutionService {
                 : Map.of();
         return commandExecutor.execute(
                 session,
-                new ContinueExecutionCommand(executionId),
+                new ContinueExecutionCommand(executionId, normalizedInputs),
                 (pending, dsl) -> {
                     if (pending.state().is(State.Type.CREATED)) {
                         executorCommandQueue.emit(
-                                Create.from(session, pending, normalizedInputs)
+                                Create.from(session, pending)
                                         .inTransaction(dsl)
                         );
                     }
@@ -174,8 +189,8 @@ public final class ExecutionService {
     }
 
     /**
-     * Resumes one PAUSED TaskRun and drives the Execution to its next
-     * stable state.
+     * Validates and submits one durable Resume command for an exact paused
+     * TaskRun. Returning means Queue acceptance, not workflow completion.
      */
     public <S extends Session<U>, U extends User> Execution resume(
             S session,
@@ -183,10 +198,23 @@ public final class ExecutionService {
             String taskRunId,
             Map<String, ?> outputs
     ) {
-        return commandExecutor.execute(
+        Execution current = queryHandler.execution(session, executionId)
+                .orElseThrow(() -> new WorkflowException(
+                        "Execution does not exist: " + executionId
+                ));
+        Map<String, Object> normalizedOutputs = validateResume(
                 session,
-                new ResumeExecutionCommand(executionId, taskRunId, outputs)
+                current,
+                taskRunId,
+                outputs
         );
+        executorCommandQueue.emit(Resume.from(
+                session,
+                executionId,
+                taskRunId,
+                normalizedOutputs
+        ));
+        return current.copy();
     }
 
     public <S extends Session<U>, U extends User>
@@ -212,6 +240,48 @@ public final class ExecutionService {
                 .orElseThrow(() -> new WorkflowException(
                         "Flow does not exist: " + flowId
                 ));
+    }
+
+    private <S extends Session<U>, U extends User>
+    Map<String, Object> validateResume(
+            S session,
+            Execution execution,
+            String taskRunId,
+            Map<String, ?> outputs
+    ) {
+        if (!execution.state().is(State.Type.PAUSED)) {
+            throw new WorkflowException(
+                    "Only a PAUSED Execution can resume a Pause TaskRun: "
+                            + execution.id()
+            );
+        }
+        Flow flow = flowQueryHandler.flow(
+                        session,
+                        execution.flowId(),
+                        execution.flowReversion()
+                )
+                .orElseThrow(() -> new WorkflowException(
+                        "Flow does not exist: " + execution.flowId()
+                                + "@" + execution.flowReversion()
+                ));
+        TaskRun taskRun = execution.requireTaskRun(taskRunId);
+        if (!taskRun.state().is(State.Type.PAUSED)) {
+            throw new WorkflowException(
+                    "Only a PAUSED TaskRun can be resumed: " + taskRun.id()
+            );
+        }
+        Task task = flow.findTask(taskRun.taskId()).orElseThrow(() ->
+                new WorkflowException(
+                        "Task definition does not exist: " + taskRun.taskId()
+                )
+        );
+        if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
+            throw new WorkflowException(
+                    "Only a paused Orchestration TaskRun can be resumed: "
+                            + taskRun.id()
+            );
+        }
+        return pause.validateResume(outputs);
     }
 
 }

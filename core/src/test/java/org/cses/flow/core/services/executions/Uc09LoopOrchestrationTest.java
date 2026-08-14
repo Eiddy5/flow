@@ -719,7 +719,7 @@ class Uc09LoopOrchestrationTest {
         }
 
         private static int iteration(RunContext context) {
-            Object loop = context.inputs().get("loop");
+            Object loop = context.taskInputs().get("loop");
             if (!(loop instanceof Map<?, ?> values)
                 || !(values.get("iteration") instanceof Number value)) {
                 throw new IllegalStateException(

@@ -296,7 +296,7 @@ class ConditionalRouteResumeIntegrationTest {
 
         @Override
         public RunResult run(RunContext context) {
-            Object dependencies = context.inputs().get("dependOnOutputs");
+            Object dependencies = context.taskInputs().get("dependOnOutputs");
             if (!(dependencies instanceof Map<?, ?> byTask)) {
                 return RunResult.success(Map.of());
             }

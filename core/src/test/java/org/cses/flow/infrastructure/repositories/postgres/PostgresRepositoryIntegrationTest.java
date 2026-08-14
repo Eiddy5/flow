@@ -191,7 +191,8 @@ final class PostgresRepositoryIntegrationTest {
             Execution created = Execution.create(
                 companyId,
                 restoredFlow.id(),
-                2
+                2,
+                Map.of("amount", 1200)
             );
             created.start();
             executionRepository.save(dsl, created);
@@ -213,6 +214,10 @@ final class PostgresRepositoryIntegrationTest {
             ).orElseThrow()
         );
         assertEquals(0, restoredExecution.lockVersion());
+        assertEquals(
+            Map.of("amount", 1200),
+            restoredExecution.inputs()
+        );
         assertEquals(
             Map.of("request", "A-1"),
             restoredExecution.taskRuns().getFirst().inputs()

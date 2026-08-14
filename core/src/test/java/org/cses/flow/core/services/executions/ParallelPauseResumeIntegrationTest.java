@@ -265,10 +265,7 @@ class ParallelPauseResumeIntegrationTest {
                 Map.of("backendResult", "PASS")
             );
 
-            Execution canceled = fixture.executionService().cancel(
-                fixture.session(),
-                started.id()
-            );
+            Execution canceled = fixture.cancel(started.id());
 
             assertEquals(State.Type.KILLED, canceled.state().current());
             assertEquals(

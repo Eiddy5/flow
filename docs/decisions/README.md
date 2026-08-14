@@ -48,10 +48,14 @@
   Queue 通过 `JsonFactory` 和 `Class<T>` 统一完成不含 DSL 的 Event JSONB 快照与恢复。
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：
   `ExecutionService` 构造并投递 Executor `Create` Command，普通启动返回 Queue 受理
-  回执；`DefaultExecutor` 只做 Queue 路由，`ExecutorCommandHandler` 恢复 Session 并
-  创建/推进 Execution，`ExecutionRunner` 拥有提交循环。可信 pending continuation 仍
-  原子提交 Execution 与 Queue Command；Consumer 异常保留消息重试，确定性 Task 异常
-  落为 `FAILED`。
+  回执；外部命令由 `ExecutionCommandEventHandler` 校验并原子投递内部
+  `ExecutorEvent`，由 `ExecutorEventHandler` 负责一个周期的提交。可信 pending
+  continuation 仍原子提交 Execution 与 Queue Command；Consumer 异常保留消息重试，
+  确定性 Task 异常落为 `FAILED`。
+- [`ADR 0059`](0059-route-executor-state-handoffs-through-executor-event-queue.md)：
+  保持泛型 `ExecutorEventHandler<T>` 契约不变；外部 Command 只进入
+  `ExecutionCommandEventHandler`，内部状态交接统一使用 `ExecutorEvent` Queue，
+  `ExecutorContext` 只组织单个内部周期，不跨 Queue 传递。
 - [`ADR 0023`](0023-discover-task-extensions-with-service-loader.md)：已被 ADR 0026
   取代的 ServiceLoader 历史方案。
 - [`ADR 0024`](0024-separate-runnable-and-branch-task-capabilities.md)：Task 运行能力
@@ -117,8 +121,11 @@
 - [`ADR 0044`](0044-remove-bean-context-from-run-context.md)：RunContext 移除通用
   BeanContext 查找，仅保留明确的 RunnableTask 调用期运行能力。
 - [`ADR 0045`](0045-pass-execution-and-inputs-through-run-variables.md)：通过不可变
-  RunContext variables 传递当前 Execution、当前/父 TaskRun 调用期身份与
-  TaskRun inputs，并由便捷方法解析，不提供状态修改能力。
+  RunContext variables 传递当前 Execution、Execution 级 Flow inputs、当前/父 TaskRun
+  调用期身份与 TaskRun inputs，并由便捷方法解析，不提供状态修改能力。
+- [`ADR 0058`](0058-remove-dsl-from-run-context.md)：RunContext 不再暴露
+  `DSLContext`；Worker 只传递 Session 和 WorkerTask，ExecutorEventHandler 拥有执行
+  提交所需的事务 DSL。
 - [`ADR 0029`](0029-model-parallel-as-orchestration-scope.md)：以
   OrchestrationTask 统一编排能力，由 Parallel TaskRun 持有完整并行作用域，并
   定义输入扇出、未选择传播与 concurrent 契约。
@@ -131,8 +138,8 @@
   消费方分别保护引用范围；TemplateExpression 同属 expressions 领域，但保持独立
   的模板语法、字符串结果和缺值失败语义。
 - [`ADR 0052`](0052-bind-confirmed-flow-inputs-to-safe-task-routes.md)：Flow 启动时
-  规范化并持久保持 typed inputs，Task Route 可用受限运算符读取 inputs；宿主只能
-  提交结构化字段映射，不能注入脚本或任意表达式。
+  规范化并持久保持 typed inputs 到 `Execution.inputs`，Task Route 可用受限运算符读取
+  inputs；宿主只能提交结构化字段映射，不能注入脚本或任意表达式。
 - [`ADR 0055`](0055-add-flow-level-variables.md)：Flow Reversion 持有简单的
   `Map<String, Object>` 流程级变量，Route 和 RunContext 可只读读取，不复制到
   TaskRun，也不与启动时的 typed inputs 混用。
@@ -153,7 +160,8 @@
 - [`ADR 0034`](0034-persist-state-as-one-jsonb-value.md)：Execution 与 TaskRun 将完整
   `current + history` 作为单一 State JSONB 值对象持久化。
 - [`ADR 0020`](0020-stage-executor-cycle-effects.md)：ExecutorContext、nexts 两阶段
-  处理和运行提交边界；具体提交类已由 ADR 0051 修订为 `ExecutionRunner`。
+  处理和运行提交边界；内部周期交接由 ADR 0059 修订为 `ExecutorEventHandler` 和
+  `ExecutorEvent` Queue。
 - [`ADR 0021`](0021-require-explicit-parallel-task.md)：串行与显式并行调度。
 - [`ADR 0024`](0024-separate-runnable-and-branch-task-capabilities.md)：运行能力分类和
   Worker/Executor 协作。

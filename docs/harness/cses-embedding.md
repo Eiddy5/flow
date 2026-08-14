@@ -100,6 +100,7 @@ package org.cses.server.common.flow.plugins;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 
@@ -107,7 +108,19 @@ import java.util.Map;
 
 @Plugin(
     title = "创建 CSES 任务",
-    description = "在 CSES 中创建一条业务任务"
+    description = "在 CSES 中创建一条业务任务",
+    examples = {
+        @Example(
+            title = "创建业务任务",
+            code = """
+                key: cses-task-flow
+                tasks:
+                  - key: create-task
+                    type: org.cses.server.common.flow.plugins.CreateCsesTask
+                """,
+            full = true
+        )
+    }
 )
 public final class CreateCsesTask extends Task implements RunnableTask {
     public CreateCsesTask() {

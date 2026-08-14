@@ -49,7 +49,7 @@ flowchart LR
             domains["FlowDraft / Flow / Execution / TaskRun / State"]
             repositoryPorts["Core Repository 端口"]
             queueContracts["DispatchQueue / QueueSubscription"]
-            executor["DefaultExecutor 路由 + ExecutorCommandHandler + ExecutionRunner + ExecutorService"]
+            executor["DefaultExecutor + ExecutionCommandEventHandler + ExecutorEventHandler + ExecutorService"]
             worker["WorkerDispatcher"]
             pluginRuntime["PluginRegistry / RegisteredPlugin / PluginMetadata"]
         end
@@ -151,9 +151,10 @@ Core 提供类型化 Dispatch Queue Interface，并已把 Execution 启动接入
 `queues` 表的 Default Adapter。该表以
 `queue_type + queue_name` 隔离传输类别和逻辑 Queue；当前 Adapter 只写入并领取
 `DISPATCH` 行。业务 Module 仍需为具体 Event 提供可空 `dsl()`、确定的 `Class<T>` 和
-具名 Bean；Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutorCommand`、
-`Create`、具名 Queue Bean、只做路由的 eager `DefaultExecutor` 和统一
-`ExecutorCommandHandler` 已连线；Broadcast Interface、消费游标或保留清理仍未实现。
+具名 Bean；Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
+`Create`、`Resume`、`Cancel`、具名 Queue Bean、只做两条 Queue 路由的 eager `DefaultExecutor`、
+`ExecutionCommandEventHandler` 和内部 `ExecutorEventHandler` 已连线；Broadcast
+Interface、消费游标或保留清理仍未实现。
 
 `DefaultDispatchQueue` 直接读取 `Event.dsl()`：同步整批 Event 必须全部返回 `null`，
 或全部返回同一个 `DSLContext` 实例；前者使用 Queue 自有事务，后者加入调用方事务。
@@ -181,10 +182,10 @@ flowchart TD
 
     executeStart(["用户启动最新且未删除的 Flow"])
     createExecution["ExecutionService 加载最新 Flow，规范化 inputs，生成 executionId 并构造 Create"]
-    enqueueStart["写入 ExecutorCommand Queue"]
+    enqueueStart["写入 ExecutionCommand Queue"]
     acceptedEnd(["返回 CREATED 与 executionId"])
-    consumeStart["DefaultExecutor 路由到 ExecutorCommandHandler；恢复 Session 并创建 Execution"]
-    drive["ExecutionRunner 提交边界"]
+    consumeStart["DefaultExecutor 路由到 ExecutionCommandEventHandler；恢复 Session、绑定 inputs 并投递 ExecutorEvent"]
+    drive["ExecutorEventHandler 领取一个 ExecutorEvent 周期"]
     handle["ExecutorService.handle 状态推进循环"]
     plan["按顺序、typed input/output route、dependOn 和 PARALLEL 规划下一批 TaskRun"]
     hasNext{"存在下一批 TaskRun？"}
@@ -210,11 +211,16 @@ flowchart TD
     runningStable["Execution 保持 RUNNING 并提交稳定暂停点"]
 
     resumeStart(["外部提交 Resume"])
-    resumeValidation["锁定 Execution 并加载其精确 Flow Reversion"]
-    resumeTask["按 resume Input 校验回调；Pause TaskRun 从 PAUSED 恢复为 RUNNING；Execution 保持 RUNNING"]
+    resumeAdmission["加载当前 Execution；校验并规范化 resume Input；构造最小 Resume"]
+    enqueueResume["写入 ExecutionCommand Queue"]
+    resumeAccepted(["返回当前 Execution 受理回执"])
+    resumeConsume["ExecutionCommandEventHandler 路由 Resume；校验后投递 ExecutorEvent"]
+    resumeTask["ExecutorEventHandler 锁定 Execution/Flow；通过 ExecutorContext 调用 ExecutorService.resume"]
 
     cancelStart(["用户取消 Execution"])
-    cancelExecution["锁定 Execution；终止未完成 TaskRun 并持久化"]
+    cancelCommand["构造 Cancel；写入 ExecutionCommand Queue"]
+    cancelConsume["ExecutionCommandEventHandler 校验并投递 CANCEL ExecutorEvent"]
+    cancelExecution["ExecutorEventHandler 锁定 Execution/Flow；通过 ExecutorContext 终止未完成 TaskRun"]
 
     completedEnd(["COMPLETED"])
     terminatedEnd(["TERMINATED"])
@@ -263,13 +269,18 @@ flowchart TD
     pausedLeaves -->|"是"| runningStable
     pausedLeaves -->|"否"| runningStable
 
-    resumeStart --> resumeValidation
+    resumeStart --> resumeAdmission
     runningStable -.->|"外部结果到达"| resumeStart
-    resumeValidation --> resumeTask
+    resumeAdmission --> enqueueResume
+    enqueueResume --> resumeAccepted
+    enqueueResume -.->|"事务提交后异步消费"| resumeConsume
+    resumeConsume --> resumeTask
     resumeTask --> handle
 
-    cancelStart --> cancelExecution
-    cancelExecution --> terminatedEnd
+    cancelStart --> cancelCommand
+    cancelCommand --> cancelConsume
+    cancelConsume --> cancelExecution
+    cancelExecution --> handle
 
     classDef startEnd fill:#E8F1FF,stroke:#4A78C2,color:#172B4D
     classDef action fill:#FFF4D6,stroke:#D49B22,color:#4A3400
@@ -278,8 +289,8 @@ flowchart TD
     classDef success fill:#E5F6E9,stroke:#3D9970,color:#173B2A
     classDef failure fill:#FFE3DE,stroke:#C7503E,color:#4A1812
 
-    class saveStart,deployStart,executeStart,acceptedEnd,resumeStart,cancelStart startEnd
-    class saveService,saveTransaction,saveDraft,parseDefinition,materializeFlow,persistFlow,createExecution,enqueueStart,consumeStart,drive,handle,plan,orchestrationDispatch,parallelScope,completeScope,pauseAction,pausePersist,runnableDispatch,workerRun,applyOutputs,resumeValidation,resumeTask,cancelExecution,runningStable action
+    class saveStart,deployStart,executeStart,acceptedEnd,resumeStart,resumeAccepted,cancelStart startEnd
+    class saveService,saveTransaction,saveDraft,parseDefinition,materializeFlow,persistFlow,createExecution,enqueueStart,consumeStart,drive,handle,plan,orchestrationDispatch,parallelScope,completeScope,pauseAction,pausePersist,runnableDispatch,workerRun,applyOutputs,resumeAdmission,enqueueResume,resumeConsume,resumeTask,cancelCommand,cancelConsume,cancelExecution,runningStable action
     class hasNext,capability,orchestrationKind,workerResult,settled,scopeSettled,pausedLeaves decision
     class pausePersist waiting
     class completeExecution,completedEnd success
@@ -289,23 +300,27 @@ flowchart TD
 流程图强调当前实现中的关键事实：
 
 1. 普通启动由 `ExecutionService` 构造 `Create` 并写入 Executor Command Queue；Service
-   返回只代表受理，`ExecutorCommandHandler` 在新事务中创建并推进 Execution。可信
-   pending continuation 仍在同一 JOOQ 事务保存 Execution 和 Queue Command。
+   返回只代表受理，`ExecutionCommandEventHandler` 在新事务中规范化/绑定
+   `Execution.inputs` 并原子投递 `ExecutorEvent`。可信 pending continuation 仍在同一
+   JOOQ 事务保存 Execution 和 Queue Command。
 2. Execution 始终绑定启动时的精确 Flow Reversion，继续、恢复和取消时不会切换到
    新版本。
-3. Flow inputs 在首次启动前按精确 Reversion 规范化，随 `Create` 进入 Queue，并以
-   `flowInputs` 快照保存到实际 TaskRun；恢复后的 Route 不需要宿主重复提交字段值。
+3. Flow inputs 在首次启动前按精确 Reversion 规范化，持久化在
+   `Execution.inputs`；`ExecutorContext` 从 Execution 读取，TaskRun 不再保存
+   `flowInputs` 快照。恢复后的 Route 不需要宿主重复提交字段值。
 4. Flow Reversion 的 `variables` 是流程级只读 `Map<String, Object>`，持久化在
    `flows.variables`，Route 可通过 `variables.<key>` 读取，RunnableTask 通过
    RunContext 的 `$flow.variables` 读取；它不复制到 TaskRun。
 5. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
    同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。
 6. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
-   TaskRun 是唯一持久化等待事实。合法 Resume 校验并恢复精确 Pause TaskRun，再由
-   Executor 完成和推进，因此不依赖原 Server 进程仍然存活，也不需要额外等待聚合。
-7. `ExecutorService.handle` 在内部连续收敛非 Runnable 的 OrchestrationTask；只有形成
-   WorkerTask 或到达稳定状态时才返回 `ExecutionRunner` 提交边界。`DefaultExecutor`
-   不参与状态推进，只做 Queue 路由。
+   TaskRun 是唯一持久化等待事实。合法 Resume 在 Service 侧预校验并规范化后写入
+   `ExecutionCommand` Queue，Command Handler 再次校验并投递 `ExecutorEvent`，内部
+   Handler 从队列领取后通过 `ExecutorContext` 调用 `ExecutorService.resume`，因此不
+   依赖原 Server 进程仍然存活，也不需要额外等待聚合。
+7. `ExecutorEventHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
+   的 OrchestrationTask、同步调用 Worker、持久化本轮变化，并将仍可推进的下一周期
+   重新投回 Event Queue。`DefaultExecutor` 不拥有状态机，只负责两条 Queue 路由。
 
 ## 主要源码依据
 
@@ -314,11 +329,13 @@ flowchart TD
 - [`server/src/main/resources/flow/index.html`](../server/src/main/resources/flow/index.html)
 - [`core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java)
 - [`core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java`](../core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java)
-- [`core/src/main/java/org/cses/flow/executor/commands/ExecutorCommand.java`](../core/src/main/java/org/cses/flow/executor/commands/ExecutorCommand.java)
+- [`core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`](../core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/Create.java`](../core/src/main/java/org/cses/flow/executor/commands/Create.java)
+- [`core/src/main/java/org/cses/flow/executor/commands/Resume.java`](../core/src/main/java/org/cses/flow/executor/commands/Resume.java)
 - [`core/src/main/java/org/cses/flow/executor/DefaultExecutor.java`](../core/src/main/java/org/cses/flow/executor/DefaultExecutor.java)
-- [`core/src/main/java/org/cses/flow/executor/handlers/ExecutorCommandHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutorCommandHandler.java)
-- [`core/src/main/java/org/cses/flow/executor/ExecutionRunner.java`](../core/src/main/java/org/cses/flow/executor/ExecutionRunner.java)
+- [`core/src/main/java/org/cses/flow/executor/handlers/ExecutionCommandEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutionCommandEventHandler.java)
+- [`core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java)
+- [`core/src/main/java/org/cses/flow/executor/ExecutorEvent.java`](../core/src/main/java/org/cses/flow/executor/ExecutorEvent.java)
 - [`core/src/main/java/org/cses/flow/executor/ExecutorService.java`](../core/src/main/java/org/cses/flow/executor/ExecutorService.java)
 - [`core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java`](../core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java)
 - [`core/src/main/java/org/cses/flow/infrastructure/jooq/`](../core/src/main/java/org/cses/flow/infrastructure/jooq/)

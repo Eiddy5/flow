@@ -11,6 +11,7 @@ import org.flow.gen.flow.tables.ExecutionsTable;
 import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
+import org.paas.json.JsonObject;
 
 
 /**
@@ -189,6 +190,20 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         return (OffsetDateTime) get(11);
     }
 
+    /**
+     * Setter for <code>public.executions.inputs</code>.[[before= ][]]
+     */
+    public void setInputs(JsonObject value) {
+        set(12, value == null ? null : value.toString());
+    }
+
+    /**
+     * Getter for <code>public.executions.inputs</code>.[[before= ][]]
+     */
+    public JsonObject getInputs() {
+        return JsonObject.Parse((String) get(12));
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -212,7 +227,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowId, Long flowReversion, JSONB state, Long lockVersion, JSONB creator, JSONB updater, JSONB deleter, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt) {
+    public ExecutionsRecord(String id, String companyId, String flowId, Long flowReversion, JSONB state, Long lockVersion, JSONB creator, JSONB updater, JSONB deleter, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JsonObject inputs) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
@@ -227,6 +242,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         setCreatedAt(createdAt);
         setUpdatedAt(updatedAt);
         setDeletedAt(deletedAt);
+        setInputs(inputs);
     }
 
 
@@ -250,6 +266,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setCreatedAt(value.createdAt);
             setUpdatedAt(value.updatedAt);
             setDeletedAt(value.deletedAt);
+            setInputs(value.inputs);
         }
     }
 
@@ -267,6 +284,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.createdAt = getCreatedAt();
         object.updatedAt = getUpdatedAt();
         object.deletedAt = getDeletedAt();
+        object.inputs = getInputs();
         return object;
     }
 
@@ -289,6 +307,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.createdAt = getCreatedAt();
         pojo.updatedAt = getUpdatedAt();
         pojo.deletedAt = getDeletedAt();
+        pojo.inputs = getInputs();
         return pojo;
     }
 }

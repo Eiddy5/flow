@@ -52,11 +52,11 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
   的运行时协议；它们离开 Task 后没有独立业务意义。因此两个接口必须与 `Task`
   一起位于 `core/domains/tasks`。`RunContext`、`RunResult` 是 RunnableTask 的
   直接调用契约，也归入该包。Worker 和 Executor 只消费、不能拥有这些能力。
-- `RunContext` 每次只服务一次 RunnableTask 调用。它提供当前 Session、命令
-  DSLContext 和不可变运行时 `variables`；变量保留键 `$flow.execution` 与
-  `$flow.inputs` 分别携带当前 Execution 和实际 inputs，并通过 `executionId()`、
-  `inputs()` 提供便捷访问。它不提供 Task、WorkerTask、TaskRun、nexts 或状态推进
-  入口。
+- `RunContext` 每次只服务一次 RunnableTask 调用。它提供当前 Session 和不可变运行时
+  `variables`；变量保留键 `$flow.execution`、`$flow.inputs` 与 `$flow.taskInputs` 分别
+  携带当前 Execution、Execution 级 Flow inputs 和当前 TaskRun inputs，并通过
+  `executionId()`、`inputs()`、`taskInputs()` 提供便捷访问。它不提供 Task、WorkerTask、
+  TaskRun、nexts 或状态推进入口。
 - `RunResult` 只允许表达 COMPLETED 或 TERMINATED。WAITING 属于 BranchTask 的
   编排结果，不能由 RunnableTask 或 Worker 返回。
 - Executor 在把计划并入 Execution 前校验能力互斥性。没有能力或同时实现两种
@@ -70,9 +70,9 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
     并行批次。
 - `ExecutorService.handle(...)` 是 Task 能力分支的状态推进循环：每批 TaskRun
   并入 Execution 后，RunnableTask 暂存 WorkerTask 并返回提交边界；BranchTask
-  直接完成或等待，非等待分支随后立即继续推导下一批 TaskRun。ExecutionRunner
-  不调用 BranchTask 状态推进入口，只负责保存和 Worker 投递；DefaultExecutor 的
-  当前 Queue 路由职责由 ADR 0051 定义。
+  直接完成或等待，非等待分支随后立即继续推导下一批 TaskRun。BranchTask 状态推进
+  由 `ExecutorEventHandler` 在 `ExecutorContext` 周期内完成，后续周期通过
+  `ExecutorEvent` Queue 交接；DefaultExecutor 的当前 Queue 路由职责由 ADR 0059 定义。
 - TaskExtension 与通用 Plugin 只负责类型注册、创建、重建和类型专有 properties，
   与 RunnableTask/BranchTask 的运行能力正交。外部 Runnable Task 插件把执行逻辑
   写在具体 Task 类的 `run` 方法中，只需通过 Plugin SPI 注册 TaskExtension。

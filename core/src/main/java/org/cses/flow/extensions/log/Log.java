@@ -18,13 +18,18 @@ import java.util.Map;
 
 @Plugin(
     title = "日志",
-    description = "解析消息表达式并将结果写入应用日志",
+    description = "将模板消息写入应用日志",
     examples = {
         @Example(
-            title = "记录固定消息",
+            title = "记录流程消息",
             code = """
-                message: "流程已进入自动处理阶段"
-                """
+                key: log-flow
+                tasks:
+                  - key: write-log
+                    type: org.cses.flow.extensions.log.Log
+                    message: "流程已进入自动处理阶段"
+                """,
+            full = true
         )
     }
 )

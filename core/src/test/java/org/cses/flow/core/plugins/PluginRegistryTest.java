@@ -77,22 +77,34 @@ class PluginRegistryTest {
             SpecialTask.class.getPackageName(),
             metadata.packageName()
         );
-        assertEquals("Special task", metadata.title());
-        assertEquals("Used to verify plugin metadata.", metadata.description());
+        assertEquals("特殊任务", metadata.title());
+        assertEquals("处理特殊显示名称配置", metadata.description());
         assertEquals(List.of("TEST_NOTIFICATION"), metadata.capabilities());
         assertSame(Task.class, metadata.baseClass());
         assertEquals(1, metadata.examples().size());
         PluginExample example = metadata.examples().getFirst();
-        assertEquals("Configure a special task", example.title());
+        assertEquals("配置特殊任务", example.title());
         assertEquals(
             List.of(
-                "displayName: Special",
-                "displayName: Alternate"
+                """
+                    key: special-flow
+                    tasks:
+                      - key: special-task
+                        type: org.cses.flow.core.plugins.PluginRegistryTest.SpecialTask
+                        displayName: Special
+                    """,
+                """
+                    key: alternate-flow
+                    tasks:
+                      - key: alternate-task
+                        type: org.cses.flow.core.plugins.PluginRegistryTest.SpecialTask
+                        displayName: Alternate
+                    """
             ),
             example.code()
         );
         assertEquals("yaml", example.lang());
-        assertEquals(false, example.full());
+        assertEquals(true, example.full());
         assertThrows(
             UnsupportedOperationException.class,
             () -> metadata.examples().add(example)
@@ -221,16 +233,29 @@ class PluginRegistryTest {
     }
 
     @Plugin(
-        title = "Special task",
-        description = "Used to verify plugin metadata.",
+        title = "特殊任务",
+        description = "处理特殊显示名称配置",
         capabilities = "TEST_NOTIFICATION",
         examples = {
             @Example(
-                title = "Configure a special task",
+                title = "配置特殊任务",
                 code = {
-                    "displayName: Special",
-                    "displayName: Alternate"
-                }
+                    """
+                        key: special-flow
+                        tasks:
+                          - key: special-task
+                            type: org.cses.flow.core.plugins.PluginRegistryTest.SpecialTask
+                            displayName: Special
+                        """,
+                    """
+                        key: alternate-flow
+                        tasks:
+                          - key: alternate-task
+                            type: org.cses.flow.core.plugins.PluginRegistryTest.SpecialTask
+                            displayName: Alternate
+                        """
+                },
+                full = true
             )
         }
     )

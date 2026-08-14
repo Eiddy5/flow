@@ -49,13 +49,13 @@ public final class Uc03AutomaticTask extends Task implements RunnableTask {
             case "target-success" -> RunResult.success(Map.of(
                 "result",
                 "processed-" + nestedOutput(
-                    context.inputs(),
+                    context.taskInputs(),
                     "payload"
                 )
             ));
             case "observe-output" -> RunResult.success(Map.of(
                 "observed",
-                nestedOutput(context.inputs(), "result")
+                nestedOutput(context.taskInputs(), "result")
             ));
             case "target-fail" -> RunResult.failed(
                 "uc03-explicit-failure"

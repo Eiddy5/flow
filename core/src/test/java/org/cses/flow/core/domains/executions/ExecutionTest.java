@@ -21,7 +21,8 @@ final class ExecutionTest {
             "execution-stable-1",
             "execution-domain-company",
             "execution-domain-flow",
-            3
+            3,
+            Map.of()
         );
 
         assertEquals("execution-stable-1", execution.id());
@@ -31,11 +32,61 @@ final class ExecutionTest {
     }
 
     @Test
+    void storesConfirmedFlowInputsOnTheExecutionAggregate() {
+        Execution execution = Execution.create(
+            "execution-input-company",
+            "execution-input-flow",
+            1,
+            Map.of(
+                "amount", 1200,
+                "metadata", Map.of("source", "api")
+            )
+        );
+
+        assertEquals(
+            Map.of(
+                "amount", 1200,
+                "metadata", Map.of("source", "api")
+            ),
+            execution.inputs()
+        );
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> execution.inputs().put("amount", 1)
+        );
+    }
+
+    @Test
+    void bindsPendingInputsOnceBeforeExecutionStarts() {
+        Execution execution = Execution.create(
+            "execution-bind-company",
+            "execution-bind-flow",
+            1,
+            Map.of()
+        );
+
+        execution.bindInputs(Map.of("amount", 1200));
+        execution.bindInputs(Map.of("amount", 1200));
+
+        assertEquals(Map.of("amount", 1200), execution.inputs());
+        assertThrows(
+            WorkflowException.class,
+            () -> execution.bindInputs(Map.of("amount", 1300))
+        );
+        execution.start();
+        assertThrows(
+            WorkflowException.class,
+            () -> execution.bindInputs(Map.of("amount", 1200))
+        );
+    }
+
+    @Test
     void createTaskRunShouldGenerateStableChildIdentity() {
         Execution execution = Execution.create(
             "execution-domain-company",
             "execution-domain-flow",
-            1
+            1,
+            Map.of()
         );
         execution.start();
 
@@ -68,7 +119,8 @@ final class ExecutionTest {
         Execution execution = Execution.create(
             "execution-state-company",
             "execution-state-flow",
-            1
+            1,
+            Map.of()
         );
 
         assertTrue(execution.state().is(State.Type.CREATED));
@@ -135,7 +187,8 @@ final class ExecutionTest {
         Execution execution = Execution.create(
             "execution-route-company",
             "execution-route-flow",
-            1
+            1,
+            Map.of()
         );
 
         assertThrows(
@@ -166,7 +219,8 @@ final class ExecutionTest {
         Execution execution = Execution.create(
             "execution-batch-company",
             "execution-batch-flow",
-            1
+            1,
+            Map.of()
         );
         execution.start();
         TaskRun first = TaskRun.create(
@@ -193,7 +247,8 @@ final class ExecutionTest {
         Execution execution = Execution.create(
             "loop-company",
             "loop-flow",
-            1
+            1,
+            Map.of()
         );
         execution.start();
         TaskRun loop = execution.createTaskRun(
@@ -259,6 +314,7 @@ final class ExecutionTest {
                 "execution-route-company",
                 "execution-route-flow",
                 1,
+                Map.of(),
                 paused,
                 0,
                 List.of()

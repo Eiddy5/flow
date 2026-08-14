@@ -181,10 +181,7 @@ class ExecutionPauseLifecycleIntegrationTest {
             PausedTaskRunRef controlPause =
                 fixture.waitingForExecution(control.id());
 
-            Execution canceled = fixture.executionService().cancel(
-                fixture.session(),
-                target.id()
-            );
+            Execution canceled = fixture.cancel(target.id());
 
             assertEquals(State.Type.KILLED, canceled.state().current());
             assertEquals(
@@ -351,10 +348,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 afterRejectedCancel.lockVersion()
             );
 
-            Execution canceled = fixture.executionService().cancel(
-                fixture.session(),
-                running.id()
-            );
+            Execution canceled = fixture.cancel(running.id());
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().cancel(
@@ -500,12 +494,15 @@ class ExecutionPauseLifecycleIntegrationTest {
             ready.await();
             start.countDown();
 
-            assertEquals(1, (complete.get() ? 1 : 0) + (cancel.get() ? 1 : 0));
+            boolean resumeAccepted = complete.get();
+            boolean cancelCompleted = cancel.get();
+            assertTrue(resumeAccepted || cancelCompleted);
 
-            Execution reloaded = fixture.executionService().execution(
+            Execution reloaded = fixture.awaitExecution(
                 fixture.session(),
-                started.id()
-            ).orElseThrow();
+                started.id(),
+                Execution::isTerminal
+            );
             TaskRun pauseReloaded = reloaded.requireTaskRun(
                 pausedTaskRun.taskRunId()
             );

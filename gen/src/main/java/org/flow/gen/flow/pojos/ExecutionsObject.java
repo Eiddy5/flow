@@ -14,6 +14,7 @@ import org.flow.gen.flow.Tables;
 import org.flow.gen.flow.records.ExecutionsRecord;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.jooq.JSONB;
+import org.paas.json.JsonObject;
 import org.x9.jooq.common.JooqPojo;
 
 
@@ -37,6 +38,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public OffsetDateTime createdAt;
     public OffsetDateTime updatedAt;
     public OffsetDateTime deletedAt;
+    public JsonObject inputs;
 
     public ExecutionsObject() {}
 
@@ -53,6 +55,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.createdAt = value.createdAt;
         this.updatedAt = value.updatedAt;
         this.deletedAt = value.deletedAt;
+        this.inputs = value.inputs;
     }
 
     public ExecutionsObject(
@@ -67,7 +70,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         JSONB deleter,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt
+        OffsetDateTime deletedAt,
+        JsonObject inputs
     ) {
         this.id = id;
         this.companyId = companyId;
@@ -81,6 +85,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
+        this.inputs = inputs;
     }
 
     /**
@@ -251,6 +256,20 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
     }
 
+    /**
+     * Getter for <code>public.executions.inputs</code>.
+     */
+    public JsonObject getInputs() {
+        return this.inputs;
+    }
+
+    /**
+     * Setter for <code>public.executions.inputs</code>.
+     */
+    public void setInputs(JsonObject inputs) {
+        this.inputs = inputs;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -332,6 +351,12 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.deletedAt.equals(other.deletedAt))
             return false;
+        if (this.inputs == null) {
+            if (other.inputs != null)
+                return false;
+        }
+        else if (!this.inputs.equals(other.inputs))
+            return false;
         return true;
     }
 
@@ -351,6 +376,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
+        result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         return result;
     }
 
@@ -387,6 +413,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         map.put("created_at", createdAt);
         map.put("updated_at", updatedAt);
         map.put("deleted_at", deletedAt);
+        map.put("inputs", inputs == null ? null : inputs.toString());
         return map;
     }
 

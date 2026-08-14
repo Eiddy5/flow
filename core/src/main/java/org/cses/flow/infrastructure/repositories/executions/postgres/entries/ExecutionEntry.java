@@ -6,9 +6,12 @@ import org.cses.flow.core.domains.flows.State;
 import org.flow.gen.flow.pojos.ExecutionsObject;
 import org.flow.gen.flow.records.ExecutionsRecord;
 import org.jooq.JSONB;
+import org.paas.json.JsonObject;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+
+import static org.flow.gen.flow.Tables.EXECUTIONS;
 
 public final class ExecutionEntry extends ExecutionsObject {
 
@@ -18,6 +21,10 @@ public final class ExecutionEntry extends ExecutionsObject {
         entry.companyId = record.getCompanyId();
         entry.flowId = record.getFlowId();
         entry.flowReversion = record.getFlowReversion();
+        org.jooq.JSONB storedInputs = record.get(EXECUTIONS.INPUTS);
+        entry.inputs = storedInputs == null
+            ? null
+            : JsonObject.Parse(storedInputs.data());
         entry.state = record.getState();
         entry.lockVersion = record.getLockVersion();
         entry.creator = record.getCreator();
@@ -41,6 +48,7 @@ public final class ExecutionEntry extends ExecutionsObject {
         entry.companyId = execution.companyId();
         entry.flowId = execution.flowId();
         entry.flowReversion = execution.flowReversion();
+        entry.inputs = JsonObject.FromMap(execution.inputs());
         entry.state = StateJsonCodec.encode(execution.state());
         entry.lockVersion = execution.lockVersion();
         entry.creator = creator;
@@ -61,6 +69,7 @@ public final class ExecutionEntry extends ExecutionsObject {
             companyId,
             flowId,
             flowReversion,
+            inputs == null ? java.util.Map.of() : inputs.asMap(),
             StateJsonCodec.decode(state),
             lockVersion == null ? 0 : lockVersion,
             taskRuns

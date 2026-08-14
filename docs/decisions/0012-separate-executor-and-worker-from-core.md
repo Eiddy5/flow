@@ -6,8 +6,9 @@ Accepted（Worker 结果状态类型由 ADR 0017 修订；单轮上下文与 Def
 提交边界由 ADR 0020 修订；WorkerTaskHandler 与 WorkerContext 由 ADR 0024
 替代）
 
-DefaultExecutor 的提交职责已由 ADR 0051 迁移到 ExecutionRunner；DefaultExecutor
-当前只负责 Executor Command Queue 路由。
+DefaultExecutor 的提交职责已由 ADR 0051 迁移到 Executor Event Queue；外部 Command
+由 `ExecutionCommandEventHandler` 处理，内部周期由 `ExecutorEventHandler` 负责。
+DefaultExecutor 当前只负责两条 Queue 路由。
 
 ## 背景
 
@@ -54,15 +55,15 @@ Repository 协调，具体 Task 与 WorkerTaskHandler 实现继续作为扩展�
   `WorkerTaskResult`；结果使用 Flow 定义域统一的 `State.Type targetState`，
   完整 State 与 History 由 Execution 聚合中的运行对象持有，不再定义 Worker
   专属 outcome 枚举。
-- `ExecutionRunner` 负责当前命令事务内的聚合中间保存、Executor 驱动和 Worker
-  派发。Core CommandHandler 只完成用例校验和聚合加载，不保留另一个
-  ExecutionHandler。
+- `ExecutionCommandEventHandler` 负责外部 Command 的校验、Execution 物化/锁定和
+  内部 Event 投递；`ExecutorEventHandler` 负责当前 Event 事务内的聚合中间保存、
+  Executor 驱动和 Worker 派发。Core CommandHandler 不直接进入 Executor 状态机。
 - AUTO、PAUSE 等具体 Task 类型及 WorkerTaskHandler 实现继续放在
   `extensions`，顶层运行组件不依赖具体扩展实现。
 - `core` 不再建立 `executors` 或 `workers` 技术目录，也不保留
   `ExecutorService` 的重复入口。
 - ADR 0020 历史上把原 ExecutionHandler 职责迁入 DefaultExecutor；ADR 0051 又将
-  该提交职责迁入 ExecutionRunner，并将 DefaultExecutor 收敛为 Queue 路由。原有
+  该提交职责迁入 Executor Event Queue，并将 DefaultExecutor 收敛为两条 Queue 路由。原有
   handleNext/onNexts 的处理分为计划和应用两阶段；Execution、TaskRun、Worker 结果、
   事务和恢复的领域语义保持不变。
 
@@ -72,15 +73,15 @@ Repository 协调，具体 Task 与 WorkerTaskHandler 实现继续作为扩展�
 - Executor 的状态机类型集中在一个包中，避免状态推进逻辑伪装成通用 Core
   Service。
 - Worker 的调用协议与领域模型分开，同时保留具体 Task 行为的扩展能力。
-- ExecutionRunner 拥有 Repository 中间保存，可以维持既有稳定态事务和
-  Worker 外键记录要求。
+- ExecutorEventHandler 拥有一个 Event 周期内的 Repository 中间保存，可以维持既有
+  稳定态事务和 Worker 外键记录要求。
 
 ## 后果
 
 - Core 的 Execution CommandHandler 和 ExecutionService 通过顶层 Executor
   类型建立运行上下文。
-- ExecutionRunner 同时依赖 Core Repository 端口与 Worker，但具体扩展仍由
-  Micronaut 按 WorkerTaskHandler 接口注入。
+- ExecutorEventHandler 同时依赖 Core Repository 端口与 Worker，但具体扩展仍由
+  Micronaut 按 WorkerDispatcher 协议注入。
 - 生产代码、测试和文档中的旧包导入必须一次迁移，不能保留兼容包装或重复类型。
 - 架构测试必须阻止 Executor 或 Worker 源码重新进入 Core。
 - ADR 0001 与 ADR 0002 的运行语义继续有效，其包边界由本 ADR 修订。

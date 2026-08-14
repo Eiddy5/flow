@@ -137,14 +137,14 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
 
     /**
-     * The column <code>public.flows.variables</code>.
-     */
-    public final TableField<FlowsRecord, JSONB> VARIABLES = createField(DSL.name("variables"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
      * The column <code>public.flows.deleted</code>.
      */
     public final TableField<FlowsRecord, Boolean> DELETED = createField(DSL.name("deleted"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
+
+    /**
+     * The column <code>public.flows.variables</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> VARIABLES = createField(DSL.name("variables"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
 
     private FlowsTable(Name alias, Table<FlowsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

@@ -79,14 +79,20 @@ class PluginControllerTest {
         );
         assertEquals(1, details.examples().size());
         assertEquals(
-            "Notify the Flow alerts channel",
+            "发送流程告警",
             details.examples().getFirst().title()
         );
         assertEquals(
-            List.of("channel: flow-alerts"),
+            List.of("""
+                key: notification-flow
+                tasks:
+                  - key: notify-alerts
+                    type: org.cses.flow.core.plugins.TestNotificationTask
+                    channel: flow-alerts
+                """),
             details.examples().getFirst().code()
         );
         assertEquals("yaml", details.examples().getFirst().lang());
-        assertEquals(false, details.examples().getFirst().full());
+        assertEquals(true, details.examples().getFirst().full());
     }
 }

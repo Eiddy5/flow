@@ -1,8 +1,12 @@
-# ADR 0051：通过 Executor Command Queue 创建和启动 Execution
+# ADR 0051：通过 Executor Command Queue 创建和推进 Execution
 
 ## 状态
 
 Accepted
+
+本 ADR 的外部 Command 受理边界继续有效；内部运行提交循环和状态交接已由
+[ADR 0059](0059-route-executor-state-handoffs-through-executor-event-queue.md) 修订为
+`ExecutorEvent` Queue 与 `handlers.ExecutorEventHandler`。
 
 本决策修订 ADR 0002、0012 和 0020 中由 `DefaultExecutor` 直接承担 Execution
 运行提交边界的职责；状态机、精确 Flow Reversion、Worker 同步调用和持久化顺序保持
@@ -33,16 +37,18 @@ Command 时还会继续复制同样的入口。
 
 ### 方案三：Service 投递统一 Executor Command，由 Executor Handler 物化和推进
 
-`ExecutionService` 构造 Executor 拥有的 `Create`，统一 Queue 保存 Command；
-`DefaultExecutor` 只负责 Queue 生命周期和消息路由，`ExecutorCommandHandler` 解释具体
-类型并调用内部运行提交逻辑。采用此方案。
+`ExecutionService` 构造 Executor 拥有的 `Create`、`Resume` 或 `Cancel`，统一 Queue 保存 Command；
+`DefaultExecutor` 只负责两条 Queue 生命周期和消息路由，
+`ExecutionCommandEventHandler` 解释具体外部 Command，物化 Execution 并投递内部
+`ExecutorEvent`。采用此方案。
 
 ## 决策
 
 ### Command 与受理边界
 
-- `org.cses.flow.executor.commands.ExecutorCommand` 是 Executor Command Queue 的封闭
-  多态契约；当前首个具体类型是 `Create`，Queue 名为 `flow-executor-command`。
+- `org.cses.flow.executor.commands.ExecutionCommand` 是 Executor Command Queue 的封闭
+  多态契约；具体类型包括 `Create`、`Resume` 和 `Cancel`，Queue 名为
+  `flow-executor-command`。
 - `ExecutionService.create(session, flowId)` 在调用线程读取最新、未删除 Flow，生成稳定
   Execution id，并用精确 `flowId + flowReversion` 构造 `Create` 后同步 `emit`。
 - 普通 `Create.dsl()` 返回 `null`，Queue 使用自有事务提交。Service 返回的
@@ -52,6 +58,10 @@ Command 时还会继续复制同样的入口。
   请求 Session 元数据，以及 ADR 0052 定义的已规范化 Flow inputs；不保存 DSL。
   消费者通过宿主 `SessionFactory` 创建具体
   Session/User 类型，并优先重新加载用户资料。
+- `ExecutionService.resume(session, executionId, taskRunId, outputs)` 先按租户读取当前
+  Execution，按其精确 Flow Reversion 校验并规范化 Resume inputs，再投递 `Resume`。
+  `Resume` payload 只保存 company id、actor id、execution id、taskRun id 和规范化
+  outputs，不复制 Flow、Session 设备信息或 DSL。
 - `createPending` 仍同步物化但不启动 Execution。`continueExecution` 锁定一个
   `CREATED` Execution、按精确 Reversion 确认 Flow inputs 后，由 Service 在同一
   `CommandExecutor` 事务完成 `Create`
@@ -59,25 +69,32 @@ Command 时还会继续复制同样的入口。
 
 ### 路由与处理
 
-- `DefaultExecutor` 是 eager 生命周期 Bean，只订阅 `DispatchQueue<ExecutorCommand>`，
-  将消息路由给 `ExecutorCommandHandler`，关闭时关闭订阅。它不访问 Repository、
-  `ExecutorService`、`WorkerDispatcher` 或 DSLContext。
-- `ExecutorCommandHandler` 是 Executor Command 的唯一处理入口。它恢复 Session，按
-  Command 具体类型分派，并为每条消息开启独立 Flow JOOQ 事务。
+- `DefaultExecutor` 是 eager 生命周期 Bean，同时订阅 `DispatchQueue<ExecutionCommand>`
+  和 `DispatchQueue<ExecutorEvent>`，分别路由给
+  `ExecutionCommandEventHandler` 和 `handlers.ExecutorEventHandler`，关闭时关闭两条
+  订阅。它不访问 Repository、`ExecutorService`、`WorkerDispatcher` 或 DSLContext。
+- `ExecutionCommandEventHandler` 是 Executor Command 的唯一外部处理入口。它恢复最小
+  必要 Session，按 Command 具体类型分派，并为每条消息开启独立 Flow JOOQ 事务；它
+  只物化/锁定 Execution、校验命令并投递内部 `ExecutorEvent`，不直接驱动状态机。
 - 处理 `Create` 时，Handler 加载 Command 固定的 Flow Reversion；若 Execution 尚不
   存在，就使用 Command 中的稳定 id 创建；若已存在，就校验 Flow 引用一致并按租户锁定。
   终态或暂停态的重复 `Create` 是幂等空操作。
+- 处理 `Resume` 时，Handler 锁定 execution id 对应的 Execution，加载其精确 Flow
+  Reversion，复核目标 Pause TaskRun 和 outputs，然后调用既有 Resume 运行入口；重复或
+  已失效的 Resume 是幂等空操作。Resume 运行入口内部先调用 `ExecutorService.resume`
+  再由 `ExecutorEvent` Queue 交给 `ExecutorEventHandler` 继续调度后续工作。
 - 原 `ExecutionCommandPublisher`、`ExecutionCommandConsumer`、
   `ExecutionStartCommand` 与 Core `RunExecutionCommand/Handler` 删除；Command 不再跨
   Executor/Core 来回转换。
 
 ### 运行提交
 
-- 原 `DefaultExecutor` 的状态机提交循环迁移到内部 `ExecutionRunner`。它调用
-  `ExecutorService`、保存 Execution、同步投递 WorkerTask 并应用结果。
-- 首次异步推进期间，确定性的 `RunnableTask` 运行时异常由 `ExecutionRunner.execute`
-  转换为失败结果，使 Execution 落为 `FAILED` 后正常确认 Queue Command；同步
-  `resume`/`cancel` 仍保留异常传播与事务回滚语义。
+- 原 `DefaultExecutor` 的状态机提交循环迁移到内部 `ExecutorEventHandler`。它调用
+  `ExecutorService`、保存 Execution、同步投递 WorkerTask、应用结果，并在需要时投递
+  下一条 `ExecutorEvent`。
+- 首次异步推进和异步 Resume 期间，确定性的 `RunnableTask` 运行时异常由
+  `ExecutorEventHandler` 转换为失败结果，使 Execution 落为 `FAILED` 后正常确认 Queue
+  Command；同步 `cancel` 仍保留异常传播与事务回滚语义。
 - `DefaultDispatchQueue` 只在 Handler 正常返回时删除消息；Handler 异常使领取事务回滚
   并重试。
 - Execution 查询继续以父行共享锁固定聚合读取边界，避免异步提交期间拼出不一致快照。
@@ -87,10 +104,11 @@ Command 时还会继续复制同样的入口。
 ```mermaid
 sequenceDiagram
     participant S as ExecutionService
-    participant Q as ExecutorCommand Queue
+    participant Q as ExecutionCommand Queue
     participant D as DefaultExecutor
-    participant H as ExecutorCommandHandler
-    participant R as ExecutionRunner
+    participant H as ExecutionCommandEventHandler
+    participant Q2 as ExecutorEvent Queue
+    participant R as ExecutorEventHandler
     participant E as ExecutorService(state machine)
     participant W as WorkerDispatcher
 
@@ -98,35 +116,50 @@ sequenceDiagram
     S->>Q: emit(Create)
     Q-->>S: accepted
     S-->>S: return CREATED receipt
-    Q->>D: deliver ExecutorCommand
+    Q->>D: deliver ExecutionCommand
     D->>H: handle(command)
     H->>H: restore Session + route Create
     H->>H: create/lock Execution + load exact Flow
-    H->>R: execute(context)
-    loop until stable state
-        R->>E: process(context)
-        R->>R: persist aggregate changes
-        R->>W: dispatch WorkerTask
-        W-->>R: WorkerTaskResult
-    end
+    H->>Q2: emit(ExecutorEvent) in same transaction
+    Q2->>R: handle(event)
+    R->>R: reload Execution + exact Flow + Context
+    R->>E: process(context)
+    R->>R: persist aggregate changes
+    R->>W: dispatch WorkerTask
+    W-->>R: WorkerTaskResult
+    R->>Q2: emit(next PROCESS Event) when needed
     H-->>Q: normal return acknowledges command
+
+    S->>S: validate exact paused TaskRun + normalize outputs
+    S->>Q: emit(Resume)
+    Q-->>S: accepted
+    S-->>S: return current Execution receipt
+    Q->>D: deliver Resume
+    D->>H: handle(Resume)
+    H->>H: restore minimal Session + lock Execution + load exact Flow
+    H->>Q2: emit(RESUME ExecutorEvent)
+    Q2->>R: handle(event)
+    R->>E: resume(context, taskRunId, outputs)
+    R->>R: persist and emit next PROCESS Event when needed
 ```
 
 ## 不变量
 
 - `ECMD-001`：Service 构造的 `Create` 必须携带稳定 execution id 和精确 Flow
-  Reversion；Handler 不在消费时重新选择 latest。
+  Reversion；`Resume` 必须携带稳定 execution id 和精确 taskRun id；Handler 不在消费时
+  重新选择 latest。
 - `ECMD-002`：`DefaultExecutor` 只做 Queue 订阅和 handler 路由，不拥有领域推进、
   Repository 或 Worker 协调逻辑。
-- `ECMD-003`：所有 Executor Command 只由 `ExecutorCommandHandler` 解释；不能为每个
+- `ECMD-003`：所有 Executor Command 只由 `ExecutionCommandEventHandler` 解释；不能为每个
   Command 复制 Publisher/Consumer/Core Run Command 链路。
-- `ECMD-004`：普通启动返回只代表 Queue 受理；Execution 的持久化与运行是异步结果。
+- `ECMD-004`：启动和 Resume 返回只代表 Queue 受理；Execution 的持久化与运行是异步
+  结果。
 - `ECMD-005`：可信 pending continuation 的 Execution 行和 `Create` Queue 行必须在同一
  事务提交或回滚。
 - `ECMD-006`：重复 `Create` 不能改变 Execution 的 Flow 引用，也不能重复推进终态或
   暂停态 Execution。
 - `ECMD-007`：Queue payload 不保存 DSLContext；Session 恢复必须保留 tenant 与 actor
-  身份。
+  身份；Resume 不携带 Create 的设备和请求元数据快照。
 - `ECMD-008`：Queue Consumer 异常保留消息重试；确定性 Task 业务失败形成可查询的
   Execution/TaskRun 失败事实。
 
@@ -139,5 +172,5 @@ sequenceDiagram
 - 交付为至少一次；Task 在产生数据库外部副作用时仍须使用自身业务标识保证幂等。
 - Queue Handler 的运行事务与领取事务会同时占用数据库连接；连接池必须为 Subscription
   和普通命令保留余量。
-- 当前只有 `Create`；增加 Resume、Kill 等异步 Command 时扩展封闭契约和同一个 Handler，
-  不扩展 `DefaultExecutor` 的领域职责。
+- 当前异步类型包括 `Create`、`Resume` 和 `Cancel`；后续增加其他异步 Command 时继续扩展封闭
+  契约和同一个 Handler，不扩展 `DefaultExecutor` 的领域职责。

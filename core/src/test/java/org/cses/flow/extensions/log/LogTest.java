@@ -9,8 +9,6 @@ import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.plugins.TaskPluginTestSupport;
 import org.cses.flow.core.runner.RunContext;
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -142,8 +140,7 @@ class LogTest {
     private static RunContext context(Map<String, ?> inputs) {
         return RunContext.create(
             new Session<User>(),
-            DSL.using(SQLDialect.POSTGRES),
-            Map.of(RunContext.INPUTS_VARIABLE, inputs)
+            Map.of(RunContext.TASK_INPUTS_VARIABLE, inputs)
         );
     }
 

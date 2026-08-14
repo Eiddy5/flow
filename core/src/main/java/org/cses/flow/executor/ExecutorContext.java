@@ -7,7 +7,6 @@ import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.worker.WorkerTask;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -23,7 +22,6 @@ public final class ExecutorContext {
 
     private final Execution execution;
     private final Flow flow;
-    private final Map<String, Object> flowInputs;
     private final List<TaskRun> nexts;
     private final List<WorkerTask> workerTasks;
     private final List<String> orchestrationCompletions;
@@ -31,17 +29,8 @@ public final class ExecutorContext {
     private boolean executionUpdated;
 
     public ExecutorContext(Flow flow, Execution execution) {
-        this(flow, execution, restoredFlowInputs(execution));
-    }
-
-    public ExecutorContext(
-        Flow flow,
-        Execution execution,
-        Map<String, ?> flowInputs
-    ) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.execution = Objects.requireNonNull(execution, "execution");
-        this.flowInputs = immutableFlowInputs(flowInputs);
         if (!flow.identifiedBy(execution.flowId())
             || !flow.companyId().equals(execution.companyId())
             || flow.reversion() != execution.flowReversion()) {
@@ -62,10 +51,6 @@ public final class ExecutorContext {
 
     public Execution execution() {
         return execution;
-    }
-
-    public Map<String, Object> flowInputs() {
-        return flowInputs;
     }
 
     public Map<String, Object> flowVariables() {
@@ -126,7 +111,10 @@ public final class ExecutorContext {
         workerTasks.addAll(plannedWorkerTasks);
     }
 
-    List<WorkerTask> takeWorkerTasks() {
+    /**
+     * Removes the Worker effects staged by the current scheduling cycle.
+     */
+    public List<WorkerTask> takeWorkerTasks() {
         List<WorkerTask> staged = List.copyOf(workerTasks);
         workerTasks.clear();
         return staged;
@@ -144,7 +132,10 @@ public final class ExecutorContext {
         return staged;
     }
 
-    boolean takeExecutionUpdated() {
+    /**
+     * Consumes the current-cycle persistence marker.
+     */
+    public boolean takeExecutionUpdated() {
         boolean updated = executionUpdated;
         executionUpdated = false;
         return updated;
@@ -167,38 +158,4 @@ public final class ExecutorContext {
         return this;
     }
 
-    private static Map<String, Object> restoredFlowInputs(
-        Execution execution
-    ) {
-        if (execution == null) {
-            return Map.of();
-        }
-        for (TaskRun taskRun : execution.taskRuns()) {
-            Object value = taskRun.inputs().get("flowInputs");
-            if (!(value instanceof Map<?, ?> values)) {
-                continue;
-            }
-            Map<String, Object> restored = new LinkedHashMap<>();
-            values.forEach((key, input) -> restored.put(
-                String.valueOf(key),
-                Objects.requireNonNull(input, "Flow input value")
-            ));
-            return Map.copyOf(restored);
-        }
-        return Map.of();
-    }
-
-    private static Map<String, Object> immutableFlowInputs(
-        Map<String, ?> values
-    ) {
-        if (values == null || values.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Object> copied = new LinkedHashMap<>();
-        values.forEach((key, value) -> copied.put(
-            Objects.requireNonNull(key, "Flow input key"),
-            Objects.requireNonNull(value, "Flow input value")
-        ));
-        return Map.copyOf(copied);
-    }
 }

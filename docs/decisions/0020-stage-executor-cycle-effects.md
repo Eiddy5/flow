@@ -4,7 +4,7 @@
 
 Accepted（nexts 两阶段应用继续有效；Task 能力分支及 ExecutorService 内部循环由
 ADR 0024 和后续已确认运行模型修订；DefaultExecutor 提交职责由 ADR 0051 迁移到
-ExecutionRunner）
+Executor Event Queue）
 
 本决策修订 ADR 0002 中“创建 Handler 先启动 Execution、`handleNext` 直接创建
 TaskRun”的调用顺序，以及 ADR 0012 中由 Core `ExecutionHandler` 协调保存和
@@ -101,7 +101,8 @@ Context 的调度字段为 `execution`、`flow`、`nexts`、`workerTasks`、
 `onNexts` 遇到 BranchTask 时直接在 Executor 内启动并收敛对应 TaskRun；无需
 外部恢复的结构节点完成后，`handle` 立即进入下一轮 `handleNext`。PAUSE 先进入
 WAITING，再由下一轮空批次使 Execution 收敛到 WAITING。BranchTask 不形成
-WorkerTask，也不由 ExecutionRunner 调用第二个状态推进入口。
+WorkerTask，也不由外部 Command Handler 调用第二个状态推进入口；后续周期统一由
+`ExecutorEvent` Queue 交给 `ExecutorEventHandler`。
 
 `ExecutorService.handleNext(context)` 只执行以下动作：
 
@@ -131,40 +132,38 @@ Repository 或调用 Worker。
 同一批次必须先完整验证再并入；批次中任一重复身份、重复非循环 Task、非法父
 TaskRun 或非 CREATED TaskRun 都不能留下部分聚合变化。
 
-`handleNext` 与 `onNexts` 是 Executor 模块内部阶段，统一由 `handle` 按顺序并
-循环调用。外部运行协调只通过 ExecutionRunner 的 execute、resume 和 cancel 入口
-推进，不承担阶段排序、BranchTask 递进或重复消费防护。DefaultExecutor 的当前职责
-由 ADR 0051 修订为 Executor Command Queue 路由。
+`handleNext` 与 `onNexts` 是 Executor 模块内部阶段，统一由
+`ExecutorService.process(context)` 在一个 Event 周期内按顺序调用。外部命令只通过
+`ExecutionCommandEventHandler` 进入 Executor；后续内部周期由
+`ExecutorEventHandler` 领取 Event 并推进。DefaultExecutor 的当前职责由 ADR 0059
+修订为两条 Queue 路由。
 
-### ExecutionRunner
+### ExecutorEventHandler
 
-`ExecutionRunner` 是当前运行组件的统一提交边界。命令 Handler 负责校验用例、
-通过 `ExecutionRepository.lockById(...)` 按租户锁定读取已有 Execution，再加载
-其精确 Flow Reversion，然后把纯 ExecutorContext 交给 ExecutionRunner。新建
-Execution 尚无持久化行，不执行锁定读取。ExecutionRunner 负责：
+`ExecutorEventHandler` 是当前内部运行组件的单 Event 提交边界。外部
+`ExecutionCommandEventHandler` 负责校验、物化/锁定和投递 `ExecutorEvent`；内部处理器
+通过 `ExecutionRepository.lockById(...)` 按租户锁定读取已有 Execution，再加载其精确
+Flow Reversion，创建纯 ExecutorContext。内部处理器负责：
 
-1. 调用 `handle`，由其循环完成 `handleNext`、`onNexts` 与 BranchTask 状态推进。
-2. 根据 `handle` 的返回值和本次调用栈中的局部变更标记，通过
-   ExecutionRepository 保存完整聚合。
+1. 调用 `ExecutorService.process`，完成当前 Event 的计划、应用与 BranchTask 状态推进。
+2. 根据本轮变更标记，通过 ExecutionRepository 保存完整聚合。
 3. 在 Worker 调用前保存 CREATED/RUNNING TaskRun，满足 Task 自有记录的外键
    前置条件。
-4. 投递本轮 WorkerTask，将 WorkerTaskResult 交回 ExecutorService 应用，再次
-   调用 `handle` 推导后续状态。
-5. 持续提交 Worker 边界，直到 Execution 到达等待、终态或当前没有可同步推进
-   的工作。
-6. 统一处理取消；同步恢复或取消中的未处理异常继续向外抛出并回滚事务。首次异步
-   启动中的确定性 RunnableTask 异常按 ADR 0051 记录为失败结果。
+4. 投递本轮 WorkerTask，将 WorkerTaskResult 交回 ExecutorService 应用，再次保存结果。
+5. 若 Execution 仍可推进，在同一事务投递下一条 `ExecutorEvent`，而不是在同一个
+   调用栈中继续复用 Context。
+6. 统一处理取消；Queue 领取的 `PROCESS`、`RESUME` 和 `CANCEL` 都在
+   `ExecutorEventHandler` 的独立事务中完成。启动、恢复和取消中的确定性
+   RunnableTask 异常按 ADR 0051 记录为失败结果。
 
 Core 中不再保留另一个 `ExecutionHandler` 协调器，避免两个对象共同拥有保存和
 投递顺序。
 
 ### 事务、投递与恢复
 
-当前 WorkerDispatcher 仍在 CommandExecutor 建立的 JOOQ 事务内同步调用；
-Repository 的中间 `save` 不是独立提交。同步恢复或取消时，Worker 抛出的未处理异常
-使命令事务回滚，异常不写入 Context。由 Queue 消费触发的首次 `execute` 则把确定性
-RunnableTask 异常记录为 `FAILED`，使持久化启动 Command 可以正常确认而不会成为
-永久毒消息。
+当前 WorkerDispatcher 在 ExecutorEventHandler 建立的 JOOQ 事务内同步调用；
+Repository 的中间 `save` 不是独立提交。Queue 消费触发的确定性 RunnableTask 异常
+记录为 `FAILED`，使持久化 Command 可以正常确认而不会成为永久毒消息。
 
 PostgreSQL Repository 的 `lockById` 使用 Execution 行的 `FOR UPDATE` 锁，
 保存时继续使用行锁与 lockVersion CAS；修改已有 Execution 的一个命令仍最多
@@ -174,14 +173,14 @@ PostgreSQL Repository 的 `lockById` 使用 Execution 行的 `FOR UPDATE` 锁，
 本决策没有实现远程 Worker 或 exactly-once。ADR 0051 让普通启动先由 Service 投递
 `Create`，再由 Handler 创建 Execution；可信 pending continuation 仍在同一
 PostgreSQL 事务中保存 Execution 与持久化 Dispatch Queue Command。运行提交边界由
-`ExecutionRunner` 保持。
+`ExecutorEventHandler` 保持。
 
 ## 调用顺序
 
 ```mermaid
 sequenceDiagram
     participant H as Command Handler
-    participant D as ExecutionRunner
+    participant D as ExecutorEventHandler
     participant S as ExecutorService
     participant C as ExecutorContext
     participant R as ExecutionRepository
@@ -189,25 +188,16 @@ sequenceDiagram
 
     H->>R: lockById(companyId, executionId)
     R-->>H: locked Execution
-    H->>D: execute(session, dsl, context)
-    D->>S: handle(context)
-    loop until Worker or stable-state boundary
-        S->>C: handleNext stages nexts
-        Note over C: Execution 尚未改变
-        S->>C: onNexts consumes nexts
-        S->>C: update Execution + states
-        alt BranchTask
-            S->>C: complete or wait TaskRun
-        else RunnableTask
-            S->>C: stage WorkerTask
-        end
-    end
-    S-->>D: aggregate changed?
-    D->>R: save when local change flag is true
+    H->>D: handle(ExecutorEvent)
+    D->>R: lock Execution + load exact Flow
+    D->>S: process(context)
+    S->>C: stage nexts/effects
+    D->>R: save current Event changes
     D->>W: dispatch WorkerTask
     W-->>D: WorkerTaskResult
     D->>S: applyResult(context, result)
-    D->>D: repeat until stable
+    D->>R: save result changes
+    D->>D: emit next ExecutorEvent when needed
 ```
 
 ## 不变量
@@ -219,13 +209,13 @@ sequenceDiagram
 - `ECTX-003`：`handleNext` 返回后 Execution 与 TaskRun 历史保持不变。
 - `ECTX-004`：`handle` 必须在形成下一批 nexts 前消费并清空当前批次。
 - `ECTX-005`：只有 `onNexts` 可以把调度产生的 TaskRun 批次并入 Execution。
-- `ECTX-006`：未保存聚合变化只存在于 ExecutionRunner 当前调用栈，不进入
-  Context；State History 不因保存而重置。
+- `ECTX-006`：未保存聚合变化只存在于当前 ExecutorEventHandler 调用栈，不进入
+  Queue payload；State History 不因保存而重置。
 - `ECTX-007`：`states` 是本轮 Execution 状态增量，不替代
   `Execution.state.history`。
 - `ECTX-008`：Worker 投递前必须保存包含目标 TaskRun 的 Execution 聚合。
-- `ECTX-009`：同步恢复或取消中的未处理异常回滚命令；首次异步启动中的确定性
-  RunnableTask 异常按 ADR 0051 形成 FAILED 事实，不伪造其他终态。
+- `ECTX-009`：Queue 驱动的启动、恢复或取消中的确定性 RunnableTask 异常按 ADR
+  0051 形成 FAILED 事实，不伪造其他终态。
 - `ECTX-010`：推进、恢复或取消已有 Execution 前，Handler 必须在当前事务中
   按租户锁定读取聚合。
 - `ECTX-011`：非等待 BranchTask 必须在 `handle` 内完成后继续推导 nexts；PAUSE

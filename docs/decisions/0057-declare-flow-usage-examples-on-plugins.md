@@ -1,8 +1,8 @@
-# ADR 0057：在插件元信息中声明 Flow 使用示例
+# ADR 0057：在插件元信息中声明完整 Flow 使用示例
 
 ## 状态
 
-Accepted（扩展 ADR 0027 的插件描述元信息与详情查询协议）
+Accepted（扩展 ADR 0027 的插件描述元信息与详情查询协议，并修订插件示例格式）
 
 ## 背景
 
@@ -42,20 +42,22 @@ JSON Schema。Schema 能说明一个字段接受什么数据，但不能表达�
 - `@Plugin` 增加 `Example[] examples() default {}`。插件作者只通过该字段声明使用
   示例；空数组保持现有宿主插件的源码和启动兼容性。
 - 每个 `Example` 包含可选 `title`、一个或多个独立 `code` 源码块、默认值为
-  `yaml` 的 `lang`，以及默认值为 `false` 的 `full`。
+  `yaml` 的 `lang`，以及默认值为 `false` 的 `full`。当前插件示例统一声明为完整
+  Flow YAML，并显式设置 `full = true`；默认值保留用于兼容历史元信息。
 - 注册表按注解声明顺序将示例转换为不可变 `PluginExample`，并保存在
   `PluginMetadata.examples`。示例源码块不能为空，语言标识不能为空。
 - `PluginMetadata` 保留不带 examples 的旧构造入口，并将其归一为空列表，避免已有
   Core 调用方因新增元信息而必须立即修改。
 
-### `full` 与 Flow YAML
+### `full` 与完整 Flow YAML
 
-- `full = false` 表示源码块只声明 Task 配置字段。消费方展示或插入示例时，为其补充
-  唯一 `key` 和当前插件的 canonical `type`。
-- `full = true` 表示源码块已经是完整 Task mapping，必须自行包含 `key` 和准确的
-  canonical `type`，消费方不再补充这两个字段。
-- 两种形式都不得声明 `id`、`parentId` 或 `taskId`。这些值仍只由 Flow 定义物化链路
-  生成，示例不能改变 ADR 0013 和 ADR 0026 的系统身份规则。
+- `full = true` 表示源码块已经是最小完整 Flow mapping，必须自行包含 Flow `key`、
+  `tasks` 以及插件所在 Task 的准确 canonical `type`；消费方直接解析和展示源码，
+  不再补充 Flow 或 Task 字段。
+- `full = false` 仅为兼容历史插件元信息保留；新插件不得使用只包含插件字段的片段作为
+  示例。
+- 完整 Flow 及其嵌套 Task 都不得声明 `id`、`parentId` 或 `taskId`。这些值仍只由
+  Flow 定义物化链路生成，示例不能改变 ADR 0013 和 ADR 0026 的系统身份规则。
 - `@Schema.example` 和 `@Schema.examples` 继续只描述单个字段；`@Plugin.examples`
   描述插件在 Flow 中的组合用法，两者不合并。
 
@@ -65,8 +67,8 @@ JSON Schema。Schema 能说明一个字段接受什么数据，但不能表达�
 - `GET /api/plugins/{canonicalType}` 在原有 `metadata + schema` 之外返回顶层
   `examples`，每项保持 `title`、`code`、`lang` 和 `full`。
 - Flow 内置的 AutomaticTask、Log、Parallel、Pause、Loop 和 LoopUntil 都至少声明
-  一个示例。测试按照 `full` 规则规范化每个 YAML 源码块，再通过真实
-  `FlowDefinitionDeserializer` 物化，确保示例使用已注册类型并满足当前定义约束。
+  一个最小完整 Flow 示例。测试直接通过真实 `FlowDefinitionDeserializer` 物化每个
+  YAML 源码块，确保示例使用已注册类型并满足当前定义约束。
 - 外部插件的示例仍是可选文档元信息。注册阶段验证其基本结构，但不执行示例，也不让
   示例承担插件可运行性的证明责任。
 
@@ -80,6 +82,6 @@ JSON Schema。Schema 能说明一个字段接受什么数据，但不能表达�
 
 - 新增内置插件时必须同时提供至少一个可物化的 Flow YAML 示例。
 - 宿主插件可以渐进补充示例；未声明时详情接口返回空数组。
-- 示例随插件类和 canonical type 一同发布，类改名或换包时完整示例中的 `type` 也必须
+- 示例随插件类和 canonical type 一同发布，类改名或换包时 Flow 中的 `type` 也必须
   同步修改。
 - 示例只提供定义文档，不增加运行时脚本、代码执行、页面组件协议或插件安装生命周期。

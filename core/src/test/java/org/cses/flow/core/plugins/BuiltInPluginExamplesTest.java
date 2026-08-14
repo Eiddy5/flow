@@ -13,7 +13,6 @@ import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -40,7 +39,7 @@ class BuiltInPluginExamplesTest {
     );
 
     @Test
-    void everyBuiltInPluginProvidesDeployableYamlExamples() {
+    void everyBuiltInPluginProvidesDeployableFullFlowYamlExamples() {
         DefaultPluginRegistry registry = new DefaultPluginRegistry(
             BUILT_IN_PLUGINS
         );
@@ -61,19 +60,12 @@ class BuiltInPluginExamplesTest {
             for (PluginExample example : plugin.examples()) {
                 assertEquals("yaml", example.lang());
                 for (String source : example.code()) {
-                    Map<String, Object> task = taskDefinition(
-                        yamlParser.parse(source),
-                        plugin,
-                        example,
-                        exampleIndex
-                    );
+                    Map<String, Object> definition = yamlParser.parse(source);
+                    assertCompleteFlowDefinition(definition, example);
                     Flow flow = context.deploy(
                         "plugin-example-company",
                         "plugin-example-flow-" + exampleIndex,
-                        Map.of(
-                            "key", "plugin-example-" + exampleIndex,
-                            "tasks", List.of(task)
-                        ),
+                        definition,
                         null,
                         ActorRef.create("example-user", "Example User"),
                         exampleIndex + 1L
@@ -89,30 +81,30 @@ class BuiltInPluginExamplesTest {
         assertTrue(exampleIndex >= BUILT_IN_PLUGINS.size());
     }
 
-    private static Map<String, Object> taskDefinition(
+    private static void assertCompleteFlowDefinition(
         Map<String, Object> source,
-        PluginMetadata<Task> plugin,
-        PluginExample example,
-        int exampleIndex
+        PluginExample example
     ) {
-        for (String systemField : SYSTEM_FIELDS) {
-            assertFalse(
-                source.containsKey(systemField),
-                "Plugin examples must not declare " + systemField
-            );
-        }
-        if (example.full()) {
-            assertEquals(plugin.canonicalType(), source.get("type"));
-            assertTrue(source.get("key") instanceof String);
-            return source;
-        }
+        assertTrue(example.full(), "Plugin examples must be full Flows");
+        assertTrue(source.get("key") instanceof String);
+        assertTrue(source.get("tasks") instanceof List<?>);
+        assertEquals(1, ((List<?>) source.get("tasks")).size());
+        assertNoSystemFields(source);
+    }
 
-        assertFalse(source.containsKey("key"));
-        assertFalse(source.containsKey("type"));
-        Map<String, Object> augmented = new LinkedHashMap<>();
-        augmented.put("key", "example-task-" + exampleIndex);
-        augmented.put("type", plugin.canonicalType());
-        augmented.putAll(source);
-        return Map.copyOf(augmented);
+    private static void assertNoSystemFields(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
+                if (entry.getKey() instanceof String key) {
+                    assertFalse(
+                        SYSTEM_FIELDS.contains(key),
+                        "Plugin examples must not declare " + key
+                    );
+                }
+                assertNoSystemFields(entry.getValue());
+            }
+        } else if (value instanceof Iterable<?> values) {
+            values.forEach(BuiltInPluginExamplesTest::assertNoSystemFields);
+        }
     }
 }

@@ -3,7 +3,6 @@ package org.cses.flow.core.runner;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.tasks.RunnableTask;
-import org.jooq.DSLContext;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -16,9 +15,10 @@ import java.util.Optional;
  * Immutable invocation context for one {@link RunnableTask}.
  *
  * <p>The variables map carries invocation-scoped runtime values. The Executor
- * places the current {@link Execution}, exact TaskRun identity, actual
- * TaskRun inputs and immutable Flow-level variables in reserved entries
- * before the context crosses into a RunnableTask.</p>
+ * places the current {@link Execution}, exact TaskRun identity, the
+ * Execution-owned Flow inputs, TaskRun-specific inputs and immutable Flow-level
+ * variables in reserved entries before the context crosses into a
+ * RunnableTask.</p>
  */
 public final class RunContext {
 
@@ -32,40 +32,35 @@ public final class RunContext {
     public static final String PARENT_TASK_RUN_ID_VARIABLE =
         "$flow.parentTaskRunId";
 
-    /** Reserved variable containing the actual inputs for this TaskRun. */
+    /** Reserved variable containing the confirmed inputs of the Flow. */
     public static final String INPUTS_VARIABLE = "$flow.inputs";
+
+    /** Reserved variable containing inputs assembled for this TaskRun. */
+    public static final String TASK_INPUTS_VARIABLE = "$flow.taskInputs";
 
     /** Reserved variable containing the deployed Flow-level variables. */
     public static final String FLOW_VARIABLES_VARIABLE = "$flow.variables";
 
     private final Session<? extends User> session;
-    private final DSLContext dsl;
     private final Map<String, Object> variables;
 
     private RunContext(
         Session<? extends User> session,
-        DSLContext dsl,
         Map<String, ?> variables
     ) {
         this.session = Objects.requireNonNull(session, "session");
-        this.dsl = Objects.requireNonNull(dsl, "dsl");
         this.variables = immutableVariables(variables);
     }
 
     public static RunContext create(
         Session<? extends User> session,
-        DSLContext dsl,
         Map<String, ?> variables
     ) {
-        return new RunContext(session, dsl, variables);
+        return new RunContext(session, variables);
     }
 
     public Session<? extends User> session() {
         return session;
-    }
-
-    public DSLContext dsl() {
-        return dsl;
     }
 
     /**
@@ -125,14 +120,29 @@ public final class RunContext {
         return Optional.of(parentTaskRunId);
     }
 
+    /**
+     * Returns the confirmed runtime inputs owned by the Execution.
+     */
     public Map<String, Object> inputs() {
-        Object value = variables.get(INPUTS_VARIABLE);
+        return mapVariable(INPUTS_VARIABLE);
+    }
+
+    /**
+     * Returns the inputs assembled for this TaskRun, such as preceding
+     * outputs, dependency outputs and loop metadata.
+     */
+    public Map<String, Object> taskInputs() {
+        return mapVariable(TASK_INPUTS_VARIABLE);
+    }
+
+    private Map<String, Object> mapVariable(String variable) {
+        Object value = variables.get(variable);
         if (value == null) {
             return Map.of();
         }
         if (!(value instanceof Map<?, ?>)) {
             throw new IllegalStateException(
-                "RunContext variable " + INPUTS_VARIABLE
+                "RunContext variable " + variable
                     + " must contain a Map"
             );
         }
@@ -166,7 +176,7 @@ public final class RunContext {
      */
     public String render(TemplateExpression expression) {
         return Objects.requireNonNull(expression, "expression")
-            .render(inputs());
+            .render(taskInputs());
     }
 
     private static Map<String, Object> immutableVariables(
@@ -185,7 +195,8 @@ public final class RunContext {
                 value,
                 () -> "RunContext variable must not be null: " + key
             );
-            if (INPUTS_VARIABLE.equals(normalizedKey)) {
+            if (INPUTS_VARIABLE.equals(normalizedKey)
+                || TASK_INPUTS_VARIABLE.equals(normalizedKey)) {
                 copy.put(normalizedKey, immutableInputs(normalizedValue));
             } else if (FLOW_VARIABLES_VARIABLE.equals(normalizedKey)) {
                 copy.put(

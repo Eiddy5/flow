@@ -367,10 +367,7 @@ class NestedPauseResumeIntegrationTest {
                 "frontendResult"
             );
 
-            Execution canceled = fixture.executionService().cancel(
-                fixture.session(),
-                started.id()
-            );
+            Execution canceled = fixture.cancel(started.id());
 
             assertEquals(State.Type.KILLED, canceled.state().current());
             assertEquals(
@@ -1195,7 +1192,7 @@ class NestedPauseResumeIntegrationTest {
 
         @Override
         public RunResult run(RunContext context) {
-            Object dependencies = context.inputs().get("dependOnOutputs");
+            Object dependencies = context.taskInputs().get("dependOnOutputs");
             if (!(dependencies instanceof Map<?, ?> byTask)) {
                 return RunResult.success(Map.of());
             }

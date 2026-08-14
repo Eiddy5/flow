@@ -80,4 +80,49 @@ final class ExecutionAsyncStartIntegrationTest {
             Uc03AutomaticTask.releaseBlockingRun();
         }
     }
+
+    @Test
+    void returnsAfterResumeQueueAcceptanceBeforeContinuationCompletes()
+        throws InterruptedException {
+        Uc03AutomaticTask.blockNextRun();
+        try (WorkflowUcFixture fixture =
+                 WorkflowUcFixture.openWithProperties(AUTO_TASK)) {
+            Flow flow = fixture.deploy("""
+                key: execution-async-resume
+                description: resume returns before continuation completion
+                tasks:
+                  - key: wait-confirmation
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: create-confirmation
+                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                    resume:
+                      - key: decision
+                        type: STRING
+                  - key: target-block
+                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
+                """);
+            Execution started = fixture.startAndAwait(flow);
+            WorkflowUcFixture.PausedTaskRunRef paused =
+                fixture.waitingForExecution(started.id());
+
+            Execution accepted = fixture.executionService().resume(
+                fixture.session(),
+                paused.executionId(),
+                paused.taskRunId(),
+                Map.of("decision", "APPROVED")
+            );
+
+            assertEquals(State.Type.PAUSED, accepted.state().current());
+            assertTrue(Uc03AutomaticTask.awaitBlockingRun());
+
+            Uc03AutomaticTask.releaseBlockingRun();
+            assertEquals(
+                State.Type.SUCCESS,
+                fixture.awaitStable(accepted).state().current()
+            );
+        } finally {
+            Uc03AutomaticTask.releaseBlockingRun();
+        }
+    }
 }

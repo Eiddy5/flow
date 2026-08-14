@@ -20,25 +20,30 @@ import java.util.Map;
  * Post-condition serial orchestration scope with a bounded iteration count.
  */
 @Plugin(
-    title = "LOOP UNTIL",
-    description = "逐轮执行直接子步骤，直到输出条件成立或达到最大次数",
+    title = "条件循环",
+    description = "重复执行子任务直到条件满足或达到次数上限",
     examples = {
         @Example(
-            title = "等待检查结果满足条件",
+            title = "检查结果后结束循环",
             code = """
-                condition: 'outputs.check.status == "DONE"'
-                maxIterations: 3
+                key: loop-until-flow
                 tasks:
-                  - key: check
-                    type: org.cses.flow.extensions.flow.Pause
-                    pause:
-                      key: request-status
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
-                    resume:
-                      - key: status
-                        type: STRING
-                        required: true
-                """
+                  - key: check-until-done
+                    type: org.cses.flow.extensions.flow.LoopUntil
+                    condition: 'outputs.check.status == "DONE"'
+                    maxIterations: 3
+                    tasks:
+                      - key: check
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: request-status
+                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                        resume:
+                          - key: status
+                            type: STRING
+                            required: true
+                """,
+            full = true
         )
     }
 )

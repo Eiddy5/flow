@@ -54,17 +54,17 @@ PAUSE TaskRun 进入 WAITING。外部能力保存 `executionId + taskRunId`，�
 
 - `ExecutionService.resume(session, executionId, taskRunId, outputs)` 是外部能力
   恢复流程的唯一公开 Core 用例。
-- Service 通过 `ResumeExecutionCommand` 进入 `CommandExecutor` 事务；
-  `ResumeExecutionHandler` 加载 Execution 及其绑定的 Flow Reversion。
+- Service 校验并规范化 Resume 数据后构造 Executor `Resume` Command，投递到持久化
+  `ExecutionCommand` Queue；`ExecutionCommandEventHandler` 消费消息后校验并投递
+  `ExecutorEvent`，由 `ExecutorEventHandler` 加载 Execution 及其绑定的 Flow Reversion。
 - Resume Handler 必须校验：
   - 调用租户与 Execution 一致。
   - Execution 与目标 TaskRun 存在。
   - Execution 和目标 TaskRun 的 `state.current()` 均为 `WAITING`。
   - TaskRun 对应的 Task 类型是 PAUSE。
   - outputs 满足该 PAUSE Task 的输出契约。
-- 校验通过后，Handler 由 `ExecutionRunner.resume(...)` 调用 Execution 聚合
-  完成原 TaskRun，并与 `ExecutorService` 通过单轮 ExecutorContext 推进到下一
-  稳定态或终态。
+- 校验通过后，`ExecutorEventHandler` 通过 `ExecutorContext` 调用
+  `ExecutorService.resume(...)` 完成原 TaskRun，并推进到下一稳定态或终态。
 - 外部能力不能提交 Flow Reversion、路由结果、下一 Task 或目标 Execution
   状态，也不能直接调用 Handler、Repository 或 Executor。
 - 审批、表单、工单等能力独立拥有业务身份、生命周期、受派、权限和审计。它们

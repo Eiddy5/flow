@@ -17,12 +17,19 @@ import java.util.Map;
  * Test plugin proving that one concrete Task owns its custom definition field.
  */
 @Plugin(
-    title = "Notification",
-    description = "Sends one notification to a configured channel.",
+    title = "通知",
+    description = "向指定频道发送一条通知",
     examples = {
         @Example(
-            title = "Notify the Flow alerts channel",
-            code = "channel: flow-alerts"
+            title = "发送流程告警",
+            code = """
+                key: notification-flow
+                tasks:
+                  - key: notify-alerts
+                    type: org.cses.flow.core.plugins.TestNotificationTask
+                    channel: flow-alerts
+                """,
+            full = true
         )
     }
 )

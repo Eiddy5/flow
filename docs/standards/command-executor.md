@@ -17,12 +17,18 @@ Controller（Core 外）
   -> Domain
 ```
 
-Execution 启动是已确认的异步例外：`ExecutionService` 直接构造 Executor Module
-拥有的 `Create` Command 并投递到持久化 `ExecutorCommand` Queue；
-`DefaultExecutor` 只把 Queue 消息路由给 `ExecutorCommandHandler`，不进入 Core
-`CommandExecutor`。可信调用方继续既有 `CREATED` Execution 时，Service 使用
-`CommandExecutor.execute(..., completion)` 在同一命令事务内完成 Queue 投递；
-Handler 仍不得嵌套调用 CommandExecutor。
+Execution 的启动、外部 Resume 和 Cancel 是已确认的异步 Executor 链路：
+`ExecutionService` 直接构造 Executor Module 拥有的 `Create`、`Resume` 或 `Cancel`
+Command，并投递到持久化
+`ExecutionCommand` Queue；`DefaultExecutor` 只把 Queue 消息路由给
+`ExecutionCommandEventHandler`，不进入 Core `CommandExecutor`。该 Handler 只负责恢复
+外部命令上下文、校验并物化 Execution，然后在同一事务中投递内部 `ExecutorEvent`；
+它不直接推进 Executor 状态机。Resume Command 只携带
+`companyId`、`actorId`、`executionId`、`taskRunId` 和规范化 outputs；Cancel Command
+只携带 `companyId`、`actorId` 和 `executionId`；消费者从
+Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Execution 时，Service
+使用 `CommandExecutor.execute(..., completion)` 在同一命令事务内完成 Create Queue
+投递；Handler 仍不得嵌套调用 CommandExecutor。
 
 复杂读取不进入 CommandExecutor，固定由 Service 调用 QueryHandler。
 
@@ -82,8 +88,10 @@ Handler 仍不得嵌套调用 CommandExecutor。
 - Handler 名称必须包含动作和领域，例如 `DeployFlowHandler`。
 - 一个 Command 必须且只能注册一个 Handler。
 - Handler 按“加载聚合、调用领域行为、保存聚合、返回结果”的顺序编排。
-- Handler 不保存请求级可变状态，也不直接发布 Queue Event；Execution 启动由
-  `ExecutionService` 投递 Executor Command。
+- Handler 不保存请求级可变状态，也不直接发布 Core Queue Event；Execution 启动由
+  `ExecutionService` 投递 Executor Command。Executor Module 的
+  `ExecutionCommandEventHandler` 是外部命令进入 Executor 的唯一入口，并只向内部
+  `ExecutorEvent` Queue 投递状态推进事件。
 - 重复 Handler 注册和缺失 Handler 都必须立即失败。
 
 ## Query 规则

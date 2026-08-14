@@ -21,10 +21,12 @@ import org.jooq.DSLContext;
     property = "type"
 )
 @JsonSubTypes({
-    @JsonSubTypes.Type(value = Create.class, name = "CREATE")
+    @JsonSubTypes.Type(value = Create.class, name = "CREATE"),
+    @JsonSubTypes.Type(value = Resume.class, name = "RESUME"),
+    @JsonSubTypes.Type(value = Cancel.class, name = "CANCEL")
 })
-public sealed interface ExecutorCommand extends DispatchEvent
-    permits Create {
+public sealed interface ExecutionCommand extends DispatchEvent
+    permits Create, Resume, Cancel {
 
     String QUEUE_NAME = "flow-executor-command";
 
@@ -35,20 +37,6 @@ public sealed interface ExecutorCommand extends DispatchEvent
     String getCompanyId();
 
     String getActorId();
-
-    String getActorName();
-
-    String getSessionId();
-
-    String getIp();
-
-    org.paas.session.Device getDevice();
-
-    String getDeviceId();
-
-    String getAppVersion();
-
-    String getOsVersion();
 
     void validate();
 
@@ -62,6 +50,8 @@ public sealed interface ExecutorCommand extends DispatchEvent
     DSLContext dsl();
 
     enum Type {
-        CREATE
+        CREATE,
+        RESUME,
+        CANCEL
     }
 }

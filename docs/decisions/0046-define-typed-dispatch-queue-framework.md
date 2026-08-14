@@ -98,10 +98,11 @@ Queue 可以用字符串区分全部消息，但中心目录需要了解每个�
   反向拆分 Event payload。
 - 本轮不提供抽象实现、测试 Adapter、数据库 Adapter、Micronaut Queue Bean、数据库表
   或后台消费线程。
-- 当前 `ExecutionRunner -> WorkerDispatcher` 同步调用和 WorkerTask/Result 协议保持
-  不变；未来接入 Queue 必须另行确认消息载体、事务和恢复路径。
+- 当前 `ExecutorEventHandler -> WorkerDispatcher` 同步调用和 WorkerTask/Result 协议
+  保持不变；内部状态交接已经使用 `ExecutorEvent` Queue，消息载体、事务和恢复路径
+  由 ADR 0059 确认。
 - Queue 不是 Command Bus、事务 Outbox 或事件溯源入口，不改变 ADR 0003 的
-  CommandExecutor 写链路和 ADR 0020/0051 的 ExecutionRunner 提交边界。
+  CommandExecutor 写链路和 ADR 0020/0059 的 ExecutorEventHandler 提交边界。
 - Subscription 数量只表示 Queue Consumer 并发度，不实现或解释 ADR 0029 的
   `Parallel.concurrent` 作用域配额。
 

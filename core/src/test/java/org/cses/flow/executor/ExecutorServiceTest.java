@@ -212,12 +212,15 @@ final class ExecutorServiceTest {
                 )
             ))
         ));
-        Execution execution = execution(flow);
-        ExecutorContext context = new ExecutorContext(
-            flow,
-            execution,
+        Execution seed = execution(flow);
+        Execution execution = Execution.create(
+            seed.id(),
+            seed.companyId(),
+            seed.flowId(),
+            seed.flowReversion(),
             flow.normalizeInputs(Map.of("amount", 1200))
         );
+        ExecutorContext context = new ExecutorContext(flow, execution);
 
         processUntilBoundary(context);
 
@@ -228,13 +231,12 @@ final class ExecutorServiceTest {
                 .toList()
         );
         assertTrue(execution.taskRuns().stream().allMatch(taskRun ->
-            Map.of("amount", 1200.0).equals(
-                taskRun.inputs().get("flowInputs")
-            )
+            !taskRun.inputs().containsKey("flowInputs")
         ));
+        assertEquals(Map.of("amount", 1200.0), execution.inputs());
         assertEquals(
             Map.of("amount", 1200.0),
-            new ExecutorContext(flow, execution).flowInputs()
+            execution.inputs()
         );
     }
 
@@ -593,7 +595,7 @@ final class ExecutorServiceTest {
         assertEquals(2, branches.size());
         assertTrue(branches.stream().allMatch(workerTask ->
             Map.of("decision", "approved").equals(
-                workerTask.inputs().get("outputs")
+                workerTask.taskInputs().get("outputs")
             )
         ));
 
@@ -615,7 +617,7 @@ final class ExecutorServiceTest {
         assertTrue(parallel.outputs().isEmpty());
         assertEquals(
             Map.of("decision", "approved"),
-            after.inputs().get("outputs")
+            after.taskInputs().get("outputs")
         );
     }
 
@@ -905,7 +907,7 @@ final class ExecutorServiceTest {
             assertEquals(iteration, taskRun.iteration().orElseThrow());
             assertEquals(
                 Map.of("iteration", iteration),
-                workerTask.inputs().get("loop")
+                workerTask.taskInputs().get("loop")
             );
             executorService.dispatch(context, workerTask);
             executorService.applyResult(
@@ -983,7 +985,7 @@ final class ExecutorServiceTest {
             WorkerTask consume = context.takeWorkerTasks().getFirst();
             assertEquals(
                 Map.of("prepare", Map.of("status", status)),
-                consume.inputs().get("dependOnOutputs")
+                consume.taskInputs().get("dependOnOutputs")
             );
             executorService.dispatch(context, consume);
             executorService.applyResult(
@@ -1123,7 +1125,8 @@ final class ExecutorServiceTest {
         return Execution.create(
             flow.companyId(),
             flow.id(),
-            flow.reversion()
+            flow.reversion(),
+            Map.of()
         );
     }
 

@@ -17,17 +17,22 @@ import java.util.Map;
  * Serial orchestration scope repeated a fixed number of times.
  */
 @Plugin(
-    title = "LOOP",
-    description = "将直接子步骤按固定次数依次重复执行",
+    title = "循环",
+    description = "按固定次数重复执行子任务",
     examples = {
         @Example(
-            title = "重复执行三次",
+            title = "重复执行子任务三次",
             code = """
-                times: 3
+                key: loop-flow
                 tasks:
-                  - key: repeated-step
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
-                """
+                  - key: repeat-group
+                    type: org.cses.flow.extensions.flow.Loop
+                    times: 3
+                    tasks:
+                      - key: repeated-step
+                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                """,
+            full = true
         )
     }
 )

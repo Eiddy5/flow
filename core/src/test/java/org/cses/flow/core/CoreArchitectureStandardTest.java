@@ -155,18 +155,30 @@ class CoreArchitectureStandardTest {
                     "executor/DefaultExecutor.java"
                 ))
                 && Files.isRegularFile(FLOW.resolve(
-                    "executor/ExecutionRunner.java"
+                    "executor/ExecutorEvent.java"
                 ))
                 && Files.isRegularFile(FLOW.resolve(
-                    "executor/handlers/ExecutorCommandHandler.java"
+                    "executor/ExecutorEventHandler.java"
                 ))
                 && Files.isRegularFile(FLOW.resolve(
-                    "executor/commands/ExecutorCommand.java"
+                    "executor/handlers/ExecutionCommandEventHandler.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/handlers/ExecutorEventHandler.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/commands/ExecutionCommand.java"
                 ))
                 && Files.isRegularFile(FLOW.resolve(
                     "executor/commands/Create.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/commands/Resume.java"
+                ))
+                && Files.isRegularFile(FLOW.resolve(
+                    "executor/commands/Cancel.java"
                 )),
-            "Executor command, routing, handling and state-machine runtime "
+            "Execution commands, routing, handling and state-machine runtime "
                 + "must stay in the top-level executor package"
         );
         assertTrue(
@@ -239,11 +251,7 @@ class CoreArchitectureStandardTest {
                 + "without carrying transaction runtime objects"
         );
 
-        for (String handler : List.of(
-            "ContinueExecutionHandler.java",
-            "ResumeExecutionHandler.java",
-            "CancelExecutionHandler.java"
-        )) {
+        for (String handler : List.of("ContinueExecutionHandler.java")) {
             String source = Files.readString(CORE.resolve(
                 "handlers/executions/" + handler
             ));
@@ -261,22 +269,35 @@ class CoreArchitectureStandardTest {
             "executor/DefaultExecutor.java"
         ));
         String commandHandler = Files.readString(FLOW.resolve(
-            "executor/handlers/ExecutorCommandHandler.java"
+            "executor/handlers/ExecutionCommandEventHandler.java"
+        ));
+        String eventHandler = Files.readString(FLOW.resolve(
+            "executor/handlers/ExecutorEventHandler.java"
         ));
         assertTrue(
             executionService.contains("Create.from(")
                 && executionService.contains("normalizedInputs")
                 && executionService.contains("executorCommandQueue.emit(")
+                && executionService.contains("Resume.from(")
+                && executionService.contains("Cancel.from(")
                 && defaultExecutor.contains(
                     ".subscribe(commandHandler::handle)"
+                )
+                && defaultExecutor.contains(
+                    ".subscribe(eventHandler::handle)"
                 )
                 && !defaultExecutor.contains("ExecutionRepository")
                 && !defaultExecutor.contains("WorkerDispatcher")
                 && commandHandler.contains("case Create create")
-                && commandHandler.contains("executionRunner.execute("),
-            "ExecutionService must publish Executor Create commands, "
-                + "DefaultExecutor must only route them, and "
-                + "ExecutorCommandHandler must execute them"
+                && commandHandler.contains("case Resume resume")
+                && commandHandler.contains("case Cancel cancel")
+                && commandHandler.contains("eventQueue.emit(")
+                && eventHandler.contains("executorService.process(context)")
+                && eventHandler.contains("eventQueue.emit(")
+                && eventHandler.contains("new ExecutorContext(flow, execution)"),
+            "ExecutionService must publish Create, Resume and Cancel commands, "
+                + "the command handler must only publish ExecutorEvents, "
+                + "and the internal event handler must drive ExecutorContext"
         );
     }
 
@@ -474,8 +495,8 @@ class CoreArchitectureStandardTest {
         String defaultExecutor = Files.readString(executor.resolve(
             "DefaultExecutor.java"
         ));
-        String executionRunner = Files.readString(executor.resolve(
-            "ExecutionRunner.java"
+        String executorEventHandler = Files.readString(executor.resolve(
+            "handlers/ExecutorEventHandler.java"
         ));
 
         assertTrue(
@@ -508,7 +529,10 @@ class CoreArchitectureStandardTest {
                 && !runContext.contains("private final String taskRunId")
                 && !runContext.contains("BeanContext")
                 && !runContext.contains("getBean(")
+                && !runContext.contains("DSLContext")
+                && !runContext.contains("dsl()")
                 && !dispatcher.contains("BeanContext")
+                && !dispatcher.contains("DSLContext")
                 && dispatcher.contains(
                     "RunContext.TASK_RUN_ID_VARIABLE"
                 )
@@ -547,13 +571,17 @@ class CoreArchitectureStandardTest {
             defaultExecutor.contains(
                 ".subscribe(commandHandler::handle)"
             )
+                && defaultExecutor.contains(
+                    ".subscribe(eventHandler::handle)"
+                )
                 && !defaultExecutor.contains("executorService")
-                && executionRunner.contains(
+                && executorEventHandler.contains(
                     "executorService.process(context)"
                 )
-                && !executionRunner.contains("dispatchBranch("),
-            "DefaultExecutor must only route Queue commands while "
-                + "ExecutionRunner submits Worker effects and "
+                && executorEventHandler.contains("eventQueue.emit(")
+                && !executorEventHandler.contains("dispatchBranch("),
+            "DefaultExecutor must only route Queue events while "
+                + "ExecutorEventHandler submits Worker effects and "
                 + "ExecutorService owns OrchestrationTask state progression"
         );
     }

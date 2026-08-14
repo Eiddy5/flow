@@ -1,5 +1,10 @@
 # ADR 0002：Execution 运行域与 Executor 状态机
 
+> 运行提交与内部状态交接的当前方案由 ADR 0059 修订：`ExecutionRunner` 已删除，
+> 外部 Command 由 `ExecutionCommandEventHandler` 处理，内部周期由
+> `ExecutorEventHandler` 通过 `ExecutorEvent` Queue 交接。本文保留领域模型和历史
+> 推导背景，涉及提交边界的旧描述以 ADR 0059 为准。
+
 ## 状态
 
 Accepted（生产内存实现部分由 ADR 0007 修订；Execution 的 Flow 引用名称及
@@ -66,8 +71,8 @@ ExecutionService
   -> CommandExecutor
   -> CreateExecutionHandler
   -> Execution.create(...)
-  -> ExecutionRunner
-  -> ExecutorService.handleNext/onNexts
+  -> ExecutorEventHandler
+  -> ExecutorService.process
   -> WorkerDispatcher
   -> WorkerTaskHandler
 ```
@@ -78,8 +83,8 @@ ExecutionService
   Execution id 和精确 Flow reversion；同租户、同 id、同 Flow 引用的重放返回原
   Execution，不同 Flow id 或 reversion 的重放拒绝冲突，避免重试漂移到 latest。
 - `ExecutorContext` 只保存精确 Flow、Execution 和本轮增量；
-  `ExecutionRunner` 管理中间聚合保存和 Worker 调用；`DefaultExecutor` 的当前
-  Queue 路由职责由 ADR 0051 定义。
+  `ExecutorEventHandler` 管理单个 Event 周期内的中间聚合保存和 Worker 调用；
+  `DefaultExecutor` 的当前 Queue 路由职责由 ADR 0059 定义。
 - `ExecutorService` 只管理状态与编排，不访问 Repository，不执行 Task。
 - `handleNext()` 只暂存下一批 TaskRun 计划；`onNexts()` 才启动首次 Execution、
   把批次并入聚合并形成 WorkerTask。
@@ -105,8 +110,9 @@ ExecutionService
   表达持久化等待事实。
 - 审批、表单、工单等外部能力保存 executionId 和 taskRunId，并通过
   `ExecutionService.resume(...)` 提交结果。
-- `ResumeExecutionHandler` 在同一命令事务内加载绑定的 Execution 与确定
-  Flow Reversion，校验 PauseTask 契约后调用 `ExecutionRunner.resume(...)`。
+- `ExecutionCommandEventHandler` 在 Command Queue 消费事务内校验并投递内部 Event；
+  `ExecutorEventHandler` 在 Event 消费事务内加载绑定的 Execution 与确定 Flow Reversion，
+  校验 PauseTask 契约后调用 `ExecutorService.resume(...)`。
 - resume 直接完成原 WAITING PAUSE TaskRun，不能再次执行 PAUSE Worker。
 - TaskRun 完成后，`ExecutorService` 自动调用下一轮 `handleNext()`。
 - 外部能力不能直接修改 Execution、TaskRun、路由或下一 Task。
@@ -122,7 +128,7 @@ ExecutionService
 
 - JOOQ DSLContext 由 `CommandExecutor` 建立，命令是事务边界。
 - 一个命令可以连续执行多个同步 Task，直到遇到 PAUSE、失败或终态。
-- `ExecutionRunner` 可以在同一事务内中间保存 Execution/TaskRun，使
+- `ExecutorEventHandler` 可以在同一 Event 事务内中间保存 Execution/TaskRun，使
   Worker 保存带外键的 Task 业务记录。
 - 中间保存不等于提交。
 - Execution 聚合只持有一个 `lockVersion`；修改已有 Execution 的命令最多

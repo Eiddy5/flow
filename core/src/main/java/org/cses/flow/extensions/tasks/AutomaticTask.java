@@ -16,13 +16,15 @@ import java.util.Map;
  */
 @Plugin(
     title = "自动任务",
-    description = "由 Worker 自动执行并继续后续流程",
+    description = "自动执行单个步骤并推进流程",
     examples = {
         @Example(
-            title = "执行一个自动任务",
+            title = "执行自动步骤",
             code = """
-                key: automatic-step
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                key: automatic-task-flow
+                tasks:
+                  - key: automatic-step
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                 """,
             full = true
         )

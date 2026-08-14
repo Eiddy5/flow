@@ -17,19 +17,24 @@ import java.util.OptionalInt;
  */
 @Plugin(
     title = "并行",
-    description = "并行启动直接子分支并等待所有已选择分支收敛",
+    description = "同时执行多个子任务并等待分支完成",
     capabilities = "PARALLEL_CHILDREN",
     examples = {
         @Example(
-            title = "并行执行两个检查",
+            title = "同时执行两个检查",
             code = """
-                concurrent: 2
+                key: parallel-flow
                 tasks:
-                  - key: backend-check
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
-                  - key: frontend-check
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
-                """
+                  - key: parallel-checks
+                    type: org.cses.flow.extensions.flow.Parallel
+                    concurrent: 2
+                    tasks:
+                      - key: backend-check
+                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                      - key: frontend-check
+                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                """,
+            full = true
         )
     }
 )

@@ -32,22 +32,27 @@ import java.util.Optional;
  */
 @Plugin(
     title = "暂停",
-    description = "执行暂停前任务，等待外部回调后继续流程",
+    description = "执行前置任务后暂停，接收恢复输入后继续",
     examples = {
         @Example(
-            title = "等待外部审批结果",
+            title = "等待外部审批",
             code = """
-                pause:
-                  key: create-approval
-                  type: org.cses.flow.extensions.tasks.AutomaticTask
-                resume:
-                  - key: decision
-                    type: STRING
-                    displayName: 审批结果
-                    required: true
-                duration: PT24H
-                behavior: FAIL
-                """
+                key: pause-flow
+                tasks:
+                  - key: wait-approval
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: create-approval
+                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                    resume:
+                      - key: decision
+                        type: STRING
+                        displayName: 审批结果
+                        required: true
+                    duration: PT24H
+                    behavior: FAIL
+                """,
+            full = true
         )
     }
 )

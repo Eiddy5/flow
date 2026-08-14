@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted（2026-08-13）
+Accepted（2026-08-14）
 
 本决策修订 ADR 0006、0019、0037 和 0051 中关于 Route 只能读取父 Task
 outputs、只支持字符串相等、运行时 Input 尚未绑定，以及 Executor `Create` 不携带
@@ -60,21 +60,25 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
   Reversion 校验未知 key、required、defaultValue、DataType 和具体 Input 约束。
 - `continueExecution(session, executionId, inputs)` 只在 pending Execution 仍为
   `CREATED` 时确认输入并投递 `Create`；执行一旦启动，后续推进不能替换输入。
-- 不带 inputs 的旧重载继续存在；没有必填 Input 的 Flow 行为不变，带必填 Input 的
-  首次启动会明确失败。
+- 不保留旧的无输入兼容构造或兼容持久化路径；没有必填 Input 的 Flow 仍由调用方传入
+  空 Map，带必填 Input 的首次启动会明确失败。
 - Executor `Create` Command 持有已规范化且不可变的 Input Map，使异步 Queue 消费
-  使用受理时的精确值，而不是重新读取宿主表单。
+  使用受理时的精确值，而不是重新读取宿主表单。Command Handler 将该值绑定到
+  `Execution.inputs` 后，内部 Executor Event 不再重复携带 Flow inputs。
 
 ### 运行、持久化与恢复
 
-- `ExecutorContext` 在第一次推进时接收已确认 inputs；Task Route 同时取得直接父
-  outputs 和该只读 Input Map。
-- 新建 TaskRun 时在其 inputs 中保存保留键 `flowInputs`。所有实际 TaskRun 保存同一
-  快照；未选中 Route 不创建 TaskRun。
-- 从 PostgreSQL 恢复 Execution 时，Context 从已有 TaskRun 的 `flowInputs` 重建快照。
-  因此 Pause resume、并行分支继续推进和 Server 重启不需要宿主再次提交字段值。
-- Flow inputs 不是 Task 自身业务输入 key，不覆盖 `outputs`、`dependOnOutputs` 或
-  Task 插件定义字段；Worker 如需读取，只能通过当前 TaskRun 的既有 inputs 只读入口。
+- `Execution.inputs` 是按精确 Flow Reversion 规范化后的运行时输入唯一持久化来源，
+  存储在 `executions.inputs` JSONB；它随 Execution 一起锁定读取、复制和恢复。
+- `ExecutorContext` 只接收精确 Flow 与 Execution，Route 直接读取
+  `context.execution().inputs()`；Context 不保存另一份 Flow input 快照。
+- TaskRun 的 `inputs` 只保存当前 TaskRun 的业务输入，例如父 outputs、依赖 outputs
+  和循环元数据，不再写入保留键 `flowInputs`。
+- 从 PostgreSQL 恢复 Execution 时，Context 从 `Execution.inputs` 获得输入。因此
+  Pause resume、并行分支继续推进和 Server 重启不需要宿主再次提交字段值。
+- Worker 通过 `$flow.inputs` 读取 Execution 级 Flow inputs，通过
+  `$flow.taskInputs` 读取当前 TaskRun inputs；两者均为调用期只读变量，不进入另一方
+  的持久化边界。
 
 ### 宿主边界
 
@@ -89,7 +93,8 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
 
 - `FIN-001`：运行时只接受当前 Flow Reversion 已声明的 Input key。
 - `FIN-002`：Input 在首次执行前完成规范化；校验失败不创建 Execution 或 TaskRun。
-- `FIN-003`：同一 Execution 的 Flow inputs 创建后不可替换，恢复后值与类型保持一致。
+- `FIN-003`：同一 Execution 的 Flow inputs 绑定到 `executions.inputs` 后不可替换，
+  恢复后值与类型保持一致。
 - `FIN-004`：Input Route 只能使用受限根、单一路径、受限运算符和 scalar literal。
 - `FIN-005`：Route 的 literal 和运算符必须与声明 DataType 相容。
 - `FIN-006`：Route 求值只读，不保存上次结果，不执行调用方代码。
@@ -99,15 +104,16 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
 
 - 定义测试覆盖未知 Input、类型不匹配、非法运算符和未声明引用。
 - Executor 技术测试使用 DOUBLE Input 启动 Parallel：`> 1000` 只选择第一分支，
-  `<= 1000` 只选择第二分支，并确认 TaskRun 持久快照可重建 Context。
+  `<= 1000` 只选择第二分支，并确认从 Execution 持久化行可重建 Context。
 - Queue Command 测试确认 Input 随 `Create` 序列化、恢复且不可变。
 - 宿主审批测试确认页面生成的原生 YAML 原样进入 Flow，并由 Flow 自己物化
   Pause、Parallel、Loop 和 Route；同时确认表单选中值随审批启动进入 Flow。
 
 ## 后果
 
-- `flow_tasks.route` 仍保存字符串，不需要数据库迁移；语法能力由新 Reversion 决定。
-- TaskRun inputs 会重复保存小型 Flow Input 快照，以换取不增加 Execution schema 和
-  可从任意稳定 TaskRun 恢复；宿主应只声明路由真正需要的字段。
+- `flow_tasks.route` 仍保存字符串；`executions.inputs` 增加 JSONB 对象列，开发期基线
+  与生成 JOOQ 必须同步更新。
+- TaskRun inputs 不再重复保存 Flow Input 快照；Execution 是恢复输入的唯一来源，
+  宿主应只声明路由真正需要的字段。
 - 当前不支持空值判断、默认分支、逻辑组合、字段对字段比较、集合或日期类型。
 - 更复杂规则必须新增结构化协议和 ADR，不能逐步放宽为任意代码表达式。

@@ -1,9 +1,8 @@
 package org.cses.flow.infrastructure.jooq;
 
-import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
-import org.cses.flow.executor.commands.ExecutorCommand;
+import org.cses.flow.executor.commands.ExecutionCommand;
 import org.x9.jooq.JOOQ;
 import org.x9.jooq.intf.JooqRunnable;
 import org.x9.jooq.intf.JooqRunnableResult;
@@ -100,7 +99,7 @@ public final class PostgresJooqTestAdapter extends JOOQ {
         transaction(true, dsl -> {
             dsl.deleteFrom(QUEUES)
                 .where(QUEUES.QUEUE_NAME.eq(
-                    ExecutorCommand.QUEUE_NAME
+                    ExecutionCommand.QUEUE_NAME
                 ))
                 .and(DSL.field(
                     "{0} ->> 'companyId'",

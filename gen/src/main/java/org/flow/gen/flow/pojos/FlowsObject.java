@@ -43,8 +43,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
     public OffsetDateTime deletedAt;
     public JsonObjects inputs;
     public JsonObjects outputs;
-    public JsonObject variables;
     public Boolean deleted;
+    public JsonObject variables;
 
     public FlowsObject() {}
 
@@ -65,8 +65,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.deletedAt = value.deletedAt;
         this.inputs = value.inputs;
         this.outputs = value.outputs;
-        this.variables = value.variables;
         this.deleted = value.deleted;
+        this.variables = value.variables;
     }
 
     public FlowsObject(
@@ -86,8 +86,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         OffsetDateTime deletedAt,
         JsonObjects inputs,
         JsonObjects outputs,
-        JsonObject variables,
-        Boolean deleted
+        Boolean deleted,
+        JsonObject variables
     ) {
         this.id = id;
         this.key = key;
@@ -105,8 +105,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
         this.inputs = inputs;
         this.outputs = outputs;
-        this.variables = variables;
         this.deleted = deleted;
+        this.variables = variables;
     }
 
     /**
@@ -334,20 +334,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flows.variables</code>.
-     */
-    public JsonObject getVariables() {
-        return this.variables;
-    }
-
-    /**
-     * Setter for <code>public.flows.variables</code>.
-     */
-    public void setVariables(JsonObject variables) {
-        this.variables = variables;
-    }
-
-    /**
      * Getter for <code>public.flows.deleted</code>.
      */
     public Boolean getDeleted() {
@@ -359,6 +345,20 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setDeleted(Boolean deleted) {
         this.deleted = deleted;
+    }
+
+    /**
+     * Getter for <code>public.flows.variables</code>.
+     */
+    public JsonObject getVariables() {
+        return this.variables;
+    }
+
+    /**
+     * Setter for <code>public.flows.variables</code>.
+     */
+    public void setVariables(JsonObject variables) {
+        this.variables = variables;
     }
 
     @Override
@@ -466,17 +466,17 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.outputs.equals(other.outputs))
             return false;
-        if (this.variables == null) {
-            if (other.variables != null)
-                return false;
-        }
-        else if (!this.variables.equals(other.variables))
-            return false;
         if (this.deleted == null) {
             if (other.deleted != null)
                 return false;
         }
         else if (!this.deleted.equals(other.deleted))
+            return false;
+        if (this.variables == null) {
+            if (other.variables != null)
+                return false;
+        }
+        else if (!this.variables.equals(other.variables))
             return false;
         return true;
     }
@@ -501,8 +501,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
-        result = prime * result + ((this.variables == null) ? 0 : this.variables.hashCode());
         result = prime * result + ((this.deleted == null) ? 0 : this.deleted.hashCode());
+        result = prime * result + ((this.variables == null) ? 0 : this.variables.hashCode());
         return result;
     }
 
@@ -543,8 +543,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         map.put("deleted_at", deletedAt);
         map.put("inputs", inputs == null ? null : inputs.toString());
         map.put("outputs", outputs == null ? null : outputs.toString());
-        map.put("variables", variables == null ? null : variables.toString());
         map.put("deleted", deleted);
+        map.put("variables", variables == null ? null : variables.toString());
         return map;
     }
 

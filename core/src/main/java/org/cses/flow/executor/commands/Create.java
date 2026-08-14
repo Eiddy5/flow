@@ -17,7 +17,7 @@ import java.util.Objects;
  * Requests creation and first drive of one exact Flow Execution.
  */
 public final class Create extends SerializableObject
-    implements ExecutorCommand {
+    implements ExecutionCommand {
 
     private String executionId;
     private String companyId;
@@ -43,14 +43,6 @@ public final class Create extends SerializableObject
         Session<? extends User> session,
         Execution execution
     ) {
-        return from(session, execution, Map.of());
-    }
-
-    public static Create from(
-        Session<? extends User> session,
-        Execution execution,
-        Map<String, ?> inputs
-    ) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(execution, "execution");
         if (!execution.companyId().equals(session.getCompanyId())) {
@@ -73,7 +65,7 @@ public final class Create extends SerializableObject
         command.deviceId = session.getDeviceId();
         command.appVersion = session.getAppVersion();
         command.osVersion = session.getOsVersion();
-        command.inputs = immutableInputs(inputs);
+        command.inputs = immutableInputs(execution.inputs());
         command.validate();
         return command;
     }
@@ -148,7 +140,6 @@ public final class Create extends SerializableObject
         this.flowReversion = flowReversion;
     }
 
-    @Override
     public String getSessionId() {
         return sessionId;
     }
@@ -166,7 +157,6 @@ public final class Create extends SerializableObject
         this.actorId = actorId;
     }
 
-    @Override
     public String getActorName() {
         return actorName;
     }
@@ -175,7 +165,6 @@ public final class Create extends SerializableObject
         this.actorName = actorName;
     }
 
-    @Override
     public String getIp() {
         return ip;
     }
@@ -184,7 +173,6 @@ public final class Create extends SerializableObject
         this.ip = ip;
     }
 
-    @Override
     public Device getDevice() {
         return device;
     }
@@ -193,7 +181,6 @@ public final class Create extends SerializableObject
         this.device = device;
     }
 
-    @Override
     public String getDeviceId() {
         return deviceId;
     }
@@ -202,7 +189,6 @@ public final class Create extends SerializableObject
         this.deviceId = deviceId;
     }
 
-    @Override
     public String getAppVersion() {
         return appVersion;
     }
@@ -211,7 +197,6 @@ public final class Create extends SerializableObject
         this.appVersion = appVersion;
     }
 
-    @Override
     public String getOsVersion() {
         return osVersion;
     }

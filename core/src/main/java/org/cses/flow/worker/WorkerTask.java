@@ -1,6 +1,7 @@
 package org.cses.flow.worker;
 
 import org.cses.flow.core.runner.RunContext;
+import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 
@@ -13,7 +14,8 @@ import java.util.Optional;
  * Immutable Executor-to-Worker envelope for one RunnableTask invocation.
  *
  * <p>The variables map contains additional runtime values plus the reserved
- * {@link RunContext#INPUTS_VARIABLE} entry populated from the TaskRun inputs.
+ * {@link RunContext#INPUTS_VARIABLE} entry populated from the Execution and
+ * {@link RunContext#TASK_INPUTS_VARIABLE} populated from the TaskRun.
  * {@link WorkerDispatcher} injects the envelope's exact taskRunId and optional
  * parent TaskRun id into invocation-only {@link RunContext} entries.</p>
  */
@@ -67,6 +69,7 @@ public final class WorkerTask {
         if (variables != null) {
             variables.forEach((key, value) -> {
                 if (RunContext.INPUTS_VARIABLE.equals(key)
+                    || RunContext.TASK_INPUTS_VARIABLE.equals(key)
                     || RunContext.TASK_RUN_ID_VARIABLE.equals(key)
                     || RunContext.PARENT_TASK_RUN_ID_VARIABLE.equals(key)) {
                     throw new IllegalArgumentException(
@@ -83,8 +86,15 @@ public final class WorkerTask {
                 );
             });
         }
+        Object executionValue = runtimeVariables.get(
+            RunContext.EXECUTION_VARIABLE
+        );
+        Map<String, Object> executionInputs = executionValue instanceof Execution
+            ? ((Execution) executionValue).inputs()
+            : Map.of();
+        runtimeVariables.put(RunContext.INPUTS_VARIABLE, executionInputs);
         runtimeVariables.put(
-            RunContext.INPUTS_VARIABLE,
+            RunContext.TASK_INPUTS_VARIABLE,
             inputs == null ? Map.of() : Map.copyOf(inputs)
         );
         this.variables = Map.copyOf(runtimeVariables);
@@ -110,10 +120,10 @@ public final class WorkerTask {
         return variables;
     }
 
-    public Map<String, Object> inputs() {
+    public Map<String, Object> taskInputs() {
         @SuppressWarnings("unchecked")
         Map<String, Object> inputs = (Map<String, Object>) variables.get(
-            RunContext.INPUTS_VARIABLE
+            RunContext.TASK_INPUTS_VARIABLE
         );
         return inputs;
     }

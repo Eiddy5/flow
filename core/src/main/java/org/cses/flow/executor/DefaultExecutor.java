@@ -5,8 +5,8 @@ import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
-import org.cses.flow.executor.commands.ExecutorCommand;
-import org.cses.flow.executor.handlers.ExecutorCommandHandler;
+import org.cses.flow.executor.commands.ExecutionCommand;
+import org.cses.flow.executor.handlers.ExecutionCommandEventHandler;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
 import org.cses.flow.queues.DispatchQueue;
 import org.cses.flow.queues.QueueSubscription;
@@ -14,8 +14,8 @@ import org.cses.flow.queues.QueueSubscription;
 import java.util.Objects;
 
 /**
- * Default Executor lifecycle that only routes Queue commands to their
- * handler.
+ * Default Executor lifecycle that routes external commands and internal
+ * state hand-offs to their respective handlers.
  */
 @Context
 @Bean(preDestroy = "close")
@@ -23,22 +23,34 @@ import java.util.Objects;
 public final class DefaultExecutor implements AutoCloseable {
 
     private final QueueSubscription commandSubscription;
+    private final QueueSubscription eventSubscription;
 
     @Inject
     public DefaultExecutor(
-        @Named(ExecutorCommand.QUEUE_NAME)
-        DispatchQueue<ExecutorCommand> commandQueue,
-        ExecutorCommandHandler commandHandler
+        @Named(ExecutionCommand.QUEUE_NAME)
+        DispatchQueue<ExecutionCommand> commandQueue,
+        ExecutionCommandEventHandler commandHandler,
+        @Named(ExecutorEvent.QUEUE_NAME)
+        DispatchQueue<ExecutorEvent> eventQueue,
+        org.cses.flow.executor.handlers.ExecutorEventHandler eventHandler
     ) {
         Objects.requireNonNull(commandHandler, "commandHandler");
         commandSubscription = Objects.requireNonNull(
             commandQueue,
             "commandQueue"
         ).subscribe(commandHandler::handle);
+        eventSubscription = Objects.requireNonNull(
+            eventQueue,
+            "eventQueue"
+        ).subscribe(eventHandler::handle);
     }
 
     @Override
     public void close() {
-        commandSubscription.close();
+        try {
+            eventSubscription.close();
+        } finally {
+            commandSubscription.close();
+        }
     }
 }

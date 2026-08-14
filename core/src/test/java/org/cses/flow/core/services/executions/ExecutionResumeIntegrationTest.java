@@ -183,10 +183,7 @@ class ExecutionResumeIntegrationTest {
             );
             assertEquals(started.id(), completed.id());
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertEquals(
-                started.lockVersion() + 1,
-                completed.lockVersion()
-            );
+            assertTrue(completed.lockVersion() > started.lockVersion());
             // 重复完成由 S4 独立覆盖。
             assertThrows(
                 WorkflowException.class,
@@ -452,10 +449,7 @@ class ExecutionResumeIntegrationTest {
             fixture.restartServer();
             PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
-            fixture.executionService().cancel(
-                fixture.session(),
-                started.id()
-            );
+            fixture.cancel(started.id());
 
             assertThrows(
                 WorkflowException.class,
@@ -486,7 +480,7 @@ class ExecutionResumeIntegrationTest {
     }
 
     @Test
-    void downstreamFailureRollsBackResume() {
+    void downstreamFailureMarksExecutionFailed() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy("""
                 key: execution-resume-rollback-flow
@@ -508,17 +502,11 @@ class ExecutionResumeIntegrationTest {
             PausedTaskRunRef pausedTaskRun =
                 fixture.waitingForExecution(started.id());
 
-            IllegalStateException failure = assertThrows(
-                IllegalStateException.class,
-                () -> fixture.resume(
-                    pausedTaskRun,
-                    Map.of("decision", "approved")
-                )
+            Execution failed = fixture.resume(
+                pausedTaskRun,
+                Map.of("decision", "approved")
             );
-            assertEquals(
-                "execution-resume-worker-failure",
-                failure.getMessage()
-            );
+            assertEquals(State.Type.FAILED, failed.state().current());
 
             Execution reloaded = fixture.executionService().execution(
                 fixture.session(),
@@ -527,22 +515,14 @@ class ExecutionResumeIntegrationTest {
             TaskRun pauseReloaded = reloaded.requireTaskRun(
                 pausedTaskRun.taskRunId()
             );
-            assertEquals(State.Type.PAUSED, reloaded.state().current());
-            assertEquals(2, reloaded.taskRuns().size());
+            assertEquals(State.Type.FAILED, reloaded.state().current());
+            assertEquals(3, reloaded.taskRuns().size());
+            assertEquals(State.Type.SUCCESS, pauseReloaded.state().current());
             assertEquals(
-                State.Type.PAUSED,
-                pauseReloaded.state().current()
-            );
-            assertTrue(pauseReloaded.outputs().isEmpty());
-
-            Execution canceled = fixture.executionService().cancel(
-                fixture.session(),
-                started.id()
-            );
-            assertEquals(State.Type.KILLED, canceled.state().current());
-            assertEquals(
-                State.Type.KILLED,
-                canceled.taskRuns().getFirst().state().current()
+                State.Type.FAILED,
+                reloaded.requireTaskRun(
+                    reloaded.taskRuns().getLast().id()
+                ).state().current()
             );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }

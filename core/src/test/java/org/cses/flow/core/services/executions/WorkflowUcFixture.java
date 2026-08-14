@@ -6,6 +6,7 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
@@ -333,17 +334,45 @@ public final class WorkflowUcFixture implements AutoCloseable {
         return resume(session, pausedTaskRun, outputs);
     }
 
+    public Execution cancel(String executionId) {
+        return cancel(session, executionId);
+    }
+
+    public Execution cancel(
+        Session<User> cancelSession,
+        String executionId
+    ) {
+        Execution accepted = executionService.cancel(
+            cancelSession,
+            executionId
+        );
+        return awaitExecution(
+            cancelSession,
+            accepted.id(),
+            Execution::isTerminal
+        );
+    }
+
     public Execution resume(
         Session<User> resumeSession,
         PausedTaskRunRef pausedTaskRun,
         Map<String, ?> outputs
     ) {
-        return executionService.resume(
+        Execution accepted = executionService.resume(
             resumeSession,
             pausedTaskRun.executionId(),
             pausedTaskRun.taskRunId(),
             outputs
         );
+        awaitExecution(
+            resumeSession,
+            accepted.id(),
+            execution -> execution.isTerminal()
+                || !execution.requireTaskRun(pausedTaskRun.taskRunId())
+                    .state()
+                    .is(State.Type.PAUSED)
+        );
+        return awaitStable(resumeSession, accepted.id());
     }
 
     public TaskRun taskRun(

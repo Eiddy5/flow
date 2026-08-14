@@ -15,9 +15,6 @@ import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.flow.Pause;
-import org.jooq.DSLContext;
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -57,7 +54,6 @@ final class WorkerDispatcherTest {
 
         WorkerTaskResult result = dispatcher.dispatch(
             new Session<User>(),
-            DSL.using(SQLDialect.POSTGRES),
             workerTask
         );
 
@@ -76,7 +72,6 @@ final class WorkerDispatcherTest {
             IllegalStateException.class,
             () -> dispatcher.dispatch(
                 new Session<User>(),
-                DSL.using(SQLDialect.POSTGRES),
                 new WorkerTask(
                     "execution-1",
                     "task-run-1",
@@ -140,7 +135,6 @@ final class WorkerDispatcherTest {
 
         WorkerTaskResult result = dispatcher.dispatch(
             new Session<User>(),
-            DSL.using(SQLDialect.POSTGRES),
             new WorkerTask(
                 "execution-1",
                 "task-run-1",
@@ -163,7 +157,10 @@ final class WorkerDispatcherTest {
             .build();
         Map<String, Object> sourceInputs = new LinkedHashMap<>();
         sourceInputs.put("payload", "original");
-        Execution execution = execution("execution-1");
+        Execution execution = execution(
+            "execution-1",
+            Map.of("amount", 1200)
+        );
         WorkerTask firstWorkerTask = new WorkerTask(
             "execution-1",
             "task-run-1",
@@ -181,14 +178,12 @@ final class WorkerDispatcherTest {
         );
         sourceInputs.put("payload", "changed");
         Session<User> session = new Session<>();
-        DSLContext dsl = DSL.using(SQLDialect.POSTGRES);
 
         WorkerTaskResult first = dispatcher.dispatch(
             session,
-            dsl,
             firstWorkerTask
         );
-        dispatcher.dispatch(session, dsl, secondWorkerTask);
+        dispatcher.dispatch(session, secondWorkerTask);
 
         assertEquals(
             Map.of("payload", "original"),
@@ -197,7 +192,6 @@ final class WorkerDispatcherTest {
         assertEquals(2, task.contexts.size());
         assertNotSame(task.contexts.get(0), task.contexts.get(1));
         assertSame(session, task.contexts.getFirst().session());
-        assertSame(dsl, task.contexts.getFirst().dsl());
         assertEquals("execution-1", task.contexts.getFirst().executionId());
         assertEquals("task-run-1", task.contexts.getFirst().taskRunId());
         assertEquals("task-run-2", task.contexts.get(1).taskRunId());
@@ -221,8 +215,12 @@ final class WorkerDispatcherTest {
         assertEquals(
             Map.of("payload", "original"),
             task.contexts.getFirst().variables().get(
-                RunContext.INPUTS_VARIABLE
+                RunContext.TASK_INPUTS_VARIABLE
             )
+        );
+        assertEquals(
+            Map.of("amount", 1200),
+            task.contexts.getFirst().inputs()
         );
         assertThrows(
             UnsupportedOperationException.class,
@@ -233,7 +231,7 @@ final class WorkerDispatcherTest {
         );
         assertThrows(
             UnsupportedOperationException.class,
-            () -> task.contexts.getFirst().inputs().put(
+            () -> task.contexts.getFirst().taskInputs().put(
                 "payload",
                 "mutated"
             )
@@ -288,7 +286,7 @@ final class WorkerDispatcherTest {
             contexts.add(context);
             return RunResult.success(Map.of(
                 "payload",
-                context.inputs().get("payload")
+                context.taskInputs().get("payload")
             ));
         }
     }
@@ -304,12 +302,16 @@ final class WorkerDispatcherTest {
         }
     }
 
-    private static Execution execution(String id) {
+    private static Execution execution(
+        String id,
+        Map<String, ?> inputs
+    ) {
         return Execution.rehydrate(
             id,
             "company-1",
             "flow-1",
             1,
+            inputs,
             State.created(),
             0,
             List.of()

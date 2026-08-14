@@ -1,6 +1,8 @@
 package org.cses.flow.core.commands;
 
 import io.micronaut.context.annotation.Context;
+import io.micronaut.context.annotation.Requires;
+import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -13,6 +15,7 @@ import java.util.Objects;
  * Resolves a handler by the exact runtime class of a command.
  */
 @Context
+@Requires(condition = FlowJooqCondition.class)
 public final class CommandHandlerRegistry {
 
     private final Map<Class<?>, CommandHandler<?, ?, ?, ?>> handlers;

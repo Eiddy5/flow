@@ -33,7 +33,7 @@ import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class ExecutionRunnerTest {
+final class ExecutorEventHandlerTest {
 
     private static final AtomicReference<RunIdentity> CAPTURED_RUN =
         new AtomicReference<>();
@@ -66,18 +66,20 @@ final class ExecutionRunnerTest {
         Execution execution = Execution.create(
             flow.companyId(),
             flow.id(),
-            flow.reversion()
+            flow.reversion(),
+            Map.of()
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
         TestExecutionRepository repository = new TestExecutionRepository();
-        ExecutionRunner executionRunner = new ExecutionRunner(
+        org.cses.flow.executor.handlers.ExecutorEventHandler eventHandler =
+            new org.cses.flow.executor.handlers.ExecutorEventHandler(
             repository,
             new ExecutorService(),
             new WorkerDispatcher()
         );
         DSLContext dsl = DSL.using(SQLDialect.POSTGRES);
 
-        Execution completed = executionRunner.execute(
+        Execution completed = eventHandler.execute(
             session(flow.companyId()),
             dsl,
             context
@@ -135,19 +137,21 @@ final class ExecutionRunnerTest {
         Execution execution = Execution.create(
             flow.companyId(),
             flow.id(),
-            flow.reversion()
+            flow.reversion(),
+            Map.of()
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
         TestExecutionRepository executionRepository =
             new TestExecutionRepository();
-        ExecutionRunner executionRunner = new ExecutionRunner(
+        org.cses.flow.executor.handlers.ExecutorEventHandler eventHandler =
+            new org.cses.flow.executor.handlers.ExecutorEventHandler(
             executionRepository,
             new ExecutorService(),
             new WorkerDispatcher()
         );
         DSLContext dsl = DSL.using(SQLDialect.POSTGRES);
 
-        Execution waiting = executionRunner.execute(
+        Execution waiting = eventHandler.execute(
             session(flow.companyId()),
             dsl,
             context
@@ -193,9 +197,11 @@ final class ExecutionRunnerTest {
         Execution execution = Execution.create(
             flow.companyId(),
             flow.id(),
-            flow.reversion()
+            flow.reversion(),
+            Map.of()
         );
-        ExecutionRunner executor = new ExecutionRunner(
+        org.cses.flow.executor.handlers.ExecutorEventHandler executor =
+            new org.cses.flow.executor.handlers.ExecutorEventHandler(
             new TestExecutionRepository(),
             new ExecutorService(),
             new WorkerDispatcher()

@@ -32,7 +32,14 @@ import java.util.Map;
     examples = {
         @Example(
             title = "向运维频道发送通知",
-            code = "channel: operations"
+            code = """
+                key: notification-flow
+                tasks:
+                  - key: notify-operations
+                    type: org.cses.flow.extensions.notification.Notification
+                    channel: operations
+                """,
+            full = true
         )
     }
 )
@@ -75,10 +82,11 @@ public final class Notification extends Task implements RunnableTask {
   name，description 自动归一为 `""`，examples 自动归一为空列表。当前不支持 alias
   或 icon。
 - `Example` 是独立注解类型，但只能作为 `@Plugin.examples` 的数组元素使用，不能
-  直接标注插件类。`code` 保存一个或多个独立源码块，`lang` 默认是 `yaml`。
-- `Example.full=false` 时，源码块只写插件配置字段，消费方补充唯一 `key` 和当前类的
-  canonical `type`；`full=true` 时源码块必须自行包含这两个字段。两种形式都不能声明
-  `id`、`parentId` 或 `taskId`。
+  直接标注插件类。`code` 保存一个或多个独立完整 Flow YAML 源码块，`lang` 默认是
+  `yaml`。
+- `Example.full=true` 时，源码块必须自行包含 Flow `key`、`tasks` 和准确的插件
+  canonical `type`，消费方直接使用该 Flow；`full=false` 仅兼容历史元信息，新插件
+  不得再声明配置片段。任何形式都不能声明 `id`、`parentId` 或 `taskId`。
 - 插件字段保持私有，由 Jackson 字段绑定；只公开只读访问器，不公开 Setter。
 - 插件字段使用 Bean Validation 注解声明局部约束。项目代码直接构造对象后调用
   `ModelValidator.validate(task)` 主动校验。

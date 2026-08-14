@@ -15,6 +15,7 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.paas.session.Session;
 import org.paas.session.User;
 
+import java.util.Map;
 import java.util.Optional;
 
 @Singleton
@@ -85,12 +86,18 @@ public final class CreateExecutionHandler implements CommandHandler<
             );
         }
         Execution execution = command.executionId() == null
-            ? Execution.create(companyId, flow.id(), flow.reversion())
+            ? Execution.create(
+                companyId,
+                flow.id(),
+                flow.reversion(),
+                Map.of()
+            )
             : Execution.create(
                 command.executionId(),
                 companyId,
                 flow.id(),
-                flow.reversion()
+                flow.reversion(),
+                Map.of()
             );
         executionRepository.save(context.getDsl(), execution);
         return execution.copy();

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS executions (
     created_at       timestamptz NOT NULL DEFAULT now(),
     updated_at       timestamptz NOT NULL DEFAULT now(),
     deleted_at       timestamptz,
+    inputs           jsonb NOT NULL DEFAULT '{}'::jsonb,
 
     CONSTRAINT pk_executions
         PRIMARY KEY (company_id, id),
@@ -22,6 +23,8 @@ CREATE TABLE IF NOT EXISTS executions (
         UNIQUE (company_id, id, flow_id, flow_reversion),
     CONSTRAINT ck_executions_reversion
         CHECK (flow_reversion > 0),
+    CONSTRAINT ck_executions_inputs
+        CHECK (jsonb_typeof(inputs) = 'object'),
     CONSTRAINT ck_executions_state
         CHECK (
             jsonb_typeof(state) = 'object'

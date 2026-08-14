@@ -13,15 +13,15 @@
 
 ## 目标业务与安全场景
 
-ExecutionRunner 会在 Worker 调用前中间保存 Execution。若 Worker 抛出异常，
-数据库实现应回滚这些中间保存；测试使用的内存实现也必须提供等价可观察语义，
-否则无法验证框架承诺。
+ExecutorEventHandler 会在 Worker 调用前中间保存 Execution。若 Worker 抛出异常，
+数据库实现应回滚当前 Event 事务中的这些中间保存；测试使用的内存实现也必须提供
+等价可观察语义，否则无法验证框架承诺。
 
 ## 项目现有能力
 
 - `CommandExecutor` 通过 JOOQ `runReturn` 建立命令事务边界。
-- `ExecutorService.handleNext/onNexts` 分离计划与应用，ExecutionRunner 严格
-  执行保存、派发、应用结果和继续调度。
+- `ExecutorService` 分离计划与应用，ExecutorEventHandler 严格执行保存、派发、应用
+  结果和通过 Event Queue 的继续调度。
 - ExecutorService 按稳定 Task id 的值比较重建可运行集合，能够适配持久化后
   对象引用变化。
 - Worker 明确返回 TERMINATED 并携带 error 时，领域状态可以正常提交为
@@ -31,7 +31,7 @@ ExecutionRunner 会在 Worker 调用前中间保存 Execution。若 Worker 抛�
 
 - 改造前的 `ExecutionHandler` 在调用 Worker 前通过
   `ExecutionRepository.save` 中间保存运行状态；当前职责已迁入
-  ExecutionRunner。
+  ExecutorEventHandler。
 - `InMemoryExecutionRepository` 使用独立 `ConcurrentHashMap`，不感知 JOOQ
   事务提交或回滚。
 - Worker 抛出异常时，JOOQ 事务可以回滚数据库操作，但已写入内存 Map 的聚合副本

@@ -21,8 +21,16 @@ public final class Execution implements Lockable<Execution> {
     private State state;
     private long lockVersion;
     private boolean modified;
+    private Map<String, Object> inputs;
 
-    private Execution(String id, String companyId, String flowId, long flowReversion, boolean persisted) {
+    private Execution(
+        String id,
+        String companyId,
+        String flowId,
+        long flowReversion,
+        Map<String, ?> inputs,
+        boolean persisted
+    ) {
         this.id = requireText(id, "Execution id");
         this.companyId = requireText(companyId, "Company id");
         this.flowId = requireText(flowId, "Flow id");
@@ -31,12 +39,25 @@ public final class Execution implements Lockable<Execution> {
         }
         this.flowReversion = flowReversion;
         this.taskRuns = new ArrayList<>();
+        this.inputs = immutableMap(inputs);
         this.state = State.created();
         this.persisted = persisted;
     }
 
-    public static Execution create(String companyId, String flowId, long flowReversion) {
-        return new Execution(StringUtil.newId(), companyId, flowId, flowReversion, false);
+    public static Execution create(
+        String companyId,
+        String flowId,
+        long flowReversion,
+        Map<String, ?> inputs
+    ) {
+        return new Execution(
+            StringUtil.newId(),
+            companyId,
+            flowId,
+            flowReversion,
+            inputs,
+            false
+        );
     }
 
     /**
@@ -46,19 +67,43 @@ public final class Execution implements Lockable<Execution> {
         String id,
         String companyId,
         String flowId,
-        long flowReversion
+        long flowReversion,
+        Map<String, ?> inputs
     ) {
-        return new Execution(id, companyId, flowId, flowReversion, false);
+        return new Execution(
+            id,
+            companyId,
+            flowId,
+            flowReversion,
+            inputs,
+            false
+        );
     }
 
     /**
      * Rehydrates a complete aggregate from a trusted persistence adapter.
      */
-    public static Execution rehydrate(String id, String companyId, String flowId, long flowReversion, State state, long lockVersion, List<TaskRun> taskRuns) {
+    public static Execution rehydrate(
+        String id,
+        String companyId,
+        String flowId,
+        long flowReversion,
+        Map<String, ?> inputs,
+        State state,
+        long lockVersion,
+        List<TaskRun> taskRuns
+    ) {
         if (lockVersion < 0) {
             throw new IllegalArgumentException("Execution lock version must not be negative");
         }
-        Execution execution = new Execution(id, companyId, flowId, flowReversion, true);
+        Execution execution = new Execution(
+            id,
+            companyId,
+            flowId,
+            flowReversion,
+            inputs,
+            true
+        );
         execution.state = Objects.requireNonNull(state, "Execution state");
         execution.lockVersion = lockVersion;
         if (taskRuns != null) {
@@ -74,6 +119,7 @@ public final class Execution implements Lockable<Execution> {
         this.flowId = source.flowId;
         this.flowReversion = source.flowReversion;
         this.taskRuns = source.taskRuns.stream().map(TaskRun::copy).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        this.inputs = source.inputs;
         this.state = source.state;
         this.lockVersion = source.lockVersion;
         this.persisted = source.persisted;
@@ -99,6 +145,13 @@ public final class Execution implements Lockable<Execution> {
 
     public long flowReversion() {
         return flowReversion;
+    }
+
+    /**
+     * Returns the normalized values supplied for the exact Flow Reversion.
+     */
+    public Map<String, Object> inputs() {
+        return inputs;
     }
 
     public State state() {
@@ -169,6 +222,28 @@ public final class Execution implements Lockable<Execution> {
         requireState(State.Type.CREATED);
         markModified();
         state = state.running();
+    }
+
+    /**
+     * Binds the normalized Flow inputs before a pending Execution starts.
+     *
+     * <p>An empty map is a valid confirmed input set. A pending Execution may
+     * be completed from an empty set to a non-empty set, but a non-empty set
+     * can never be replaced by another set.</p>
+     */
+    public void bindInputs(Map<String, ?> confirmedInputs) {
+        requireState(State.Type.CREATED);
+        Map<String, Object> normalized = immutableMap(confirmedInputs);
+        if (!inputs.isEmpty() && !inputs.equals(normalized)) {
+            throw new WorkflowException(
+                "Execution inputs cannot be replaced: " + id
+            );
+        }
+        if (inputs.equals(normalized)) {
+            return;
+        }
+        markModified();
+        inputs = normalized;
     }
 
     /**
@@ -501,6 +576,44 @@ public final class Execution implements Lockable<Execution> {
             throw new IllegalArgumentException(field + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static Map<String, Object> immutableMap(Map<String, ?> source) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        source.forEach((key, value) -> copy.put(
+            requireText(key, "Execution input key"),
+            immutableValue(Objects.requireNonNull(
+                value,
+                "Execution input value"
+            ))
+        ));
+        return Collections.unmodifiableMap(copy);
+    }
+
+    private static Object immutableValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((key, nested) -> copy.put(
+                requireText(String.valueOf(key), "Execution input key"),
+                immutableValue(Objects.requireNonNull(
+                    nested,
+                    "Execution input value"
+                ))
+            ));
+            return Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                .map(item -> immutableValue(Objects.requireNonNull(
+                    item,
+                    "Execution input value"
+                )))
+                .toList();
+        }
+        return value;
     }
 
 }

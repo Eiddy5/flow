@@ -39,12 +39,16 @@ Execution、TaskRun 和绑定的 Flow Reversion。
 - 外部触发不得复用启动 Server 的 Service、Repository、领域对象或内存上下文。
 - 阶段之间只传递外部能力持有的 companyId、executionId、taskRunId 和业务结果。
 - 新 Server 通过 `ExecutionService.resume(...)` 提交结果。
-- `ResumeExecutionHandler` 在一个 PostgreSQL 命令事务中：
+- `ExecutionCommandEventHandler` 消费 `Resume` 后在一个 PostgreSQL 领取事务中校验
+  并投递 `ExecutorEvent`；随后 `ExecutorEventHandler` 在自己的 PostgreSQL Event
+  事务中：
   1. 按 companyId 和 executionId 加载 Execution。
   2. 加载 Execution 永久绑定的 Flow Reversion。
   3. 定位 taskRunId 并校验它是 WAITING PAUSE TaskRun。
-  4. 校验 outputs，完成原 TaskRun。
-  5. 继续推进同一 Execution 到下一稳定态或终态。
+  4. 校验 outputs，交给内部 Event 完成原 TaskRun。
+  5. 通过 `ExecutorContext` 继续推进同一 Execution 到下一稳定态或终态。
+- `Resume` 消息只保存 companyId、actorId、executionId、taskRunId 和业务结果；不保存
+  Flow、Session 设备信息或内存对象。
 - 恢复不能重新执行原 PAUSE Worker，也不能创建重复 PAUSE TaskRun。
 - 正常线路最终为 COMPLETED；取消和失败场景保持 TERMINATED，不伪装为正常
   完成，明确失败原因由 TaskRun error 保留。

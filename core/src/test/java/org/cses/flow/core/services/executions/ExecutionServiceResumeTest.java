@@ -28,12 +28,21 @@ class ExecutionServiceResumeTest {
             String pauseTaskRunId = started.taskRuns().getFirst().id();
 
             fixture.restartServer();
-            Execution completed = fixture.executionService().resume(
+            Execution accepted = fixture.executionService().resume(
                 fixture.session(),
                 started.id(),
                 pauseTaskRunId,
                 Map.of("decision", "APPROVED")
             );
+            fixture.awaitExecution(
+                fixture.session(),
+                accepted.id(),
+                execution -> execution.isTerminal()
+                    || !execution.requireTaskRun(pauseTaskRunId)
+                        .state()
+                        .is(State.Type.PAUSED)
+            );
+            Execution completed = fixture.awaitStable(accepted);
 
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(
@@ -111,10 +120,7 @@ class ExecutionServiceResumeTest {
                 unchanged.taskRuns().getFirst().state().current()
             );
 
-            fixture.executionService().cancel(
-                fixture.session(),
-                started.id()
-            );
+            fixture.cancel(started.id());
         }
     }
 }
