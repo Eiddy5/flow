@@ -1,5 +1,6 @@
 package org.cses.flow.core.domains.expressions;
 
+import org.cses.flow.core.domains.flows.DataType;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -82,5 +83,51 @@ class ExpressTest {
             .count();
 
         assertEquals(100, matches);
+    }
+
+    @Test
+    void comparesConfirmedInputsWithoutAcceptingExecutableCode() {
+        Express greater = Express.parse("inputs.amount > 1000");
+        Express lowerOrEqual = Express.parse("inputs.amount <= 1000");
+        Express booleanEquals = Express.parse("inputs.urgent == true");
+
+        assertTrue(greater.referencesInputs());
+        assertEquals("amount", greater.referencedKey());
+        assertTrue(greater.matches(Map.of(), Map.of("amount", 1000.01)));
+        assertFalse(greater.matches(Map.of(), Map.of("amount", 1000)));
+        assertTrue(lowerOrEqual.matches(Map.of(), Map.of("amount", 1000L)));
+        assertTrue(booleanEquals.matches(Map.of(), Map.of("urgent", true)));
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> Express.parse("inputs.amount > Runtime.exec(\"bad\")")
+        );
+    }
+
+    @Test
+    void comparesFlowLevelVariables() {
+        Express expression = Express.parse(
+            "variables.environment == \"prod\""
+        );
+
+        assertTrue(expression.referencesVariables());
+        assertEquals("environment", expression.referencedKey());
+        assertTrue(expression.matches(
+            Map.of(),
+            Map.of(),
+            Map.of("environment", "prod")
+        ));
+        assertFalse(expression.matches(
+            Map.of(),
+            Map.of(),
+            Map.of("environment", "staging")
+        ));
+    }
+
+    @Test
+    void requiresOneCharacterLiteralForCharacterInputs() {
+        assertTrue(Express.parse("inputs.grade == \"A\"")
+            .supports(DataType.CHARACTER));
+        assertFalse(Express.parse("inputs.grade == \"AB\"")
+            .supports(DataType.CHARACTER));
     }
 }

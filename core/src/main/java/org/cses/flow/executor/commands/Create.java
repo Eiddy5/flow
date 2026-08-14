@@ -9,6 +9,8 @@ import org.paas.session.Session;
 import org.paas.session.User;
 import org.jooq.DSLContext;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -29,6 +31,7 @@ public final class Create extends SerializableObject
     private String deviceId;
     private String appVersion;
     private String osVersion;
+    private Map<String, Object> inputs = Map.of();
 
     @JsonIgnore
     private transient DSLContext dsl;
@@ -39,6 +42,14 @@ public final class Create extends SerializableObject
     public static Create from(
         Session<? extends User> session,
         Execution execution
+    ) {
+        return from(session, execution, Map.of());
+    }
+
+    public static Create from(
+        Session<? extends User> session,
+        Execution execution,
+        Map<String, ?> inputs
     ) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(execution, "execution");
@@ -62,6 +73,7 @@ public final class Create extends SerializableObject
         command.deviceId = session.getDeviceId();
         command.appVersion = session.getAppVersion();
         command.osVersion = session.getOsVersion();
+        command.inputs = immutableInputs(inputs);
         command.validate();
         return command;
     }
@@ -88,6 +100,7 @@ public final class Create extends SerializableObject
         deviceId = normalizeText(deviceId);
         appVersion = normalizeText(appVersion);
         osVersion = normalizeText(osVersion);
+        inputs = immutableInputs(inputs);
     }
 
     public Create inTransaction(DSLContext dsl) {
@@ -207,6 +220,14 @@ public final class Create extends SerializableObject
         this.osVersion = osVersion;
     }
 
+    public Map<String, Object> getInputs() {
+        return inputs == null ? Map.of() : Map.copyOf(inputs);
+    }
+
+    public void setInputs(Map<String, Object> inputs) {
+        this.inputs = immutableInputs(inputs);
+    }
+
     private static String requireText(String value, String field) {
         String normalized = normalizeText(value);
         if (normalized == null) {
@@ -217,5 +238,19 @@ public final class Create extends SerializableObject
 
     private static String normalizeText(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static Map<String, Object> immutableInputs(
+        Map<String, ?> values
+    ) {
+        if (values == null || values.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> copied = new LinkedHashMap<>();
+        values.forEach((key, value) -> copied.put(
+            requireText(key, "Flow input key"),
+            Objects.requireNonNull(value, "Flow input value")
+        ));
+        return Map.copyOf(copied);
     }
 }

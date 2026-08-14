@@ -23,6 +23,7 @@ public final class Flow implements Deletable<Flow> {
     private final String key;
     private final long reversion;
     private final String description;
+    private final Map<String, Object> variables;
     private final List<Input<?>> inputs;
     private final List<Output> outputs;
     private final List<Task> tasks;
@@ -40,6 +41,7 @@ public final class Flow implements Deletable<Flow> {
             String key,
             long reversion,
             String description,
+            Map<String, ?> variables,
             List<? extends Input<?>> inputs,
             List<? extends Output> outputs,
             List<? extends Task> tasks,
@@ -61,10 +63,11 @@ public final class Flow implements Deletable<Flow> {
         }
         this.reversion = reversion;
         this.description = description == null ? "" : description;
+        this.variables = immutableVariables(variables);
         this.inputs = immutableData(inputs, "Flow inputs");
         this.outputs = immutableData(outputs, "Flow outputs");
         this.tasks = tasks == null ? List.of() : List.copyOf(tasks);
-        validateDefinition(this.tasks);
+        validateDefinition(this.variables, this.inputs, this.tasks);
         this.creator = Objects.requireNonNull(creator, "Flow creator");
         this.updater = Objects.requireNonNull(updater, "Flow updater");
         if (createdAt < 0 || updatedAt < createdAt) {
@@ -96,16 +99,47 @@ public final class Flow implements Deletable<Flow> {
      * Creates one complete Flow reversion from already-bound definitions.
      */
     public static Flow deploy(
-            String companyId,
-            String id,
-            String key,
-            String description,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            Flow latest,
-            ActorRef actor,
-            long deployedAt
+        String companyId,
+        String id,
+        String key,
+        String description,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        Flow latest,
+        ActorRef actor,
+        long deployedAt
+    ) {
+        return deploy(
+            companyId,
+            id,
+            key,
+            description,
+            Map.of(),
+            inputs,
+            outputs,
+            tasks,
+            latest,
+            actor,
+            deployedAt
+        );
+    }
+
+    /**
+     * Creates one complete Flow reversion with Flow-level variables.
+     */
+    public static Flow deploy(
+        String companyId,
+        String id,
+        String key,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        Flow latest,
+        ActorRef actor,
+        long deployedAt
     ) {
         Objects.requireNonNull(actor, "Flow creator");
         String normalizedId = requireText(id, "Flow id");
@@ -142,6 +176,7 @@ public final class Flow implements Deletable<Flow> {
                 normalizedKey,
                 reversion,
                 description,
+                variables,
                 inputs,
                 outputs,
                 boundTasks,
@@ -159,21 +194,62 @@ public final class Flow implements Deletable<Flow> {
      * Rehydrates a complete Flow from trusted persistence state.
      */
     public static Flow rehydrate(
-            String id,
-            String companyId,
-            String key,
-            long reversion,
-            String description,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            boolean deleted,
-            ActorRef creator,
-            ActorRef updater,
-            ActorRef deleter,
-            long createdAt,
-            long updatedAt,
-            Long deletedAt
+        String id,
+        String companyId,
+        String key,
+        long reversion,
+        String description,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        boolean deleted,
+        ActorRef creator,
+        ActorRef updater,
+        ActorRef deleter,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt
+    ) {
+        return rehydrate(
+            id,
+            companyId,
+            key,
+            reversion,
+            description,
+            Map.of(),
+            inputs,
+            outputs,
+            tasks,
+            deleted,
+            creator,
+            updater,
+            deleter,
+            createdAt,
+            updatedAt,
+            deletedAt
+        );
+    }
+
+    /**
+     * Rehydrates a complete Flow with persisted Flow-level variables.
+     */
+    public static Flow rehydrate(
+        String id,
+        String companyId,
+        String key,
+        long reversion,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        boolean deleted,
+        ActorRef creator,
+        ActorRef updater,
+        ActorRef deleter,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt
     ) {
         return new Flow(
                 id,
@@ -181,6 +257,7 @@ public final class Flow implements Deletable<Flow> {
                 key,
                 reversion,
                 description,
+                variables,
                 inputs,
                 outputs,
                 tasks,
@@ -265,6 +342,13 @@ public final class Flow implements Deletable<Flow> {
         return description;
     }
 
+    /**
+     * Returns the immutable Flow-level variable snapshot.
+     */
+    public Map<String, Object> variables() {
+        return variables;
+    }
+
     public List<Input<?>> inputs() {
         return inputs;
     }
@@ -322,6 +406,41 @@ public final class Flow implements Deletable<Flow> {
         return flatten(tasks);
     }
 
+    /**
+     * Validates and normalizes one confirmed Flow input payload.
+     */
+    public Map<String, Object> normalizeInputs(Map<String, ?> actualInputs) {
+        Map<String, ?> accepted = actualInputs == null
+            ? Map.of()
+            : actualInputs;
+        Set<String> declared = inputs.stream()
+            .map(Input::getKey)
+            .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> unsupported = new LinkedHashSet<>(accepted.keySet());
+        unsupported.removeAll(declared);
+        if (!unsupported.isEmpty()) {
+            throw new WorkflowException(
+                "Flow inputs were not declared: " + unsupported
+            );
+        }
+        Map<String, Object> normalized = new LinkedHashMap<>();
+        for (Input<?> input : inputs) {
+            boolean provided = accepted.containsKey(input.getKey());
+            Object value = provided
+                ? accepted.get(input.getKey())
+                : input.getDefaultValue();
+            try {
+                Object result = input.normalized(value);
+                if (result != null) {
+                    normalized.put(input.getKey(), result);
+                }
+            } catch (IllegalArgumentException exception) {
+                throw new WorkflowException(exception.getMessage());
+            }
+        }
+        return Collections.unmodifiableMap(normalized);
+    }
+
     public Flow copy() {
         return rehydrate(
                 id,
@@ -329,6 +448,7 @@ public final class Flow implements Deletable<Flow> {
                 key,
                 reversion,
                 description,
+                variables,
                 inputs,
                 outputs,
                 tasks,
@@ -356,6 +476,7 @@ public final class Flow implements Deletable<Flow> {
                 && Objects.equals(companyId, other.companyId)
                 && Objects.equals(key, other.key)
                 && Objects.equals(description, other.description)
+                && Objects.equals(variables, other.variables)
                 && Objects.equals(inputs, other.inputs)
                 && Objects.equals(outputs, other.outputs)
                 && Objects.equals(tasks, other.tasks)
@@ -375,6 +496,7 @@ public final class Flow implements Deletable<Flow> {
                 key,
                 reversion,
                 description,
+                variables,
                 inputs,
                 outputs,
                 tasks,
@@ -413,7 +535,11 @@ public final class Flow implements Deletable<Flow> {
         }
     }
 
-    private static void validateDefinition(List<Task> tasks) {
+    private static void validateDefinition(
+            Map<String, Object> flowVariables,
+            List<Input<?>> flowInputs,
+            List<Task> tasks
+    ) {
         if (tasks.isEmpty()) {
             throw new WorkflowException(
                     "Flow must contain at least one top-level Task"
@@ -421,7 +547,14 @@ public final class Flow implements Deletable<Flow> {
         }
         Set<String> keys = new LinkedHashSet<>();
         Set<String> ids = new HashSet<>();
-        validateTasks(tasks, keys, ids, null);
+        validateTasks(
+                tasks,
+                keys,
+                ids,
+                null,
+                flowInputs,
+                flowVariables
+        );
         validateDependencies(tasks, keys);
     }
 
@@ -429,7 +562,9 @@ public final class Flow implements Deletable<Flow> {
             List<Task> tasks,
             Set<String> keys,
             Set<String> ids,
-            Task parent
+            Task parent,
+            List<Input<?>> flowInputs,
+            Map<String, Object> flowVariables
     ) {
         for (Task task : tasks) {
             if (task == null) {
@@ -480,15 +615,45 @@ public final class Flow implements Deletable<Flow> {
                             .filter(data -> data.getKey().equals(outputKey))
                             .findFirst()
                             .orElseThrow();
-                    if (routeData.getType() != DataType.STRING) {
+                    if (!task.route().supports(routeData.getType())) {
                         throw new WorkflowException(
-                                "Task route requires STRING parent context "
+                                "Task route is incompatible with parent context "
                                         + outputKey + ": " + taskKey
                         );
                     }
                 });
+                task.route().referencedInputKey().ifPresent(inputKey -> {
+                    Input<?> flowInput = flowInputs.stream()
+                        .filter(input -> input.getKey().equals(inputKey))
+                        .findFirst()
+                        .orElseThrow(() -> new WorkflowException(
+                            "Task route references undeclared Flow input "
+                                + inputKey + ": " + taskKey
+                        ));
+                    if (!task.route().supports(flowInput.getType())) {
+                        throw new WorkflowException(
+                            "Task route is incompatible with Flow input "
+                                + inputKey + ": " + taskKey
+                        );
+                    }
+                });
             }
-            validateTasks(task.definitionChildren(), keys, ids, task);
+            task.route().referencedVariableKey().ifPresent(variableKey -> {
+                if (!flowVariables.containsKey(variableKey)) {
+                    throw new WorkflowException(
+                            "Task route references undeclared Flow variable "
+                                    + variableKey + ": " + taskKey
+                    );
+                }
+            });
+            validateTasks(
+                task.definitionChildren(),
+                keys,
+                ids,
+                task,
+                flowInputs,
+                flowVariables
+            );
         }
     }
 
@@ -572,6 +737,20 @@ public final class Flow implements Deletable<Flow> {
             result.add(data);
         }
         return List.copyOf(result);
+    }
+
+    private static Map<String, Object> immutableVariables(
+            Map<String, ?> source
+    ) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        source.forEach((key, value) -> result.put(
+                Objects.requireNonNull(key, "Flow variable key"),
+                value
+        ));
+        return Collections.unmodifiableMap(result);
     }
 
     private static String requireText(String value, String field) {

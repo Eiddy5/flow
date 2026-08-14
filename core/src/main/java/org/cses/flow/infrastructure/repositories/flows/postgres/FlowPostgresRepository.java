@@ -269,6 +269,7 @@ public final class FlowPostgresRepository implements FlowRepository {
                 && stored.key().equals(attempted.key())
                 && stored.reversion() == attempted.reversion()
                 && stored.description().equals(attempted.description())
+                && stored.variables().equals(attempted.variables())
                 && stored.inputs().equals(attempted.inputs())
                 && stored.outputs().equals(attempted.outputs())
                 && stored.tasks().equals(attempted.tasks())

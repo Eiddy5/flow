@@ -13,6 +13,7 @@ import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.validations.ModelInvariant;
 
@@ -31,7 +32,24 @@ import java.util.Optional;
  */
 @Plugin(
     title = "暂停",
-    description = "执行暂停前任务，等待外部回调后继续流程"
+    description = "执行暂停前任务，等待外部回调后继续流程",
+    examples = {
+        @Example(
+            title = "等待外部审批结果",
+            code = """
+                pause:
+                  key: create-approval
+                  type: org.cses.flow.extensions.tasks.AutomaticTask
+                resume:
+                  - key: decision
+                    type: STRING
+                    displayName: 审批结果
+                    required: true
+                duration: PT24H
+                behavior: FAIL
+                """
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor

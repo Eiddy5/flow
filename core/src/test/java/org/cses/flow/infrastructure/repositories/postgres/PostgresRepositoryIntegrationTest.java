@@ -304,6 +304,10 @@ final class PostgresRepositoryIntegrationTest {
             flowId,
             Map.of(
                 "key", "plugin-flow",
+                "variables", Map.of(
+                    "environment", "prod",
+                    "retryLimit", 3
+                ),
                 "tasks", List.of(Map.of(
                     "key", "notify",
                     "type", TestNotificationTask.class.getCanonicalName(),
@@ -326,6 +330,10 @@ final class PostgresRepositoryIntegrationTest {
             flowId,
             1L
         ).orElseThrow());
+        assertEquals(
+            Map.of("environment", "prod", "retryLimit", 3),
+            restored.variables()
+        );
         TestNotificationTask task = assertInstanceOf(
             TestNotificationTask.class,
             restored.tasks().getFirst()

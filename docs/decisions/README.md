@@ -60,6 +60,8 @@
   Plugin、真实类地址注册及严格多态绑定。
 - [`ADR 0027`](0027-describe-registered-plugins-and-query-schemas.md)：已注册插件
   按真实 Java 包分组的两级目录、可选描述元信息与按需定义 Schema 查询。
+- [`ADR 0057`](0057-declare-flow-usage-examples-on-plugins.md)：以独立 `Example` 作为
+  `@Plugin.examples` 的值类型，随插件详情提供可物化的 Flow YAML 使用示例。
 - [`ADR 0028`](0028-add-log-extension-and-task-template-expressions.md)：按能力名称
   组织新的 Task 扩展，并由受限模板表达式从运行输入提取日志消息。
 
@@ -108,6 +110,8 @@
   canonical class name 类型和 Task 树持久化边界。
 - [`ADR 0027`](0027-describe-registered-plugins-and-query-schemas.md)：全局插件目录、
   真实 Java 包分组、Task 元信息和 JSON Schema 定义查询边界。
+- [`ADR 0057`](0057-declare-flow-usage-examples-on-plugins.md)：插件通过
+  `@Plugin.examples` 声明 Flow YAML 使用示例，详情查询统一返回示例元信息。
 - [`ADR 0028`](0028-add-log-extension-and-task-template-expressions.md)：Log 扩展、
   新扩展目录命名以及 Task 字符串模板表达式。
 - [`ADR 0044`](0044-remove-bean-context-from-run-context.md)：RunContext 移除通用
@@ -126,6 +130,12 @@
   Express 值对象统一 Route 与 Loop Until 的受限 outputs 条件解析和求值，并由
   消费方分别保护引用范围；TemplateExpression 同属 expressions 领域，但保持独立
   的模板语法、字符串结果和缺值失败语义。
+- [`ADR 0052`](0052-bind-confirmed-flow-inputs-to-safe-task-routes.md)：Flow 启动时
+  规范化并持久保持 typed inputs，Task Route 可用受限运算符读取 inputs；宿主只能
+  提交结构化字段映射，不能注入脚本或任意表达式。
+- [`ADR 0055`](0055-add-flow-level-variables.md)：Flow Reversion 持有简单的
+  `Map<String, Object>` 流程级变量，Route 和 RunContext 可只读读取，不复制到
+  TaskRun，也不与启动时的 typed inputs 混用。
 
 ## Execution、TaskRun、State 与调度
 
@@ -202,7 +212,15 @@
   提供 Identified、Auditable、Deletable、Lockable 与 ActorRef；能力接口同时覆盖
   行为、查询和失败校验，Session 只作为可信调用上下文传入。
 - [`ADR 0049`](0049-remove-demo-and-memory-runtime-modes.md)：移除 Demo 与 Memory
-  运行时模式，统一使用标准具名 `flow` PostgreSQL 数据源；它取代 ADR 0035。
+  运行时模式，统一使用标准具名 `flow` PostgreSQL 数据源；它取代 ADR 0035。页面
+  删除条款已由 [`ADR 0053`](0053-restore-flow-management-surface.md) 修订。
+- [`ADR 0053`](0053-restore-flow-management-surface.md)：恢复正式 Flow 管理页面和
+  真实 HTTP Controller；页面使用 `@UserSession`，不恢复 Demo/Memory 运行时。
+- [`ADR 0054`](0054-temporary-admin-session-for-flow-management.md)：在宿主认证尚未
+  接入前，为正式管理页面提供可关闭的固定 `admin` 管理员身份。
+- [`ADR 0056`](0056-bind-paas-jooq-to-named-datasource.md)：替换 PAAS 的无限定名
+  JOOQ Factory，按 DataSource 名称绑定同名 Configuration，避免嵌入宿主的额外
+  Configuration Bean 造成启动冲突。
 - [`ADR 0003`](0003-use-generic-command-executor.md)：泛型 CommandExecutor。
 - [`ADR 0010`](0010-use-static-create-for-domain-objects.md)：领域对象静态 create 和
   rehydrate。

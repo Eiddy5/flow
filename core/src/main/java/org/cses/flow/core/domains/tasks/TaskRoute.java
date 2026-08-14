@@ -2,6 +2,7 @@ package org.cses.flow.core.domains.tasks;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.expressions.Express;
 
 import java.util.Map;
@@ -9,7 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 /**
- * A Task route that is either DIRECT or guarded by one output condition.
+ * A Task route that is either DIRECT or guarded by one safe condition.
  */
 public final class TaskRoute {
 
@@ -53,13 +54,53 @@ public final class TaskRoute {
     }
 
     public Optional<String> referencedOutputKey() {
-        return condition == null
+        return condition == null || !condition.referencesOutputs()
             ? Optional.empty()
-            : Optional.of(condition.outputPath().getFirst());
+            : Optional.of(condition.referencedKey());
+    }
+
+    public Optional<String> referencedInputKey() {
+        return condition == null || !condition.referencesInputs()
+            ? Optional.empty()
+            : Optional.of(condition.referencedKey());
+    }
+
+    public Optional<String> referencedVariableKey() {
+        return condition == null || !condition.referencesVariables()
+            ? Optional.empty()
+            : Optional.of(condition.referencedKey());
+    }
+
+    public boolean supportsOrderedComparison() {
+        return condition != null && condition.supportsOrderedComparison();
+    }
+
+    public boolean supports(DataType type) {
+        return condition == null || condition.supports(type);
+    }
+
+    public Optional<Express> condition() {
+        return Optional.ofNullable(condition);
     }
 
     public boolean matches(Map<String, ?> parentOutputs) {
         return condition == null || condition.matches(parentOutputs);
+    }
+
+    public boolean matches(
+        Map<String, ?> parentOutputs,
+        Map<String, ?> flowInputs
+    ) {
+        return matches(parentOutputs, flowInputs, Map.of());
+    }
+
+    public boolean matches(
+        Map<String, ?> parentOutputs,
+        Map<String, ?> flowInputs,
+        Map<String, ?> flowVariables
+    ) {
+        return condition == null
+            || condition.matches(parentOutputs, flowInputs, flowVariables);
     }
 
     @Override

@@ -61,7 +61,9 @@ Flow 运行时中的 `org.x9.jooq.JOOQ`、JOOQ `Configuration` 和 `DataSource` 
 使用 `@Named("flow")` 绑定。宿主应用即使同时存在 `default`、`mattermost` 等数据
 源，Flow Repository 和事务也不得回退到这些数据源。宿主只配置标准
 `datasources.flow.*`；Micronaut Hikari、Micronaut JOOQ 与 PAAS JOOQ 根据具名
-DataSource 自动创建同名 Bean，Flow 不提供 DataSource 或 JOOQ Factory。
+DataSource 自动创建同名 Bean；由于 PAAS 默认 Factory 对 Configuration 使用无限定名
+注入，Flow 通过 `NamedJooqFactory` 按 DataSource 名称选择同名 Configuration，避免
+嵌入宿主提供额外无限定名 Configuration 时产生候选冲突。
 `jooq.datasources.flow` 只用于显式覆盖方言或 JOOQ Settings，不是必填配置。
 
 ## 2. 生成类提供的快捷能力

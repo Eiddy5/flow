@@ -6,6 +6,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 
 import java.util.OptionalInt;
@@ -16,7 +17,21 @@ import java.util.OptionalInt;
  */
 @Plugin(
     title = "并行",
-    description = "并行启动直接子分支并等待所有已选择分支收敛"
+    description = "并行启动直接子分支并等待所有已选择分支收敛",
+    capabilities = "PARALLEL_CHILDREN",
+    examples = {
+        @Example(
+            title = "并行执行两个检查",
+            code = """
+                concurrent: 2
+                tasks:
+                  - key: backend-check
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                  - key: frontend-check
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                """
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor

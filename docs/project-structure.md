@@ -161,8 +161,11 @@ Web 入站适配层，负责：
 - 将稳定的业务结果或异常转换为 HTTP 响应。
 
 Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务编排。当前
-`controller/plugins` 桥接全局只读插件查询。Flow Server 不内置演示页面或 Demo 运行时；
-HTTP 入站只保留生产协议。
+`controller/plugins` 桥接全局只读插件查询，`controller/flow` 提供基于真实
+`@UserSession` 的 Flow 管理 HTTP 入口。Flow Server 同时发布 `/flow/**` 下的正式管理
+页面；默认由 `controller/session/AdminSessionArgumentBinder` 注入临时 `admin` 管理员身份，
+可通过 `flow.management.admin-session.enabled=false` 关闭并交回宿主认证。页面不启用
+Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 和 Dispatch Queue。
 
 ### `core/`
 
@@ -206,8 +209,11 @@ core/
 | `validations` | 对框架绑定或项目代码直接创建的模型执行统一主动校验 | YAML 语法解析、Flow 树身份生成 |
 
 `serializers` 是 Core 技术目录中的明确例外，保持扁平。`YamlParser` 提供严格
-YAML 树/只读 Map 解析，`FlowDefinitionDeserializer` 负责 Flow 字段、系统身份和
-递归 Task 定义的物化，`JacksonMapper` 是该链路唯一受控的 Jackson 配置入口。
+YAML 树/只读 Map 解析，`FlowDefinitionDeserializer` 负责 Flow 字段和部署入口，
+`JacksonMapper` 是该链路唯一受控的 Jackson 配置入口；`PluginDeserializer` 通过
+构造器接收注册中心，解析具体 Task 并由 Jackson 自然递归绑定嵌套插件。部署期
+Task 身份通过 Jackson reader attribute 传入 `PluginDeserializationContext`，不再
+由 Flow 反射扫描插件字段。
 `plugins` 的运行机制放在包根，只有注解位于 `plugins/annotations`；
 `DefaultPluginRegistry` 直接从插件类的 `Class#getPackageName()` 取得真实包路径，
 并以此构造全局只读目录。`PluginSchemaGenerator` 位于
@@ -614,6 +620,8 @@ queues/event
 | Plugin 契约、目录、发现注册与多态绑定 | `core/src/main/java/org/cses/flow/core/plugins/`；注解放其 `annotations/` |
 | 插件目录与详情查询 Service | `core/src/main/java/org/cses/flow/core/services/plugins/` |
 | 插件全局 HTTP 查询 | `server/src/main/java/org/cses/flow/controller/plugins/` |
+| Flow 管理 HTTP Controller 与协议模型 | `server/src/main/java/org/cses/flow/controller/flow/` |
+| Flow 管理页面与布局资源 | `server/src/main/resources/flow/` |
 | 模型主动校验 | `core/src/main/java/org/cses/flow/core/validations/` |
 | 工作流统一运行 State 与迁移规则 | `core/src/main/java/org/cses/flow/core/domains/flows/State.java` |
 | Flow 草稿聚合与删除生命周期事实 | `core/src/main/java/org/cses/flow/core/domains/flows/` |

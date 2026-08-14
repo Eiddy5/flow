@@ -1,5 +1,6 @@
 package org.cses.flow.infrastructure.session;
 
+import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Replaces;
 import io.micronaut.core.bind.ArgumentBinder;
 import io.micronaut.core.convert.ArgumentConversionContext;
@@ -21,6 +22,10 @@ import java.util.Optional;
  * unrelated Redis session cache.</p>
  */
 @Singleton
+@Requires(
+    property = "flow.management.admin-session.enabled",
+    value = "false"
+)
 @Replaces(SessionArgumentBinder.class)
 public final class TestSessionArgumentBinder
     implements AnnotatedRequestArgumentBinder<

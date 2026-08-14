@@ -43,6 +43,18 @@ micronaut:
           - 'X-API-VERSION'
           - 'Accept-Version'
 
+    static-resources:
+      flow:
+        mapping: /flow/**
+        paths:
+          - classpath:flow
+
+flow:
+  management:
+    admin-session:
+      # Temporary standalone identity. Disable when the host provides real auth.
+      enabled: true
+
 cluster:
   dataCenter: "beijing"
   clusterName: "okr"

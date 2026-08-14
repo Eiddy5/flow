@@ -264,7 +264,8 @@ class CoreArchitectureStandardTest {
             "executor/handlers/ExecutorCommandHandler.java"
         ));
         assertTrue(
-            executionService.contains("Create.from(session, accepted)")
+            executionService.contains("Create.from(")
+                && executionService.contains("normalizedInputs")
                 && executionService.contains("executorCommandQueue.emit(")
                 && defaultExecutor.contains(
                     ".subscribe(commandHandler::handle)"
@@ -661,6 +662,7 @@ class CoreArchitectureStandardTest {
 
         String source = Files.readString(yamlParser);
         String mapperSource = Files.readString(jacksonMapper);
+        String flowDeserializerSource = Files.readString(flowDeserializer);
         assertTrue(
             mapperSource.contains(
                 "com.fasterxml.jackson.databind.ObjectMapper"
@@ -679,6 +681,15 @@ class CoreArchitectureStandardTest {
                 && !source.contains("org.cses.flow.core.commands")
                 && !source.contains("org.cses.flow.extensions"),
             "YamlParser must not interpret Flow, Task, or extension types"
+        );
+        assertTrue(
+            !flowDeserializerSource.contains("PluginRegistry")
+                && !flowDeserializerSource.contains("java.lang.reflect")
+                && !flowDeserializerSource.contains(
+                    "normalizeDefinitionFields"
+                ),
+            "Flow definition binding must delegate Task polymorphism to "
+                + "Jackson PluginDeserializer"
         );
         assertTrue(
             Files.notExists(CORE.resolve(
@@ -719,6 +730,8 @@ class CoreArchitectureStandardTest {
         Path plugins = CORE.resolve("plugins");
         Path pluginSpi = plugins.resolve("Plugin.java");
         Path pluginAnnotation = plugins.resolve("annotations/Plugin.java");
+        Path exampleAnnotation = plugins.resolve("annotations/Example.java");
+        Path pluginExample = plugins.resolve("PluginExample.java");
         Path pluginDeserializer = plugins.resolve(
             "PluginDeserializer.java"
         );
@@ -743,9 +756,11 @@ class CoreArchitectureStandardTest {
                 && Files.isRegularFile(registry)
                 && Files.isRegularFile(defaultRegistry)
                 && Files.isRegularFile(pluginMetadata)
+                && Files.isRegularFile(pluginExample)
                 && Files.isRegularFile(registeredPlugin)
                 && Files.isRegularFile(pluginSchema)
                 && Files.isRegularFile(pluginAnnotation)
+                && Files.isRegularFile(exampleAnnotation)
                 && Files.isRegularFile(pluginDeserializer)
                 && Files.isRegularFile(pluginModule),
             "Core plugin interface, marker, registry, and Jackson module "
@@ -792,10 +807,19 @@ class CoreArchitectureStandardTest {
         );
 
         String deserializerSource = Files.readString(pluginDeserializer);
+        String pluginModuleSource = Files.readString(pluginModule);
         assertTrue(
             deserializerSource.contains(
-                "registry.resolve(type, pluginType)"
+                "registry.resolve(type, Plugin.class)"
             )
+                && deserializerSource.contains("readTreeAsValue")
+                && !deserializerSource.contains("ModelValidator")
+                && !deserializerSource.contains(
+                    "PluginDefinitionPreparer"
+                )
+                && pluginModuleSource.contains(
+                    "new PluginDeserializer<>(registry)"
+                )
                 && !deserializerSource.contains("switch")
                 && !deserializerSource.contains("AutomaticTask")
                 && !deserializerSource.contains("Pause"),
@@ -808,6 +832,7 @@ class CoreArchitectureStandardTest {
         String pluginMetadataSource = Files.readString(pluginMetadata);
         String registeredPluginSource = Files.readString(registeredPlugin);
         String annotationSource = Files.readString(pluginAnnotation);
+        String exampleAnnotationSource = Files.readString(exampleAnnotation);
         assertTrue(
             registrySource.contains("interface PluginRegistry")
                 && registrySource.contains("List<RegisteredPlugin>")
@@ -838,7 +863,16 @@ class CoreArchitectureStandardTest {
                 )
                 && !annotationSource.contains("String source()")
                 && annotationSource.contains("String title()")
-                && annotationSource.contains("String description()"),
+                && annotationSource.contains("String description()")
+                && annotationSource.contains("Example[] examples()")
+                && pluginMetadataSource.contains(
+                    "List<PluginExample> examples"
+                )
+                && exampleAnnotationSource.contains("@Target({})")
+                && exampleAnnotationSource.contains("String[] code()")
+                && exampleAnnotationSource.contains(
+                    "boolean full() default false"
+                ),
             "Plugin and @Plugin must complement each other for type and "
                 + "compile-time discovery"
         );

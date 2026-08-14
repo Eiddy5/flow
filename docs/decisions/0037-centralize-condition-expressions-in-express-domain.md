@@ -2,12 +2,14 @@
 
 ## 状态
 
-Accepted（2026-08-05；2026-08-06 纳入模板表达式语义所有权）
+Accepted（2026-08-05；2026-08-06 纳入模板表达式语义所有权；Flow Input root、
+typed literal 与比较运算符于 2026-08-13 由 ADR 0052 修订）
 
 本决策修订 ADR 0006 中 `RouteExpression` 的语义所有权、ADR 0036 中
 `LoopConditionExpression` 的独立解析与求值选择，以及 ADR 0028 中
-`TemplateExpression` 位于 Task 领域的包归属。Route 的 `DIRECT`、字符串精确
-比较、Loop Until 的本轮输出范围、模板语法和模板缺值失败语义保持不变。
+`TemplateExpression` 位于 Task 领域的包归属。ADR 0052 后续扩展 Task Route 的
+Input root 和 typed 比较；`DIRECT`、Loop Until 的本轮 outputs 范围、模板语法和
+模板缺值失败语义保持不变。
 
 ## 适用范围与效力
 
@@ -20,9 +22,9 @@ TemplateExpression 供需要渲染运行输入的 Task 使用。它覆盖条件�
 [`domain-object-modeling.md`](../standards/domain-object-modeling.md)。当前 Route
 运行语义仍由 ADR 0006 约束，Loop Until 运行语义仍由 ADR 0036 约束。
 
-本决策不扩展两种表达式语言，不改变 YAML 或 PostgreSQL 中已有字符串形态，也不
-把 TemplateExpression 合并为 Express 条件语法，不支持算术、逻辑组合、函数调用
-或任意脚本。
+本决策建立时不扩展两种表达式语言；当前 Task Route 扩展以 ADR 0052 为准。它不
+改变 YAML 或 PostgreSQL 中已有字符串形态，也不把 TemplateExpression 合并为
+Express 条件语法，不支持算术、逻辑组合、函数调用或任意脚本。
 
 ## 背景
 
@@ -106,7 +108,8 @@ TaskRoute 与 LoopUntil 只保留各自真实业务差异。
 
 - `flow_tasks.route` 继续保存 `DIRECT` 或原表达式字符串，不修改数据库字段。
 - LoopUntil properties 中的 `condition` 继续保存表达式字符串，不修改 JSON
-  形态或插件 Schema 的 string 类型。
+  形态或插件 Schema 的 string 类型；Schema 同时声明标准扩展格式
+  `flow-expression`，供编排工具选择结构化条件构建器，不能把它解释为允许执行脚本。
 - 解析后的 source 使用移除首尾空白后的定义文本；持久化重建必须得到值相等的
   Express 和 TaskRoute。
 - 本次不为已发布 Java 类型保留双轨兼容类；迁移一次性删除
@@ -304,10 +307,10 @@ expectedValue 字段。
 - **并发**：同一个 Express 实例并发读取不同 outputs 时结果互不污染，不保存上次
   求值上下文。
 
-## 尚待业务规则确认
+## 后续修订
 
-- 是否支持字符串转义、非 STRING 比较、`!=`、逻辑组合和更多运行上下文尚未确认；
-  这些能力不能通过放宽正则或调用外部脚本引擎隐式加入。
+- ADR 0052 已确认字符串转义、typed scalar、`!=`、数值顺序比较和 Flow Input
+  root；逻辑组合、函数和更多运行上下文仍未确认，不能通过调用脚本引擎隐式加入。
 - Express 条件与 TemplateExpression 模板已经统一归属表达式领域；是否进一步共享
   内部路径词法实现不影响公开接口，也不能改变二者不同的缺值和结果语义。
 

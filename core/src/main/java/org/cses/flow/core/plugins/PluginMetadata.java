@@ -1,5 +1,6 @@
 package org.cses.flow.core.plugins;
 
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -9,7 +10,9 @@ public record PluginMetadata<T extends Plugin>(
     Class<? extends T> type,
     Class<T> baseClass,
     String title,
-    String description
+    String description,
+    List<PluginExample> examples,
+    List<String> capabilities
 ) {
 
     public PluginMetadata {
@@ -33,6 +36,33 @@ public record PluginMetadata<T extends Plugin>(
         description = description == null || description.isBlank()
             ? ""
             : description;
+        Objects.requireNonNull(examples, "Plugin examples");
+        examples = List.copyOf(examples);
+        Objects.requireNonNull(capabilities, "Plugin capabilities");
+        List<String> normalizedCapabilities = capabilities.stream()
+            .map(capability -> capability == null ? "" : capability.trim())
+            .toList();
+        if (normalizedCapabilities.stream().anyMatch(String::isBlank)) {
+            throw new IllegalArgumentException(
+                "Plugin capabilities must not contain blank values"
+            );
+        }
+        if (normalizedCapabilities.stream().distinct().count()
+            != normalizedCapabilities.size()) {
+            throw new IllegalArgumentException(
+                "Plugin capabilities must not contain duplicates"
+            );
+        }
+        capabilities = List.copyOf(normalizedCapabilities);
+    }
+
+    public PluginMetadata(
+        Class<? extends T> type,
+        Class<T> baseClass,
+        String title,
+        String description
+    ) {
+        this(type, baseClass, title, description, List.of(), List.of());
     }
 
     public String canonicalType() {

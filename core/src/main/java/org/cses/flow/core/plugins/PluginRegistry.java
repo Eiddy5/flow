@@ -22,7 +22,7 @@ public interface PluginRegistry {
      * Resolves an exact plugin class and checks the requested capability.
      */
     <P extends Plugin> Class<? extends P> resolve(
-        String type,
-        Class<P> expectedBaseClass
+            String type,
+            Class<P> expectedBaseClass
     );
 }

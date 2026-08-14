@@ -9,6 +9,7 @@ import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 import org.slf4j.LoggerFactory;
@@ -17,7 +18,15 @@ import java.util.Map;
 
 @Plugin(
     title = "日志",
-    description = "解析消息表达式并将结果写入应用日志"
+    description = "解析消息表达式并将结果写入应用日志",
+    examples = {
+        @Example(
+            title = "记录固定消息",
+            code = """
+                message: "流程已进入自动处理阶段"
+                """
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor

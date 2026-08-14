@@ -5,7 +5,7 @@
 ## Language
 
 **Flow**:
-由 FlowDraft 在部署时完成解析和校验后形成的完整工作流定义；同一逻辑 Flow 的各次部署共享稳定 `id`，每个 Flow 都有正式 `reversion`，并持有 inputs、outputs 和 Task 定义。Flow 不是草稿，也不保存某次 Execution 的运行 State。
+由 FlowDraft 在部署时完成解析和校验后形成的完整工作流定义；同一逻辑 Flow 的各次部署共享稳定 `id`，每个 Flow 都有正式 `reversion`，并持有 variables、inputs、outputs 和 Task 定义。Flow 不是草稿，也不保存某次 Execution 的运行 State。
 _Avoid_: Raw Flow, Draft, Process
 
 **Flow Draft**:
@@ -15,6 +15,10 @@ _Avoid_: FlowWithSource, generic Draft, Draft status, Raw Flow, parsed Flow, Flo
 **Flow Reversion**:
 同一逻辑 Flow 的一次成功部署所形成的、具有正式 `reversion` 且可独立读取的不可变 Flow 快照。
 _Avoid_: Flow Version, Revision, Draft, mutable Flow
+
+**Flow Variable**:
+由 Flow Reversion 持有的、供该版本所有 Execution 共享读取的流程级键值；它属于流程定义配置，不是某次 Execution 产生的运行结果，也不能在 Task 之间隐式累积或写回。
+_Avoid_: Execution Input, Task Output, Writable Shared State
 
 **Current Flow Reversion**:
 某个 Flow 同一 `id` 下最大的 reversion；只有该最大 reversion 尚未删除时，它才供普通的新 Execution 启动绑定。最大 reversion 已删除时不存在可启动的当前 Flow，不能回退到旧 reversion；已经由外部业务持久承诺的精确 Execution Binding 按其原 Flow Reversion 物化，不属于普通新启动。
@@ -255,6 +259,7 @@ _Avoid_: Merged Flowing Context
 
 **Global Context**:
 一次 Execution 共享的全局数据域；第一阶段只允许读取，不允许 Task 写入。
+Flow Variable 是该共享读取语义中的流程定义来源，但不等同于某次 Execution 的可变运行状态。
 _Avoid_: Writable shared variables
 
 **Stable State**:

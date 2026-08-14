@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.validations.ModelInvariant;
 
@@ -17,7 +18,18 @@ import java.util.Map;
  */
 @Plugin(
     title = "LOOP",
-    description = "将直接子步骤按固定次数依次重复执行"
+    description = "将直接子步骤按固定次数依次重复执行",
+    examples = {
+        @Example(
+            title = "重复执行三次",
+            code = """
+                times: 3
+                tasks:
+                  - key: repeated-step
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                """
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor

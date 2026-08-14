@@ -122,7 +122,9 @@ public final class ExecutorService {
                     taskRun.inputs(),
                     Map.of(
                         RunContext.EXECUTION_VARIABLE,
-                        context.execution()
+                        context.execution(),
+                        RunContext.FLOW_VARIABLES_VARIABLE,
+                        context.flowVariables()
                     )
                 ));
             }
@@ -529,7 +531,11 @@ public final class ExecutorService {
             loopRun
         );
         for (Task child : loop.tasks()) {
-            if (!child.matchesRoute(flowingContext)) {
+            if (!child.matchesRoute(
+                flowingContext,
+                context.flowInputs(),
+                context.flowVariables()
+            )) {
                 continue;
             }
             SearchResult result = searchTask(
@@ -616,7 +622,11 @@ public final class ExecutorService {
     ) {
         Map<String, Object> flowingContext = childFlowingContext(parent, parentRun);
         for (Task child : parent.tasks()) {
-            if (!child.matchesRoute(flowingContext)) {
+            if (!child.matchesRoute(
+                flowingContext,
+                context.flowInputs(),
+                context.flowVariables()
+            )) {
                 continue;
             }
             SearchResult childResult = searchTask(
@@ -645,7 +655,11 @@ public final class ExecutorService {
         List<String> orchestrationCompletions = new ArrayList<>();
         Map<String, Object> flowingContext = childFlowingContext(parent, parentRun);
         for (Task child : parent.tasks()) {
-            if (!child.matchesRoute(flowingContext)) {
+            if (!child.matchesRoute(
+                flowingContext,
+                context.flowInputs(),
+                context.flowVariables()
+            )) {
                 continue;
             }
             SearchResult branch = searchTask(
@@ -746,7 +760,11 @@ public final class ExecutorService {
         if (!routeCanBeEvaluated(parentTask, actualParentRun)) {
             return DependencyState.PENDING;
         }
-        if (!task.matchesRoute(childFlowingContext(parentTask, actualParentRun))) {
+        if (!task.matchesRoute(
+            childFlowingContext(parentTask, actualParentRun),
+            context.flowInputs(),
+            context.flowVariables()
+        )) {
             return DependencyState.UNSELECTED;
         }
 
@@ -864,6 +882,9 @@ public final class ExecutorService {
         IterationScope iterationScope
     ) {
         Map<String, Object> inputs = new LinkedHashMap<>();
+        if (!context.flowInputs().isEmpty()) {
+            inputs.put("flowInputs", context.flowInputs());
+        }
         if (parentOutputs != null && !parentOutputs.isEmpty()) {
             inputs.put("outputs", Map.copyOf(parentOutputs));
         }

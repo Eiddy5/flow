@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted（2026-07-30；Input 多态物化方式于 2026-08-03 修订）
+Accepted（2026-07-30；Input 多态物化方式于 2026-08-03 修订；运行值绑定与
+typed Route 于 2026-08-13 由 ADR 0052 修订）
 
 ## 背景
 
@@ -138,14 +139,15 @@ required、defaultValue 公共描述；具体子类固定 DataType 并拥有自�
 
 ### Route 边界
 
-ADR 0006 当前确认的 Route 仍是：
+ADR 0006 最初确认的 Route 是：
 
 ```text
 outputs.<field> == "<value>"
 ```
 
-本 ADR 不扩展 Route 的比较语义。ADR 0006 当前字符串表达式继续有效；BOOLEAN、
-数值和 CHARACTER 的类型化比较需要单独修订 ADR 0006 与对应 UC。
+本 ADR 本身不扩展 Route 的比较语义。ADR 0052 已确认 Flow inputs 的运行值映射，
+并允许 BOOLEAN、数值、STRING 与 CHARACTER 使用与 DataType 相容的受限比较；
+outputs 字符串表达式继续有效。
 
 页面必须从服务端返回的基础类型目录构建类型下拉框，不再允许自由输入 type。
 具体 Input 的公共字段和特有字段也应来自服务端元数据，不能在前端维护一份平行
@@ -312,16 +314,16 @@ TaskRun ..> Data : validates against definition
    FIELD/METHOD `@Introspected` 配置。
 4. 已迁移 Flow、Task、TaskExtension、Repository 和测试签名。
 5. 已由服务端暴露 DataType 与 Input 字段元数据，Demo 据此生成表单。
-6. 已在 Worker 完成和 PAUSE Resume 边界校验并归一化 Output；运行时 Input
-   校验继续等待 Input 值映射协议。
+6. 已在 Worker 完成和 PAUSE Resume 边界校验并归一化 Output；ADR 0052 已确认
+   Flow Input 的启动规范化、Queue 传递、TaskRun 快照、恢复与 Route 映射协议。
 7. 已为只有 key/type 的旧持久化 Input 增加可重复回填；更复杂或显式非法的
    历史数据仍需按真实业务人工修订。
-8. 如需非字符串 Route，仍需修订 ADR 0006 与对应 UC。
+8. 非字符串 Flow Input Route 已由 ADR 0052 修订；更复杂表达式仍需单独决策。
 
 ## 尚待确认
 
-- required、defaultValue、缺失值和显式 null 的优先级。
-- Flow 启动值、父 Output 到子 Input 的映射和非字符串 Route 比较语义。
+- 父 Output 到子 Task Input 的通用映射仍未确认；Flow 启动值与 typed Route 已由
+  ADR 0052 确认。
 
 ## 后果
 

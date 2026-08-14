@@ -1,5 +1,7 @@
 package org.cses.flow.core.domains.flows;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Locale;
@@ -25,6 +27,7 @@ public enum DataType {
         this.valueClass = valueClass;
     }
 
+    @JsonCreator
     public static DataType parse(String code) {
         if (code == null || code.isBlank()) {
             throw new IllegalArgumentException(

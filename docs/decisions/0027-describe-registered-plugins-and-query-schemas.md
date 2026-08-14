@@ -43,11 +43,13 @@ ApplicationContext 的 Task 插件；不增加运行时插件目录、独立 Cla
 
 ### 元信息与注册表
 
-- `@Plugin` 增加可选 `title` 和 `description`。空 title 回退为具体类 simple name，
-  空 description 统一为 `""`；不提供 alias、icon 或 UI 元数据。
+- `@Plugin` 增加可选 `title`、`description` 和 `capabilities`。空 title 回退为具体类
+  simple name，空 description 统一为 `""`；capability 是稳定的 Task 行为或宿主装饰
+  能力，不提供 alias、icon、组件名或布局参数等 UI 元数据。
 - `PluginMetadata<T>` 描述一个已注册具体类：`type` 是具体 Class，`baseClass` 是
-  `Task` 等能力基类，并保存规范化后的 title 和 description；`packageName` 直接由
-  `type.getPackageName()` 派生，不由插件作者重复声明。
+  `Task` 等能力基类，并保存规范化后的 title、description、examples 和 capabilities；
+  `packageName` 直接由 `type.getPackageName()` 派生，不由插件作者重复声明。空白或重复
+  capability 在注册时拒绝。
 - 第一版注册表只支持 `Task` 这一种插件能力；带 `@Plugin` 但不是 Task 的类会在启动
   校验中被拒绝。未来增加其他能力时，需要显式扩展 `RegisteredPlugin` 的聚合结构。
 - `RegisteredPlugin` 描述一个真实 Java package，按 `packageName` 聚合对应的全部
@@ -84,6 +86,8 @@ ApplicationContext 的 Task 插件；不增加运行时插件目录、独立 Cla
   每个 Task 元信息都显式返回 `packageName`；
   `GET /api/plugins/{canonicalType}` 返回单个插件元信息和完整 Schema。
 - HTTP DTO 把 Java `Class` 转为 canonical name 字符串，不暴露 `Class` 对象。
+- 目录和详情中的 Task 元信息都原样返回 `capabilities`；编排工具只按 capability 选择
+  通用呈现或宿主装饰，不通过 canonical class name 推断 Task 行为。
 - 第一版不按 Session、tenant 或 companyId 隔离目录，不提供分页、搜索、筛选或专用
   插件异常映射；认证授权和异常响应继续由服务框架处理。
 
@@ -109,7 +113,9 @@ Flow Studio Demo 是该公共能力的第一个消费者：启动时读取插件
 ## 后果
 
 - 新增 Task 后会自动进入全局目录；插件作者可以只依赖默认标题，也可以在 `@Plugin`
-  和字段 `@Schema` 中补充可读说明。
+  和字段 `@Schema` 中补充可读说明；存在稳定行为差异时可声明 capability。
+- 内置 Parallel 声明 `PARALLEL_CHILDREN`，使编排工具能够呈现分支与汇合；该值描述
+  `startsChildrenInParallel` 的领域行为，不约束页面必须使用某一种图形组件。
 - 插件列表分组字段统一为 `packageName`；目录消费者按真实包路径分组和标识来源。
 - 类改名或换包仍会同时改变 YAML 类型、持久化类型、目录 type 和 Schema 中的 type
   const；换包还会改变目录分组，是显式破坏性变更。

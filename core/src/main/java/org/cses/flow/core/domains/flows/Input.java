@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.annotation.JsonTypeIdResolver;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -34,6 +35,7 @@ import java.util.Objects;
     include = JsonTypeInfo.As.EXISTING_PROPERTY,
     property = "type"
 )
+@JsonTypeIdResolver(InputTypeIdResolver.class)
 @JsonSubTypes({
     @JsonSubTypes.Type(value = StringInput.class, name = "STRING"),
     @JsonSubTypes.Type(value = BooleanInput.class, name = "BOOLEAN"),
@@ -67,7 +69,9 @@ public abstract class Input<T> extends SerializableObject implements Data {
      */
     public final void validateDefinition() {
         key = requireText(key, "Input key");
-        displayName = requireText(displayName, "Input displayName");
+        displayName = displayName == null
+            ? key
+            : requireText(displayName, "Input displayName");
         validateSubtypeDefinition();
         validateDefaultValue();
     }

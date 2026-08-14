@@ -40,14 +40,14 @@ public final class TaskPluginTestSupport {
 
         PluginRegistry registry = new DefaultPluginRegistry(plugins);
         ModelValidator validator = new ModelValidator(VALIDATOR);
-        PluginModule module = new PluginModule(registry, validator);
+        PluginModule module = new PluginModule(registry);
         JacksonMapper mapper = new JacksonMapper(module);
         return new Context(
             mapper,
             new FlowDefinitionDeserializer(
                 new YamlParser(mapper),
                 mapper,
-                registry
+                validator
             ),
             validator
         );

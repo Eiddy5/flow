@@ -36,6 +36,8 @@ public abstract class Task implements Plugin, Identified {
     @NotBlank
     private String key;
 
+    private String displayName;
+
     @NotNull
     @Builder.Default
     private List<Input<?>> inputs = List.of();
@@ -67,6 +69,12 @@ public abstract class Task implements Plugin, Identified {
 
     public final String key() {
         return key;
+    }
+
+    public final String displayName() {
+        return displayName == null || displayName.isBlank()
+            ? key()
+            : displayName.trim();
     }
 
     public final List<Input<?>> inputs() {
@@ -114,6 +122,21 @@ public abstract class Task implements Plugin, Identified {
 
     public final boolean matchesRoute(Map<String, ?> parentOutputs) {
         return route.matches(parentOutputs);
+    }
+
+    public final boolean matchesRoute(
+        Map<String, ?> parentOutputs,
+        Map<String, ?> flowInputs
+    ) {
+        return route.matches(parentOutputs, flowInputs);
+    }
+
+    public final boolean matchesRoute(
+        Map<String, ?> parentOutputs,
+        Map<String, ?> flowInputs,
+        Map<String, ?> flowVariables
+    ) {
+        return route.matches(parentOutputs, flowInputs, flowVariables);
     }
 
     public final boolean declaresOutput(String outputKey) {
@@ -210,6 +233,7 @@ public abstract class Task implements Plugin, Identified {
         return getClass().equals(other.getClass())
             && Objects.equals(id, other.id)
             && Objects.equals(key, other.key)
+            && Objects.equals(displayName(), other.displayName())
             && Objects.equals(inputs(), other.inputs())
             && Objects.equals(outputs(), other.outputs())
             && Objects.equals(route, other.route)
@@ -227,6 +251,7 @@ public abstract class Task implements Plugin, Identified {
             getClass(),
             id,
             key,
+            displayName(),
             inputs(),
             outputs(),
             route,

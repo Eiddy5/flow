@@ -7,6 +7,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 
@@ -17,7 +18,13 @@ import java.util.Map;
  */
 @Plugin(
     title = "Notification",
-    description = "Sends one notification to a configured channel."
+    description = "Sends one notification to a configured channel.",
+    examples = {
+        @Example(
+            title = "Notify the Flow alerts channel",
+            code = "channel: flow-alerts"
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor

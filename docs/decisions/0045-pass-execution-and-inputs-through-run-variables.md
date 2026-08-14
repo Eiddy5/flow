@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（Flow-level variables 的定义来源由 ADR 0055 增补）
 
 ## 背景
 
@@ -46,14 +46,18 @@ WorkerTask 携带统一的 `Map<String, Object>`。系统保留键保存当前 E
   TaskRun id；顶层 RunnableTask 不提供该键，`parentTaskRunId()` 此时返回空。
 - `$flow.inputs` 是系统保留键，值是当前 TaskRun 的实际输入 Map；`inputs()` 从该
   值返回不可变输入视图。
+- `$flow.variables` 是系统保留键，值是当前精确 Flow Reversion 的只读 Flow Variable
+  Map；`flowVariables()` 从该值返回不可变视图。它由 Executor 从 Flow 定义装配，不是
+  TaskRun 的实际输入。
 - `ExecutorService` 创建 WorkerTask 时负责放入当前 Execution，并从当前 TaskRun
   取得其可选 `parentId`；WorkerTask 负责把 inputs 放入 `$flow.inputs`；
   WorkerDispatcher 从 WorkerTask 信封取得精确 `taskRunId` 和可选父 id，并以
   `$flow.taskRunId` 和 `$flow.parentTaskRunId` 注入本次调用的 variables。
 - `WorkerTask.executionId` 暂时保留为 Executor/Worker 结果关联字段。生产创建时它必须
   与 `$flow.execution` 中 Execution 的 id 一致。
-- variables 只属于一次 RunnableTask 调用，不写入 Flow、Execution 或 TaskRun 持久化
-  数据。Map 结构不可变；Task 不得修改变量中的 Execution 或通过它推进流程状态。
+- RunContext 的 variables 容器只属于一次 RunnableTask 调用，不写入 Execution 或
+  TaskRun 持久化数据；其中 `$flow.variables` 的来源是已持久化的 Flow Reversion。
+  Map 结构不可变；Task 不得修改变量中的 Execution 或通过它推进流程状态。
 - `RunContext` 继续只提供 `executionId()`、`taskRunId()`、`parentTaskRunId()`、
   `inputs()` 等小范围便捷接口；当前/父 TaskRun id 只是调用期技术身份，
   Task 不获得 TaskRun 聚合、Executor 或状态推进入口。

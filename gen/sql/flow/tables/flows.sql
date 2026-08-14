@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS flows (
 
     inputs         jsonb NOT NULL DEFAULT '[]'::jsonb,
     outputs        jsonb NOT NULL DEFAULT '[]'::jsonb,
+    variables      jsonb NOT NULL DEFAULT '{}'::jsonb,
     deleted        boolean NOT NULL DEFAULT false,
 
     CONSTRAINT pk_flows
@@ -37,6 +38,8 @@ CREATE TABLE IF NOT EXISTS flows (
         CHECK (jsonb_typeof(inputs) = 'array'),
     CONSTRAINT ck_flows_outputs
         CHECK (jsonb_typeof(outputs) = 'array'),
+    CONSTRAINT ck_flows_variables
+        CHECK (jsonb_typeof(variables) = 'object'),
     CONSTRAINT ck_flows_creator
         CHECK (
             jsonb_typeof(creator) = 'object'

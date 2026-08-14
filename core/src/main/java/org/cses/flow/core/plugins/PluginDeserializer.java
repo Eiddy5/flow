@@ -6,9 +6,11 @@ import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.cses.flow.core.validations.ModelValidator;
+import org.cses.flow.core.domains.tasks.Task;
 
 import java.io.IOException;
+
+import static java.util.Objects.requireNonNull;
 
 /**
  * Resolves a plugin's exact class before Jackson binds its fields.
@@ -17,20 +19,13 @@ public final class PluginDeserializer<T extends Plugin>
     extends JsonDeserializer<T> {
 
     private final PluginRegistry registry;
-    private final Class<T> pluginType;
-    private final ModelValidator modelValidator;
 
-    public PluginDeserializer(
-        PluginRegistry registry,
-        Class<T> pluginType,
-        ModelValidator modelValidator
-    ) {
-        this.registry = registry;
-        this.pluginType = pluginType;
-        this.modelValidator = modelValidator;
+    public PluginDeserializer(PluginRegistry registry) {
+        this.registry = requireNonNull(registry, "Plugin registry");
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public T deserialize(
         JsonParser parser,
         DeserializationContext context
@@ -39,7 +34,7 @@ public final class PluginDeserializer<T extends Plugin>
         if (!(value instanceof ObjectNode object)) {
             throw JsonMappingException.from(
                 parser,
-                pluginType.getSimpleName() + " must be an object"
+                "Plugin must be an object"
             );
         }
         JsonNode typeNode = object.get("type");
@@ -47,18 +42,18 @@ public final class PluginDeserializer<T extends Plugin>
             || typeNode.textValue().isBlank()) {
             throw context.weirdStringException(
                 typeNode == null ? null : typeNode.asText(),
-                pluginType,
+                Plugin.class,
                 "Plugin type must be non-blank text"
             );
         }
 
         String type = typeNode.textValue();
-        Class<? extends T> concreteType;
+        Class<? extends Plugin> concreteType;
         try {
-            concreteType = registry.resolve(type, pluginType);
+            concreteType = registry.resolve(type, Plugin.class);
         } catch (IllegalArgumentException exception) {
             throw context.invalidTypeIdException(
-                context.constructType(pluginType),
+                context.constructType(Plugin.class),
                 type,
                 exception.getMessage()
             );
@@ -66,7 +61,23 @@ public final class PluginDeserializer<T extends Plugin>
 
         ObjectNode fields = object.deepCopy();
         fields.remove("type");
-        T plugin = parser.getCodec().treeToValue(fields, concreteType);
-        return modelValidator.validate(plugin);
+        prepareTask(fields, context, concreteType);
+        return (T) context.readTreeAsValue(fields, concreteType);
+    }
+
+    private static void prepareTask(
+        ObjectNode definition,
+        DeserializationContext context,
+        Class<? extends Plugin> concreteType
+    ) {
+        if (!Task.class.isAssignableFrom(concreteType)) {
+            return;
+        }
+        Object attribute = context.getAttribute(
+            PluginDeserializationContext.ATTRIBUTE
+        );
+        if (attribute instanceof PluginDeserializationContext binding) {
+            binding.prepareTask(definition);
+        }
     }
 }

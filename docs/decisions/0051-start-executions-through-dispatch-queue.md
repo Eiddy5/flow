@@ -48,11 +48,13 @@ Command 时还会继续复制同样的入口。
 - 普通 `Create.dsl()` 返回 `null`，Queue 使用自有事务提交。Service 返回的
   `CREATED` Execution 是受理回执和身份快照；返回不表示 Execution 已持久化、开始运行
   或到达稳定状态。
-- `Create` payload 保存 execution id、company id、精确 Flow 引用、actor id/name 与
-  请求 Session 元数据，不保存 DSL。消费者通过宿主 `SessionFactory` 创建具体
+- `Create` payload 保存 execution id、company id、精确 Flow 引用、actor id/name、
+  请求 Session 元数据，以及 ADR 0052 定义的已规范化 Flow inputs；不保存 DSL。
+  消费者通过宿主 `SessionFactory` 创建具体
   Session/User 类型，并优先重新加载用户资料。
 - `createPending` 仍同步物化但不启动 Execution。`continueExecution` 锁定一个
-  `CREATED` Execution 后，由 Service 在同一 `CommandExecutor` 事务完成 `Create`
+  `CREATED` Execution、按精确 Reversion 确认 Flow inputs 后，由 Service 在同一
+  `CommandExecutor` 事务完成 `Create`
   投递；这条可信外部业务链路继续保持 Execution 行与 Queue 行原子提交。
 
 ### 路由与处理

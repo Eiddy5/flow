@@ -5,6 +5,7 @@ import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.runner.RunContext;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
@@ -78,7 +79,28 @@ class PluginRegistryTest {
         );
         assertEquals("Special task", metadata.title());
         assertEquals("Used to verify plugin metadata.", metadata.description());
+        assertEquals(List.of("TEST_NOTIFICATION"), metadata.capabilities());
         assertSame(Task.class, metadata.baseClass());
+        assertEquals(1, metadata.examples().size());
+        PluginExample example = metadata.examples().getFirst();
+        assertEquals("Configure a special task", example.title());
+        assertEquals(
+            List.of(
+                "displayName: Special",
+                "displayName: Alternate"
+            ),
+            example.code()
+        );
+        assertEquals("yaml", example.lang());
+        assertEquals(false, example.full());
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> metadata.examples().add(example)
+        );
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> example.code().add("changed: true")
+        );
     }
 
     @Test
@@ -92,6 +114,29 @@ class PluginRegistryTest {
 
         assertEquals("AutomaticTask", metadata.title());
         assertEquals("", metadata.description());
+        assertTrue(metadata.examples().isEmpty());
+        assertTrue(metadata.capabilities().isEmpty());
+    }
+
+    @Test
+    void rejectsEmptyExampleSourcesAndLanguages() {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new PluginExample("", List.of(), "yaml", false)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new PluginExample("", List.of(" "), "yaml", false)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new PluginExample(
+                "",
+                List.of("message: example"),
+                " ",
+                false
+            )
+        );
     }
 
     @Test
@@ -177,7 +222,17 @@ class PluginRegistryTest {
 
     @Plugin(
         title = "Special task",
-        description = "Used to verify plugin metadata."
+        description = "Used to verify plugin metadata.",
+        capabilities = "TEST_NOTIFICATION",
+        examples = {
+            @Example(
+                title = "Configure a special task",
+                code = {
+                    "displayName: Special",
+                    "displayName: Alternate"
+                }
+            )
+        }
     )
     @Requires(property = "flow.test.special-plugin", value = "true")
     public static final class SpecialTask

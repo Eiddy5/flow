@@ -11,6 +11,8 @@ import org.paas.json.JsonFactory;
 import org.paas.session.Session;
 import org.paas.session.User;
 
+import java.util.Map;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -31,7 +33,11 @@ final class CreateTest {
             "flow-1",
             7
         );
-        Create command = Create.from(session, execution)
+        Create command = Create.from(
+            session,
+            execution,
+            Map.of("amount", 1200.5)
+        )
             .inTransaction(DSL.using(SQLDialect.POSTGRES));
 
         QueueMessageEntry entry = QueueMessageEntry.create(
@@ -48,6 +54,7 @@ final class CreateTest {
         assertEquals(execution.flowId(), create.getFlowId());
         assertEquals(execution.flowReversion(), create.getFlowReversion());
         assertEquals("actor-1", create.getActorId());
+        assertEquals(Map.of("amount", 1200.5), create.getInputs());
         assertNull(create.dsl());
     }
 

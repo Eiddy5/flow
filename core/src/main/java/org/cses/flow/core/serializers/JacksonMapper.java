@@ -9,11 +9,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.plugins.PluginModule;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -45,6 +47,28 @@ public final class JacksonMapper {
 
     public Map<String, Object> toMap(Object value) {
         return jsonMapper.convertValue(value, MAP_TYPE);
+    }
+
+    public <T> T readTree(JsonNode value, Class<T> type) {
+        try {
+            return jsonMapper.readerFor(type).readValue(value);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException(exception.getMessage(), exception);
+        }
+    }
+
+    public <T> T readTree(
+        JsonNode value,
+        Class<T> type,
+        Map<?, ?> attributes
+    ) {
+        try {
+            ObjectReader reader = jsonMapper.readerFor(type)
+                .withAttributes(attributes);
+            return reader.readValue(value);
+        } catch (IOException exception) {
+            throw new IllegalArgumentException(exception.getMessage(), exception);
+        }
     }
 
     public String writeYaml(Object value) {

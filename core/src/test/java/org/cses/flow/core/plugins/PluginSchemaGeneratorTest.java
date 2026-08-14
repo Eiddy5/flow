@@ -1,9 +1,7 @@
 package org.cses.flow.core.plugins;
 
-import io.micronaut.validation.validator.Validator;
 import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.PluginSchemaGenerator;
-import org.cses.flow.core.validations.ModelValidator;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
@@ -25,11 +23,8 @@ class PluginSchemaGeneratorTest {
     @Test
     void generatesLogMessageAsARequiredStringExpression() {
         DefaultPluginRegistry registry = registry(new Log());
-        ModelValidator validator = new ModelValidator(
-            Validator.getInstance()
-        );
         JacksonMapper mapper = new JacksonMapper(
-            new PluginModule(registry, validator)
+            new PluginModule(registry)
         );
         PluginMetadata<?> metadata = registry.findMetadata(
             Log.class.getCanonicalName()
@@ -62,11 +57,8 @@ class PluginSchemaGeneratorTest {
         DefaultPluginRegistry registry = registry(
             new TestNotificationTask()
         );
-        ModelValidator validator = new ModelValidator(
-            Validator.getInstance()
-        );
         JacksonMapper mapper = new JacksonMapper(
-            new PluginModule(registry, validator)
+            new PluginModule(registry)
         );
         PluginSchemaGenerator generator = new PluginSchemaGenerator(mapper);
         PluginMetadata<?> metadata = registry.findMetadata(
@@ -135,11 +127,8 @@ class PluginSchemaGeneratorTest {
     @Test
     void parallelConcurrentIsOptionalAndMustBePositive() {
         DefaultPluginRegistry registry = registry(new Parallel());
-        ModelValidator validator = new ModelValidator(
-            Validator.getInstance()
-        );
         JacksonMapper mapper = new JacksonMapper(
-            new PluginModule(registry, validator)
+            new PluginModule(registry)
         );
         PluginMetadata<?> metadata = registry.findMetadata(
             Parallel.class.getCanonicalName()
@@ -159,28 +148,13 @@ class PluginSchemaGeneratorTest {
         assertFalse(
             ((List<?>) schema.get("required")).contains("concurrent")
         );
-        assertThrows(
-            RuntimeException.class,
-            () -> mapper.convertValue(
-                Map.of(
-                    "id", "parallel-id",
-                    "key", "parallel",
-                    "type", Parallel.class.getCanonicalName(),
-                    "concurrent", 0
-                ),
-                org.cses.flow.core.domains.tasks.Task.class
-            )
-        );
     }
 
     @Test
     void pauseSchemaComesFromItsConcreteDefinitionFields() {
         DefaultPluginRegistry registry = registry(new Pause());
-        ModelValidator validator = new ModelValidator(
-            Validator.getInstance()
-        );
         JacksonMapper mapper = new JacksonMapper(
-            new PluginModule(registry, validator)
+            new PluginModule(registry)
         );
         PluginMetadata<?> metadata = registry.findMetadata(
             Pause.class.getCanonicalName()
@@ -210,11 +184,8 @@ class PluginSchemaGeneratorTest {
             new Loop(),
             new LoopUntil()
         );
-        ModelValidator validator = new ModelValidator(
-            Validator.getInstance()
-        );
         JacksonMapper mapper = new JacksonMapper(
-            new PluginModule(registry, validator)
+            new PluginModule(registry)
         );
         PluginSchemaGenerator generator = new PluginSchemaGenerator(mapper);
 
@@ -238,10 +209,11 @@ class PluginSchemaGeneratorTest {
         Map<String, Object> untilProperties = objectMap(
             untilSchema.get("properties")
         );
-        assertEquals(
-            "string",
-            objectMap(untilProperties.get("condition")).get("type")
+        Map<String, Object> condition = objectMap(
+            untilProperties.get("condition")
         );
+        assertEquals("string", condition.get("type"));
+        assertEquals("flow-expression", condition.get("format"));
         List<?> required = (List<?>) untilSchema.get("required");
         assertTrue(required.contains("condition"));
         assertTrue(required.contains("maxIterations"));

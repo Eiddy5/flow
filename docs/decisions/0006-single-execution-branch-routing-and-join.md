@@ -5,7 +5,8 @@
 Accepted（生产内存实现部分由 ADR 0007 修订；绑定的 Flow 定义类型由
 ADR 0008 修订；PAUSE 恢复入口由 ADR 0016 修订；可运行批次的计划与应用边界
 由 ADR 0020 修订；普通子任务默认串行和显式 PARALLEL 语义由 ADR 0021
-修订；条件表达式的语义所有权由 ADR 0037 修订）
+修订；条件表达式的语义所有权由 ADR 0037 修订；typed Flow inputs 与数值、布尔
+Route 由 ADR 0052 修订；Flow-level variable Route 由 ADR 0055 增补）
 
 ## 背景
 
@@ -41,10 +42,12 @@ TaskRun、活动 TaskRun 和输出重新计算下一批可运行 Task。
 
 - 一个 Task 完成后，其直接子 Task 成为候选集合。
 - `DIRECT` 始终匹配。
-- 第一阶段条件语法固定为
-  `outputs.<field> == "<value>"`，使用区分大小写的字符串精确比较。
-- route 只能读取直接父 TaskRun 的 outputs；部署时校验语法，并校验字段由父
-  Task 声明。
+- 基础条件语法为 `outputs.<field> == "<value>"`；ADR 0052 进一步允许 Route
+  使用受限的 `inputs.<field>` typed 比较；ADR 0055 增加只读的
+  `variables.<field>` Flow-level variable 比较。
+- outputs route 只能读取直接父 TaskRun 的 outputs；inputs route 只读取 Execution
+  启动时确认并持久保持的 Flow Input 快照；variables route 只读取精确 Flow
+  Reversion 的变量 Map。部署时校验引用范围、声明和类型。
 - 所有匹配的直接子 Task 都进入可运行集合；多个匹配形成同一 Execution 内的
   并行线路。
 - 同一时刻满足条件的直接子 Task 由 `handleNext` 形成一个有序 nexts 批次；
@@ -93,6 +96,6 @@ TaskRun、活动 TaskRun 和输出重新计算下一批可运行 Task。
 - 多 route 同时匹配采用并行语义；未来若产品需要单选，必须新增显式网关语义，
   不能改变本 ADR 下已有 Flow 的解释。
 - `dependOn` 暂不保存独立到达记录；顶层顺序和已完成 TaskRun 是当前收敛证据。
-- 更复杂表达式、类型比较、默认分支、超时与重试需要后续 ADR。
+- typed Input 比较由 ADR 0052 定义；默认分支、逻辑组合、超时与重试仍需后续 ADR。
 - 单 Execution、TaskRun 状态和并行调度的后续选择由 ADR 0002、ADR 0017、
   ADR 0020 和 ADR 0021 共同约束；当前决策链见 [`README.md`](README.md)。

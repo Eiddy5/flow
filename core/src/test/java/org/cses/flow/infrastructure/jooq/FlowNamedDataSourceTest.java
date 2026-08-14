@@ -1,10 +1,15 @@
 package org.cses.flow.infrastructure.jooq;
 
 import io.micronaut.context.ApplicationContext;
+import io.micronaut.context.annotation.Factory;
+import io.micronaut.context.annotation.Requires;
 import io.micronaut.configuration.jdbc.hikari.DatasourceConfiguration;
 import io.micronaut.configuration.jdbc.hikari.HikariUrlDataSource;
 import io.micronaut.inject.qualifiers.Qualifiers;
+import jakarta.inject.Singleton;
 import org.jooq.SQLDialect;
+import org.jooq.impl.DefaultConfiguration;
+import org.cses.flow.executor.DefaultExecutor;
 import org.junit.jupiter.api.Test;
 import org.x9.jooq.JOOQ;
 
@@ -139,6 +144,61 @@ final class FlowNamedDataSourceTest {
                 defaultJooqFacade.createDSLContext().getDataSource()
             );
             assertNotSame(flowDataSource, defaultDataSource);
+        }
+    }
+
+    @Test
+    void createsNamedJooqBeansWhenHostAddsUnqualifiedConfigurations()
+        throws SQLException {
+        Map<String, Object> properties = Map.ofEntries(
+            Map.entry(
+                "datasources.flow.url",
+                "jdbc:postgresql://127.0.0.1:1/flow"
+            ),
+            Map.entry("datasources.flow.username", "flow"),
+            Map.entry("datasources.flow.password", "flow"),
+            Map.entry(
+                "datasources.flow.driver-class-name",
+                "org.postgresql.Driver"
+            ),
+            Map.entry("datasources.flow.initialization-fail-timeout", -1),
+            Map.entry("jooq.datasources.flow.sql-dialect", "POSTGRES"),
+            Map.entry("flow.test.unqualified-jooq-configurations", true),
+            Map.entry("micronaut.config-client.enabled", false),
+            Map.entry("consul.client.registration.enabled", false),
+            Map.entry("consul.client.config.enabled", false),
+            Map.entry("grpc.server.enabled", false),
+            Map.entry("thrift.server.enabled", false),
+            Map.entry("pulsar.consumer.enabled", false)
+        );
+
+        try (ApplicationContext context = ApplicationContext.builder()
+            .packages(FlowNamedDataSourceTest.class.getPackageName())
+            .exclude(DefaultExecutor.class.getName())
+            .properties(properties)
+            .start()) {
+            assertNotNull(context.getBean(
+                JOOQ.class,
+                Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME)
+            ));
+        }
+    }
+
+    @Factory
+    @Requires(
+        property = "flow.test.unqualified-jooq-configurations",
+        value = "true"
+    )
+    static final class HostJooqConfigurations {
+
+        @Singleton
+        org.jooq.Configuration first() {
+            return new DefaultConfiguration();
+        }
+
+        @Singleton
+        org.jooq.Configuration second() {
+            return new DefaultConfiguration();
         }
     }
 }

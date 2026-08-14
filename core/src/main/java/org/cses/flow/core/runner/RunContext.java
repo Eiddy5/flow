@@ -16,9 +16,9 @@ import java.util.Optional;
  * Immutable invocation context for one {@link RunnableTask}.
  *
  * <p>The variables map carries invocation-scoped runtime values. The Executor
- * places the current {@link Execution}, exact TaskRun identity and actual
- * TaskRun inputs in reserved entries before the context crosses into a
- * RunnableTask.</p>
+ * places the current {@link Execution}, exact TaskRun identity, actual
+ * TaskRun inputs and immutable Flow-level variables in reserved entries
+ * before the context crosses into a RunnableTask.</p>
  */
 public final class RunContext {
 
@@ -34,6 +34,9 @@ public final class RunContext {
 
     /** Reserved variable containing the actual inputs for this TaskRun. */
     public static final String INPUTS_VARIABLE = "$flow.inputs";
+
+    /** Reserved variable containing the deployed Flow-level variables. */
+    public static final String FLOW_VARIABLES_VARIABLE = "$flow.variables";
 
     private final Session<? extends User> session;
     private final DSLContext dsl;
@@ -139,6 +142,26 @@ public final class RunContext {
     }
 
     /**
+     * Returns the immutable variables declared by the exact deployed Flow.
+     */
+    public Map<String, Object> flowVariables() {
+        Object value = variables.get(FLOW_VARIABLES_VARIABLE);
+        if (value == null) {
+            return Map.of();
+        }
+        if (!(value instanceof Map<?, ?>)) {
+            throw new IllegalStateException(
+                "RunContext variable " + FLOW_VARIABLES_VARIABLE
+                    + " must contain a Map"
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> flowVariables =
+            (Map<String, Object>) value;
+        return flowVariables;
+    }
+
+    /**
      * Renders a Task definition template against this invocation's inputs.
      */
     public String render(TemplateExpression expression) {
@@ -164,6 +187,11 @@ public final class RunContext {
             );
             if (INPUTS_VARIABLE.equals(normalizedKey)) {
                 copy.put(normalizedKey, immutableInputs(normalizedValue));
+            } else if (FLOW_VARIABLES_VARIABLE.equals(normalizedKey)) {
+                copy.put(
+                    normalizedKey,
+                    immutableFlowVariables(normalizedValue)
+                );
             } else {
                 copy.put(normalizedKey, normalizedValue);
             }
@@ -194,5 +222,24 @@ public final class RunContext {
             );
         });
         return Map.copyOf(copy);
+    }
+
+    private static Map<String, Object> immutableFlowVariables(Object value) {
+        if (!(value instanceof Map<?, ?> source)) {
+            throw new IllegalArgumentException(
+                "RunContext variable " + FLOW_VARIABLES_VARIABLE
+                    + " must contain a Map"
+            );
+        }
+        Map<String, Object> copy = new LinkedHashMap<>();
+        source.forEach((key, variable) -> {
+            if (!(key instanceof String stringKey)) {
+                throw new IllegalArgumentException(
+                    "RunContext Flow variable keys must be strings"
+                );
+            }
+            copy.put(stringKey, variable);
+        });
+        return java.util.Collections.unmodifiableMap(copy);
     }
 }

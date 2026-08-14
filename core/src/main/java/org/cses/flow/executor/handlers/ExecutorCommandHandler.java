@@ -123,7 +123,11 @@ public final class ExecutorCommandHandler {
         executionRunner.execute(
             session,
             dsl,
-            new ExecutorContext(flow, execution)
+            new ExecutorContext(
+                flow,
+                execution,
+                flow.normalizeInputs(command.getInputs())
+            )
         );
     }
 

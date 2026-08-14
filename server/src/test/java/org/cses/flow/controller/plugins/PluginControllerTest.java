@@ -11,6 +11,7 @@ import org.cses.flow.core.serializers.PluginSchemaGenerator;
 import org.cses.flow.core.services.plugins.PluginService;
 import org.cses.flow.core.validations.ModelValidator;
 import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.flow.Parallel;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,13 +23,17 @@ class PluginControllerTest {
     @Test
     void exposesRealPackagePathsInCatalogGroupsAndTaskMetadata() {
         DefaultPluginRegistry registry = new DefaultPluginRegistry(
-            List.of(new TestNotificationTask(), new AutomaticTask())
+            List.of(
+                new TestNotificationTask(),
+                new AutomaticTask(),
+                new Parallel()
+            )
         );
         ModelValidator validator = new ModelValidator(
             Validator.getInstance()
         );
         JacksonMapper mapper = new JacksonMapper(
-            new PluginModule(registry, validator)
+            new PluginModule(registry)
         );
         PluginController controller = new PluginController(
             new PluginService(
@@ -42,6 +47,7 @@ class PluginControllerTest {
         assertEquals(
             List.of(
                 TestNotificationTask.class.getPackageName(),
+                Parallel.class.getPackageName(),
                 AutomaticTask.class.getPackageName()
             ),
             plugins.stream()
@@ -56,6 +62,13 @@ class PluginControllerTest {
             AutomaticTask.class.getPackageName(),
             plugins.getLast().tasks().getFirst().packageName()
         );
+        PluginDetailsView parallel = controller.plugin(
+            Parallel.class.getCanonicalName()
+        );
+        assertEquals(
+            List.of("PARALLEL_CHILDREN"),
+            parallel.metadata().capabilities()
+        );
 
         PluginDetailsView details = controller.plugin(
             TestNotificationTask.class.getCanonicalName()
@@ -64,5 +77,16 @@ class PluginControllerTest {
             TestNotificationTask.class.getPackageName(),
             details.metadata().packageName()
         );
+        assertEquals(1, details.examples().size());
+        assertEquals(
+            "Notify the Flow alerts channel",
+            details.examples().getFirst().title()
+        );
+        assertEquals(
+            List.of("channel: flow-alerts"),
+            details.examples().getFirst().code()
+        );
+        assertEquals("yaml", details.examples().getFirst().lang());
+        assertEquals(false, details.examples().getFirst().full());
     }
 }

@@ -20,6 +20,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 
@@ -27,7 +28,13 @@ import java.util.Map;
 
 @Plugin(
     title = "通知",
-    description = "向指定频道发送一条通知"
+    description = "向指定频道发送一条通知",
+    examples = {
+        @Example(
+            title = "向运维频道发送通知",
+            code = "channel: operations"
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor
@@ -64,8 +71,14 @@ public final class Notification extends Task implements RunnableTask {
 - 类直接标注 `@Plugin`，并恰好实现 `RunnableTask` 或 `OrchestrationTask` 之一。
 - 类必须位于具名 Java package；该真实 package path 自动成为插件目录分组，无需
   单独声明或注册来源。
-- `@Plugin` 的 title 和 description 都可选；空 title 自动使用类 simple name，
-  description 自动归一为 `""`。当前不支持 alias 或 icon。
+- `@Plugin` 的 title、description 和 examples 都可选；空 title 自动使用类 simple
+  name，description 自动归一为 `""`，examples 自动归一为空列表。当前不支持 alias
+  或 icon。
+- `Example` 是独立注解类型，但只能作为 `@Plugin.examples` 的数组元素使用，不能
+  直接标注插件类。`code` 保存一个或多个独立源码块，`lang` 默认是 `yaml`。
+- `Example.full=false` 时，源码块只写插件配置字段，消费方补充唯一 `key` 和当前类的
+  canonical `type`；`full=true` 时源码块必须自行包含这两个字段。两种形式都不能声明
+  `id`、`parentId` 或 `taskId`。
 - 插件字段保持私有，由 Jackson 字段绑定；只公开只读访问器，不公开 Setter。
 - 插件字段使用 Bean Validation 注解声明局部约束。项目代码直接构造对象后调用
   `ModelValidator.validate(task)` 主动校验。
@@ -126,9 +139,11 @@ GET /api/plugins
 GET /api/plugins/org.cses.flow.extensions.notification.Notification
 ```
 
-列表接口按真实 Java package 返回 Task 元信息。分组与每个 Task 元信息都包含
+列表接口按真实 Java package 返回轻量 Task 元信息，不返回示例源码。分组与每个 Task
+元信息都包含
 `packageName`，其值直接来自 `Class#getPackageName()`；package 按完整路径、Task 按
-canonical class name 排序。详情接口返回同一份元信息和 JSON Schema Draft 7：
+canonical class name 排序。详情接口返回同一份元信息、`examples` 和 JSON Schema
+Draft 7。每个 example 包含 `title`、`code`、`lang` 和 `full`：
 
 - `type` 是必填字符串，`const` 固定为具体类 canonical name。
 - `key` 和插件自身的必填字段进入 `required`。
@@ -146,8 +161,8 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
 2. 启动应用，调用 `GET /api/plugins`，确认目标 `packageName` 分组包含该类的
    canonical name、packageName、title 和 description。缺少注解、公共无参构造、
    具名 package 或恰好一种运行能力等问题必须阻止启动。
-3. 调用插件详情接口，确认 Schema 包含公共字段和插件专有字段，排除 `id`，并把
-   type 固定为该 canonical name。
+3. 调用插件详情接口，确认 examples 保持声明顺序和源码内容；Schema 包含公共字段和
+   插件专有字段，排除 `id`，并把 type 固定为该 canonical name。
 4. 部署包含该 FQCN 和插件专有字段的 Flow，确认未知字段与非法字段值严格失败。
 5. 读取 API 和数据库记录，确认 `type` 都是相同 FQCN。
 6. 保存并重新读取 Flow Reversion，确认插件专有字段从 `properties` JSONB 完整

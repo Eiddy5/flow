@@ -148,6 +148,67 @@ class FlowMaterializationTest {
     }
 
     @Test
+    void materializesFlowVariablesAndValidatesVariableRoutes() {
+        Flow flow = deploy(
+            "flow-variables",
+            Map.of(
+                "key", "variable-flow",
+                "variables", Map.of(
+                    "environment", "prod",
+                    "retryLimit", 3
+                ),
+                "tasks", List.of(Map.of(
+                    "key", "start",
+                    "type", AutomaticTask.class.getName(),
+                    "tasks", List.of(Map.of(
+                        "key", "production-only",
+                        "type", AutomaticTask.class.getName(),
+                        "route", "variables.environment == \"prod\""
+                    ))
+                ))
+            ),
+            null
+        );
+
+        assertEquals(
+            Map.of("environment", "prod", "retryLimit", 3),
+            flow.variables()
+        );
+        assertEquals(
+            "environment",
+            flow.tasks().getFirst().tasks().getFirst().route()
+                .referencedVariableKey().orElseThrow()
+        );
+    }
+
+    @Test
+    void rejectsRoutesThatReferenceAnUndeclaredFlowVariable() {
+        WorkflowException exception = assertThrows(
+            WorkflowException.class,
+            () -> deploy(
+                "flow-variables",
+                Map.of(
+                    "key", "invalid-variable-route",
+                    "tasks", List.of(Map.of(
+                        "key", "start",
+                        "type", AutomaticTask.class.getName(),
+                        "tasks", List.of(Map.of(
+                            "key", "child",
+                            "type", AutomaticTask.class.getName(),
+                            "route", "variables.environment == \"prod\""
+                        ))
+                    ))
+                ),
+                null
+            )
+        );
+
+        assertTrue(exception.getMessage().contains(
+            "references undeclared Flow variable"
+        ));
+    }
+
+    @Test
     void keepsTaskIdentityStableAcrossReversions() {
         Flow first = deploy(
             "flow-1",
@@ -281,7 +342,7 @@ class FlowMaterializationTest {
             )
         );
         assertTrue(typedRoute.getMessage().contains(
-            "requires STRING parent context"
+            "is incompatible with parent context"
         ));
 
         WorkflowException dependency = assertThrows(
@@ -369,6 +430,57 @@ class FlowMaterializationTest {
                 definition("second", "prepare"),
                 first
             )
+        );
+    }
+
+    @Test
+    void validatesAndNormalizesConfirmedFlowInputsForRoutes() {
+        Flow flow = deploy(
+            "flow-input-route",
+            Map.of(
+                "key", "input-route",
+                "inputs", List.of(
+                    Map.of(
+                        "key", "amount",
+                        "type", "DOUBLE",
+                        "displayName", "Amount",
+                        "required", true
+                    ),
+                    Map.of(
+                        "key", "urgent",
+                        "type", "BOOLEAN",
+                        "displayName", "Urgent",
+                        "required", false,
+                        "defaultValue", false
+                    )
+                ),
+                "tasks", List.of(Map.of(
+                    "key", "parallel",
+                    "type", AutomaticTask.class.getName(),
+                    "tasks", List.of(Map.of(
+                        "key", "high-value",
+                        "type", AutomaticTask.class.getName(),
+                        "route", "inputs.amount > 1000"
+                    ))
+                ))
+            ),
+            null
+        );
+
+        assertEquals(
+            Map.of("amount", 1200.0, "urgent", false),
+            flow.normalizeInputs(Map.of("amount", 1200))
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> flow.normalizeInputs(Map.of())
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> flow.normalizeInputs(Map.of(
+                "amount", 1200,
+                "business-only", "hidden"
+            ))
         );
     }
 

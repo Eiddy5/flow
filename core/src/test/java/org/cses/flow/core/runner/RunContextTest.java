@@ -72,6 +72,23 @@ final class RunContextTest {
         );
     }
 
+    @Test
+    void exposesImmutableFlowLevelVariables() {
+        RunContext context = context(Map.of(
+            RunContext.FLOW_VARIABLES_VARIABLE,
+            Map.of("environment", "prod")
+        ));
+
+        assertEquals(
+            Map.of("environment", "prod"),
+            context.flowVariables()
+        );
+        assertThrows(
+            UnsupportedOperationException.class,
+            () -> context.flowVariables().put("environment", "staging")
+        );
+    }
+
     private static RunContext context(Map<String, ?> variables) {
         return RunContext.create(
             new Session<User>(),

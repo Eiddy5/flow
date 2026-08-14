@@ -9,6 +9,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Completeness matrix for the currently supported Express language.
@@ -115,17 +116,61 @@ class ExpressCompletenessTest {
     }
 
     @TestFactory
+    Stream<DynamicTest> coversSupportedFlowInputConditions() {
+        return Stream.of(
+            inputScenario(
+                "numeric input is greater than threshold",
+                "inputs.formValue > 1000",
+                Map.of("formValue", 1500),
+                true
+            ),
+            inputScenario(
+                "numeric input includes threshold",
+                "inputs.formValue <= 1000",
+                Map.of("formValue", 1000),
+                true
+            ),
+            inputScenario(
+                "string input supports not equals",
+                "inputs.category != \"internal\"",
+                Map.of("category", "external"),
+                true
+            ),
+            inputScenario(
+                "boolean input uses a typed literal",
+                "inputs.confirmed == true",
+                Map.of("confirmed", true),
+                true
+            ),
+            inputScenario(
+                "missing input does not select a route",
+                "inputs.formValue >= 1000",
+                Map.of(),
+                false
+            )
+        ).map(scenario -> DynamicTest.dynamicTest(
+            scenario.name(),
+            () -> {
+                Express expression = Express.parse(scenario.source());
+                assertTrue(expression.referencesInputs());
+                assertEquals(
+                    scenario.expectedMatch(),
+                    expression.matches(Map.of(), scenario.inputs())
+                );
+            }
+        ));
+    }
+
+    @TestFactory
     Stream<DynamicTest> rejectsUnsupportedOrUnsafeExpressionScenarios() {
         return Stream.of(
             invalid("null source", null),
             invalid("blank source", " "),
             invalid("route DIRECT is not Express", "DIRECT"),
             invalid("missing output path", "outputs == \"DONE\""),
-            invalid("unsupported input root", "inputs.status == \"DONE\""),
             invalid("digit-leading key", "outputs.1status == \"DONE\""),
             invalid("empty path segment", "outputs.check..status == \"DONE\""),
             invalid("single equals", "outputs.status = \"DONE\""),
-            invalid("not equals", "outputs.status != \"DONE\""),
             invalid("unquoted value", "outputs.status == DONE"),
             invalid("single-quoted value", "outputs.status == 'DONE'"),
             invalid("unterminated value", "outputs.status == \"DONE"),
@@ -169,6 +214,51 @@ class ExpressCompletenessTest {
 
     private static InvalidScenario invalid(String name, String source) {
         return new InvalidScenario(name, source);
+    }
+
+    private static InputScenario inputScenario(
+        String name,
+        String source,
+        Map<String, ?> inputs,
+        boolean expectedMatch
+    ) {
+        return new InputScenario(name, source, inputs, expectedMatch);
+    }
+
+    private static final class InputScenario {
+
+        private final String name;
+        private final String source;
+        private final Map<String, ?> inputs;
+        private final boolean expectedMatch;
+
+        private InputScenario(
+            String name,
+            String source,
+            Map<String, ?> inputs,
+            boolean expectedMatch
+        ) {
+            this.name = name;
+            this.source = source;
+            this.inputs = inputs;
+            this.expectedMatch = expectedMatch;
+        }
+
+        private String name() {
+            return name;
+        }
+
+        private String source() {
+            return source;
+        }
+
+        private Map<String, ?> inputs() {
+            return inputs;
+        }
+
+        private boolean expectedMatch() {
+            return expectedMatch;
+        }
     }
 
     private static final class MatchScenario {

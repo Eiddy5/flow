@@ -137,6 +137,11 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
 
     /**
+     * The column <code>public.flows.variables</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> VARIABLES = createField(DSL.name("variables"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
      * The column <code>public.flows.deleted</code>.
      */
     public final TableField<FlowsRecord, Boolean> DELETED = createField(DSL.name("deleted"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
@@ -201,7 +206,8 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
             Internal.createCheck(this, DSL.name("ck_flows_key"), "(((length(btrim((key)::text)) >= 1) AND (length(btrim((key)::text)) <= 128)))", true),
             Internal.createCheck(this, DSL.name("ck_flows_outputs"), "((jsonb_typeof(outputs) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_flows_reversion"), "((reversion > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_flows_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true)
+            Internal.createCheck(this, DSL.name("ck_flows_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true),
+            Internal.createCheck(this, DSL.name("ck_flows_variables"), "((jsonb_typeof(variables) = 'object'::text))", true)
         );
     }
 

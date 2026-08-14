@@ -4,8 +4,10 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
 import org.flow.gen.flow.pojos.FlowsObject;
 import org.flow.gen.flow.records.FlowsRecord;
+import org.paas.json.JsonObject;
 import org.paas.json.JsonObjects;
 import java.util.List;
+import java.util.Map;
 
 import static org.flow.gen.flow.Tables.FLOWS;
 
@@ -34,6 +36,9 @@ public final class FlowEntry extends FlowsObject {
         entry.outputs = JsonObjects.Parse(
             record.get(FLOWS.OUTPUTS).data()
         );
+        entry.variables = JsonObject.Parse(
+            record.get(FLOWS.VARIABLES).data()
+        );
         return entry;
     }
 
@@ -61,6 +66,7 @@ public final class FlowEntry extends FlowsObject {
             .orElse(null);
         entry.inputs = DataJsonCodec.encode(flow.inputs());
         entry.outputs = DataJsonCodec.encode(flow.outputs());
+        entry.variables = JsonObject.FromMap(flow.variables());
         return entry;
     }
 
@@ -76,6 +82,7 @@ public final class FlowEntry extends FlowsObject {
             key,
             reversion,
             description,
+            variables == null ? Map.of() : variables.asMap(),
             DataJsonCodec.decodeInputs(inputs, "Flow.inputs"),
             DataJsonCodec.decodeOutputs(outputs, "Flow.outputs"),
             tasks,

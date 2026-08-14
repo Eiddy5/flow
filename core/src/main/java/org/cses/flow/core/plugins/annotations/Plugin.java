@@ -34,4 +34,15 @@ public @interface Plugin {
      * Optional human-readable description used by plugin catalogs.
      */
     String description() default "";
+
+    /**
+     * Stable semantic capabilities consumed by orchestration tools. Values
+     * describe Task behavior or host decoration, never a concrete UI widget.
+     */
+    String[] capabilities() default {};
+
+    /**
+     * Examples showing how this plugin is used in a Flow definition.
+     */
+    Example[] examples() default {};
 }

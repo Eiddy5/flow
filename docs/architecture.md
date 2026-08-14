@@ -26,6 +26,7 @@ flowchart LR
         subgraph inbound ["入站与应用装配"]
             micronautApp["Application / Micronaut Netty"]
             pluginController["PluginController"]
+            flowController["FlowController / /api"]
         end
     end
 
@@ -78,6 +79,9 @@ flowchart LR
     browser -->|"HTTP / JSON"| micronautApp
     micronautApp --> pluginController
     pluginController --> pluginService
+    micronautApp --> flowController
+    flowController --> flowService
+    flowController --> executionService
     externalCaller -->|"executionId + taskRunId + outputs"| executionService
 
     flowService --> commandExecutor
@@ -130,7 +134,7 @@ flowchart LR
     classDef storeNode fill:#E8EEF5,stroke:#60758A,color:#21313F
 
     class browser,externalCaller caller
-    class micronautApp,pluginController inboundNode
+    class micronautApp,pluginController,flowController inboundNode
     class flowService,executionService,pluginService,commandExecutor,commandHandlers,queryHandlers,yamlParser,domains,repositoryPorts,queueContracts,executor,worker,pluginRuntime,pluginSchema coreNode
     class autoTask,pauseTask,parallelTask,inProjectPlugins extensionNode
     class postgresRepositories,defaultQueue,jooqBoundary,migrations,generatedJooq adapterNode
@@ -172,17 +176,17 @@ flowchart TD
 
     deployStart(["用户部署 Flow"])
     parseDefinition["DeployFlowHandler 加载草稿并解析 YAML"]
-    materializeFlow["FlowDefinitionDeserializer 按真实类地址绑定 Task；Flow.deploy 形成精确 Reversion"]
+    materializeFlow["FlowDefinitionDeserializer 解析 Flow；Task.class PluginDeserializer 按注册类递归绑定；Flow.deploy 形成精确 Reversion"]
     persistFlow["保存 Flow 与 FlowTasks"]
 
     executeStart(["用户启动最新且未删除的 Flow"])
-    createExecution["ExecutionService 加载最新 Flow，生成 executionId 并构造 Create"]
+    createExecution["ExecutionService 加载最新 Flow，规范化 inputs，生成 executionId 并构造 Create"]
     enqueueStart["写入 ExecutorCommand Queue"]
     acceptedEnd(["返回 CREATED 与 executionId"])
     consumeStart["DefaultExecutor 路由到 ExecutorCommandHandler；恢复 Session 并创建 Execution"]
     drive["ExecutionRunner 提交边界"]
     handle["ExecutorService.handle 状态推进循环"]
-    plan["按顺序、route、dependOn 和 PARALLEL 规划下一批 TaskRun"]
+    plan["按顺序、typed input/output route、dependOn 和 PARALLEL 规划下一批 TaskRun"]
     hasNext{"存在下一批 TaskRun？"}
     capability{"Task 运行能力？"}
 
@@ -289,18 +293,25 @@ flowchart TD
    pending continuation 仍在同一 JOOQ 事务保存 Execution 和 Queue Command。
 2. Execution 始终绑定启动时的精确 Flow Reversion，继续、恢复和取消时不会切换到
    新版本。
-3. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
+3. Flow inputs 在首次启动前按精确 Reversion 规范化，随 `Create` 进入 Queue，并以
+   `flowInputs` 快照保存到实际 TaskRun；恢复后的 Route 不需要宿主重复提交字段值。
+4. Flow Reversion 的 `variables` 是流程级只读 `Map<String, Object>`，持久化在
+   `flows.variables`，Route 可通过 `variables.<key>` 读取，RunnableTask 通过
+   RunContext 的 `$flow.variables` 读取；它不复制到 TaskRun。
+5. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
    同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。
-4. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
+6. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
    TaskRun 是唯一持久化等待事实。合法 Resume 校验并恢复精确 Pause TaskRun，再由
    Executor 完成和推进，因此不依赖原 Server 进程仍然存活，也不需要额外等待聚合。
-5. `ExecutorService.handle` 在内部连续收敛非 Runnable 的 OrchestrationTask；只有形成
+7. `ExecutorService.handle` 在内部连续收敛非 Runnable 的 OrchestrationTask；只有形成
    WorkerTask 或到达稳定状态时才返回 `ExecutionRunner` 提交边界。`DefaultExecutor`
    不参与状态推进，只做 Queue 路由。
 
 ## 主要源码依据
 
 - [`server/src/main/java/org/cses/flow/controller/plugins/PluginController.java`](../server/src/main/java/org/cses/flow/controller/plugins/PluginController.java)
+- [`server/src/main/java/org/cses/flow/controller/flow/FlowController.java`](../server/src/main/java/org/cses/flow/controller/flow/FlowController.java)
+- [`server/src/main/resources/flow/index.html`](../server/src/main/resources/flow/index.html)
 - [`core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java)
 - [`core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java`](../core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/ExecutorCommand.java`](../core/src/main/java/org/cses/flow/executor/commands/ExecutorCommand.java)

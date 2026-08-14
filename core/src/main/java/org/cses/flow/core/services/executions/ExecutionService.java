@@ -3,11 +3,11 @@ package org.cses.flow.core.services.executions;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
-import org.cses.flow.core.commands.executions.CancelExecutionCommand;
-import org.cses.flow.core.commands.executions.CreateExecutionCommand;
-import org.cses.flow.core.commands.executions.ContinueExecutionCommand;
-import org.cses.flow.core.commands.executions.ResumeExecutionCommand;
 import org.cses.flow.core.commands.CommandExecutor;
+import org.cses.flow.core.commands.executions.CancelExecutionCommand;
+import org.cses.flow.core.commands.executions.ContinueExecutionCommand;
+import org.cses.flow.core.commands.executions.CreateExecutionCommand;
+import org.cses.flow.core.commands.executions.ResumeExecutionCommand;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
@@ -34,11 +34,11 @@ public final class ExecutionService {
 
     @Inject
     public ExecutionService(
-        CommandExecutor commandExecutor,
-        ExecutionQueryHandler queryHandler,
-        FlowQueryHandler flowQueryHandler,
-        @Named(ExecutorCommand.QUEUE_NAME)
-        DispatchQueue<ExecutorCommand> executorCommandQueue
+            CommandExecutor commandExecutor,
+            ExecutionQueryHandler queryHandler,
+            FlowQueryHandler flowQueryHandler,
+            @Named(ExecutorCommand.QUEUE_NAME)
+            DispatchQueue<ExecutorCommand> executorCommandQueue
     ) {
         this.commandExecutor = commandExecutor;
         this.queryHandler = queryHandler;
@@ -55,13 +55,26 @@ public final class ExecutionService {
             S session,
             String flowId
     ) {
+        return create(session, flowId, Map.of());
+    }
+
+    public <S extends Session<U>, U extends User> Execution create(
+            S session,
+            String flowId,
+            Map<String, ?> inputs
+    ) {
         Flow flow = requireLatestFlow(session, flowId);
+        Map<String, Object> normalizedInputs = flow.normalizeInputs(inputs);
         Execution accepted = Execution.create(
-            flow.companyId(),
-            flow.id(),
-            flow.reversion()
+                flow.companyId(),
+                flow.id(),
+                flow.reversion()
         );
-        executorCommandQueue.emit(Create.from(session, accepted));
+        executorCommandQueue.emit(Create.from(
+                session,
+                accepted,
+                normalizedInputs
+        ));
         return accepted.copy();
     }
 
@@ -95,9 +108,9 @@ public final class ExecutionService {
         return commandExecutor.execute(
                 session,
                 new CreateExecutionCommand(
-                    executionId,
-                    flowId,
-                    flowReversion
+                        executionId,
+                        flowId,
+                        flowReversion
                 )
         );
     }
@@ -120,16 +133,43 @@ public final class ExecutionService {
             S session,
             String executionId
     ) {
+        return continueExecution(session, executionId, Map.of());
+    }
+
+    public <S extends Session<U>, U extends User> Execution continueExecution(
+            S session,
+            String executionId,
+            Map<String, ?> inputs
+    ) {
+        Execution current = queryHandler.execution(session, executionId)
+                .orElseThrow(() -> new WorkflowException(
+                        "Execution does not exist: " + executionId
+                ));
+        Map<String, Object> normalizedInputs = current.state().is(
+                State.Type.CREATED
+        )
+                ? flowQueryHandler.flow(
+                        session,
+                        current.flowId(),
+                        current.flowReversion()
+                )
+                .orElseThrow(() -> new WorkflowException(
+                        "Flow does not exist: " + current.flowId()
+                                + "@" + current.flowReversion()
+                ))
+                .normalizeInputs(inputs)
+                : Map.of();
         return commandExecutor.execute(
-            session,
-            new ContinueExecutionCommand(executionId),
-            (pending, dsl) -> {
-                if (pending.state().is(State.Type.CREATED)) {
-                    executorCommandQueue.emit(
-                        Create.from(session, pending).inTransaction(dsl)
-                    );
+                session,
+                new ContinueExecutionCommand(executionId),
+                (pending, dsl) -> {
+                    if (pending.state().is(State.Type.CREATED)) {
+                        executorCommandQueue.emit(
+                                Create.from(session, pending, normalizedInputs)
+                                        .inTransaction(dsl)
+                        );
+                    }
                 }
-            }
         ).copy();
     }
 
@@ -165,13 +205,13 @@ public final class ExecutionService {
     }
 
     private <S extends Session<U>, U extends User> Flow requireLatestFlow(
-        S session,
-        String flowId
+            S session,
+            String flowId
     ) {
         return flowQueryHandler.latestFlow(session, flowId)
-            .orElseThrow(() -> new WorkflowException(
-                "Flow does not exist: " + flowId
-            ));
+                .orElseThrow(() -> new WorkflowException(
+                        "Flow does not exist: " + flowId
+                ));
     }
 
 }

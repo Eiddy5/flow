@@ -186,6 +186,100 @@ final class ExecutorServiceTest {
     }
 
     @Test
+    void parallelBranchesUsePersistedConfirmedFlowInputs() {
+        Flow flow = deploy(Map.of(
+            "key", "parallel-input-route",
+            "inputs", List.of(Map.of(
+                "key", "amount",
+                "type", "DOUBLE",
+                "displayName", "Amount",
+                "required", true
+            )),
+            "tasks", List.of(Map.of(
+                "key", "parallel",
+                "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
+                "tasks", List.of(
+                    Map.of(
+                        "key", "high-value",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "route", "inputs.amount > 1000"
+                    ),
+                    Map.of(
+                        "key", "standard",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "route", "inputs.amount <= 1000"
+                    )
+                )
+            ))
+        ));
+        Execution execution = execution(flow);
+        ExecutorContext context = new ExecutorContext(
+            flow,
+            execution,
+            flow.normalizeInputs(Map.of("amount", 1200))
+        );
+
+        processUntilBoundary(context);
+
+        assertEquals(
+            List.of("high-value"),
+            context.workerTasks().stream()
+                .map(workerTask -> task(workerTask, execution, flow).key())
+                .toList()
+        );
+        assertTrue(execution.taskRuns().stream().allMatch(taskRun ->
+            Map.of("amount", 1200.0).equals(
+                taskRun.inputs().get("flowInputs")
+            )
+        ));
+        assertEquals(
+            Map.of("amount", 1200.0),
+            new ExecutorContext(flow, execution).flowInputs()
+        );
+    }
+
+    @Test
+    void parallelBranchesUseFlowLevelVariablesAndExposeThemToWorkers() {
+        Flow flow = deploy(Map.of(
+            "key", "parallel-variable-route",
+            "variables", Map.of("environment", "prod"),
+            "tasks", List.of(Map.of(
+                "key", "parallel",
+                "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
+                "tasks", List.of(
+                    Map.of(
+                        "key", "production",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "route", "variables.environment == \"prod\""
+                    ),
+                    Map.of(
+                        "key", "staging",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "route", "variables.environment == \"staging\""
+                    )
+                )
+            ))
+        ));
+        Execution execution = execution(flow);
+        ExecutorContext context = new ExecutorContext(flow, execution);
+
+        processUntilBoundary(context);
+
+        assertEquals(
+            List.of("production"),
+            context.workerTasks().stream()
+                .map(workerTask -> task(workerTask, execution, flow).key())
+                .toList()
+        );
+        assertEquals(
+            flow.variables(),
+            context.workerTasks().getFirst().variables().get(
+                RunContext.FLOW_VARIABLES_VARIABLE
+            )
+        );
+    }
+
+    @Test
     void processRunsPauseActionBeforePausingOnlyThePauseRun() {
         Flow flow = deploy(Map.of(
             "key", "pause-branch",

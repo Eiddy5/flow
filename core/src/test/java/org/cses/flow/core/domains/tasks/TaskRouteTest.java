@@ -40,4 +40,35 @@ class TaskRouteTest {
             )
         );
     }
+
+    @Test
+    void matchesFlowInputsWithTypedComparison() {
+        TaskRoute route = TaskRoute.parse("inputs.amount > 1000");
+
+        assertEquals("amount", route.referencedInputKey().orElseThrow());
+        assertTrue(route.matches(Map.of(), Map.of("amount", 1200)));
+        assertFalse(route.matches(Map.of(), Map.of("amount", 800)));
+    }
+
+    @Test
+    void matchesFlowLevelVariables() {
+        TaskRoute route = TaskRoute.parse(
+            "variables.environment == \"prod\""
+        );
+
+        assertEquals(
+            "environment",
+            route.referencedVariableKey().orElseThrow()
+        );
+        assertTrue(route.matches(
+            Map.of(),
+            Map.of(),
+            Map.of("environment", "prod")
+        ));
+        assertFalse(route.matches(
+            Map.of(),
+            Map.of(),
+            Map.of("environment", "staging")
+        ));
+    }
 }

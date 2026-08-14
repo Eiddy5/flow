@@ -10,6 +10,7 @@ import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.validations.ModelInvariant;
 
@@ -20,7 +21,26 @@ import java.util.Map;
  */
 @Plugin(
     title = "LOOP UNTIL",
-    description = "逐轮执行直接子步骤，直到输出条件成立或达到最大次数"
+    description = "逐轮执行直接子步骤，直到输出条件成立或达到最大次数",
+    examples = {
+        @Example(
+            title = "等待检查结果满足条件",
+            code = """
+                condition: 'outputs.check.status == "DONE"'
+                maxIterations: 3
+                tasks:
+                  - key: check
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: request-status
+                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                    resume:
+                      - key: status
+                        type: STRING
+                        required: true
+                """
+        )
+    }
 )
 @SuperBuilder
 @NoArgsConstructor
@@ -31,6 +51,7 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
         title = "结束条件",
         description = "当前轮次输出满足此表达式时结束循环",
         implementation = String.class,
+        format = "flow-expression",
         example = "outputs.check.status == \"DONE\""
     )
     private Express condition;
