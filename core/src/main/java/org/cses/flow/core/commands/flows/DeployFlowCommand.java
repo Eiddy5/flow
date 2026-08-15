@@ -4,17 +4,7 @@ import org.cses.flow.core.commands.Command;
 import org.cses.flow.core.commands.FlowCommandValidation;
 import org.cses.flow.core.domains.flows.Flow;
 
-public final class DeployFlowCommand implements Command<Flow> {
-
-    private final String id;
-
-    public DeployFlowCommand(String id) {
-        this.id = id;
-    }
-
-    public String id() {
-        return id;
-    }
+public record DeployFlowCommand(String id) implements Command<Flow> {
 
     @Override
     public void validate() {

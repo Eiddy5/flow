@@ -7,25 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public final class ContinueExecutionCommand implements Command<Execution> {
+public record ContinueExecutionCommand(
+    String executionId,
+    Map<String, Object> inputs
+) implements Command<Execution> {
 
-    private final String executionId;
-    private final Map<String, Object> inputs;
-
-    public ContinueExecutionCommand(
-        String executionId,
-        Map<String, ?> inputs
-    ) {
-        this.executionId = executionId;
-        this.inputs = immutableInputs(inputs);
-    }
-
-    public String executionId() {
-        return executionId;
-    }
-
-    public Map<String, Object> inputs() {
-        return inputs;
+    public ContinueExecutionCommand {
+        inputs = immutableInputs(inputs);
     }
 
     @Override

@@ -44,13 +44,13 @@ public final class FlowQueryHandler {
     }
 
     public <S extends Session<U>, U extends User>
-        Optional<FlowDraft> draft(S session, String flowId) {
+        Optional<FlowDraft> draft(S session, String draftId) {
 
-        requireFlowId(flowId);
+        requireDraftId(draftId);
         return jooq.get(dsl -> draftRepository.findById(
                 dsl,
                 SessionValidation.requireCompanyId(session),
-                flowId
+                draftId
             )
             .filter(draft -> !draft.isDeleted())
         );
@@ -59,40 +59,70 @@ public final class FlowQueryHandler {
     public <S extends Session<U>, U extends User>
         Optional<Flow> flow(
             S session,
-            String flowId,
-            long reversion
+            String flowKey,
+            long flowVersion
         ) {
 
-        requireFlowId(flowId);
-        if (reversion < 1) {
+        requireFlowKey(flowKey);
+        if (flowVersion < 1) {
             throw new IllegalArgumentException(
-                "Flow reversion must be positive"
+                "Flow version must be positive"
+            );
+        }
+        return jooq.get(dsl -> flowRepository.findByKey(
+            dsl,
+            SessionValidation.requireCompanyId(session),
+            flowKey,
+            flowVersion
+        ));
+    }
+
+    /**
+     * Restores an Execution-bound Flow revision by its technical row id.
+     */
+    public <S extends Session<U>, U extends User>
+        Optional<Flow> flowById(
+            S session,
+            String flowId,
+            long flowVersion
+        ) {
+
+        requireFlowKey(flowId);
+        if (flowVersion < 1) {
+            throw new IllegalArgumentException(
+                "Flow version must be positive"
             );
         }
         return jooq.get(dsl -> flowRepository.findById(
             dsl,
             SessionValidation.requireCompanyId(session),
             flowId,
-            reversion
+            flowVersion
         ));
     }
 
     public <S extends Session<U>, U extends User>
-        Optional<Flow> latestFlow(S session, String flowId) {
+        Optional<Flow> latestFlow(S session, String flowKey) {
 
-        requireFlowId(flowId);
-        return jooq.get(dsl -> flowRepository.findLatest(
+        requireFlowKey(flowKey);
+        return jooq.get(dsl -> flowRepository.findLatestByKey(
                 dsl,
                 SessionValidation.requireCompanyId(session),
-                flowId
+                flowKey
             )
             .filter(flow -> !flow.isDeleted())
         );
     }
 
-    private static void requireFlowId(String flowId) {
-        if (flowId == null || flowId.isBlank()) {
-            throw new IllegalArgumentException("Flow id must not be blank");
+    private static void requireFlowKey(String flowKey) {
+        if (flowKey == null || flowKey.isBlank()) {
+            throw new IllegalArgumentException("Flow key must not be blank");
+        }
+    }
+
+    private static void requireDraftId(String draftId) {
+        if (draftId == null || draftId.isBlank()) {
+            throw new IllegalArgumentException("FlowDraft id must not be blank");
         }
     }
 }

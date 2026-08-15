@@ -148,6 +148,14 @@ public final class Execution implements Lockable<Execution> {
     }
 
     /**
+     * Business-facing alias for the exact Flow version bound to this
+     * Execution. The persisted flow id remains the technical revision id.
+     */
+    public long flowVersion() {
+        return flowReversion;
+    }
+
+    /**
      * Returns the normalized values supplied for the exact Flow Reversion.
      */
     public Map<String, Object> inputs() {

@@ -89,7 +89,7 @@ class Uc02ExecutionLifecycleTest {
                   - key: third
                     type: org.cses.flow.extensions.tasks.AutomaticTask
                 """);
-            String flowId = flow.id();
+            String flowKey = flow.key();
             java.util.List<String> taskIds = flow.tasks().stream()
                 .map(task -> task.id())
                 .toList();
@@ -97,7 +97,7 @@ class Uc02ExecutionLifecycleTest {
             fixture.restartServer();
             Flow persisted = fixture.flowService().latestFlow(
                 fixture.session(),
-                flowId
+                flowKey
             ).orElseThrow();
             Execution completed = fixture.startAndAwait(persisted);
             Execution reloaded = fixture.executionService().execution(
@@ -105,7 +105,8 @@ class Uc02ExecutionLifecycleTest {
                 completed.id()
             ).orElseThrow();
 
-            assertEquals(flowId, persisted.id());
+            assertEquals(flowKey, persisted.key());
+            assertEquals(flow.id(), persisted.id());
             assertEquals(1L, persisted.reversion());
             assertEquals(State.Type.SUCCESS, reloaded.state().current());
             assertEquals(

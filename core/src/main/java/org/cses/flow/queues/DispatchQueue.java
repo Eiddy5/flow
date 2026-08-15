@@ -1,6 +1,7 @@
 package org.cses.flow.queues;
 
 import org.cses.flow.queues.event.DispatchEvent;
+import org.jooq.DSLContext;
 
 import java.util.List;
 import java.util.concurrent.CompletionStage;
@@ -35,12 +36,34 @@ public interface DispatchQueue<T extends DispatchEvent> extends Queue<T> {
     void emit(T event);
 
     /**
+     * Emits one Event into a caller-owned transaction.
+     *
+     * <p>The transaction is publishing metadata, not part of the Event
+     * payload. Queue acceptance takes effect only if the caller commits the
+     * supplied transaction.</p>
+     *
+     * @param event Event to emit
+     * @param dsl caller-owned transaction
+     * @throws QueueException when the Queue cannot accept the Event
+     */
+    void emitInTransaction(T event, DSLContext dsl);
+
+    /**
      * Atomically emits a batch of Events.
      *
      * @param events Events to emit
      * @throws QueueException when the Queue cannot accept the complete batch
      */
     void emit(List<T> events);
+
+    /**
+     * Atomically emits a batch of Events into a caller-owned transaction.
+     *
+     * @param events Events to emit
+     * @param dsl caller-owned transaction
+     * @throws QueueException when the Queue cannot accept the complete batch
+     */
+    void emitInTransaction(List<T> events, DSLContext dsl);
 
     /**
      * Asynchronously emits one Event.

@@ -152,14 +152,8 @@ class ConditionalRouteResumeIntegrationTest {
                 "conditional-resume-isolation-flow",
                 "outputs.decision == \"APPROVED\""
             ));
-            Execution first = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
-            Execution second = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution first = fixture.startCreated(flow);
+            Execution second = fixture.startCreated(flow);
             fixture.restartServer();
             PausedTaskRunRef firstPause = waiting(fixture, first);
             PausedTaskRunRef secondPause = waiting(fixture, second);
@@ -210,10 +204,7 @@ class ConditionalRouteResumeIntegrationTest {
             key,
             "outputs.decision == \"APPROVED\""
         ));
-        Execution execution = fixture.executionService().create(
-            fixture.session(),
-            flow.id()
-        );
+        Execution execution = fixture.startCreated(flow);
         fixture.restartServer();
         return new RouteScenario(
             flow,

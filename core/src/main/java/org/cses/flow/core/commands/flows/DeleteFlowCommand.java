@@ -4,17 +4,7 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.commands.Command;
 import org.cses.flow.core.commands.FlowCommandValidation;
 
-public final class DeleteFlowCommand implements Command<Flow> {
-
-    private final String id;
-
-    public DeleteFlowCommand(String id) {
-        this.id = id;
-    }
-
-    public String id() {
-        return id;
-    }
+public record DeleteFlowCommand(String id) implements Command<Flow> {
 
     @Override
     public void validate() {

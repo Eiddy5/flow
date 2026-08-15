@@ -1,9 +1,6 @@
 package org.cses.flow.executor.commands;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.cses.flow.core.domains.ActorRef;
-import org.jooq.DSLContext;
-import org.paas.json.SerializableObject;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -12,17 +9,16 @@ import java.util.Objects;
 /**
  * Requests cancellation of one Execution through the Executor command Queue.
  */
-public final class Cancel extends SerializableObject
-    implements ExecutionCommand {
+public record Cancel(
+    String executionId,
+    String companyId,
+    String actorId
+) implements ExecutionCommand {
 
-    private String executionId;
-    private String companyId;
-    private String actorId;
-
-    @JsonIgnore
-    private transient DSLContext dsl;
-
-    public Cancel() {
+    public Cancel {
+        executionId = requireText(executionId, "Execution id");
+        companyId = requireText(companyId, "Company id");
+        actorId = requireText(actorId, "Actor id");
     }
 
     public static Cancel from(
@@ -32,12 +28,11 @@ public final class Cancel extends SerializableObject
         Objects.requireNonNull(session, "Session must not be null");
         ActorRef actor = ActorRef.from(session);
 
-        Cancel command = new Cancel();
-        command.executionId = executionId;
-        command.companyId = session.getCompanyId();
-        command.actorId = actor.id();
-        command.validate();
-        return command;
+        return new Cancel(
+            executionId,
+            session.getCompanyId(),
+            actor.id()
+        );
     }
 
     @Override
@@ -46,48 +41,27 @@ public final class Cancel extends SerializableObject
     }
 
     @Override
+    public String key() {
+        return executionId;
+    }
+
+    @Override
     public void validate() {
-        executionId = requireText(executionId, "Execution id");
-        companyId = requireText(companyId, "Company id");
-        actorId = requireText(actorId, "Actor id");
+        requireText(executionId, "Execution id");
+        requireText(companyId, "Company id");
+        requireText(actorId, "Actor id");
     }
 
-    public Cancel inTransaction(DSLContext dsl) {
-        this.dsl = Objects.requireNonNull(dsl, "dsl");
-        return this;
-    }
-
-    @Override
-    @JsonIgnore
-    public DSLContext dsl() {
-        return dsl;
-    }
-
-    @Override
     public String getExecutionId() {
         return executionId;
     }
 
-    public void setExecutionId(String executionId) {
-        this.executionId = executionId;
-    }
-
-    @Override
     public String getCompanyId() {
         return companyId;
     }
 
-    public void setCompanyId(String companyId) {
-        this.companyId = companyId;
-    }
-
-    @Override
     public String getActorId() {
         return actorId;
-    }
-
-    public void setActorId(String actorId) {
-        this.actorId = actorId;
     }
 
     private static String requireText(String value, String field) {

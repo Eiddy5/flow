@@ -1,9 +1,6 @@
 package org.cses.flow.executor.commands;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.cses.flow.core.domains.ActorRef;
-import org.jooq.DSLContext;
-import org.paas.json.SerializableObject;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -18,19 +15,20 @@ import java.util.Objects;
  * command therefore carries only the tenant, actor, target identities and
  * normalized resume data; it does not duplicate Flow or Session snapshots.</p>
  */
-public final class Resume extends SerializableObject
-    implements ExecutionCommand {
+public record Resume(
+    String executionId,
+    String companyId,
+    String actorId,
+    String taskRunId,
+    Map<String, Object> outputs
+) implements ExecutionCommand {
 
-    private String executionId;
-    private String companyId;
-    private String actorId;
-    private String taskRunId;
-    private Map<String, Object> outputs = Map.of();
-
-    @JsonIgnore
-    private transient DSLContext dsl;
-
-    public Resume() {
+    public Resume {
+        executionId = requireText(executionId, "Execution id");
+        companyId = requireText(companyId, "Company id");
+        actorId = requireText(actorId, "Actor id");
+        taskRunId = requireText(taskRunId, "TaskRun id");
+        outputs = immutableOutputs(outputs);
     }
 
     public static Resume from(
@@ -47,14 +45,13 @@ public final class Resume extends SerializableObject
         }
         ActorRef actor = ActorRef.from(session);
 
-        Resume command = new Resume();
-        command.executionId = executionId;
-        command.companyId = session.getCompanyId();
-        command.actorId = actor.id();
-        command.taskRunId = taskRunId;
-        command.outputs = immutableOutputs(outputs);
-        command.validate();
-        return command;
+        return new Resume(
+            executionId,
+            session.getCompanyId(),
+            actor.id(),
+            taskRunId,
+            immutableOutputs(outputs)
+        );
     }
 
     @Override
@@ -63,61 +60,37 @@ public final class Resume extends SerializableObject
     }
 
     @Override
+    public String key() {
+        return executionId;
+    }
+
+    @Override
     public void validate() {
-        executionId = requireText(executionId, "Execution id");
-        companyId = requireText(companyId, "Company id");
-        actorId = requireText(actorId, "Actor id");
-        taskRunId = requireText(taskRunId, "TaskRun id");
-        outputs = immutableOutputs(outputs);
+        requireText(executionId, "Execution id");
+        requireText(companyId, "Company id");
+        requireText(actorId, "Actor id");
+        requireText(taskRunId, "TaskRun id");
+        immutableOutputs(outputs);
     }
 
-    @Override
-    @JsonIgnore
-    public DSLContext dsl() {
-        return dsl;
-    }
-
-    @Override
     public String getExecutionId() {
         return executionId;
     }
 
-    public void setExecutionId(String executionId) {
-        this.executionId = executionId;
-    }
-
-    @Override
     public String getCompanyId() {
         return companyId;
     }
 
-    public void setCompanyId(String companyId) {
-        this.companyId = companyId;
-    }
-
-    @Override
     public String getActorId() {
         return actorId;
-    }
-
-    public void setActorId(String actorId) {
-        this.actorId = actorId;
     }
 
     public String getTaskRunId() {
         return taskRunId;
     }
 
-    public void setTaskRunId(String taskRunId) {
-        this.taskRunId = taskRunId;
-    }
-
     public Map<String, Object> getOutputs() {
-        return outputs == null ? Map.of() : Map.copyOf(outputs);
-    }
-
-    public void setOutputs(Map<String, Object> outputs) {
-        this.outputs = immutableOutputs(outputs);
+        return outputs;
     }
 
     private static String requireText(String value, String field) {

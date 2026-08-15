@@ -7,31 +7,16 @@ import org.cses.flow.core.domains.flows.FlowDraft;
 /**
  * Creates or revises a FlowDraft without parsing its raw YAML.
  */
-public final class SaveFlowDraftCommand implements Command<FlowDraft> {
+public record SaveFlowDraftCommand(
+    String id,
+    Long expectedLockVersion,
+    String raw
+) implements Command<FlowDraft> {
 
-    private final String id;
-    private final Long expectedLockVersion;
-    private final String raw;
-
-    public SaveFlowDraftCommand(String id, Long expectedLockVersion, String raw) {
-        this.id = id;
-        this.expectedLockVersion = expectedLockVersion;
+    public SaveFlowDraftCommand {
         if (raw == null) {
             throw new IllegalArgumentException("FlowDraft raw must not be null");
         }
-        this.raw = raw;
-    }
-
-    public String id() {
-        return id;
-    }
-
-    public Long expectedLockVersion() {
-        return expectedLockVersion;
-    }
-
-    public String raw() {
-        return raw;
     }
 
     @Override

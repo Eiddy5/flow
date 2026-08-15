@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS flows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_flows_latest
-    ON flows (company_id, id, reversion DESC);
+    ON flows (company_id, key, reversion DESC);
 
 CREATE INDEX IF NOT EXISTS idx_flows_creator_id
     ON flows (creator_id);

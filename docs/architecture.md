@@ -150,17 +150,18 @@ Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只
 Core 提供类型化 Dispatch Queue Interface，并已把 Execution 启动接入使用统一
 `queues` 表的 Default Adapter。该表以
 `queue_type + queue_name` 隔离传输类别和逻辑 Queue；当前 Adapter 只写入并领取
-`DISPATCH` 行。业务 Module 仍需为具体 Event 提供可空 `dsl()`、确定的 `Class<T>` 和
-具名 Bean；Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
+`DISPATCH` 行。业务 Module 为具体 Event 提供 key、可空的 `dsl()`、确定的 `Class<T>` 和具名
+Bean；对于不应携带事务状态的纯数据 payload，调用方也可以通过 Queue 的显式发布方法传入
+事务。Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
 `Create`、`Resume`、`Cancel`、具名 Queue Bean、只做两条 Queue 路由的 eager `DefaultExecutor`、
 `ExecutionCommandEventHandler` 和内部 `ExecutorEventHandler` 已连线；Broadcast
 Interface、消费游标或保留清理仍未实现。
 
-`DefaultDispatchQueue` 直接读取 `Event.dsl()`：同步整批 Event 必须全部返回 `null`，
-或全部返回同一个 `DSLContext` 实例；前者使用 Queue 自有事务，后者加入调用方事务。
-Default Queue 使用项目现有 `JsonFactory` 把业务 Event 重组为排除 DSL 的 JSONB Queue
-Entry，并用装配时传入的 `Class<T>` 恢复类型。异步发布始终在独立事务中提交，后台
-任务只携带 Entry，不携带 Event 的 DSL。每个 Subscription 使用虚拟线程周期轮询
+`DefaultDispatchQueue` 的普通同步发布继续读取 `Event.dsl()`：返回非空值时加入调用方事务，
+返回 `null` 时使用 Queue 自有事务；对于不携带运行时事务状态的 payload，也可以调用
+`emitInTransaction(...)` 显式传入 `DSLContext`。异步发布始终忽略 `dsl()` 并在独立事务中提交。
+Default Queue 使用项目现有 `JsonFactory` 把业务 Event 重组为 JSONB Queue Entry，并用装配时
+传入的 `Class<T>` 恢复类型，后台任务只携带 Entry，不携带调用方事务。每个 Subscription 使用虚拟线程周期轮询
 数据库，并在领取事务内按 `queue_type = 'DISPATCH'`、`queue_name` 通过
 `FOR UPDATE SKIP LOCKED` 竞争并调用 Consumer；只有 Consumer 正常返回才删除消息，
 异常会回滚领取事务并重试。未来 Broadcast 消息载荷仍写入 `queues`，所需的
@@ -181,10 +182,10 @@ flowchart TD
     persistFlow["保存 Flow 与 FlowTasks"]
 
     executeStart(["用户启动最新且未删除的 Flow"])
-    createExecution["ExecutionService 加载最新 Flow，规范化 inputs，生成 executionId 并构造 Create"]
+    createExecution["ExecutionService 解析 companyId + flowKey + flowVersion，构造 Create"]
     enqueueStart["写入 ExecutionCommand Queue"]
-    acceptedEnd(["返回 CREATED 与 executionId"])
-    consumeStart["DefaultExecutor 路由到 ExecutionCommandEventHandler；恢复 Session、绑定 inputs 并投递 ExecutorEvent"]
+    acceptedEnd(["返回 Create 队列受理信息"])
+    consumeStart["DefaultExecutor 路由到 ExecutionCommandEventHandler；按 Flow 三字段加载 Flow、创建 Execution、投递 ExecutorEvent"]
     drive["ExecutorEventHandler 领取一个 ExecutorEvent 周期"]
     handle["ExecutorService.handle 状态推进循环"]
     plan["按顺序、typed input/output route、dependOn 和 PARALLEL 规划下一批 TaskRun"]
@@ -299,26 +300,29 @@ flowchart TD
 
 流程图强调当前实现中的关键事实：
 
-1. 普通启动由 `ExecutionService` 构造 `Create` 并写入 Executor Command Queue；Service
-   返回只代表受理，`ExecutionCommandEventHandler` 在新事务中规范化/绑定
-   `Execution.inputs` 并原子投递 `ExecutorEvent`。可信 pending continuation 仍在同一
-   JOOQ 事务保存 Execution 和 Queue Command。
-2. Execution 始终绑定启动时的精确 Flow Reversion，继续、恢复和取消时不会切换到
+1. Flow 的业务身份是 `companyId + key + version`。key 在 Draft 创建时由后端生成并跨版本
+   稳定；每次部署都生成新的技术 `Flow.id`，历史版本不会复用该 id。
+2. 普通启动由 `ExecutionService` 构造只含 `companyId`、`flowKey`、`flowVersion`、
+   `inputs` 的 `Create` 并写入 Executor Command Queue；Service 返回只代表队列受理。
+   `ExecutionCommandEventHandler` 在消费事务中按三字段加载精确 Flow，规范化 inputs、
+   创建 Execution 并原子投递 `ExecutorEvent`。可信 pending continuation 仍在同一
+   JOOQ 事务保存 Execution 和 Queue Event。
+3. Execution 始终绑定启动时的精确 Flow Reversion，继续、恢复和取消时不会切换到
    新版本。
-3. Flow inputs 在首次启动前按精确 Reversion 规范化，持久化在
+4. Flow inputs 在首次启动前按精确 Reversion 规范化，持久化在
    `Execution.inputs`；`ExecutorContext` 从 Execution 读取，TaskRun 不再保存
    `flowInputs` 快照。恢复后的 Route 不需要宿主重复提交字段值。
-4. Flow Reversion 的 `variables` 是流程级只读 `Map<String, Object>`，持久化在
+5. Flow Reversion 的 `variables` 是流程级只读 `Map<String, Object>`，持久化在
    `flows.variables`，Route 可通过 `variables.<key>` 读取，RunnableTask 通过
    RunContext 的 `$flow.variables` 读取；它不复制到 TaskRun。
-5. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
+6. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
    同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。
-6. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
+7. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
    TaskRun 是唯一持久化等待事实。合法 Resume 在 Service 侧预校验并规范化后写入
    `ExecutionCommand` Queue，Command Handler 再次校验并投递 `ExecutorEvent`，内部
    Handler 从队列领取后通过 `ExecutorContext` 调用 `ExecutorService.resume`，因此不
    依赖原 Server 进程仍然存活，也不需要额外等待聚合。
-7. `ExecutorEventHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
+8. `ExecutorEventHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
    的 OrchestrationTask、同步调用 Worker、持久化本轮变化，并将仍可推进的下一周期
    重新投回 Event Queue。`DefaultExecutor` 不拥有状态机，只负责两条 Queue 路由。
 

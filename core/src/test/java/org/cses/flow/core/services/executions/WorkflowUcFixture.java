@@ -166,11 +166,54 @@ public final class WorkflowUcFixture implements AutoCloseable {
         Session<User> startSession,
         Flow flow
     ) {
-        Execution accepted = executionService.create(
-            startSession,
-            flow.id()
-        );
+        Execution accepted = startCreated(startSession, flow);
         return awaitStable(startSession, accepted.id());
+    }
+
+    /**
+     * Publishes a Create command and waits only until its consumer has
+     * materialized the Execution. The Execution id is intentionally assigned
+     * by that consumer, not by the caller.
+     */
+    public Execution startCreated(Flow flow) {
+        return startCreated(session, flow);
+    }
+
+    public Execution startCreated(
+        Session<User> startSession,
+        Flow flow
+    ) {
+        Set<String> existingIds = executionService.executions(startSession)
+            .stream()
+            .map(Execution::id)
+            .collect(java.util.stream.Collectors.toSet());
+        executionService.create(startSession, flow.key());
+        return awaitCreated(startSession, flow, existingIds);
+    }
+
+    private Execution awaitCreated(
+        Session<User> querySession,
+        Flow flow,
+        Set<String> existingIds
+    ) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            Optional<Execution> created = executionService.executions(
+                    querySession
+                ).stream()
+                .filter(execution -> !existingIds.contains(execution.id()))
+                .filter(execution -> execution.flowId().equals(flow.id()))
+                .filter(execution -> execution.flowReversion() == flow.reversion())
+                .findFirst();
+            if (created.isPresent()) {
+                return created.orElseThrow();
+            }
+            awaitChangeSignal(deadline);
+        }
+        throw new IllegalStateException(
+            "Create command did not materialize an Execution for Flow: "
+                + flow.key() + "@" + flow.reversion()
+        );
     }
 
     public Execution awaitStable(Execution accepted) {
@@ -309,7 +352,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
             "Paused TaskRun references a missing Execution: "
                 + pausedTaskRun.taskRunId()
         ));
-        Flow flow = flowService.flow(
+        Flow flow = flowService.flowById(
             querySession,
             execution.flowId(),
             execution.flowReversion()

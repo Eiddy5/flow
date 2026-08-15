@@ -64,18 +64,40 @@ public final class FlowService {
         return queryHandler.drafts(session);
     }
 
-    public <S extends Session<U>, U extends User> Optional<FlowDraft> draft(S session, String flowId) {
+    public <S extends Session<U>, U extends User> Optional<FlowDraft> draft(S session, String draftId) {
 
-        return queryHandler.draft(session, flowId);
+        return queryHandler.draft(session, draftId);
     }
 
-    public <S extends Session<U>, U extends User> Optional<Flow> flow(S session, String flowId, long reversion) {
+    public <S extends Session<U>, U extends User> Optional<Flow> flow(
+        S session,
+        String flowKey,
+        long flowVersion
+    ) {
 
-        return queryHandler.flow(session, flowId, reversion);
+        return queryHandler.flow(session, flowKey, flowVersion);
     }
 
-    public <S extends Session<U>, U extends User> Optional<Flow> latestFlow(S session, String flowId) {
+    /**
+     * Loads a persisted Flow revision by its technical row id.
+     *
+     * <p>Business callers should use {@link #flow(Session, String, long)}
+     * with the stable Flow key. This lookup is reserved for internal
+     * references such as an Execution's immutable Flow binding.</p>
+     */
+    public <S extends Session<U>, U extends User> Optional<Flow> flowById(
+        S session,
+        String flowId,
+        long flowVersion
+    ) {
+        return queryHandler.flowById(session, flowId, flowVersion);
+    }
 
-        return queryHandler.latestFlow(session, flowId);
+    public <S extends Session<U>, U extends User> Optional<Flow> latestFlow(
+        S session,
+        String flowKey
+    ) {
+
+        return queryHandler.latestFlow(session, flowKey);
     }
 }

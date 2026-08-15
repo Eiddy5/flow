@@ -22,6 +22,11 @@ import java.util.Set;
 /**
  * Materializes one deployed Flow from strict YAML.
  *
+ * <p>The stable Flow key is supplied by the backend from the FlowDraft
+ * identity. A legacy top-level {@code key} field remains accepted as a
+ * payload field for compatibility, but it is not used as the deployed
+ * identity.</p>
+ *
  * <p>Task polymorphism is owned by Jackson's registered
  * {@code PluginDeserializer}. This class only owns Flow fields, deployment
  * identity state, validation, and the conversion from the parsed tree to
@@ -56,7 +61,7 @@ public final class FlowDefinitionDeserializer {
     public Flow deserialize(
         String source,
         String companyId,
-        String flowId,
+        String flowKey,
         Flow latest,
         ActorRef actor,
         long deployedAt
@@ -73,8 +78,7 @@ public final class FlowDefinitionDeserializer {
 
         return Flow.deploy(
             companyId,
-            flowId,
-            requiredText(definition, "key", "Flow"),
+            flowKey,
             optionalText(definition, "description", "", "Flow"),
             variables(definition.get("variables"), "Flow.variables"),
             inputs(definition.get("inputs"), "Flow.inputs"),
@@ -203,21 +207,6 @@ public final class FlowDefinitionDeserializer {
                 path + " contains unsupported fields: " + unknown
             );
         }
-    }
-
-    private static String requiredText(
-        ObjectNode definition,
-        String field,
-        String path
-    ) {
-        JsonNode value = definition.get(field);
-        if (value == null || !value.isTextual()
-            || value.textValue().isBlank()) {
-            throw new IllegalArgumentException(
-                path + "." + field + " must be non-blank text"
-            );
-        }
-        return value.textValue().trim();
     }
 
     private static String optionalText(

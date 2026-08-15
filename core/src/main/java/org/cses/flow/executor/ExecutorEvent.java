@@ -1,6 +1,9 @@
 package org.cses.flow.executor;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import org.cses.flow.core.domains.ActorRef;
+import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.executor.commands.Cancel;
 import org.cses.flow.executor.commands.Create;
 import org.cses.flow.executor.commands.Resume;
@@ -8,6 +11,8 @@ import org.cses.flow.queues.event.DispatchEvent;
 import org.jooq.DSLContext;
 import org.paas.json.SerializableObject;
 import org.paas.session.Device;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -46,20 +51,64 @@ public final class ExecutorEvent extends SerializableObject
     public ExecutorEvent() {
     }
 
-    public static ExecutorEvent from(Create command) {
+    public static ExecutorEvent from(
+        Create command,
+        Execution execution,
+        Flow flow
+    ) {
         Objects.requireNonNull(command, "command");
+        Objects.requireNonNull(execution, "execution");
+        Objects.requireNonNull(flow, "flow");
+        if (!flow.companyId().equals(command.getCompanyId())
+            || !flow.key().equals(command.getFlowKey())
+            || flow.reversion() != command.getFlowVersion()
+            || !execution.companyId().equals(flow.companyId())
+            || !execution.flowId().equals(flow.id())
+            || execution.flowReversion() != flow.reversion()) {
+            throw new IllegalArgumentException(
+                "Create event does not belong to the resolved Flow"
+            );
+        }
+        ActorRef actor = flow.creator();
         ExecutorEvent event = new ExecutorEvent();
         event.type = Type.PROCESS;
-        event.executionId = command.getExecutionId();
-        event.companyId = command.getCompanyId();
-        event.actorId = command.getActorId();
-        event.actorName = command.getActorName();
-        event.sessionId = command.getSessionId();
-        event.ip = command.getIp();
-        event.device = command.getDevice();
-        event.deviceId = command.getDeviceId();
-        event.appVersion = command.getAppVersion();
-        event.osVersion = command.getOsVersion();
+        event.executionId = execution.id();
+        event.companyId = flow.companyId();
+        event.actorId = actor.id();
+        event.actorName = actor.name().orElse(null);
+        event.validate();
+        return event;
+    }
+
+    /**
+     * Creates an internal start event for an already persisted pending
+     * Execution. This path is separate from the public Create command because
+     * Create is reserved for materializing a new Execution in its consumer.
+     */
+    public static ExecutorEvent from(
+        Session<? extends User> session,
+        Execution execution
+    ) {
+        Objects.requireNonNull(session, "session");
+        Objects.requireNonNull(execution, "execution");
+        if (!execution.companyId().equals(session.getCompanyId())) {
+            throw new IllegalArgumentException(
+                "Session company must match Execution company"
+            );
+        }
+        ActorRef actor = ActorRef.from(session);
+        ExecutorEvent event = new ExecutorEvent();
+        event.type = Type.PROCESS;
+        event.executionId = execution.id();
+        event.companyId = execution.companyId();
+        event.actorId = actor.id();
+        event.actorName = actor.name().orElse(null);
+        event.sessionId = session.getId();
+        event.ip = session.getIp();
+        event.device = session.getDevice();
+        event.deviceId = session.getDeviceId();
+        event.appVersion = session.getAppVersion();
+        event.osVersion = session.getOsVersion();
         event.validate();
         return event;
     }

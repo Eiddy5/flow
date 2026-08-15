@@ -25,8 +25,10 @@ import java.util.function.Consumer;
  *
  * <p>Synchronous publishing joins the caller-owned {@link DSLContext}
  * returned by {@link DispatchEvent#dsl()}; a {@code null} result opens a
- * Queue-owned transaction. Asynchronous publishing never reads that method
- * and always uses a Queue-owned transaction.</p>
+ * Queue-owned transaction. {@link #emitInTransaction(DispatchEvent,
+ * DSLContext)} is an explicit alternative for payloads that do not carry
+ * runtime transaction state. Asynchronous publishing never reads
+ * {@code dsl()} and always uses a Queue-owned transaction.</p>
  *
  * <p>When synchronous publishing joins a caller transaction, returning from
  * {@code emit} only means the insert was staged successfully. The caller
@@ -111,11 +113,29 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
     }
 
     @Override
+    public void emitInTransaction(T event, DSLContext dsl) {
+        requireOpen();
+        T accepted = store.requireEvent(event);
+        List<QueueMessageEntry> entries = store.prepare(accepted);
+        publishInTransaction(dsl, entries);
+        signalAvailable();
+    }
+
+    @Override
     public void emit(List<T> events) {
         requireOpen();
         List<T> accepted = store.snapshot(events);
         List<QueueMessageEntry> entries = store.prepare(accepted);
         publishSynchronously(accepted, entries);
+        signalAvailable();
+    }
+
+    @Override
+    public void emitInTransaction(List<T> events, DSLContext dsl) {
+        requireOpen();
+        List<T> accepted = store.snapshot(events);
+        List<QueueMessageEntry> entries = store.prepare(accepted);
+        publishInTransaction(dsl, entries);
         signalAvailable();
     }
 
@@ -260,6 +280,16 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
             }
         }
         return shared;
+    }
+
+    private void publishInTransaction(
+        DSLContext dsl,
+        List<QueueMessageEntry> entries
+    ) {
+        if (entries.isEmpty()) {
+            return;
+        }
+        store.publish(dsl, entries);
     }
 
     private CompletionStage<Void> submitAsync(

@@ -26,6 +26,7 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.executor.commands.Create;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.services.executions.ExecutionService;
 import org.cses.flow.core.services.flows.FlowService;
@@ -148,19 +149,19 @@ public final class FlowController {
         );
     }
 
-    @Get("/flows/{flowId}/reversions/{reversion}")
+    @Get("/flows/{flowKey}/reversions/{reversion}")
     public FlowView flowReversion(
         @UserSession Session<User> session,
-        String flowId,
+        String flowKey,
         long reversion
     ) {
         Flow flow = flowService.flow(
             session,
-            flowId,
+            flowKey,
             reversion
         ).orElseThrow(() -> notFound(
             "Flow reversion does not exist: "
-                + flowId + "@" + reversion
+                + flowKey + "@" + reversion
         ));
         return FlowView.from(flow);
     }
@@ -187,21 +188,21 @@ public final class FlowController {
         return HttpResponse.noContent();
     }
 
-    @Post("/flows/{flowId}/executions")
-    public HttpResponse<ExecutionView> start(
+    @Post("/flows/{flowKey}/executions")
+    public HttpResponse<Create> start(
         @UserSession Session<User> session,
-        String flowId,
+        String flowKey,
         @Body StartRequest request
     ) {
         Map<String, ?> inputs = request == null || request.getInputs() == null
             ? Map.of()
             : request.getInputs();
-        Execution execution = executionService.create(
+        Create command = executionService.create(
             session,
-            flowId,
+            flowKey,
             inputs
         );
-        return HttpResponse.created(ExecutionView.from(execution));
+        return HttpResponse.<Create>accepted().body(command);
     }
 
     @Get("/executions")

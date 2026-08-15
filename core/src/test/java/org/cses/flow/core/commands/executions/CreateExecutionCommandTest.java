@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 final class CreateExecutionCommandTest {
 
     @Test
-    void acceptsAStableExecutionIdAndExactFlowReversion() {
+    void acceptsAStableExecutionIdAndExactFlowVersion() {
         CreateExecutionCommand command = new CreateExecutionCommand(
             "execution-1",
             "flow-1",
@@ -18,8 +18,8 @@ final class CreateExecutionCommandTest {
         command.validate();
 
         assertEquals("execution-1", command.executionId());
-        assertEquals("flow-1", command.flowId());
-        assertEquals(7L, command.expectedFlowReversion());
+        assertEquals("flow-1", command.flowKey());
+        assertEquals(7L, command.expectedFlowVersion());
     }
 
     @Test

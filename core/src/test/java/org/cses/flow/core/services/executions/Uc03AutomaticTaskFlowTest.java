@@ -48,10 +48,7 @@ class Uc03AutomaticTaskFlowTest {
                                 type: STRING
                 """);
 
-            Execution created = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution created = fixture.startCreated(flow);
             assertEquals(State.Type.CREATED, created.state().current());
             Execution completed = fixture.awaitStable(created);
             Task prepare = task(flow, "prepare-input");
@@ -116,10 +113,7 @@ class Uc03AutomaticTaskFlowTest {
                             type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
 
-            Execution created = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution created = fixture.startCreated(flow);
             assertEquals(State.Type.CREATED, created.state().current());
             Execution failed = fixture.awaitStable(created);
             Task prepare = task(flow, "prepare-input");
@@ -156,10 +150,7 @@ class Uc03AutomaticTaskFlowTest {
                       - key: target-throw
                         type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
-            Execution accepted = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution accepted = fixture.startCreated(flow);
             Execution failed = fixture.awaitStable(accepted);
             Task prepare = task(flow, "prepare-input");
             Task target = task(flow, "target-throw");

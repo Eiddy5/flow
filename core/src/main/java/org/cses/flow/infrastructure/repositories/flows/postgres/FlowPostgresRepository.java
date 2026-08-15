@@ -53,14 +53,31 @@ public final class FlowPostgresRepository implements FlowRepository {
     }
 
     @Override
-    public Optional<Flow> findLatest(
+    public Optional<Flow> findByKey(
         DSLContext dsl,
         String companyId,
-        String flowId
+        String flowKey,
+        long flowVersion
     ) {
         FlowEntry entry = dsl.selectFrom(FLOWS)
             .where(FLOWS.COMPANY_ID.eq(companyId))
-            .and(FLOWS.ID.eq(flowId))
+            .and(FLOWS.KEY.eq(flowKey))
+            .and(FLOWS.REVERSION.eq(flowVersion))
+            .fetchOne(FlowEntry::fromRecord);
+        return entry == null
+            ? Optional.empty()
+            : Optional.of(toDomain(dsl, entry));
+    }
+
+    @Override
+    public Optional<Flow> findLatestByKey(
+        DSLContext dsl,
+        String companyId,
+        String flowKey
+    ) {
+        FlowEntry entry = dsl.selectFrom(FLOWS)
+            .where(FLOWS.COMPANY_ID.eq(companyId))
+            .and(FLOWS.KEY.eq(flowKey))
             .orderBy(FLOWS.REVERSION.desc())
             .limit(1)
             .fetchOne(FlowEntry::fromRecord);
@@ -87,7 +104,7 @@ public final class FlowPostgresRepository implements FlowRepository {
     private void insertReversion(DSLContext dsl, Flow flow) {
         FlowEntry latest = dsl.selectFrom(FLOWS)
             .where(FLOWS.COMPANY_ID.eq(flow.companyId()))
-            .and(FLOWS.ID.eq(flow.id()))
+            .and(FLOWS.KEY.eq(flow.key()))
             .orderBy(FLOWS.REVERSION.desc())
             .limit(1)
             .forUpdate()
@@ -98,13 +115,13 @@ public final class FlowPostgresRepository implements FlowRepository {
         }
         if (latest != null && Boolean.TRUE.equals(latest.deleted)) {
             throw new WorkflowException(
-                "Deleted Flow cannot receive a new reversion: " + flow.id()
+                "Deleted Flow cannot receive a new version: " + flow.key()
             );
         }
         if (flow.isDeleted()) {
             throw new WorkflowException(
                 "A new Flow reversion must be undeleted: "
-                    + flow.id() + ":" + flow.reversion()
+                    + flow.key() + ":" + flow.reversion()
             );
         }
 
@@ -117,7 +134,7 @@ public final class FlowPostgresRepository implements FlowRepository {
         } catch (DataAccessException exception) {
             throw new WorkflowException(
                 "Flow reversion conflict for "
-                    + flow.id() + ":" + flow.reversion(),
+                    + flow.key() + ":" + flow.reversion(),
                 exception
             );
         }
@@ -259,7 +276,7 @@ public final class FlowPostgresRepository implements FlowRepository {
         if (stored.isDeleted() || !attempted.isDeleted()) {
             throw new WorkflowException(
                 "Existing Flow reversion may only transition from "
-                    + "deleted=false to deleted=true: " + attempted.id()
+                    + "deleted=false to deleted=true: " + attempted.key()
                     + ":" + attempted.reversion()
             );
         }
@@ -278,7 +295,7 @@ public final class FlowPostgresRepository implements FlowRepository {
         if (!immutableStateMatches) {
             throw new WorkflowException(
                 "Deleting a Flow must not change its deployed definition: "
-                    + attempted.id() + ":" + attempted.reversion()
+                    + attempted.key() + ":" + attempted.reversion()
             );
         }
     }
@@ -288,7 +305,7 @@ public final class FlowPostgresRepository implements FlowRepository {
         long storedReversion
     ) {
         return new WorkflowException(
-            "Flow reversion conflict for " + flow.id()
+            "Flow version conflict for " + flow.key()
                 + ": stored latest " + storedReversion
                 + ", attempted " + flow.reversion()
         );

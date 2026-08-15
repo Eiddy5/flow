@@ -275,9 +275,12 @@ class CoreArchitectureStandardTest {
             "executor/handlers/ExecutorEventHandler.java"
         ));
         assertTrue(
-            executionService.contains("Create.from(")
+            executionService.contains("Create.of(")
                 && executionService.contains("normalizedInputs")
-                && executionService.contains("executorCommandQueue.emit(")
+                && executionService.contains("executorCommandQueue.emit(command)")
+                && executionService.contains(
+                    "executorEventQueue.emitInTransaction("
+                )
                 && executionService.contains("Resume.from(")
                 && executionService.contains("Cancel.from(")
                 && defaultExecutor.contains(
@@ -344,10 +347,13 @@ class CoreArchitectureStandardTest {
             "DispatchQueue must own competing Consumer registration"
         );
         assertTrue(
-            eventContract.contains("@JsonIgnore")
-                && eventContract.contains("DSLContext dsl();"),
-            "Event must expose but never persist its optional caller "
-                + "transaction"
+            eventContract.contains("DSLContext")
+                && eventContract.contains("DSLContext dsl();")
+                && dispatchContract.contains(
+                    "void emitInTransaction(T event, DSLContext dsl);"
+                ),
+            "Event must retain its transaction hook and DispatchQueue must "
+                + "also expose explicit caller transaction publishing"
         );
 
         List<String> coupled = new ArrayList<>();
@@ -373,7 +379,10 @@ class CoreArchitectureStandardTest {
                             coupled.add(path.toString());
                         }
                         if (source.contains("import org.jooq.")
-                            && !path.equals(events.resolve("Event.java"))) {
+                            && !path.equals(events.resolve("Event.java"))
+                            && !path.equals(queues.resolve(
+                                "DispatchQueue.java"
+                            ))) {
                             unexpectedJooqDependencies.add(path.toString());
                         }
                     } catch (IOException exception) {
@@ -389,8 +398,8 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             unexpectedJooqDependencies.isEmpty(),
-            () -> "Only Event.dsl may expose the confirmed JOOQ "
-                + "transaction dependency: "
+            () -> "Only Event and DispatchQueue transaction publishing may "
+                + "expose the confirmed JOOQ dependency: "
                 + unexpectedJooqDependencies
         );
     }
@@ -424,9 +433,10 @@ class CoreArchitectureStandardTest {
         assertTrue(
             queue.contains("implements DispatchQueue<T>")
                 && queue.contains("Class<T> eventType")
+                && queue.contains("emitInTransaction")
                 && queue.contains("event.dsl()"),
-            "Default Queue must implement the Core seam, use the concrete "
-                + "Event class and read the Event transaction"
+            "Default Queue must implement the Core seam, retain Event "
+                + "transaction compatibility and accept explicit transactions"
         );
         assertTrue(
             store.contains(".forUpdate()")
@@ -542,7 +552,7 @@ class CoreArchitectureStandardTest {
         assertTrue(
             dispatcher.contains("workerTask.runnableTask().run(context)")
                 && workerTask.contains(
-                    "private final RunnableTask runnableTask;"
+                    "public record WorkerTask("
                 )
                 && !workerTask.contains("private final Task task;")
                 && !dispatcher.contains("PluginLoader")
@@ -578,7 +588,9 @@ class CoreArchitectureStandardTest {
                 && executorEventHandler.contains(
                     "executorService.process(context)"
                 )
-                && executorEventHandler.contains("eventQueue.emit(")
+                && executorEventHandler.contains(
+                    "eventQueue.emit("
+                )
                 && !executorEventHandler.contains("dispatchBranch("),
             "DefaultExecutor must only route Queue events while "
                 + "ExecutorEventHandler submits Worker effects and "
@@ -629,7 +641,10 @@ class CoreArchitectureStandardTest {
                 && execution.contains("private State state;")
                 && taskRun.contains("private State state;")
                 && workerResult.contains(
-                    "private final State.Type targetState;"
+                    "public record WorkerTaskResult("
+                )
+                && workerResult.contains(
+                    "State.Type targetState,"
                 )
                 && !execution.contains("public State.Type status()")
                 && !taskRun.contains("public State.Type status()"),
@@ -961,7 +976,8 @@ class CoreArchitectureStandardTest {
                 .toList()) {
 
                 String source = Files.readString(path);
-                if (RECORD_DECLARATION.matcher(source).find()) {
+                if (RECORD_DECLARATION.matcher(source).find()
+                    && !isAllowedDomainRecord(path)) {
                     invalid.add(path + " declares record in a class-only area");
                 }
             }
@@ -993,5 +1009,14 @@ class CoreArchitectureStandardTest {
             }
         }
         return false;
+    }
+
+    private static boolean isAllowedDomainRecord(Path path) {
+        return path.endsWith(Path.of(
+                "org/cses/flow/core/domains/tasks/RunResult.java"
+            ))
+            || path.endsWith(Path.of(
+                "org/cses/flow/core/domains/flows/FlowId.java"
+            ));
     }
 }

@@ -9,45 +9,41 @@ import org.jooq.DSLContext;
 /**
  * Durable instruction accepted by the Executor command Queue.
  *
- * <p>Commands carry the initiating identity because consumption happens
- * outside the caller thread. {@link #dsl()} is runtime-only: ordinary start
- * commands return {@code null}, while a trusted caller can explicitly bind a
- * current transaction when it must atomically materialize and enqueue a
- * pending Execution.</p>
+ * <p>Commands are durable data payloads and do not carry a caller
+ * transaction. The command Queue therefore uses its own transaction for
+ * ordinary command publishing. Command-specific identity is kept on the
+ * concrete command because Create is intentionally only a Flow start
+ * request, while Resume and Cancel target an existing Execution.</p>
  */
 @JsonTypeInfo(
-    use = JsonTypeInfo.Id.NAME,
-    include = JsonTypeInfo.As.EXISTING_PROPERTY,
-    property = "type"
+        use = JsonTypeInfo.Id.NAME,
+        include = JsonTypeInfo.As.EXISTING_PROPERTY,
+        property = "type"
 )
 @JsonSubTypes({
-    @JsonSubTypes.Type(value = Create.class, name = "CREATE"),
-    @JsonSubTypes.Type(value = Resume.class, name = "RESUME"),
-    @JsonSubTypes.Type(value = Cancel.class, name = "CANCEL")
+        @JsonSubTypes.Type(value = Create.class, name = "CREATE"),
+        @JsonSubTypes.Type(value = Resume.class, name = "RESUME"),
+        @JsonSubTypes.Type(value = Cancel.class, name = "CANCEL")
 })
-public sealed interface ExecutionCommand extends DispatchEvent
-    permits Create, Resume, Cancel {
+public sealed interface ExecutionCommand extends DispatchEvent permits Create, Resume, Cancel {
 
     String QUEUE_NAME = "flow-executor-command";
 
     Type getType();
 
-    String getExecutionId();
-
-    String getCompanyId();
-
-    String getActorId();
-
     void validate();
 
-    @Override
-    default String key() {
-        return getExecutionId();
-    }
-
+    /**
+     * Commands never carry a caller-owned transaction. Transactions for the
+     * command's business work begin after the command is consumed; a producer
+     * that must atomically publish with another write uses the Queue's
+     * explicit transaction API instead.
+     */
     @Override
     @JsonIgnore
-    DSLContext dsl();
+    default DSLContext dsl() {
+        return null;
+    }
 
     enum Type {
         CREATE,

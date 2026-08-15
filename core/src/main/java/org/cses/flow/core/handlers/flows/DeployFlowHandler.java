@@ -54,22 +54,22 @@ public final class DeployFlowHandler implements CommandHandler<
         String companyId = SessionValidation.requireCompanyId(
             context.getSession()
         );
-        String flowId = context.getCommand().id();
+        String flowKey = context.getCommand().id();
         FlowDraft draft = FlowHandlerSupport.requireDraft(
             draftRepository,
             context.getDsl(),
             companyId,
-            flowId
+            flowKey
         );
-        Flow latest = flowRepository.findLatest(
+        Flow latest = flowRepository.findLatestByKey(
             context.getDsl(),
             companyId,
-            flowId
+            flowKey
         ).orElse(null);
         Flow deployed = flowDefinitionDeserializer.deserialize(
             draft.raw(),
             companyId,
-            flowId,
+            flowKey,
             latest,
             FlowHandlerSupport.actor(context.getSession()),
             System.currentTimeMillis()

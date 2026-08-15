@@ -90,7 +90,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 flow,
                 fixture.flowService().flow(
                     fixture.session(),
-                    flow.id(),
+                    flow.key(),
                     1L
                 ).orElseThrow()
             );
@@ -112,7 +112,7 @@ class ExecutionPauseLifecycleIntegrationTest {
 
             fixture.flowService().saveDraft(
                 fixture.session(),
-                reversion1.id(),
+                reversion1.key(),
                 WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-reversion-flow",
                     "升级审批 Flow",
@@ -121,7 +121,7 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             Flow reversion2 = fixture.flowService().deploy(
                 fixture.session(),
-                reversion1.id()
+                reversion1.key()
             );
             Execution second = fixture.startAndAwait(reversion2);
 
@@ -147,7 +147,7 @@ class ExecutionPauseLifecycleIntegrationTest {
             assertEquals(firstTaskId, reversion2.tasks().getFirst().id());
             Flow storedReversion1 = fixture.flowService().flow(
                 fixture.session(),
-                reversion1.id(),
+                reversion1.key(),
                 1L
             ).orElseThrow();
             assertTrue(!storedReversion1.isDeleted());
@@ -155,7 +155,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 reversion2,
                 fixture.flowService().flow(
                     fixture.session(),
-                    reversion2.id(),
+                    reversion2.key(),
                     2L
                 ).orElseThrow()
             );
@@ -208,7 +208,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 flow,
                 fixture.flowService().flow(
                     fixture.session(),
-                    flow.id(),
+                    flow.key(),
                     1L
                 ).orElseThrow()
             );
@@ -244,13 +244,13 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             fixture.flowService().delete(
                 fixture.session(),
-                deployed.id()
+                deployed.key()
             );
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    deployed.id()
+                    deployed.key()
                 )
             );
             assertThrows(
@@ -279,7 +279,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    otherFlow.id()
+                    otherFlow.key()
                 )
             );
 
@@ -292,14 +292,14 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             Flow deletedFlow = fixture.flowService().flow(
                 fixture.session(),
-                deployed.id(),
+                deployed.key(),
                 1L
             ).orElseThrow();
             assertTrue(deletedFlow.isDeleted());
             assertTrue(
                 fixture.flowService().latestFlow(
                     fixture.session(),
-                    deployed.id()
+                    deployed.key()
                 ).isEmpty()
             );
             assertTrue(
@@ -407,7 +407,7 @@ class ExecutionPauseLifecycleIntegrationTest {
 
             fixture.flowService().saveDraft(
                 fixture.session(),
-                reversion1.id(),
+                reversion1.key(),
                 WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-bound-reversion-flow",
                     "升级审批 Flow",
@@ -416,7 +416,7 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             Flow reversion2 = fixture.flowService().deploy(
                 fixture.session(),
-                reversion1.id()
+                reversion1.key()
             );
 
             Execution completed = fixture.resumeAfterRestart(

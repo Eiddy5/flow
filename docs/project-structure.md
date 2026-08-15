@@ -174,6 +174,10 @@ Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 
 Worker 调度与异步消息传输契约不放在 `core`，分别由同级的 `executor`、`worker`
 和 `queues` 包负责。
 
+Flow 的业务身份由 `companyId + key + version` 确定：key 在 FlowDraft 创建时由后端
+生成并跨版本稳定，已发布每个版本的技术 `Flow.id` 重新生成。按技术 id 恢复历史
+Flow 只用于已经绑定的 Execution，不替代业务查询键。
+
 外部调用方优先通过 `core/services` 使用核心能力，不能越过 Service 直接组合
 Handler、Repository 或领域内部状态。
 
@@ -275,8 +279,8 @@ repositories/flows/FlowRepository.java
 Execution 编排推进组件。它与 `core` 平级，负责：
 
 - 在 `executor/commands` 定义统一 `ExecutionCommand` 和具体 `Create`、`Resume`、`Cancel`
-  Command；`ExecutionService` 创建并投递 Command，只等待 Queue 接受，不等待
-  Execution 创建或运行完成。
+  Command；`Create` 只传递 `companyId`、`flowKey`、`flowVersion`、`inputs`，
+  `ExecutionService` 只等待 Queue 接受，不等待 Execution 创建或运行完成。
 - `DefaultExecutor` 同时订阅外部 Executor Command Queue 和内部 Executor Event Queue。
   外部消息只路由给 `executor/handlers/ExecutionCommandEventHandler`；该 Handler 恢复
   宿主 Session、校验并物化 Execution，然后原子投递 `ExecutorEvent`。
@@ -312,8 +316,9 @@ Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor`
 ### `queues/`
 
 类型化异步消息传输契约。它与 `core`、`executor` 和 `worker` 平级，只保存公开
-Interface；除 `Event.dsl()` 使用 JOOQ `DSLContext` 表达可空调用方事务外，不包含
-存储、序列化或中间件产品实现：
+Interface；`Event.dsl()` 和 `DispatchQueue.emitInTransaction(...)` 使用 JOOQ
+`DSLContext` 表达调用方事务；`ExecutionCommand` 实现统一返回 `null`，不携带事务状态；
+该目录不包含存储、序列化或中间件产品实现：
 
 ```text
 queues/
@@ -330,7 +335,8 @@ queues/
 类型化 Dispatch Queue。`DispatchQueue` 提供单条与批量、同步与异步发布，并使用
 Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次注册的暂停、恢复
 和关闭生命周期。`Event` 直接提供可空 `dsl()`：非空值只供同步发布加入调用方事务，
-`null` 表示由具体 Adapter 决定事务；它不是业务字段，也不能进入持久化消息。
+`null` 表示由具体 Adapter 决定事务；不携带事务的 payload 可以通过
+`emitInTransaction(...)` 在调用点提供事务。它不是业务字段，也不能进入持久化消息。
 
 本目录不执行 JOOQ SQL，也不保存消息表、JSONB 转换、后台轮询器、ACK、重试或具体
 Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护，Queue 不建立中心
@@ -603,9 +609,9 @@ queues/event
   Plugin 契约，
   `core/plugins` 不能反向依赖 `extensions`。
 - `core` 不能依赖 `controller` 或具体基础设施实现。
-- `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；它只为
-  `Event.dsl()` 依赖 JOOQ `DSLContext` 类型，不执行 SQL。Executor 的具体启动 Event
-  依赖该公开契约，消费后再进入 Worker 链路。
+- `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；它只在 `Event.dsl()`
+  与 `DispatchQueue.emitInTransaction(...)` 的公开发布契约中依赖 JOOQ `DSLContext` 类型，
+  不执行 SQL。Executor 的具体启动 Event 依赖该公开契约，消费后再进入 Worker 链路。
 - `core` 内不能重新建立 `executors` 或 `workers` 技术目录。
 - 具体扩展实现和 Worker 不能接管 Executor 的 Execution 状态推进。
 - Controller 不能绕过 Core Service 直接访问 Repository。

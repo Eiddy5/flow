@@ -19,13 +19,13 @@ import java.util.Optional;
  * {@link WorkerDispatcher} injects the envelope's exact taskRunId and optional
  * parent TaskRun id into invocation-only {@link RunContext} entries.</p>
  */
-public final class WorkerTask {
-
-    private final String executionId;
-    private final String taskRunId;
-    private final String parentTaskRunId;
-    private final RunnableTask runnableTask;
-    private final Map<String, Object> variables;
+public record WorkerTask(
+    String executionId,
+    String taskRunId,
+    Optional<String> parentTaskRunId,
+    RunnableTask runnableTask,
+    Map<String, Object> variables
+) {
 
     public WorkerTask(
         String executionId,
@@ -54,9 +54,41 @@ public final class WorkerTask {
         Map<String, ?> inputs,
         Map<String, ?> variables
     ) {
-        this.executionId = requireText(executionId, "Execution id");
-        this.taskRunId = requireText(taskRunId, "TaskRun id");
-        this.parentTaskRunId = optionalText(parentTaskRunId);
+        this(
+            executionId,
+            taskRunId,
+            optionalText(parentTaskRunId),
+            requireRunnableTask(task),
+            immutableVariables(inputs, variables)
+        );
+    }
+
+    public WorkerTask {
+        executionId = requireText(executionId, "Execution id");
+        taskRunId = requireText(taskRunId, "TaskRun id");
+        parentTaskRunId = Objects.requireNonNull(
+            parentTaskRunId,
+            "Parent TaskRun id"
+        );
+        runnableTask = Objects.requireNonNull(
+            runnableTask,
+            "Runnable task"
+        );
+        variables = Map.copyOf(Objects.requireNonNull(
+            variables,
+            "Worker variables"
+        ));
+    }
+
+    public Map<String, Object> taskInputs() {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> inputs = (Map<String, Object>) variables.get(
+            RunContext.TASK_INPUTS_VARIABLE
+        );
+        return inputs;
+    }
+
+    private static RunnableTask requireRunnableTask(Task task) {
         Task taskDefinition = Objects.requireNonNull(task, "task");
         if (!(taskDefinition instanceof RunnableTask capability)) {
             throw new IllegalArgumentException(
@@ -64,7 +96,13 @@ public final class WorkerTask {
                     + taskDefinition.getType()
             );
         }
-        this.runnableTask = capability;
+        return capability;
+    }
+
+    private static Map<String, Object> immutableVariables(
+        Map<String, ?> inputs,
+        Map<String, ?> variables
+    ) {
         Map<String, Object> runtimeVariables = new LinkedHashMap<>();
         if (variables != null) {
             variables.forEach((key, value) -> {
@@ -97,35 +135,7 @@ public final class WorkerTask {
             RunContext.TASK_INPUTS_VARIABLE,
             inputs == null ? Map.of() : Map.copyOf(inputs)
         );
-        this.variables = Map.copyOf(runtimeVariables);
-    }
-
-    public String executionId() {
-        return executionId;
-    }
-
-    public String taskRunId() {
-        return taskRunId;
-    }
-
-    public Optional<String> parentTaskRunId() {
-        return Optional.ofNullable(parentTaskRunId);
-    }
-
-    public RunnableTask runnableTask() {
-        return runnableTask;
-    }
-
-    public Map<String, Object> variables() {
-        return variables;
-    }
-
-    public Map<String, Object> taskInputs() {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> inputs = (Map<String, Object>) variables.get(
-            RunContext.TASK_INPUTS_VARIABLE
-        );
-        return inputs;
+        return Map.copyOf(runtimeVariables);
     }
 
     private static String requireText(String value, String field) {
@@ -137,7 +147,9 @@ public final class WorkerTask {
         return value.trim();
     }
 
-    private static String optionalText(String value) {
-        return value == null ? null : requireText(value, "Parent TaskRun id");
+    private static Optional<String> optionalText(String value) {
+        return value == null
+            ? Optional.empty()
+            : Optional.of(requireText(value, "Parent TaskRun id"));
     }
 }

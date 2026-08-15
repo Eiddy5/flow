@@ -32,15 +32,15 @@ final class CreateExecutionHandlerTest {
     @Test
     void replaysTheSameStableIdAgainstTheOriginalExactReversion() {
         FlowRepositoryStub flows = new FlowRepositoryStub();
-        Flow first = flow("flow-1", "flow-key", null);
-        Flow latest = flow("flow-1", "flow-key", first);
+        Flow first = flow("flow-key", null);
+        Flow latest = flow("flow-key", first);
         flows.add(first);
         flows.add(latest);
         ExecutionRepositoryStub executions = new ExecutionRepositoryStub();
         CreateExecutionHandler handler = handler(flows, executions);
         CreateExecutionCommand command = pending(
             "execution-1",
-            "flow-1",
+            "flow-key",
             1
         );
 
@@ -52,23 +52,26 @@ final class CreateExecutionHandlerTest {
         assertEquals(1L, created.flowReversion());
         assertEquals(1L, replayed.flowReversion());
         assertEquals(1, executions.saves);
-        assertEquals(List.of("flow-1:1"), flows.exactReads);
+        assertEquals(
+            List.of("flow-key:1", "flow-key:1"),
+            flows.exactReads
+        );
         assertEquals(0, flows.latestReads);
     }
 
     @Test
     void rejectsReusingTheStableIdForAnotherFlow() {
         FlowRepositoryStub flows = new FlowRepositoryStub();
-        flows.add(flow("flow-1", "flow-key-1", null));
+        flows.add(flow("flow-key-1", null));
         ExecutionRepositoryStub executions = new ExecutionRepositoryStub();
         CreateExecutionHandler handler = handler(flows, executions);
-        handle(handler, pending("execution-1", "flow-1", 1));
+        handle(handler, pending("execution-1", "flow-key-1", 1));
 
         assertThrows(
             WorkflowException.class,
             () -> handle(
                 handler,
-                pending("execution-1", "flow-2", 1)
+                pending("execution-1", "flow-key-2", 1)
             )
         );
         assertEquals(1, executions.saves);
@@ -77,18 +80,18 @@ final class CreateExecutionHandlerTest {
     @Test
     void rejectsReusingTheStableIdForAnotherFlowReversion() {
         FlowRepositoryStub flows = new FlowRepositoryStub();
-        Flow first = flow("flow-1", "flow-key", null);
+        Flow first = flow("flow-key", null);
         flows.add(first);
-        flows.add(flow("flow-1", "flow-key", first));
+        flows.add(flow("flow-key", first));
         ExecutionRepositoryStub executions = new ExecutionRepositoryStub();
         CreateExecutionHandler handler = handler(flows, executions);
-        handle(handler, pending("execution-1", "flow-1", 1));
+        handle(handler, pending("execution-1", "flow-key", 1));
 
         assertThrows(
             WorkflowException.class,
             () -> handle(
                 handler,
-                pending("execution-1", "flow-1", 2)
+                pending("execution-1", "flow-key", 2)
             )
         );
         assertEquals(1, executions.saves);
@@ -106,13 +109,13 @@ final class CreateExecutionHandlerTest {
 
     private static CreateExecutionCommand pending(
         String executionId,
-        String flowId,
-        long flowReversion
+        String flowKey,
+        long flowVersion
     ) {
         return new CreateExecutionCommand(
             executionId,
-            flowId,
-            flowReversion
+            flowKey,
+            flowVersion
         );
     }
 
@@ -128,10 +131,9 @@ final class CreateExecutionHandlerTest {
         ));
     }
 
-    private static Flow flow(String id, String key, Flow latest) {
+    private static Flow flow(String key, Flow latest) {
         return Flow.deploy(
             COMPANY_ID,
-            id,
             key,
             "",
             List.of(),
@@ -167,7 +169,7 @@ final class CreateExecutionHandlerTest {
             flows.put(
                 new FlowKey(
                     flow.companyId(),
-                    flow.id(),
+                    flow.key(),
                     flow.reversion()
                 ),
                 flow.copy()
@@ -188,15 +190,28 @@ final class CreateExecutionHandlerTest {
         }
 
         @Override
-        public Optional<Flow> findLatest(
+        public Optional<Flow> findByKey(
             DSLContext dsl,
             String companyId,
-            String flowId
+            String flowKey,
+            long flowVersion
+        ) {
+            exactReads.add(flowKey + ":" + flowVersion);
+            return Optional.ofNullable(flows.get(
+                new FlowKey(companyId, flowKey, flowVersion)
+            )).map(Flow::copy);
+        }
+
+        @Override
+        public Optional<Flow> findLatestByKey(
+            DSLContext dsl,
+            String companyId,
+            String flowKey
         ) {
             latestReads++;
             return flows.entrySet().stream()
                 .filter(entry -> entry.getKey().companyId().equals(companyId))
-                .filter(entry -> entry.getKey().flowId().equals(flowId))
+                .filter(entry -> entry.getKey().flowKey().equals(flowKey))
                 .max(Map.Entry.comparingByKey((left, right) ->
                     Long.compare(left.reversion(), right.reversion())
                 ))
@@ -268,7 +283,7 @@ final class CreateExecutionHandlerTest {
 
     private record FlowKey(
         String companyId,
-        String flowId,
+        String flowKey,
         long reversion
     ) {
     }

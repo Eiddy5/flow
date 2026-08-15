@@ -27,7 +27,7 @@ version: 1.1.0
 | `Array` | `ArrayField` | `ARRAY` | PG 原生数组 |
 | `ArrayJson` | `ArrayJsonField` | `ARRAY_JSON_TEXT` | JSON 数组字段 |
 | `Enum` | `EnumField` | `INTEGER`/`STRING` | 枚举字段 |
-| `Time` | `TimeField` | `LONG` | 时间戳 (ms) |
+| `TimeUtil` | `TimeField` | `LONG` | 时间戳 (ms) |
 | `Date` | `DateField` | `LONG` | 日期字段 (支持格式化截断) |
 | `AutoId` | `AutoIdField` | `STRING` | 自动 UUID |
 | `CreateAt` | `CreateAtField` | `LONG` | 自动创建时间 |

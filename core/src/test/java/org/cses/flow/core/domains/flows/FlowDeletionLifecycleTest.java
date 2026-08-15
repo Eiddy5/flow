@@ -11,6 +11,7 @@ import java.util.Map;
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -73,6 +74,17 @@ class FlowDeletionLifecycleTest {
             () -> flow.delete(ACTOR, CREATED_AT + 2_000L)
         );
         assertThrows(WorkflowException.class, () -> deploy(flow));
+    }
+
+    @Test
+    void eachPublishedVersionGetsANewTechnicalIdButKeepsTheBusinessKey() {
+        Flow first = deploy(null);
+        Flow second = deploy(first);
+
+        assertNotEquals(first.id(), second.id());
+        assertEquals(first.key(), second.key());
+        assertEquals(1L, first.version());
+        assertEquals(2L, second.version());
     }
 
     @Test

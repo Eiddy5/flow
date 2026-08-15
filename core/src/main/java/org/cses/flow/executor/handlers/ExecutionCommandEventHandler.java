@@ -82,25 +82,34 @@ public final class ExecutionCommandEventHandler implements
             "command"
         );
         accepted.validate();
-        Session<?> session = restoreSession(accepted);
-        jooq.run(dsl -> inCommandScope(
-            dsl,
-            session,
-            accepted,
-            () -> route(session, dsl, accepted)
-        ));
+        jooq.run(dsl -> route(dsl, accepted));
         return Optional.empty();
     }
 
     private void route(
-        Session<?> session,
         DSLContext dsl,
         ExecutionCommand command
     ) {
         switch (command) {
             case Create create -> handleCreate(dsl, create);
-            case Resume resume -> handleResume(dsl, resume);
-            case Cancel cancel -> handleCancel(dsl, cancel);
+            case Resume resume -> {
+                Session<?> session = restoreSession(resume);
+                inCommandScope(
+                    dsl,
+                    session,
+                    resume,
+                    () -> handleResume(dsl, resume)
+                );
+            }
+            case Cancel cancel -> {
+                Session<?> session = restoreSession(cancel);
+                inCommandScope(
+                    dsl,
+                    session,
+                    cancel,
+                    () -> handleCancel(dsl, cancel)
+                );
+            }
         }
     }
 
@@ -125,41 +134,38 @@ public final class ExecutionCommandEventHandler implements
             flowRepository,
             dsl,
             command.getCompanyId(),
-            command.getFlowId(),
-            command.getFlowReversion()
+            command.getFlowKey(),
+            command.getFlowVersion()
         );
+        if (flow.isDeleted()) {
+            throw new WorkflowException(
+                "Only an undeleted Flow can start an Execution: "
+                    + flow.key() + "@" + flow.reversion()
+            );
+        }
         Map<String, Object> normalizedInputs = flow.normalizeInputs(
             command.getInputs()
         );
 
-        Execution execution = executionRepository.lockById(
+        Execution execution = Execution.create(
+            flow.companyId(),
+            flow.id(),
+            flow.reversion(),
+            normalizedInputs
+        );
+        Session<?> session = restoreSession(flow);
+        inCommandScope(
             dsl,
-            command.getCompanyId(),
-            command.getExecutionId()
-        ).orElse(null);
-        boolean materialized = execution == null;
-        if (materialized) {
-            execution = Execution.create(
-                command.getExecutionId(),
-                command.getCompanyId(),
-                command.getFlowId(),
-                command.getFlowReversion(),
-                normalizedInputs
-            );
-        } else {
-            requireSameCreate(command, execution, normalizedInputs);
-            if (execution.isTerminal() || execution.state().isPaused()) {
-                return;
+            session,
+            command,
+            () -> {
+                executionRepository.save(dsl, execution);
+                eventQueue.emit(
+                    ExecutorEvent.from(command, execution, flow)
+                        .inTransaction(dsl)
+                );
             }
-        }
-
-        if (execution.state().is(State.Type.CREATED)) {
-            execution.bindInputs(normalizedInputs);
-        }
-        if (materialized || !execution.inputs().equals(normalizedInputs)) {
-            executionRepository.save(dsl, execution);
-        }
-        eventQueue.emit(ExecutorEvent.from(command).inTransaction(dsl));
+        );
     }
 
     private void handleResume(DSLContext dsl, Resume command) {
@@ -178,7 +184,7 @@ public final class ExecutionCommandEventHandler implements
             return;
         }
 
-        Flow flow = FlowHandlerSupport.requireFlow(
+        Flow flow = FlowHandlerSupport.requireFlowById(
             flowRepository,
             dsl,
             command.getCompanyId(),
@@ -206,27 +212,6 @@ public final class ExecutionCommandEventHandler implements
         eventQueue.emit(
             ExecutorEvent.from(command, normalizedOutputs).inTransaction(dsl)
         );
-    }
-
-    private static void requireSameCreate(
-        Create command,
-        Execution execution,
-        Map<String, Object> normalizedInputs
-    ) {
-        if (!execution.flowId().equals(command.getFlowId())
-            || execution.flowReversion() != command.getFlowReversion()) {
-            throw new WorkflowException(
-                "Execution id already belongs to another Flow reference: "
-                    + command.getExecutionId()
-            );
-        }
-        if (!execution.state().is(State.Type.CREATED)
-            && !execution.inputs().equals(normalizedInputs)) {
-            throw new WorkflowException(
-                "Execution id already belongs to another input binding: "
-                    + command.getExecutionId()
-            );
-        }
     }
 
     private static void inCommandScope(
@@ -262,27 +247,40 @@ public final class ExecutionCommandEventHandler implements
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private Session<?> restoreSession(ExecutionCommand command) {
+    private Session<?> restoreSession(
+        String companyId,
+        String actorId
+    ) {
         Session restored = sessionFactory.session();
-        User user = restoreUser(command.getActorId());
-        user.setId(command.getActorId());
-        user.setCompanyId(command.getCompanyId());
+        User user = restoreUser(actorId);
+        user.setId(actorId);
+        user.setCompanyId(companyId);
 
-        restored.setCompanyId(command.getCompanyId());
-        if (command instanceof Create create) {
-            if (create.getActorName() != null) {
-                user.setName(create.getActorName());
-                user.setUserName(create.getActorName());
-            }
-            restored.setId(create.getSessionId());
-            restored.setIp(create.getIp());
-            restored.setDevice(create.getDevice());
-            restored.setDeviceId(create.getDeviceId());
-            restored.setAppVersion(create.getAppVersion());
-            restored.setOsVersion(create.getOsVersion());
-        }
+        restored.setCompanyId(companyId);
         restored.setUser(user);
         user.onSessionBound();
+        return restored;
+    }
+
+    private Session<?> restoreSession(Resume command) {
+        return restoreSession(command.getCompanyId(), command.getActorId());
+    }
+
+    private Session<?> restoreSession(Cancel command) {
+        return restoreSession(command.getCompanyId(), command.getActorId());
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Session<?> restoreSession(Flow flow) {
+        Session restored = restoreSession(
+            flow.companyId(),
+            flow.creator().id()
+        );
+        User user = restored.getUser();
+        flow.creator().name().ifPresent(name -> {
+            user.setName(name);
+            user.setUserName(name);
+        });
         return restored;
     }
 

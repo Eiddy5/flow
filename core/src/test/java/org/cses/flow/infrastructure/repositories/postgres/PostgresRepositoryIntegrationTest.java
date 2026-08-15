@@ -156,7 +156,7 @@ final class PostgresRepositoryIntegrationTest {
             return null;
         });
 
-        Flow restoredFlow = read(dsl -> flowRepository.findLatest(
+        Flow restoredFlow = read(dsl -> flowRepository.findLatestByKey(
             dsl,
             companyId,
             draft.id()
@@ -179,7 +179,7 @@ final class PostgresRepositoryIntegrationTest {
             Pause.class.getName(),
             restoredFlow.tasks().getFirst().tasks().getFirst().getType()
         );
-        Flow restoredFirst = read(dsl -> flowRepository.findById(
+        Flow restoredFirst = read(dsl -> flowRepository.findByKey(
             dsl,
             companyId,
             draft.id(),
@@ -303,10 +303,10 @@ final class PostgresRepositoryIntegrationTest {
             "plugin-user",
             "Plugin Repository Test"
         );
-        String flowId = "plugin-flow-" + StringUtil.newId();
+        String flowKey = "plugin-flow-" + StringUtil.newId();
         Flow flow = plugins.deploy(
             companyId,
-            flowId,
+            flowKey,
             Map.of(
                 "key", "plugin-flow",
                 "variables", Map.of(
@@ -329,10 +329,10 @@ final class PostgresRepositoryIntegrationTest {
             return null;
         });
 
-        Flow restored = read(dsl -> flowRepository.findById(
+        Flow restored = read(dsl -> flowRepository.findByKey(
             dsl,
             companyId,
-            flowId,
+            flow.key(),
             1L
         ).orElseThrow());
         assertEquals(
@@ -354,7 +354,7 @@ final class PostgresRepositoryIntegrationTest {
                 dsl.select(FLOW_TASKS.PROPERTIES)
                     .from(FLOW_TASKS)
                     .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
-                    .and(FLOW_TASKS.FLOW_ID.eq(flowId))
+                    .and(FLOW_TASKS.FLOW_ID.eq(flow.id()))
                     .fetchOne(FLOW_TASKS.PROPERTIES)
                     .data()
             ).getString("channel"))
@@ -482,7 +482,7 @@ final class PostgresRepositoryIntegrationTest {
             companyId,
             draft.id()
         )).isEmpty());
-        Flow latest = read(dsl -> flowRepository.findLatest(
+        Flow latest = read(dsl -> flowRepository.findLatestByKey(
             dsl,
             companyId,
             draft.id()
@@ -490,7 +490,7 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(2L, latest.reversion());
         assertTrue(latest.isDeleted());
 
-        Flow historical = read(dsl -> flowRepository.findById(
+        Flow historical = read(dsl -> flowRepository.findByKey(
             dsl,
             companyId,
             draft.id(),

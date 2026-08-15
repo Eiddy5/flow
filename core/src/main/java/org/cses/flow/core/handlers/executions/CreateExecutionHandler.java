@@ -56,29 +56,29 @@ public final class CreateExecutionHandler implements CommandHandler<
             context.getSession()
         );
         CreateExecutionCommand command = context.getCommand();
-        Optional<Execution> existing = existing(
-            context,
-            companyId,
-            command
-        );
-        if (existing.isPresent()) {
-            return existing.get().copy();
-        }
-
-        Flow flow = command.expectedFlowReversion() == null
+        Flow flow = command.expectedFlowVersion() == null
             ? FlowHandlerSupport.requireLatestFlow(
                 flowRepository,
                 context.getDsl(),
                 companyId,
-                command.flowId()
+                command.flowKey()
             )
             : FlowHandlerSupport.requireFlow(
                 flowRepository,
                 context.getDsl(),
                 companyId,
-                command.flowId(),
-                command.expectedFlowReversion()
+                command.flowKey(),
+                command.expectedFlowVersion()
             );
+        Optional<Execution> existing = existing(
+            context,
+            companyId,
+            command,
+            flow
+        );
+        if (existing.isPresent()) {
+            return existing.get().copy();
+        }
         if (flow.isDeleted()) {
             throw new WorkflowException(
                 "Only an undeleted Flow can start an Execution: "
@@ -111,7 +111,8 @@ public final class CreateExecutionHandler implements CommandHandler<
             CreateExecutionCommand
         > context,
         String companyId,
-        CreateExecutionCommand command
+        CreateExecutionCommand command,
+        Flow flow
     ) {
         if (command.executionId() == null) {
             return Optional.empty();
@@ -122,9 +123,8 @@ public final class CreateExecutionHandler implements CommandHandler<
             command.executionId()
         );
         existing.ifPresent(execution -> {
-            if (!execution.flowId().equals(command.flowId())
-                || execution.flowReversion()
-                    != command.expectedFlowReversion()) {
+            if (!execution.flowId().equals(flow.id())
+                || execution.flowReversion() != flow.reversion()) {
                 throw new WorkflowException(
                     "Execution id already belongs to another Flow reference: "
                         + command.executionId()

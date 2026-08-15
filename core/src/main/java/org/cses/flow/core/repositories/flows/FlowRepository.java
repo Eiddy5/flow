@@ -8,7 +8,8 @@ import java.util.Optional;
 public interface FlowRepository {
 
     /**
-     * Loads one exact reversion, including a logically deleted reversion.
+     * Loads one exact persisted Flow revision by its technical row id,
+     * including a logically deleted revision.
      */
     Optional<Flow> findById(
         DSLContext dsl,
@@ -18,15 +19,26 @@ public interface FlowRepository {
     );
 
     /**
-     * Loads the maximum reversion without filtering on lifecycle flags.
-     *
-     * Callers must inspect {@link Flow#isDeleted()} after selection so a
-     * deleted maximum reversion cannot fall back to an older reversion.
+     * Loads one exact Flow reversion by its stable business key.
      */
-    Optional<Flow> findLatest(
+    Optional<Flow> findByKey(
         DSLContext dsl,
         String companyId,
-        String flowId
+        String flowKey,
+        long flowVersion
+    );
+
+    /**
+     * Loads the maximum version for one stable business key without
+     * filtering on lifecycle flags.
+     *
+     * Callers must inspect {@link Flow#isDeleted()} after selection so a
+     * deleted maximum version cannot fall back to an older version.
+     */
+    Optional<Flow> findLatestByKey(
+        DSLContext dsl,
+        String companyId,
+        String flowKey
     );
 
     void save(DSLContext dsl, Flow flow);

@@ -6,6 +6,7 @@ import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -100,8 +101,7 @@ public final class Flow implements Deletable<Flow> {
      */
     public static Flow deploy(
         String companyId,
-        String id,
-        String key,
+        String flowKey,
         String description,
         List<? extends Input<?>> inputs,
         List<? extends Output> outputs,
@@ -112,8 +112,7 @@ public final class Flow implements Deletable<Flow> {
     ) {
         return deploy(
             companyId,
-            id,
-            key,
+            flowKey,
             description,
             Map.of(),
             inputs,
@@ -130,8 +129,7 @@ public final class Flow implements Deletable<Flow> {
      */
     public static Flow deploy(
         String companyId,
-        String id,
-        String key,
+        String flowKey,
         String description,
         Map<String, ?> variables,
         List<? extends Input<?>> inputs,
@@ -142,28 +140,26 @@ public final class Flow implements Deletable<Flow> {
         long deployedAt
     ) {
         Objects.requireNonNull(actor, "Flow creator");
-        String normalizedId = requireText(id, "Flow id");
         String normalizedCompanyId = requireText(companyId, "Company id");
-        String normalizedKey = requireText(key, "Flow key");
+        String normalizedFlowKey = requireText(flowKey, "Flow key");
         List<Task> boundTasks = tasks == null ? List.of() : List.copyOf(tasks);
 
         long reversion = 1;
         if (latest != null) {
-            if (!normalizedId.equals(latest.id)
-                    || !normalizedCompanyId.equals(latest.companyId)) {
+            if (!normalizedCompanyId.equals(latest.companyId)) {
                 throw new IllegalArgumentException(
-                        "Latest Flow belongs to another logical Flow"
+                    "Latest Flow belongs to another logical Flow"
                 );
             }
             if (latest.deleted) {
                 throw new WorkflowException(
-                        "Deleted Flow cannot be deployed: " + normalizedId
+                    "Deleted Flow cannot be deployed: " + normalizedFlowKey
                 );
             }
-            if (!latest.key.equals(normalizedKey)) {
+            if (!latest.key.equals(normalizedFlowKey)) {
                 throw new WorkflowException(
-                        "Flow key cannot change across reversion: "
-                                + latest.key + " -> " + normalizedKey
+                    "Flow key cannot change across reversion: "
+                        + latest.key + " -> " + normalizedFlowKey
                 );
             }
             requireStableTaskIds(latest, boundTasks);
@@ -171,9 +167,9 @@ public final class Flow implements Deletable<Flow> {
         }
 
         return new Flow(
-                normalizedId,
+                StringUtil.newId(),
                 normalizedCompanyId,
-                normalizedKey,
+                normalizedFlowKey,
                 reversion,
                 description,
                 variables,
@@ -335,6 +331,13 @@ public final class Flow implements Deletable<Flow> {
     }
 
     public long reversion() {
+        return reversion;
+    }
+
+    /**
+     * Business-facing name for the immutable deployed version.
+     */
+    public long version() {
         return reversion;
     }
 

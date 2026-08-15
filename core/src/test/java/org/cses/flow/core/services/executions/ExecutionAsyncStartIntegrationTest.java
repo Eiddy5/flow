@@ -29,10 +29,7 @@ final class ExecutionAsyncStartIntegrationTest {
                     type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
 
-            Execution accepted = fixture.executionService().create(
-                fixture.session(),
-                flow.id()
-            );
+            Execution accepted = fixture.startCreated(flow);
 
             assertEquals(State.Type.CREATED, accepted.state().current());
             assertTrue(Uc03AutomaticTask.awaitBlockingRun());
@@ -62,7 +59,7 @@ final class ExecutionAsyncStartIntegrationTest {
                 """);
             Execution pending = fixture.executionService().createPending(
                 fixture.session(),
-                flow.id()
+                flow.key()
             );
 
             Execution accepted = fixture.executionService()

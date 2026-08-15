@@ -53,7 +53,7 @@ class LogFlowIntegrationTest {
                 """);
             Flow flow = flowService.deploy(session, draft.id());
 
-            Execution started = executionService.create(session, flow.id());
+            Execution started = fixture.startCreated(session, flow);
             var waiting = fixture.waitingForExecution(
                 session,
                 started.id()

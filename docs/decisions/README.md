@@ -44,8 +44,11 @@
 - [`ADR 0047`](0047-implement-default-dispatch-queue.md)：以具名 `flow` JOOQ、JSONB、
   `FOR UPDATE SKIP LOCKED` 和周期轮询实现 Default Dispatch Queue；所有传输类别共享
   `queues`，由 `queue_type + queue_name` 逻辑隔离，当前只实现 `DISPATCH`；
-  同步发布直接使用 Event 的可空 DSL 或 Queue 自有事务，异步发布始终使用自有事务；
+  同步发布支持 Event 的可空 DSL 或显式调用方事务，异步发布始终使用自有事务；
   Queue 通过 `JsonFactory` 和 `Class<T>` 统一完成不含 DSL 的 Event JSONB 快照与恢复。
+- [`ADR 0060`](0060-publish-queue-transactions-explicitly.md)：保留 Event 的事务兼容能力，
+  由 DispatchQueue 增加显式 `emitInTransaction` 发布 API；Executor Command payload
+  不再携带 DSL，`Create` 可以使用不可变 record。
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：
   `ExecutionService` 构造并投递 Executor `Create` Command，普通启动返回 Queue 受理
   回执；外部命令由 `ExecutionCommandEventHandler` 校验并原子投递内部
@@ -234,6 +237,12 @@
   rehydrate。
 - [`ADR 0025`](0025-allow-records-for-simple-boundary-contracts.md)：简单边界协议
   可以选择 Java record。
+- [`ADR 0061`](0061-use-records-for-data-protocols.md)：纯数据传输协议统一使用
+  Java record；事务资源、运行上下文、领域对象和持久化 Entry 保持各自的对象
+  边界。
+- [`ADR 0062`](0062-use-company-flow-key-and-version-as-business-identity.md)：Flow
+  业务身份统一为 `companyId + key + version`；key 由后端生成并跨版本稳定，技术
+  `id` 在每个版本重新生成，Executor Create 只携带 Flow 三字段和 inputs。
 
 通用实施方法仍以 [`project-development.md`](../standards/project-development.md)
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。

@@ -43,7 +43,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 @Singleton
 public final class ExecutorEventHandler implements
-    org.cses.flow.executor.ExecutorEventHandler<ExecutorEvent> {
+        org.cses.flow.executor.ExecutorEventHandler<ExecutorEvent> {
 
     private final JOOQ jooq;
     private final SessionFactory<?, ?> sessionFactory;
@@ -55,35 +55,35 @@ public final class ExecutorEventHandler implements
 
     @Inject
     public ExecutorEventHandler(
-        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
-        SessionFactory<?, ?> sessionFactory,
-        FlowRepository flowRepository,
-        ExecutionRepository executionRepository,
-        ExecutorService executorService,
-        WorkerDispatcher workerDispatcher,
-        @Named(ExecutorEvent.QUEUE_NAME)
-        DispatchQueue<ExecutorEvent> eventQueue
+            @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
+            SessionFactory<?, ?> sessionFactory,
+            FlowRepository flowRepository,
+            ExecutionRepository executionRepository,
+            ExecutorService executorService,
+            WorkerDispatcher workerDispatcher,
+            @Named(ExecutorEvent.QUEUE_NAME)
+            DispatchQueue<ExecutorEvent> eventQueue
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.sessionFactory = Objects.requireNonNull(
-            sessionFactory,
-            "sessionFactory"
+                sessionFactory,
+                "sessionFactory"
         );
         this.flowRepository = Objects.requireNonNull(
-            flowRepository,
-            "flowRepository"
+                flowRepository,
+                "flowRepository"
         );
         this.executionRepository = Objects.requireNonNull(
-            executionRepository,
-            "executionRepository"
+                executionRepository,
+                "executionRepository"
         );
         this.executorService = Objects.requireNonNull(
-            executorService,
-            "executorService"
+                executorService,
+                "executorService"
         );
         this.workerDispatcher = Objects.requireNonNull(
-            workerDispatcher,
-            "workerDispatcher"
+                workerDispatcher,
+                "workerDispatcher"
         );
         this.eventQueue = Objects.requireNonNull(eventQueue, "eventQueue");
     }
@@ -93,24 +93,24 @@ public final class ExecutorEventHandler implements
      * cycle without starting a database-backed Queue consumer.
      */
     public ExecutorEventHandler(
-        ExecutionRepository executionRepository,
-        ExecutorService executorService,
-        WorkerDispatcher workerDispatcher
+            ExecutionRepository executionRepository,
+            ExecutorService executorService,
+            WorkerDispatcher workerDispatcher
     ) {
         this.jooq = null;
         this.sessionFactory = null;
         this.flowRepository = null;
         this.executionRepository = Objects.requireNonNull(
-            executionRepository,
-            "executionRepository"
+                executionRepository,
+                "executionRepository"
         );
         this.executorService = Objects.requireNonNull(
-            executorService,
-            "executorService"
+                executorService,
+                "executorService"
         );
         this.workerDispatcher = Objects.requireNonNull(
-            workerDispatcher,
-            "workerDispatcher"
+                workerDispatcher,
+                "workerDispatcher"
         );
         this.eventQueue = null;
     }
@@ -118,18 +118,18 @@ public final class ExecutorEventHandler implements
     @Override
     public Optional<ExecutorContext> handle(ExecutorEvent event) {
         ExecutorEvent accepted = Objects.requireNonNull(
-            event,
-            "event"
+                event,
+                "event"
         );
         accepted.validate();
         requireProductionRuntime();
         Session<?> session = restoreSession(accepted);
         AtomicReference<ExecutorContext> processed =
-            new AtomicReference<>();
+                new AtomicReference<>();
         jooq.run(dsl -> inEventScope(
-            dsl,
-            session,
-            () -> processed.set(process(session, dsl, accepted))
+                dsl,
+                session,
+                () -> processed.set(process(session, dsl, accepted))
         ));
         return Optional.ofNullable(processed.get());
     }
@@ -140,20 +140,20 @@ public final class ExecutorEventHandler implements
      * durable Create/Resume delivery enters through {@link #handle}.
      */
     public <S extends Session<U>, U extends User> Execution execute(
-        S session,
-        DSLContext dsl,
-        ExecutorContext context
+            S session,
+            DSLContext dsl,
+            ExecutorContext context
     ) {
         requireRuntime(session, dsl, context);
         return drive(session, dsl, context, true);
     }
 
     public <S extends Session<U>, U extends User> Execution resume(
-        S session,
-        DSLContext dsl,
-        ExecutorContext context,
-        String taskRunId,
-        Map<String, ?> outputs
+            S session,
+            DSLContext dsl,
+            ExecutorContext context,
+            String taskRunId,
+            Map<String, ?> outputs
     ) {
         requireRuntime(session, dsl, context);
         executorService.resume(context, taskRunId, outputs);
@@ -161,9 +161,9 @@ public final class ExecutorEventHandler implements
     }
 
     public <S extends Session<U>, U extends User> Execution cancel(
-        S session,
-        DSLContext dsl,
-        ExecutorContext context
+            S session,
+            DSLContext dsl,
+            ExecutorContext context
     ) {
         requireRuntime(session, dsl, context);
         executorService.kill(context);
@@ -171,23 +171,23 @@ public final class ExecutorEventHandler implements
     }
 
     private ExecutorContext process(
-        Session<?> session,
-        DSLContext dsl,
-        ExecutorEvent event
+            Session<?> session,
+            DSLContext dsl,
+            ExecutorEvent event
     ) {
         Execution execution = executionRepository.lockById(
-            dsl,
-            event.getCompanyId(),
-            event.getExecutionId()
+                dsl,
+                event.getCompanyId(),
+                event.getExecutionId()
         ).orElseThrow(() -> new WorkflowException(
-            "Execution does not exist: " + event.getExecutionId()
+                "Execution does not exist: " + event.getExecutionId()
         ));
-        Flow flow = FlowHandlerSupport.requireFlow(
-            flowRepository,
-            dsl,
-            execution.companyId(),
-            execution.flowId(),
-            execution.flowReversion()
+        Flow flow = FlowHandlerSupport.requireFlowById(
+                flowRepository,
+                dsl,
+                execution.companyId(),
+                execution.flowId(),
+                execution.flowReversion()
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
 
@@ -212,14 +212,14 @@ public final class ExecutorEventHandler implements
             executionUpdated |= persistIfUpdated(dsl, context);
 
             WorkerTaskResult result = dispatchWorkerTask(
-                session,
-                workerTask,
-                event.getType() != ExecutorEvent.Type.CANCEL
+                    session,
+                    workerTask,
+                    event.getType() != ExecutorEvent.Type.CANCEL
             );
             executorService.applyResult(context, result);
             executionUpdated |= persistIfUpdated(dsl, context);
             if (result.targetState() == State.Type.FAILED
-                || result.targetState() == State.Type.KILLED) {
+                    || result.targetState() == State.Type.KILLED) {
                 return context;
             }
         }
@@ -231,9 +231,9 @@ public final class ExecutorEventHandler implements
     }
 
     private boolean applyEvent(
-        ExecutorContext context,
-        Flow flow,
-        ExecutorEvent event
+            ExecutorContext context,
+            Flow flow,
+            ExecutorEvent event
     ) {
         return switch (event.getType()) {
             case PROCESS -> true;
@@ -249,9 +249,9 @@ public final class ExecutorEventHandler implements
     }
 
     private boolean applyResume(
-        ExecutorContext context,
-        Flow flow,
-        ExecutorEvent event
+            ExecutorContext context,
+            Flow flow,
+            ExecutorEvent event
     ) {
         Execution execution = context.execution();
         if (execution.isTerminal() || !execution.state().is(State.Type.PAUSED)) {
@@ -262,23 +262,23 @@ public final class ExecutorEventHandler implements
             return false;
         }
         Task task = flow.findTask(taskRun.taskId()).orElseThrow(() ->
-            new WorkflowException(
-                "Task definition does not exist: " + taskRun.taskId()
-            )
+                new WorkflowException(
+                        "Task definition does not exist: " + taskRun.taskId()
+                )
         );
         if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
             throw new WorkflowException(
-                "Only a paused Orchestration TaskRun can be resumed: "
-                    + taskRun.id()
+                    "Only a paused Orchestration TaskRun can be resumed: "
+                            + taskRun.id()
             );
         }
         Map<String, Object> normalizedOutputs = pause.validateResume(
-            event.getOutputs()
+                event.getOutputs()
         );
         executorService.resume(
-            context,
-            taskRun.id(),
-            normalizedOutputs
+                context,
+                taskRun.id(),
+                normalizedOutputs
         );
         return true;
     }
@@ -288,8 +288,8 @@ public final class ExecutorEventHandler implements
     }
 
     private boolean persistIfUpdated(
-        DSLContext dsl,
-        ExecutorContext context
+            DSLContext dsl,
+            ExecutorContext context
     ) {
         if (!context.takeExecutionUpdated()) {
             return false;
@@ -299,10 +299,10 @@ public final class ExecutorEventHandler implements
     }
 
     private <S extends Session<U>, U extends User> Execution drive(
-        S session,
-        DSLContext dsl,
-        ExecutorContext context,
-        boolean captureUnexpectedTaskFailure
+            S session,
+            DSLContext dsl,
+            ExecutorContext context,
+            boolean captureUnexpectedTaskFailure
     ) {
         while (true) {
             executorService.process(context);
@@ -326,13 +326,13 @@ public final class ExecutorEventHandler implements
                 }
 
                 WorkerTaskResult result = dispatchWorkerTask(
-                    session,
-                    workerTask,
-                    captureUnexpectedTaskFailure
+                        session,
+                        workerTask,
+                        captureUnexpectedTaskFailure
                 );
                 executorService.applyResult(context, result);
                 if (result.targetState() == State.Type.FAILED
-                    || result.targetState() == State.Type.KILLED) {
+                        || result.targetState() == State.Type.KILLED) {
                     if (context.takeExecutionUpdated()) {
                         persist(dsl, context);
                     }
@@ -344,9 +344,9 @@ public final class ExecutorEventHandler implements
 
     private <S extends Session<U>, U extends User> WorkerTaskResult
     dispatchWorkerTask(
-        S session,
-        WorkerTask workerTask,
-        boolean captureUnexpectedTaskFailure
+            S session,
+            WorkerTask workerTask,
+            boolean captureUnexpectedTaskFailure
     ) {
         if (!captureUnexpectedTaskFailure) {
             return workerDispatcher.dispatch(session, workerTask);
@@ -355,8 +355,8 @@ public final class ExecutorEventHandler implements
             return workerDispatcher.dispatch(session, workerTask);
         } catch (RuntimeException exception) {
             return WorkerTaskResult.failed(
-                workerTask,
-                unexpectedFailure(exception)
+                    workerTask,
+                    unexpectedFailure(exception)
             );
         }
     }
@@ -399,7 +399,7 @@ public final class ExecutorEventHandler implements
     @SuppressWarnings({"rawtypes", "unchecked"})
     private User restoreUser(String actorId) {
         List<? extends User> users = ((SessionFactory) sessionFactory)
-            .buildSessionUser(List.of(actorId));
+                .buildSessionUser(List.of(actorId));
         if (users != null && !users.isEmpty()) {
             return users.getFirst();
         }
@@ -407,9 +407,9 @@ public final class ExecutorEventHandler implements
     }
 
     private void inEventScope(
-        DSLContext dsl,
-        Session<?> session,
-        Runnable action
+            DSLContext dsl,
+            Session<?> session,
+            Runnable action
     ) {
         Object previousSession = dsl.configuration().data(Session.class);
         dsl.configuration().data(Session.class, session);
@@ -426,17 +426,17 @@ public final class ExecutorEventHandler implements
 
     private void requireProductionRuntime() {
         if (jooq == null || sessionFactory == null || flowRepository == null
-            || eventQueue == null) {
+                || eventQueue == null) {
             throw new IllegalStateException(
-                "Executor event handling requires the production runtime"
+                    "Executor event handling requires the production runtime"
             );
         }
     }
 
     private static <S extends Session<U>, U extends User> void requireRuntime(
-        S session,
-        DSLContext dsl,
-        ExecutorContext context
+            S session,
+            DSLContext dsl,
+            ExecutorContext context
     ) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(dsl, "dsl");

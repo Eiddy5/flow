@@ -1,15 +1,10 @@
 package org.cses.flow.executor.commands;
 
 import io.micronaut.json.JsonMapper;
-import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
-import org.paas.session.Session;
-import org.paas.session.User;
 
 import java.util.Map;
 
@@ -26,16 +21,12 @@ final class CreateTest {
 
     @Test
     void restoresTheConcreteCreateCommandThroughTheExecutorContract() {
-        Session<User> session = session();
-        Execution execution = Execution.create(
-            "execution-1",
+        Create command = new Create(
             "company-1",
-            "flow-1",
+            "flow-key-1",
             7,
             Map.of("amount", 1200.5)
         );
-        Create command = Create.from(session, execution)
-            .inTransaction(DSL.using(SQLDialect.POSTGRES));
 
         QueueMessageEntry entry = QueueMessageEntry.create(
             "DISPATCH",
@@ -46,23 +37,10 @@ final class CreateTest {
 
         Create create = assertInstanceOf(Create.class, restored);
         assertEquals(ExecutionCommand.Type.CREATE, create.getType());
-        assertEquals(execution.id(), create.getExecutionId());
-        assertEquals(execution.companyId(), create.getCompanyId());
-        assertEquals(execution.flowId(), create.getFlowId());
-        assertEquals(execution.flowReversion(), create.getFlowReversion());
-        assertEquals("actor-1", create.getActorId());
+        assertEquals("company-1", create.getCompanyId());
+        assertEquals("flow-key-1", create.getFlowKey());
+        assertEquals(7L, create.getFlowVersion());
         assertEquals(Map.of("amount", 1200.5), create.getInputs());
         assertNull(create.dsl());
-    }
-
-    private static Session<User> session() {
-        User user = new User();
-        user.setId("actor-1");
-        user.setName("Executor Actor");
-        user.setCompanyId("company-1");
-        Session<User> session = new Session<>();
-        session.setId("session-1");
-        session.setUser(user);
-        return session;
     }
 }

@@ -1,73 +1,46 @@
 package org.cses.flow.executor.commands;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import org.cses.flow.core.domains.ActorRef;
-import org.cses.flow.core.domains.executions.Execution;
-import org.paas.json.SerializableObject;
-import org.paas.session.Device;
-import org.paas.session.Session;
-import org.paas.session.User;
-import org.jooq.DSLContext;
-
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
- * Requests creation and first drive of one exact Flow Execution.
+ * Requests creation and first drive of one exact Flow version.
+ *
+ * <p>The command deliberately has no Execution id. The consumer resolves the
+ * Flow by {@code companyId + flowKey + flowVersion}, creates the Execution,
+ * and publishes the first internal Executor event in the same transaction.</p>
  */
-public final class Create extends SerializableObject
-    implements ExecutionCommand {
+public record Create(
+    String companyId,
+    String flowKey,
+    long flowVersion,
+    Map<String, Object> inputs
+) implements ExecutionCommand {
 
-    private String executionId;
-    private String companyId;
-    private String flowId;
-    private long flowReversion;
-    private String sessionId;
-    private String actorId;
-    private String actorName;
-    private String ip;
-    private Device device;
-    private String deviceId;
-    private String appVersion;
-    private String osVersion;
-    private Map<String, Object> inputs = Map.of();
-
-    @JsonIgnore
-    private transient DSLContext dsl;
-
-    public Create() {
-    }
-
-    public static Create from(
-        Session<? extends User> session,
-        Execution execution
-    ) {
-        Objects.requireNonNull(session, "session");
-        Objects.requireNonNull(execution, "execution");
-        if (!execution.companyId().equals(session.getCompanyId())) {
+    public Create {
+        companyId = requireText(companyId, "Company id");
+        flowKey = requireText(flowKey, "Flow key");
+        if (flowVersion < 1) {
             throw new IllegalArgumentException(
-                "Session company must match Execution company"
+                "Flow version must be positive"
             );
         }
-        ActorRef actor = ActorRef.from(session);
+        inputs = immutableInputs(inputs);
+    }
 
-        Create command = new Create();
-        command.executionId = execution.id();
-        command.companyId = execution.companyId();
-        command.flowId = execution.flowId();
-        command.flowReversion = execution.flowReversion();
-        command.sessionId = session.getId();
-        command.actorId = actor.id();
-        command.actorName = actor.name().orElse(null);
-        command.ip = session.getIp();
-        command.device = session.getDevice();
-        command.deviceId = session.getDeviceId();
-        command.appVersion = session.getAppVersion();
-        command.osVersion = session.getOsVersion();
-        command.inputs = immutableInputs(execution.inputs());
-        command.validate();
-        return command;
+    public static Create of(
+        String companyId,
+        String flowKey,
+        long flowVersion,
+        Map<String, ?> inputs
+    ) {
+        return new Create(
+            companyId,
+            flowKey,
+            flowVersion,
+            immutableInputs(inputs)
+        );
     }
 
     @Override
@@ -76,141 +49,41 @@ public final class Create extends SerializableObject
     }
 
     @Override
+    public String key() {
+        return companyId + ":" + flowKey + ":" + flowVersion;
+    }
+
+    @Override
     public void validate() {
-        executionId = requireText(executionId, "Execution id");
-        companyId = requireText(companyId, "Company id");
-        flowId = requireText(flowId, "Flow id");
-        actorId = requireText(actorId, "Actor id");
-        if (flowReversion < 1) {
+        requireText(companyId, "Company id");
+        requireText(flowKey, "Flow key");
+        if (flowVersion < 1) {
             throw new IllegalArgumentException(
-                "Flow reversion must be positive"
+                "Flow version must be positive"
             );
         }
-        sessionId = normalizeText(sessionId);
-        actorName = normalizeText(actorName);
-        ip = normalizeText(ip);
-        deviceId = normalizeText(deviceId);
-        appVersion = normalizeText(appVersion);
-        osVersion = normalizeText(osVersion);
-        inputs = immutableInputs(inputs);
+        immutableInputs(inputs);
     }
 
-    public Create inTransaction(DSLContext dsl) {
-        this.dsl = Objects.requireNonNull(dsl, "dsl");
-        return this;
-    }
-
-    @Override
-    @JsonIgnore
-    public DSLContext dsl() {
-        return dsl;
-    }
-
-    @Override
-    public String getExecutionId() {
-        return executionId;
-    }
-
-    public void setExecutionId(String executionId) {
-        this.executionId = executionId;
-    }
-
-    @Override
+    /**
+     * JavaBean aliases keep queue payload adapters compatible with the
+     * existing command JSON contract while the record remains the source of
+     * truth.
+     */
     public String getCompanyId() {
         return companyId;
     }
 
-    public void setCompanyId(String companyId) {
-        this.companyId = companyId;
+    public String getFlowKey() {
+        return flowKey;
     }
 
-    public String getFlowId() {
-        return flowId;
-    }
-
-    public void setFlowId(String flowId) {
-        this.flowId = flowId;
-    }
-
-    public long getFlowReversion() {
-        return flowReversion;
-    }
-
-    public void setFlowReversion(long flowReversion) {
-        this.flowReversion = flowReversion;
-    }
-
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-
-    @Override
-    public String getActorId() {
-        return actorId;
-    }
-
-    public void setActorId(String actorId) {
-        this.actorId = actorId;
-    }
-
-    public String getActorName() {
-        return actorName;
-    }
-
-    public void setActorName(String actorName) {
-        this.actorName = actorName;
-    }
-
-    public String getIp() {
-        return ip;
-    }
-
-    public void setIp(String ip) {
-        this.ip = ip;
-    }
-
-    public Device getDevice() {
-        return device;
-    }
-
-    public void setDevice(Device device) {
-        this.device = device;
-    }
-
-    public String getDeviceId() {
-        return deviceId;
-    }
-
-    public void setDeviceId(String deviceId) {
-        this.deviceId = deviceId;
-    }
-
-    public String getAppVersion() {
-        return appVersion;
-    }
-
-    public void setAppVersion(String appVersion) {
-        this.appVersion = appVersion;
-    }
-
-    public String getOsVersion() {
-        return osVersion;
-    }
-
-    public void setOsVersion(String osVersion) {
-        this.osVersion = osVersion;
+    public long getFlowVersion() {
+        return flowVersion;
     }
 
     public Map<String, Object> getInputs() {
-        return inputs == null ? Map.of() : Map.copyOf(inputs);
-    }
-
-    public void setInputs(Map<String, Object> inputs) {
-        this.inputs = immutableInputs(inputs);
+        return inputs;
     }
 
     private static String requireText(String value, String field) {

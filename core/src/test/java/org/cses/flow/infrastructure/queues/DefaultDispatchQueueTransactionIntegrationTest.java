@@ -56,6 +56,27 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     }
 
     @Test
+    void synchronousEventUsesExplicitDslContext() {
+        String queueName = queuePrefix + "-explicit-dsl";
+        DefaultDispatchQueue<TestEvent> queue = queue(queueName);
+
+        assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
+            queue.emitInTransaction(
+                new TestEvent("rollback", "discard"),
+                dsl
+            );
+            throw new RollbackSignal();
+        }));
+        assertEquals(0, pending(queueName));
+
+        database.run(dsl -> queue.emitInTransaction(
+            new TestEvent("commit", "retain"),
+            dsl
+        ));
+        assertEquals(1, pending(queueName));
+    }
+
+    @Test
     void synchronousEventUsesItsDslContext() {
         String queueName = queuePrefix + "-event-dsl";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
@@ -73,12 +94,12 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     }
 
     @Test
-    void synchronousEventWithoutDslUsesQueueTransaction() {
+    void synchronousEventWithoutExplicitDslUsesQueueTransaction() {
         String queueName = queuePrefix + "-owned-transaction";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
         assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
-            queue.emit(new TestEvent("owned", "retain", null));
+            queue.emit(new TestEvent("owned", "retain"));
             throw new RollbackSignal();
         }));
 
@@ -108,8 +129,35 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     }
 
     @Test
-    void synchronousBatchUsesOneSharedDslContext() {
+    void synchronousBatchUsesExplicitDslContext() {
         String queueName = queuePrefix + "-shared-batch";
+        DefaultDispatchQueue<TestEvent> queue = queue(queueName);
+
+        assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
+            queue.emitInTransaction(
+                List.of(
+                    new TestEvent("rollback-1", "discard"),
+                    new TestEvent("rollback-2", "discard")
+                ),
+                dsl
+            );
+            throw new RollbackSignal();
+        }));
+        assertEquals(0, pending(queueName));
+
+        database.run(dsl -> queue.emitInTransaction(
+            List.of(
+                new TestEvent("commit-1", "retain"),
+                new TestEvent("commit-2", "retain")
+            ),
+            dsl
+        ));
+        assertEquals(2, pending(queueName));
+    }
+
+    @Test
+    void synchronousBatchUsesOneSharedDslContext() {
+        String queueName = queuePrefix + "-event-shared-batch";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
         assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
@@ -209,6 +257,10 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
         private transient AtomicInteger dslReads;
 
         public TestEvent() {
+        }
+
+        TestEvent(String key, String value) {
+            this(key, value, null);
         }
 
         TestEvent(String key, String value, DSLContext dsl) {

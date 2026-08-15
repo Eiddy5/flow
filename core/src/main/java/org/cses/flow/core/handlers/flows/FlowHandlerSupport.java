@@ -19,11 +19,11 @@ public final class FlowHandlerSupport {
         FlowRepository repository,
         DSLContext dsl,
         String companyId,
-        String flowId
+        String flowKey
     ) {
-        return repository.findLatest(dsl, companyId, flowId)
+        return repository.findLatestByKey(dsl, companyId, flowKey)
             .orElseThrow(() ->
-                new WorkflowException("Flow does not exist: " + flowId)
+                new WorkflowException("Flow does not exist: " + flowKey)
             );
     }
 
@@ -31,18 +31,44 @@ public final class FlowHandlerSupport {
         FlowRepository repository,
         DSLContext dsl,
         String companyId,
+        String flowKey,
+        long flowVersion
+    ) {
+        return repository.findByKey(
+            dsl,
+            companyId,
+            flowKey,
+            flowVersion
+        ).orElseThrow(() ->
+            new WorkflowException(
+                "Flow version does not exist: "
+                    + flowKey + ":" + flowVersion
+            )
+        );
+    }
+
+    /**
+     * Loads a deployed revision by its technical row id. This is reserved
+     * for restoring an Execution's already-bound revision; business callers
+     * must use {@link #requireFlow(FlowRepository, DSLContext, String,
+     * String, long)} with company, key, and version.
+     */
+    public static Flow requireFlowById(
+        FlowRepository repository,
+        DSLContext dsl,
+        String companyId,
         String flowId,
-        long reversion
+        long flowVersion
     ) {
         return repository.findById(
             dsl,
             companyId,
             flowId,
-            reversion
+            flowVersion
         ).orElseThrow(() ->
             new WorkflowException(
-                "Flow reversion does not exist: "
-                    + flowId + ":" + reversion
+                "Flow version does not exist: "
+                    + flowId + ":" + flowVersion
             )
         );
     }
