@@ -151,7 +151,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     public Flow deploy(String yaml) {
         FlowDraft draft = flowService.saveDraft(session, yaml);
-        return flowService.deploy(session, draft.id());
+        return flowService.deploy(session, draft.flowKey());
     }
 
     /**
@@ -202,8 +202,8 @@ public final class WorkflowUcFixture implements AutoCloseable {
                     querySession
                 ).stream()
                 .filter(execution -> !existingIds.contains(execution.id()))
-                .filter(execution -> execution.flowId().equals(flow.id()))
-                .filter(execution -> execution.flowReversion() == flow.reversion())
+                .filter(execution -> execution.flowKey().equals(flow.key()))
+                .filter(execution -> execution.flowVersion() == flow.reversion())
                 .findFirst();
             if (created.isPresent()) {
                 return created.orElseThrow();
@@ -333,7 +333,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
     ) {
         return executionService.executions(querySession).stream()
             .flatMap(execution -> execution.pausedTaskRuns().stream()
-                .map(taskRun -> new PausedTaskRunRef(
+                .map(taskRun -> PausedTaskRunRef.from(
                     execution.id(),
                     taskRun.id()
                 )))
@@ -352,10 +352,10 @@ public final class WorkflowUcFixture implements AutoCloseable {
             "Paused TaskRun references a missing Execution: "
                 + pausedTaskRun.taskRunId()
         ));
-        Flow flow = flowService.flowById(
+        Flow flow = flowService.flow(
             querySession,
-            execution.flowId(),
-            execution.flowReversion()
+            execution.flowKey(),
+            execution.flowVersion()
         ).orElseThrow(() -> new IllegalStateException(
             "Execution references a missing Flow reversion: "
                 + execution.id()
@@ -561,5 +561,12 @@ public final class WorkflowUcFixture implements AutoCloseable {
         String executionId,
         String taskRunId
     ) {
+
+        public static PausedTaskRunRef from(
+            String executionId,
+            String taskRunId
+        ) {
+            return new PausedTaskRunRef(executionId, taskRunId);
+        }
     }
 }

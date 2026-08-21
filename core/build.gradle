@@ -2,7 +2,6 @@ plugins {
     id 'org.flow.build.base'
     alias(libs.plugins.micronaut.library)
     id 'java-library'
-    id 'java-test-fixtures'
 }
 
 version = "0.1"
@@ -26,12 +25,6 @@ configurations.configureEach {
     resolutionStrategy {
         force(libs.hikaricp)
     }
-}
-
-configurations {
-    testFixturesImplementation.extendsFrom implementation
-    testFixturesCompileOnly.extendsFrom compileOnly
-    testFixturesAnnotationProcessor.extendsFrom annotationProcessor
 }
 
 dependencies {

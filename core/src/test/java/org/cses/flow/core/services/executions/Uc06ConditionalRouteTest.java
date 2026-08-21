@@ -25,13 +25,13 @@ class Uc06ConditionalRouteTest {
                 IllegalArgumentException.class,
                 () -> fixture.flowService().deploy(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 )
             );
             assertTrue(failure.getMessage().contains("route expression"));
             assertTrue(
                 fixture.flowService()
-                    .latestFlow(fixture.session(), draft.id())
+                    .latestFlow(fixture.session(), draft.flowKey())
                     .isEmpty()
             );
             assertTrue(

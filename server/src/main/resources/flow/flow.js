@@ -196,7 +196,7 @@
             state.drafts = drafts;
             state.executions = executions;
             if (drafts.length > 0) {
-                await openDraft(drafts[0].id);
+                await openDraft(drafts[0].flowKey);
             } else {
                 createLocalDraft(false);
             }
@@ -224,7 +224,7 @@
         const previousCanvas = document.querySelector(".canvas-wrap");
         const previousViewport = previousCanvas
             ? {
-                flowId: previousCanvas.dataset.flowId || "",
+                flowKey: previousCanvas.dataset.flowKey || "",
                 left: previousCanvas.scrollLeft,
                 top: previousCanvas.scrollTop,
             }
@@ -249,10 +249,10 @@
             if (!canvas) {
                 return;
             }
-            const flowId = canvas.dataset.flowId || "";
+            const flowKey = canvas.dataset.flowKey || "";
             if (
                 previousViewport
-                && previousViewport.flowId === flowId
+                && previousViewport.flowKey === flowKey
             ) {
                 canvas.scrollLeft = previousViewport.left;
                 canvas.scrollTop = previousViewport.top;
@@ -304,7 +304,7 @@
             : '<span class="badge badge-draft">仅草稿</span>';
         const savedText = state.dirty
             ? "存在未保存修改"
-            : current?.id
+            : current?.flowKey
                 ? `草稿版本 ${current.lockVersion}`
                 : "尚未创建草稿";
         return `
@@ -350,7 +350,7 @@
                 <button
                     class="btn btn-primary"
                     data-action="deploy-flow"
-                    ${state.busy || !current?.id ? "disabled" : ""}
+                    ${state.busy || !current?.flowKey ? "disabled" : ""}
                 >
                     ${icon("rocket")} 发布
                 </button>
@@ -397,13 +397,13 @@
     }
 
     function renderDraftItem(draft) {
-        const active = state.current?.id === draft.id;
+        const active = state.current?.flowKey === draft.flowKey;
         const deployed = draft.deployedFlow;
         return `
             <button
                 class="draft-item ${active ? "active" : ""}"
                 data-action="select-draft"
-                data-id="${escapeAttribute(draft.id)}"
+                data-key="${escapeAttribute(draft.flowKey)}"
                 data-search="${escapeAttribute(draftName(draft).toLowerCase())}"
             >
                 <span class="draft-name">
@@ -514,7 +514,7 @@
             <div
                 class="canvas-wrap"
                 data-action="select-flow"
-                data-flow-id="${escapeAttribute(state.current?.id || "local")}"
+                data-flow-key="${escapeAttribute(state.current?.flowKey || "local")}"
             >
                 <div class="canvas-stage horizontal-canvas">
                     ${renderCanvasStructureSummary(nodes)}
@@ -1053,7 +1053,7 @@
             >
                 <strong>${escapeHtml(execution.id)}</strong>
                 <span>
-                    R${execution.flowReversion} ·
+                    R${execution.flowVersion} ·
                     ${escapeHtml(stateLabel(execution.state))} ·
                     ${escapeHtml(formatTime(execution.createdAt))}
                 </span>
@@ -1143,7 +1143,7 @@
             <aside class="inspector">
                 <div class="inspector-head">
                     <h2>流程属性</h2>
-                    ${state.current?.id
+                    ${state.current?.flowKey
                         ? `<button
                             class="btn btn-icon btn-danger"
                             data-action="delete-flow"
@@ -2596,11 +2596,11 @@
                 break;
             case "select-draft":
                 if (
-                    element.dataset.id !== state.current?.id &&
+                    element.dataset.key !== state.current?.flowKey &&
                     confirmDiscardChanges()
                 ) {
                     await runBusyAction(() =>
-                        openDraft(element.dataset.id),
+                        openDraft(element.dataset.key),
                     );
                 }
                 break;
@@ -2745,7 +2745,10 @@
         };
         const saved = await api("/flows", {
             method: "POST",
-            body: { raw: stringifyYaml(definition) },
+            body: {
+                key: flowKey,
+                raw: stringifyYaml(definition),
+            },
         });
         state.current = saved;
         state.definition = definition;
@@ -3102,15 +3105,24 @@
         }
     }
 
-    async function openDraft(id) {
-        const draft = await api(`/flows/${encodeURIComponent(id)}`);
+    async function openDraft(flowKey) {
+        const draft = await api(
+            `/flows/${encodeURIComponent(flowKey)}`,
+        );
         state.current = draft;
         state.raw = draft.raw;
         state.dirty = false;
         state.yamlError = null;
         state.selectedPath = null;
         state.selectedExecutionId =
-            state.executions.find((item) => item.flowId === id)?.id || null;
+            state.executions.find(
+                (item) => item.flowKey === (
+                    draft.flowKey ||
+                    draft.deployedFlow?.key
+                    || extractKey(draft.raw)
+                    || flowKey
+                ),
+            )?.id || null;
         await parseCurrentRaw(false);
     }
 
@@ -3119,24 +3131,16 @@
             return;
         }
         const body = {
+            key: currentFlowKey(),
             raw: state.raw,
         };
-        let saved;
-        if (state.current.id) {
+        if (state.current.flowKey) {
             body.expectedLockVersion = state.current.lockVersion;
-            saved = await api(
-                `/flows/${encodeURIComponent(state.current.id)}`,
-                {
-                    method: "PUT",
-                    body,
-                },
-            );
-        } else {
-            saved = await api("/flows", {
-                method: "POST",
-                body,
-            });
         }
+        const saved = await api("/flows", {
+            method: "POST",
+            body,
+        });
         state.current = saved;
         state.raw = saved.raw;
         state.dirty = false;
@@ -3149,7 +3153,7 @@
             await saveDraft();
         }
         const deployed = await api(
-            `/flows/${encodeURIComponent(state.current.id)}/deploy`,
+            `/flows/${encodeURIComponent(state.current.flowKey)}/deploy`,
             { method: "POST" },
         );
         state.current = deployed;
@@ -3221,7 +3225,7 @@
             throw new Error("请先发布流程");
         }
         const execution = await api(
-            `/flows/${encodeURIComponent(state.current.id)}/executions`,
+            `/flows/${encodeURIComponent(currentFlowKey())}/executions`,
             {
                 method: "POST",
                 body: { inputs },
@@ -3241,7 +3245,7 @@
     }
 
     async function deleteFlow() {
-        if (!state.current?.id) {
+        if (!state.current?.flowKey) {
             createLocalDraft();
             return;
         }
@@ -3251,16 +3255,18 @@
         if (!confirmed) {
             return;
         }
-        const id = state.current.id;
-        await api(`/flows/${encodeURIComponent(id)}`, {
+        const flowKey = currentFlowKey();
+        await api(`/flows/${encodeURIComponent(flowKey)}`, {
             method: "DELETE",
         });
-        state.drafts = state.drafts.filter((draft) => draft.id !== id);
+        state.drafts = state.drafts.filter(
+            (draft) => draft.flowKey !== flowKey,
+        );
         state.executions = state.executions.filter(
-            (execution) => execution.flowId !== id,
+            (execution) => execution.flowKey !== flowKey,
         );
         if (state.drafts.length) {
-            await openDraft(state.drafts[0].id);
+            await openDraft(state.drafts[0].flowKey);
         } else {
             createLocalDraft(false);
         }
@@ -3971,7 +3977,7 @@
 
     function mergeDraft(draft) {
         const index = state.drafts.findIndex(
-            (item) => item.id === draft.id,
+            (item) => item.flowKey === draft.flowKey,
         );
         if (index >= 0) {
             state.drafts.splice(index, 1, draft);
@@ -3998,9 +4004,9 @@
     }
 
     function selectedFlowExecutions() {
-        const flowId = state.current?.id;
+        const flowKey = currentFlowKey();
         return state.executions.filter(
-            (execution) => execution.flowId === flowId,
+            (execution) => execution.flowKey === flowKey,
         );
     }
 
@@ -4426,7 +4432,7 @@
         if (
             !execution
             || !deployed
-            || execution.flowReversion !== deployed.reversion
+            || execution.flowVersion !== deployed.reversion
             || !node.parentPath
             || taskRunForKey(node.task.key)
         ) {
@@ -4599,14 +4605,28 @@
         );
     }
 
+    function currentFlowKey() {
+        return (
+            state.current?.deployedFlow?.key ||
+            state.current?.flowKey ||
+            state.definition?.key ||
+            extractKey(state.raw) ||
+            null
+        );
+    }
+
     function draftName(draft) {
-        if (draft.id === state.current?.id && state.definition?.key) {
+        if (
+            draft.flowKey === state.current?.flowKey
+            && state.definition?.key
+        ) {
             return state.definition.key;
         }
         return (
+            draft.flowKey ||
             draft.deployedFlow?.key ||
             extractKey(draft.raw) ||
-            `草稿 ${draft.id.slice(0, 8)}`
+            "未命名草稿"
         );
     }
 

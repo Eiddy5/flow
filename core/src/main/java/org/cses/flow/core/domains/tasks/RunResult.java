@@ -16,6 +16,14 @@ public record RunResult(
     String error
 ) {
 
+    public static RunResult from(
+        State.Type targetState,
+        Map<String, ?> outputs,
+        String error
+    ) {
+        return new RunResult(targetState, immutableOutputs(outputs), error);
+    }
+
     public RunResult {
         Objects.requireNonNull(targetState, "targetState");
         if (targetState != State.Type.SUCCESS
@@ -42,7 +50,7 @@ public record RunResult(
     }
 
     public static RunResult success(Map<String, ?> outputs) {
-        return new RunResult(
+        return from(
             State.Type.SUCCESS,
             immutableOutputs(outputs),
             null
@@ -50,7 +58,7 @@ public record RunResult(
     }
 
     public static RunResult warning(Map<String, ?> outputs) {
-        return new RunResult(
+        return from(
             State.Type.WARNING,
             immutableOutputs(outputs),
             null
@@ -58,11 +66,11 @@ public record RunResult(
     }
 
     public static RunResult failed(String error) {
-        return new RunResult(State.Type.FAILED, Map.of(), error);
+        return from(State.Type.FAILED, Map.of(), error);
     }
 
     public static RunResult killed() {
-        return new RunResult(State.Type.KILLED, Map.of(), null);
+        return from(State.Type.KILLED, Map.of(), null);
     }
 
     private static Map<String, Object> immutableOutputs(

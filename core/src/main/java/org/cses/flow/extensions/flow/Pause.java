@@ -26,9 +26,11 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 /**
- * External-resume orchestration gate with one mandatory pre-pause Task.
+ * External-resume orchestration gate with one mandatory pre-pause Task and
+ * optional ordinary post-resume child Tasks.
  */
 @Plugin(
     title = "暂停",
@@ -109,13 +111,15 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
     @Override
     public List<Output> outputs() {
         return resume().stream()
-            .map(input -> Output.create(input.getKey(), input.getType()))
+            .map(input -> Output.create(input.key(), input.type()))
             .toList();
     }
 
     @Override
     public List<Task> definitionChildren() {
-        return pause == null ? List.of() : List.of(pause);
+        return pause == null
+            ? tasks()
+            : Stream.concat(Stream.of(pause), tasks().stream()).toList();
     }
 
     @Override
@@ -135,7 +139,7 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
         }
 
         LinkedHashSet<String> declared = resume().stream()
-            .map(Input::getKey)
+            .map(Input::key)
             .collect(java.util.stream.Collectors.toCollection(
                 LinkedHashSet::new
             ));
@@ -151,7 +155,7 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
 
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Input<?> input : resume()) {
-            String key = input.getKey();
+            String key = input.key();
             boolean supplied = actualInputs.containsKey(key);
             Object value = supplied
                 ? actualInputs.get(key)
@@ -176,11 +180,6 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
 
     @Override
     public void verifyModelInvariant() {
-        if (!tasks().isEmpty()) {
-            throw new IllegalArgumentException(
-                "Pause tasks must be empty; use the pause property"
-            );
-        }
         if (pause == null) {
             throw new IllegalArgumentException(
                 "Pause requires exactly one pause Task"
@@ -200,10 +199,10 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
                 );
             }
             input.validateDefinition();
-            if (!keys.add(input.getKey())) {
+            if (!keys.add(input.key())) {
                 throw new IllegalArgumentException(
                     "Pause resume inputs contains duplicate key: "
-                        + input.getKey()
+                        + input.key()
                 );
             }
         }

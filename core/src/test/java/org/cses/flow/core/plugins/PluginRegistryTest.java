@@ -117,7 +117,7 @@ class PluginRegistryTest {
 
     @Test
     void normalizesOptionalDisplayMetadata() {
-        PluginMetadata<Task> metadata = new PluginMetadata<>(
+        PluginMetadata<Task> metadata = PluginMetadata.from(
             AutomaticTask.class,
             Task.class,
             " ",
@@ -134,15 +134,15 @@ class PluginRegistryTest {
     void rejectsEmptyExampleSourcesAndLanguages() {
         assertThrows(
             IllegalArgumentException.class,
-            () -> new PluginExample("", List.of(), "yaml", false)
+            () -> PluginExample.from("", List.of(), "yaml", false)
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> new PluginExample("", List.of(" "), "yaml", false)
+            () -> PluginExample.from("", List.of(" "), "yaml", false)
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> new PluginExample(
+            () -> PluginExample.from(
                 "",
                 List.of("message: example"),
                 " ",

@@ -1,13 +1,14 @@
 package org.cses.flow.core.handlers.executions;
 
-import org.cses.flow.core.commands.CommandContext;
-import org.cses.flow.core.commands.executions.CreateExecutionCommand;
+import org.cses.flow.core.services.CommandContext;
+import org.cses.flow.core.services.executions.commands.CreateExecutionCommand;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.core.services.executions.handlers.CreateExecutionHandler;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -49,8 +50,10 @@ final class CreateExecutionHandlerTest {
 
         assertEquals("execution-1", created.id());
         assertEquals("execution-1", replayed.id());
-        assertEquals(1L, created.flowReversion());
-        assertEquals(1L, replayed.flowReversion());
+        assertEquals("flow-key", created.flowKey());
+        assertEquals("flow-key", replayed.flowKey());
+        assertEquals(1L, created.flowVersion());
+        assertEquals(1L, replayed.flowVersion());
         assertEquals(1, executions.saves);
         assertEquals(
             List.of("flow-key:1", "flow-key:1"),
@@ -112,7 +115,7 @@ final class CreateExecutionHandlerTest {
         String flowKey,
         long flowVersion
     ) {
-        return new CreateExecutionCommand(
+        return CreateExecutionCommand.from(
             executionId,
             flowKey,
             flowVersion
@@ -124,7 +127,7 @@ final class CreateExecutionHandlerTest {
         CreateExecutionCommand command
     ) {
         command.validate();
-        return handler.handle(new CommandContext<>(
+        return handler.handle(CommandContext.from(
             command,
             session(),
             DSL.using(SQLDialect.POSTGRES)
@@ -167,26 +170,13 @@ final class CreateExecutionHandlerTest {
 
         void add(Flow flow) {
             flows.put(
-                new FlowKey(
+                FlowKey.from(
                     flow.companyId(),
                     flow.key(),
                     flow.reversion()
                 ),
                 flow.copy()
             );
-        }
-
-        @Override
-        public Optional<Flow> findById(
-            DSLContext dsl,
-            String companyId,
-            String flowId,
-            long reversion
-        ) {
-            exactReads.add(flowId + ":" + reversion);
-            return Optional.ofNullable(flows.get(
-                new FlowKey(companyId, flowId, reversion)
-            )).map(Flow::copy);
         }
 
         @Override
@@ -198,7 +188,7 @@ final class CreateExecutionHandlerTest {
         ) {
             exactReads.add(flowKey + ":" + flowVersion);
             return Optional.ofNullable(flows.get(
-                new FlowKey(companyId, flowKey, flowVersion)
+                FlowKey.from(companyId, flowKey, flowVersion)
             )).map(Flow::copy);
         }
 
@@ -239,7 +229,7 @@ final class CreateExecutionHandlerTest {
             String executionId
         ) {
             return Optional.ofNullable(executions.get(
-                new ExecutionKey(companyId, executionId)
+                ExecutionKey.from(companyId, executionId)
             )).map(Execution::copy);
         }
 
@@ -275,7 +265,7 @@ final class CreateExecutionHandlerTest {
         public void save(DSLContext dsl, Execution execution) {
             saves++;
             executions.put(
-                new ExecutionKey(execution.companyId(), execution.id()),
+                ExecutionKey.from(execution.companyId(), execution.id()),
                 execution.copy()
             );
         }
@@ -286,8 +276,23 @@ final class CreateExecutionHandlerTest {
         String flowKey,
         long reversion
     ) {
+
+        private static FlowKey from(
+            String companyId,
+            String flowKey,
+            long reversion
+        ) {
+            return new FlowKey(companyId, flowKey, reversion);
+        }
     }
 
     private record ExecutionKey(String companyId, String executionId) {
+
+        private static ExecutionKey from(
+            String companyId,
+            String executionId
+        ) {
+            return new ExecutionKey(companyId, executionId);
+        }
     }
 }

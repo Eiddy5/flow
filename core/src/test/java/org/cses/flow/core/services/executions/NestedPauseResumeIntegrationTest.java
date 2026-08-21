@@ -84,8 +84,8 @@ class NestedPauseResumeIntegrationTest {
                 1,
                 fixture.executionService().executions(fixture.session()).size()
             );
-            assertEquals(flow.id(), execution.flowId());
-            assertEquals(flow.reversion(), execution.flowReversion());
+            assertEquals(flow.key(), execution.flowKey());
+            assertEquals(flow.reversion(), execution.flowVersion());
             assertEquals(State.Type.PAUSED, execution.state().current());
             assertEquals(INITIAL_RUN_ORDER, taskKeys(execution, flow));
             assertEquals(8, execution.taskRuns().size());

@@ -19,6 +19,11 @@ public final class FlowDraft
 
     private final String id;
     private final String companyId;
+    /**
+     * Stable business key for this draft and all deployed Flow revisions
+     * originating from it.
+     */
+    private final String flowKey;
     private final ActorRef creator;
     private final long createdAt;
     private String raw;
@@ -32,6 +37,7 @@ public final class FlowDraft
     private FlowDraft(
         String id,
         String companyId,
+        String flowKey,
         String raw,
         boolean deleted,
         ActorRef creator,
@@ -44,6 +50,7 @@ public final class FlowDraft
     ) {
         this.id = requireText(id, "FlowDraft id");
         this.companyId = requireText(companyId, "Company id");
+        this.flowKey = requireText(flowKey, "Flow key");
         this.raw = requireRaw(raw);
         this.deleted = deleted;
         this.creator = Objects.requireNonNull(
@@ -89,13 +96,16 @@ public final class FlowDraft
 
     public static FlowDraft create(
         String companyId,
+        String flowKey,
         String raw,
         ActorRef creator,
         long createdAt
     ) {
+        String id = StringUtil.newId();
         return new FlowDraft(
-            StringUtil.newId(),
+            id,
             companyId,
+            flowKey,
             raw,
             false,
             creator,
@@ -111,6 +121,7 @@ public final class FlowDraft
     public static FlowDraft rehydrate(
         String id,
         String companyId,
+        String flowKey,
         String raw,
         boolean deleted,
         ActorRef creator,
@@ -124,6 +135,7 @@ public final class FlowDraft
         return new FlowDraft(
             id,
             companyId,
+            flowKey,
             raw,
             deleted,
             creator,
@@ -213,6 +225,13 @@ public final class FlowDraft
         return companyId;
     }
 
+    /**
+     * Returns the stable key used to locate this draft's deployed Flow.
+     */
+    public String flowKey() {
+        return flowKey;
+    }
+
     public String raw() {
         return raw;
     }
@@ -268,6 +287,7 @@ public final class FlowDraft
         return rehydrate(
             id,
             companyId,
+            flowKey,
             raw,
             deleted,
             creator,
@@ -292,6 +312,7 @@ public final class FlowDraft
             && deleted == other.deleted
             && Objects.equals(id, other.id)
             && Objects.equals(companyId, other.companyId)
+            && Objects.equals(flowKey, other.flowKey)
             && Objects.equals(raw, other.raw)
             && Objects.equals(creator, other.creator)
             && Objects.equals(updater, other.updater)
@@ -306,6 +327,7 @@ public final class FlowDraft
         return Objects.hash(
             id,
             companyId,
+            flowKey,
             raw,
             deleted,
             creator,

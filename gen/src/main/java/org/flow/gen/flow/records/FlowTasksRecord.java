@@ -119,30 +119,30 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
     }
 
     /**
-     * Setter for <code>public.flow_tasks.flow_id</code>.
+     * Setter for <code>public.flow_tasks.flow_key</code>.
      */
-    public void setFlowId(String value) {
+    public void setFlowKey(String value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.flow_tasks.flow_id</code>.
+     * Getter for <code>public.flow_tasks.flow_key</code>.
      */
-    public String getFlowId() {
+    public String getFlowKey() {
         return (String) get(7);
     }
 
     /**
-     * Setter for <code>public.flow_tasks.flow_reversion</code>.
+     * Setter for <code>public.flow_tasks.flow_version</code>.
      */
-    public void setFlowReversion(Long value) {
+    public void setFlowVersion(Long value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.flow_tasks.flow_reversion</code>.
+     * Getter for <code>public.flow_tasks.flow_version</code>.
      */
-    public Long getFlowReversion() {
+    public Long getFlowVersion() {
         return (Long) get(8);
     }
 
@@ -225,7 +225,7 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
     /**
      * Create a detached, initialised FlowTasksRecord
      */
-    public FlowTasksRecord(String companyId, String id, String type, String route, JsonObjects inputs, JsonObjects outputs, JsonObject properties, String flowId, Long flowReversion, String parentId, Integer order, String key, JsonObjects dependOn) {
+    public FlowTasksRecord(String companyId, String id, String type, String route, JsonObjects inputs, JsonObjects outputs, JsonObject properties, String flowKey, Long flowVersion, String parentId, Integer order, String key, JsonObjects dependOn) {
         super(FlowTasksTable.FLOW_TASKS);
 
         setCompanyId(companyId);
@@ -235,8 +235,8 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
         setInputs(inputs);
         setOutputs(outputs);
         setProperties(properties);
-        setFlowId(flowId);
-        setFlowReversion(flowReversion);
+        setFlowKey(flowKey);
+        setFlowVersion(flowVersion);
         setParentId(parentId);
         setOrder(order);
         setKey(key);
@@ -259,8 +259,8 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
             setInputs(value.inputs);
             setOutputs(value.outputs);
             setProperties(value.properties);
-            setFlowId(value.flowId);
-            setFlowReversion(value.flowReversion);
+            setFlowKey(value.flowKey);
+            setFlowVersion(value.flowVersion);
             setParentId(value.parentId);
             setOrder(value.order);
             setKey(value.key);
@@ -277,8 +277,8 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
         object.inputs = getInputs();
         object.outputs = getOutputs();
         object.properties = getProperties();
-        object.flowId = getFlowId();
-        object.flowReversion = getFlowReversion();
+        object.flowKey = getFlowKey();
+        object.flowVersion = getFlowVersion();
         object.parentId = getParentId();
         object.order = getOrder();
         object.key = getKey();
@@ -300,8 +300,8 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
         pojo.properties = getProperties();
-        pojo.flowId = getFlowId();
-        pojo.flowReversion = getFlowReversion();
+        pojo.flowKey = getFlowKey();
+        pojo.flowVersion = getFlowVersion();
         pojo.parentId = getParentId();
         pojo.order = getOrder();
         pojo.key = getKey();

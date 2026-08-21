@@ -77,6 +77,7 @@ final class DomainCapabilitiesTest {
         ActorRef creator = ActorRef.from(creatorSession);
         FlowDraft draft = FlowDraft.create(
             "company-1",
+            "capability-flow",
             "key: capability-flow",
             creator,
             CREATED_AT
@@ -156,6 +157,7 @@ final class DomainCapabilitiesTest {
         );
         FlowDraft draft = FlowDraft.create(
             "company-1",
+            "tenant-capability-flow",
             "key: tenant-capability-flow",
             ActorRef.from(ownerSession),
             CREATED_AT

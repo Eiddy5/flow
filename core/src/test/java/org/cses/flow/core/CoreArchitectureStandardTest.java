@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -33,6 +35,10 @@ class CoreArchitectureStandardTest {
         );
     private static final Pattern RECORD_DECLARATION = Pattern.compile(
         "\\brecord\\s+[A-Za-z_$][A-Za-z\\d_$]*"
+    );
+    private static final Pattern RECORD_DECLARATION_NAME = Pattern.compile(
+        "(?m)^\\s*(?:(?:public|protected|private|static|final)\\s+)*"
+            + "record\\s+([A-Za-z_$][A-Za-z\\d_$]*)"
     );
     private static final Pattern NUMERIC_TECHNICAL_ID = Pattern.compile(
         "\\b(?:long|Long|UUID)\\s+"
@@ -275,7 +281,7 @@ class CoreArchitectureStandardTest {
             "executor/handlers/ExecutorEventHandler.java"
         ));
         assertTrue(
-            executionService.contains("Create.of(")
+            executionService.contains("Create.from(")
                 && executionService.contains("normalizedInputs")
                 && executionService.contains("executorCommandQueue.emit(command)")
                 && executionService.contains(
@@ -294,9 +300,9 @@ class CoreArchitectureStandardTest {
                 && commandHandler.contains("case Create create")
                 && commandHandler.contains("case Resume resume")
                 && commandHandler.contains("case Cancel cancel")
-                && commandHandler.contains("eventQueue.emit(")
+                && commandHandler.contains("eventQueue.emitInTransaction(")
                 && eventHandler.contains("executorService.process(context)")
-                && eventHandler.contains("eventQueue.emit(")
+                && eventHandler.contains("eventQueue.emitInTransaction(")
                 && eventHandler.contains("new ExecutorContext(flow, execution)"),
             "ExecutionService must publish Create, Resume and Cancel commands, "
                 + "the command handler must only publish ExecutorEvents, "
@@ -347,13 +353,13 @@ class CoreArchitectureStandardTest {
             "DispatchQueue must own competing Consumer registration"
         );
         assertTrue(
-            eventContract.contains("DSLContext")
-                && eventContract.contains("DSLContext dsl();")
+            !eventContract.contains("DSLContext")
+                && !eventContract.contains("dsl()")
                 && dispatchContract.contains(
                     "void emitInTransaction(T event, DSLContext dsl);"
                 ),
-            "Event must retain its transaction hook and DispatchQueue must "
-                + "also expose explicit caller transaction publishing"
+            "Event must remain pure business data and DispatchQueue must "
+                + "own explicit caller transaction publishing"
         );
 
         List<String> coupled = new ArrayList<>();
@@ -379,7 +385,6 @@ class CoreArchitectureStandardTest {
                             coupled.add(path.toString());
                         }
                         if (source.contains("import org.jooq.")
-                            && !path.equals(events.resolve("Event.java"))
                             && !path.equals(queues.resolve(
                                 "DispatchQueue.java"
                             ))) {
@@ -398,7 +403,7 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             unexpectedJooqDependencies.isEmpty(),
-            () -> "Only Event and DispatchQueue transaction publishing may "
+            () -> "Only DispatchQueue transaction publishing may "
                 + "expose the confirmed JOOQ dependency: "
                 + unexpectedJooqDependencies
         );
@@ -434,9 +439,9 @@ class CoreArchitectureStandardTest {
             queue.contains("implements DispatchQueue<T>")
                 && queue.contains("Class<T> eventType")
                 && queue.contains("emitInTransaction")
-                && queue.contains("event.dsl()"),
-            "Default Queue must implement the Core seam, retain Event "
-                + "transaction compatibility and accept explicit transactions"
+                && !queue.contains("event.dsl()"),
+            "Default Queue must implement the Core seam and accept caller "
+                + "transactions only through explicit publishing"
         );
         assertTrue(
             store.contains(".forUpdate()")
@@ -660,6 +665,7 @@ class CoreArchitectureStandardTest {
         List<String> invalid = new ArrayList<>();
         inspectSources(MAIN_JAVA, invalid);
         inspectSources(TEST_JAVA, invalid);
+        inspectRecordFactories(invalid);
         inspectRecordDeclarations(CORE.resolve("domains"), invalid);
         inspectRecordDeclarations(
             TEST_JAVA.resolve("org/cses/flow/core/domains"),
@@ -979,6 +985,55 @@ class CoreArchitectureStandardTest {
                 if (RECORD_DECLARATION.matcher(source).find()
                     && !isAllowedDomainRecord(path)) {
                     invalid.add(path + " declares record in a class-only area");
+                }
+            }
+        }
+    }
+
+    private static void inspectRecordFactories(
+        List<String> invalid
+    ) throws IOException {
+        Map<String, List<Path>> recordFiles = new LinkedHashMap<>();
+        List<Path> javaFiles = new ArrayList<>();
+        for (Path sourceRoot : List.of(MAIN_JAVA, TEST_JAVA)) {
+            try (var paths = Files.walk(sourceRoot)) {
+                for (Path path : paths
+                    .filter(file -> file.toString().endsWith(".java"))
+                    .toList()) {
+                    javaFiles.add(path);
+                    String source = Files.readString(path);
+                    var declarations = RECORD_DECLARATION_NAME.matcher(source);
+                    while (declarations.find()) {
+                        String name = declarations.group(1);
+                        recordFiles.computeIfAbsent(
+                            name,
+                            ignored -> new ArrayList<>()
+                        ).add(path);
+                        if (!source.contains("from(")) {
+                            invalid.add(
+                                path + " record " + name
+                                    + " must provide from(...)"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        for (Map.Entry<String, List<Path>> entry : recordFiles.entrySet()) {
+            Pattern constructor = Pattern.compile(
+                "\\bnew\\s+" + Pattern.quote(entry.getKey())
+                    + "(?:\\s*<[^\\n;{}()]*>)?\\s*\\("
+            );
+            for (Path path : javaFiles) {
+                if (entry.getValue().contains(path)) {
+                    continue;
+                }
+                if (constructor.matcher(Files.readString(path)).find()) {
+                    invalid.add(
+                        path + " directly constructs record "
+                            + entry.getKey() + "; use from(...)"
+                    );
                 }
             }
         }

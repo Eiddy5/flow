@@ -45,7 +45,7 @@ final class WorkerDispatcherTest {
             .id("task-1")
             .key("automatic")
             .build();
-        WorkerTask workerTask = new WorkerTask(
+        WorkerTask workerTask = WorkerTask.from(
             "execution-1",
             "task-run-1",
             task,
@@ -72,7 +72,7 @@ final class WorkerDispatcherTest {
             IllegalStateException.class,
             () -> dispatcher.dispatch(
                 new Session<User>(),
-                new WorkerTask(
+                WorkerTask.from(
                     "execution-1",
                     "task-run-1",
                     task,
@@ -97,7 +97,7 @@ final class WorkerDispatcherTest {
 
         assertThrows(
             IllegalArgumentException.class,
-            () -> new WorkerTask(
+            () -> WorkerTask.from(
                 "execution-1",
                 "task-run-1",
                 task,
@@ -135,7 +135,7 @@ final class WorkerDispatcherTest {
 
         WorkerTaskResult result = dispatcher.dispatch(
             new Session<User>(),
-            new WorkerTask(
+            WorkerTask.from(
                 "execution-1",
                 "task-run-1",
                 task,
@@ -161,7 +161,7 @@ final class WorkerDispatcherTest {
             "execution-1",
             Map.of("amount", 1200)
         );
-        WorkerTask firstWorkerTask = new WorkerTask(
+        WorkerTask firstWorkerTask = WorkerTask.from(
             "execution-1",
             "task-run-1",
             "parent-run-1",
@@ -169,7 +169,7 @@ final class WorkerDispatcherTest {
             sourceInputs,
             Map.of(RunContext.EXECUTION_VARIABLE, execution)
         );
-        WorkerTask secondWorkerTask = new WorkerTask(
+        WorkerTask secondWorkerTask = WorkerTask.from(
             "execution-1",
             "task-run-2",
             task,
@@ -247,7 +247,7 @@ final class WorkerDispatcherTest {
 
         assertThrows(
             IllegalArgumentException.class,
-            () -> new WorkerTask(
+            () -> WorkerTask.from(
                 "execution-1",
                 "task-run-1",
                 task,
@@ -260,7 +260,7 @@ final class WorkerDispatcherTest {
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> new WorkerTask(
+            () -> WorkerTask.from(
                 "execution-1",
                 "task-run-1",
                 task,

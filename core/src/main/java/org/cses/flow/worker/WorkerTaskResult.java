@@ -20,6 +20,22 @@ public record WorkerTaskResult(
     String error
 ) {
 
+    public static WorkerTaskResult from(
+        String executionId,
+        String taskRunId,
+        State.Type targetState,
+        Map<String, ?> outputs,
+        String error
+    ) {
+        return new WorkerTaskResult(
+            executionId,
+            taskRunId,
+            targetState,
+            copyOutputs(outputs),
+            error
+        );
+    }
+
     public WorkerTaskResult {
         targetState = Objects.requireNonNull(
             targetState,
@@ -115,12 +131,22 @@ public record WorkerTaskResult(
         if (outputs != null) {
             outputs.forEach(copied::put);
         }
-        return new WorkerTaskResult(
+        return from(
             task.executionId(),
             task.taskRunId(),
             targetState,
             copied,
             error
         );
+    }
+
+    private static Map<String, Object> copyOutputs(
+        Map<String, ?> outputs
+    ) {
+        Map<String, Object> copied = new LinkedHashMap<>();
+        if (outputs != null) {
+            outputs.forEach(copied::put);
+        }
+        return copied;
     }
 }

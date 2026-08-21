@@ -216,8 +216,8 @@ final class ExecutorServiceTest {
         Execution execution = Execution.create(
             seed.id(),
             seed.companyId(),
-            seed.flowId(),
-            seed.flowReversion(),
+            seed.flowKey(),
+            seed.flowVersion(),
             flow.normalizeInputs(Map.of("amount", 1200))
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
@@ -387,6 +387,79 @@ final class ExecutorServiceTest {
             Map.of("decision", "APPROVED"),
             pauseRun.outputs()
         );
+        assertTrue(execution.state().is(State.Type.SUCCESS));
+    }
+
+    @Test
+    void runsPauseTasksOnlyAfterThePauseIsResumed() {
+        Flow flow = deploy(Map.of(
+            "key", "pause-with-continuation",
+            "tasks", List.of(Map.of(
+                "key", "wait-confirmation",
+                "type", org.cses.flow.extensions.flow.Pause.class.getName(),
+                "pause", Map.of(
+                    "key", "create-confirmation",
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                ),
+                "resume", List.of(Map.of(
+                    "key", "decision",
+                    "type", "STRING",
+                    "required", true
+                )),
+                "tasks", List.of(Map.of(
+                    "key", "send-result",
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                ))
+            ))
+        ));
+        assertEquals(3, flow.allTasks().size());
+
+        Execution execution = execution(flow);
+        ExecutorContext context = new ExecutorContext(flow, execution);
+
+        processUntilBoundary(context);
+        WorkerTask pauseAction = context.takeWorkerTasks().getFirst();
+        assertEquals(
+            "create-confirmation",
+            task(pauseAction, execution, flow).key()
+        );
+        executorService.dispatch(context, pauseAction);
+        executorService.applyResult(
+            context,
+            WorkerTaskResult.success(pauseAction, Map.of())
+        );
+        processUntilBoundary(context);
+
+        TaskRun pauseRun = run(execution, flow, "wait-confirmation");
+        String continuationId = flow.allTasks().stream()
+            .filter(task -> task.key().equals("send-result"))
+            .findFirst()
+            .orElseThrow()
+            .id();
+        assertTrue(pauseRun.state().is(State.Type.PAUSED));
+        assertTrue(execution.taskRuns().stream()
+            .noneMatch(taskRun -> taskRun.taskId().equals(continuationId)));
+
+        executorService.resume(
+            context,
+            pauseRun.id(),
+            Map.of("decision", "APPROVED")
+        );
+        processUntilBoundary(context);
+
+        assertTrue(pauseRun.state().is(State.Type.SUCCESS));
+        WorkerTask continuation = context.takeWorkerTasks().getFirst();
+        assertEquals(
+            "send-result",
+            task(continuation, execution, flow).key()
+        );
+        executorService.dispatch(context, continuation);
+        executorService.applyResult(
+            context,
+            WorkerTaskResult.success(continuation, Map.of())
+        );
+        processUntilBoundary(context);
+
         assertTrue(execution.state().is(State.Type.SUCCESS));
     }
 
@@ -1124,7 +1197,7 @@ final class ExecutorServiceTest {
     private static Execution execution(Flow flow) {
         return Execution.create(
             flow.companyId(),
-            flow.id(),
+            flow.key(),
             flow.reversion(),
             Map.of()
         );

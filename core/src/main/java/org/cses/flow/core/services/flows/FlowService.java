@@ -2,15 +2,15 @@ package org.cses.flow.core.services.flows;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import org.cses.flow.core.commands.flows.DeleteFlowCommand;
-import org.cses.flow.core.commands.flows.DeleteFlowDraftCommand;
-import org.cses.flow.core.commands.flows.DeployFlowCommand;
-import org.cses.flow.core.commands.flows.SaveFlowDraftCommand;
-import org.cses.flow.core.commands.CommandExecutor;
+import org.cses.flow.core.services.flows.commands.DeleteFlowCommand;
+import org.cses.flow.core.services.flows.commands.DeleteFlowDraftCommand;
+import org.cses.flow.core.services.flows.commands.DeployFlowCommand;
+import org.cses.flow.core.services.flows.commands.SaveFlowDraftCommand;
+import org.cses.flow.core.services.CommandExecutor;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
-import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.queries.flows.FlowQueryHandler;
+import org.cses.flow.core.serializers.YamlParser;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -22,41 +22,86 @@ public final class FlowService {
 
     private final CommandExecutor commandExecutor;
     private final FlowQueryHandler queryHandler;
+    private final YamlParser yamlParser;
 
     @Inject
-    public FlowService(CommandExecutor commandExecutor, FlowQueryHandler queryHandler) {
+    public FlowService(
+            CommandExecutor commandExecutor,
+            FlowQueryHandler queryHandler,
+            YamlParser yamlParser
+    ) {
         this.commandExecutor = commandExecutor;
         this.queryHandler = queryHandler;
+        this.yamlParser = yamlParser;
     }
 
     public <S extends Session<U>, U extends User> FlowDraft saveDraft(S session, String raw) {
-        return commandExecutor.execute(session, new SaveFlowDraftCommand(null, null, raw));
+        return saveDraft(session, keyFromRaw(raw), raw);
     }
 
-    public <S extends Session<U>, U extends User> FlowDraft saveDraft(S session, String id, String raw) {
-
-        FlowDraft existing = draft(session, id).orElseThrow(() -> new WorkflowException("FlowDraft does not exist: " + id));
-        return saveDraft(session, id, existing.lockVersion(), raw);
+    public <S extends Session<U>, U extends User> FlowDraft saveDraft(
+            S session,
+            String flowKey,
+            String raw
+    ) {
+        return commandExecutor.execute(
+                session,
+                SaveFlowDraftCommand.from(flowKey, null, raw)
+        );
     }
 
-    public <S extends Session<U>, U extends User> FlowDraft saveDraft(S session, String id, long expectedLockVersion, String raw) {
+    public <S extends Session<U>, U extends User> FlowDraft saveDraft(
+            S session,
+            String flowKey,
+            Long expectedLockVersion,
+            String raw
+    ) {
 
-        return commandExecutor.execute(session, new SaveFlowDraftCommand(id, expectedLockVersion, raw));
+        return commandExecutor.execute(session, SaveFlowDraftCommand.from(
+                flowKey,
+                expectedLockVersion,
+                raw
+        ));
     }
 
-    public <S extends Session<U>, U extends User> Flow deploy(S session, String id) {
-
-        return commandExecutor.execute(session, new DeployFlowCommand(id));
+    public <S extends Session<U>, U extends User> FlowDraft saveDraft(
+            S session,
+            SaveFlowDraftCommand command
+    ) {
+        return commandExecutor.execute(session, command);
     }
 
-    public <S extends Session<U>, U extends User> FlowDraft deleteDraft(S session, String id) {
+    public <S extends Session<U>, U extends User> Flow deploy(
+            S session,
+            String flowKey
+    ) {
 
-        return commandExecutor.execute(session, new DeleteFlowDraftCommand(id));
+        return commandExecutor.execute(
+                session,
+                DeployFlowCommand.from(flowKey)
+        );
     }
 
-    public <S extends Session<U>, U extends User> Flow delete(S session, String id) {
+    public <S extends Session<U>, U extends User> FlowDraft deleteDraft(
+            S session,
+            String flowKey
+    ) {
 
-        return commandExecutor.execute(session, new DeleteFlowCommand(id));
+        return commandExecutor.execute(
+                session,
+                DeleteFlowDraftCommand.from(flowKey)
+        );
+    }
+
+    public <S extends Session<U>, U extends User> Flow delete(
+            S session,
+            String flowKey
+    ) {
+
+        return commandExecutor.execute(
+                session,
+                DeleteFlowCommand.from(flowKey)
+        );
     }
 
     public <S extends Session<U>, U extends User> List<FlowDraft> drafts(S session) {
@@ -64,40 +109,37 @@ public final class FlowService {
         return queryHandler.drafts(session);
     }
 
-    public <S extends Session<U>, U extends User> Optional<FlowDraft> draft(S session, String draftId) {
-
-        return queryHandler.draft(session, draftId);
+    public <S extends Session<U>, U extends User> Optional<FlowDraft> draft(
+            S session,
+            String flowKey
+    ) {
+        return queryHandler.draftByFlowKey(session, flowKey);
     }
 
     public <S extends Session<U>, U extends User> Optional<Flow> flow(
-        S session,
-        String flowKey,
-        long flowVersion
+            S session,
+            String flowKey,
+            long flowVersion
     ) {
 
         return queryHandler.flow(session, flowKey, flowVersion);
     }
 
-    /**
-     * Loads a persisted Flow revision by its technical row id.
-     *
-     * <p>Business callers should use {@link #flow(Session, String, long)}
-     * with the stable Flow key. This lookup is reserved for internal
-     * references such as an Execution's immutable Flow binding.</p>
-     */
-    public <S extends Session<U>, U extends User> Optional<Flow> flowById(
-        S session,
-        String flowId,
-        long flowVersion
-    ) {
-        return queryHandler.flowById(session, flowId, flowVersion);
-    }
-
     public <S extends Session<U>, U extends User> Optional<Flow> latestFlow(
-        S session,
-        String flowKey
+            S session,
+            String flowKey
     ) {
 
         return queryHandler.latestFlow(session, flowKey);
+    }
+
+    private String keyFromRaw(String raw) {
+        Object key = yamlParser.parse(raw).get("key");
+        if (!(key instanceof String text) || text.isBlank()) {
+            throw new IllegalArgumentException(
+                    "New FlowDraft requires a non-blank top-level key"
+            );
+        }
+        return text.trim();
     }
 }

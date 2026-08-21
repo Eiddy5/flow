@@ -184,11 +184,11 @@ UC 缺少明确预期、公开验证路径或场景结束状态时，对应场�
 测试代码使用场景编号和清晰断言分组保留映射：
 
 ```java
-// S1 预期：创建后可以按编号查询到草稿。
+// S1 预期：创建后可以按 companyId + key 查询到草稿。
 assertNotNull(draft);
 
 // S1 场景结束：删除后不再作为可编辑草稿返回。
-assertTrue(queryDraft(id).isEmpty());
+assertTrue(queryDraft(companyId, key).isEmpty());
 ```
 
 ### 必查维度

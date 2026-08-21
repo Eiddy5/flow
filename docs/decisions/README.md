@@ -44,11 +44,14 @@
 - [`ADR 0047`](0047-implement-default-dispatch-queue.md)：以具名 `flow` JOOQ、JSONB、
   `FOR UPDATE SKIP LOCKED` 和周期轮询实现 Default Dispatch Queue；所有传输类别共享
   `queues`，由 `queue_type + queue_name` 逻辑隔离，当前只实现 `DISPATCH`；
-  同步发布支持 Event 的可空 DSL 或显式调用方事务，异步发布始终使用自有事务；
-  Queue 通过 `JsonFactory` 和 `Class<T>` 统一完成不含 DSL 的 Event JSONB 快照与恢复。
-- [`ADR 0060`](0060-publish-queue-transactions-explicitly.md)：保留 Event 的事务兼容能力，
-  由 DispatchQueue 增加显式 `emitInTransaction` 发布 API；Executor Command payload
-  不再携带 DSL，`Create` 可以使用不可变 record。
+  Queue 通过 `JsonFactory` 和 `Class<T>` 统一完成 Event 业务 JSONB 快照与恢复；其
+  Event 自带事务条款已由 ADR 0066 修订。
+- [`ADR 0060`](0060-publish-queue-transactions-explicitly.md)：为 DispatchQueue 增加显式
+  `emitInTransaction` 发布 Interface；其中保留 `Event.dsl()` 的兼容条款已由 ADR 0066
+  修订。
+- [`ADR 0066`](0066-remove-transaction-state-from-queue-events.md)：从 Event Interface
+  删除 `dsl()`，普通发布固定使用 Queue 自有事务，调用方事务只通过
+  `emitInTransaction(...)` 显式传入；ExecutionCommand 与 ExecutorEvent 均为纯 payload。
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：
   `ExecutionService` 构造并投递 Executor `Create` Command，普通启动返回 Queue 受理
   回执；外部命令由 `ExecutionCommandEventHandler` 校验并原子投递内部
@@ -88,6 +91,9 @@
 - [`ADR 0018`](0018-use-flow-lifecycle-flags.md)：定义生命周期事实。
 - [`ADR 0022`](0022-model-flow-draft-as-separate-aggregate.md)：FlowDraft 独立聚合
   以及当前 `deleted` 模型；它修订 ADR 0018 中的草稿表达。
+- [`ADR 0063`](0063-bind-flow-snapshots-by-key-and-version.md)：Flow 快照、Task 快照
+  和 Execution 统一按 `company_id + flow_key + flow_version` 绑定；`flows.id` 仅
+  保留为技术行 ID，Task 不拥有独立版本。
 
 ## Data、Input 与 Output
 
@@ -134,6 +140,8 @@
   定义输入扇出、未选择传播与 concurrent 契约。
 - [`ADR 0031`](0031-model-pause-as-task-backed-gate.md)：Pause 直接拥有暂停前 Task、
   Resume Input、ISO 8601 duration 与 Behavior，并按 Task 即 Plugin 的结构物化。
+- [`ADR 0065`](0065-allow-pause-continuation-tasks.md)：Pause 同时拥有暂停前专有
+  `pause` Task 和恢复后继承的普通 `tasks`，两条关系保持独立并共同进入定义树。
 - [`ADR 0036`](0036-model-loop-and-loop-until-as-recoverable-orchestration-scopes.md)：
   Loop 固定次数循环、Loop Until 后置条件循环、每轮 TaskRun 身份和可恢复调度协议。
 - [`ADR 0037`](0037-centralize-condition-expressions-in-express-domain.md)：由
@@ -241,8 +249,10 @@
   Java record；事务资源、运行上下文、领域对象和持久化 Entry 保持各自的对象
   边界。
 - [`ADR 0062`](0062-use-company-flow-key-and-version-as-business-identity.md)：Flow
-  业务身份统一为 `companyId + key + version`；key 由后端生成并跨版本稳定，技术
-  `id` 在每个版本重新生成，Executor Create 只携带 Flow 三字段和 inputs。
+  业务身份统一为 `companyId + key + version`；Draft 使用创建时提供的 key，技术 `id`
+  只标识数据库行，Executor Create 只携带 Flow 三字段和 inputs。
+- [`ADR 0064`](0064-enforce-flow-draft-identity-by-company-key.md)：FlowDraft 按
+  `(company_id, flow_key)` 全量唯一，业务读写统一使用 company + key，软删除不释放 key。
 
 通用实施方法仍以 [`project-development.md`](../standards/project-development.md)
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。

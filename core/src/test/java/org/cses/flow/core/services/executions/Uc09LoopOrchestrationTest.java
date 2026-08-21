@@ -273,7 +273,7 @@ class Uc09LoopOrchestrationTest {
                     RuntimeException.class,
                     () -> fixture.flowService().deploy(
                         fixture.session(),
-                        draft.id()
+                        draft.flowKey()
                     )
                 );
                 assertTrue(
@@ -285,7 +285,7 @@ class Uc09LoopOrchestrationTest {
                 // S6 预期：拒绝后不产生正式版本或运行流程。
                 assertTrue(fixture.flowService().latestFlow(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 ).isEmpty());
                 assertTrue(fixture.executionService().executions(
                     fixture.session()
@@ -295,12 +295,12 @@ class Uc09LoopOrchestrationTest {
             for (FlowDraft draft : drafts) {
                 FlowDraft deleted = fixture.flowService().deleteDraft(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 );
                 assertTrue(deleted.isDeleted());
                 assertTrue(fixture.flowService().draft(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 ).isEmpty());
             }
 
@@ -310,7 +310,7 @@ class Uc09LoopOrchestrationTest {
             for (FlowDraft draft : drafts) {
                 assertTrue(fixture.flowService().latestFlow(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 ).isEmpty());
             }
             assertTrue(fixture.executionService().executions(
@@ -595,7 +595,7 @@ class Uc09LoopOrchestrationTest {
 
     private static List<InvalidDefinition> invalidDefinitions() {
         return List.of(
-            new InvalidDefinition(
+            InvalidDefinition.from(
                 """
                     key: uc09-s6-empty-body
                     tasks:
@@ -605,7 +605,7 @@ class Uc09LoopOrchestrationTest {
                     """.formatted(Loop.class.getCanonicalName()),
                 "requires at least one child Task"
             ),
-            new InvalidDefinition(
+            InvalidDefinition.from(
                 """
                     key: uc09-s6-zero-times
                     tasks:
@@ -621,7 +621,7 @@ class Uc09LoopOrchestrationTest {
                 ),
                 "times"
             ),
-            new InvalidDefinition(
+            InvalidDefinition.from(
                 """
                     key: uc09-s6-zero-max-iterations
                     tasks:
@@ -641,7 +641,7 @@ class Uc09LoopOrchestrationTest {
                     ),
                 "maxIterations"
             ),
-            new InvalidDefinition(
+            InvalidDefinition.from(
                 """
                     key: uc09-s6-invalid-condition
                     tasks:
@@ -661,7 +661,7 @@ class Uc09LoopOrchestrationTest {
                     ),
                 "Unsupported Express condition"
             ),
-            new InvalidDefinition(
+            InvalidDefinition.from(
                 """
                     key: uc09-s6-wrong-output-reference
                     tasks:
@@ -685,6 +685,13 @@ class Uc09LoopOrchestrationTest {
     }
 
     private record InvalidDefinition(String yaml, String errorFragment) {
+
+        private static InvalidDefinition from(
+            String yaml,
+            String errorFragment
+        ) {
+            return new InvalidDefinition(yaml, errorFragment);
+        }
     }
 
     /** Deterministic result probe used only by UC-09 orchestration tests. */

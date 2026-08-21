@@ -1,6 +1,5 @@
 package org.cses.flow.executor;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
@@ -8,7 +7,6 @@ import org.cses.flow.executor.commands.Cancel;
 import org.cses.flow.executor.commands.Create;
 import org.cses.flow.executor.commands.Resume;
 import org.cses.flow.queues.event.DispatchEvent;
-import org.jooq.DSLContext;
 import org.paas.json.SerializableObject;
 import org.paas.session.Device;
 import org.paas.session.Session;
@@ -45,9 +43,6 @@ public final class ExecutorEvent extends SerializableObject
     private String taskRunId;
     private Map<String, Object> outputs = Map.of();
 
-    @JsonIgnore
-    private transient DSLContext dsl;
-
     public ExecutorEvent() {
     }
 
@@ -63,8 +58,8 @@ public final class ExecutorEvent extends SerializableObject
             || !flow.key().equals(command.getFlowKey())
             || flow.reversion() != command.getFlowVersion()
             || !execution.companyId().equals(flow.companyId())
-            || !execution.flowId().equals(flow.id())
-            || execution.flowReversion() != flow.reversion()) {
+            || !execution.flowKey().equals(flow.key())
+            || execution.flowVersion() != flow.reversion()) {
             throw new IllegalArgumentException(
                 "Create event does not belong to the resolved Flow"
             );
@@ -173,17 +168,6 @@ public final class ExecutorEvent extends SerializableObject
     @Override
     public String key() {
         return executionId;
-    }
-
-    @Override
-    @JsonIgnore
-    public DSLContext dsl() {
-        return dsl;
-    }
-
-    public ExecutorEvent inTransaction(DSLContext dsl) {
-        this.dsl = Objects.requireNonNull(dsl, "dsl");
-        return this;
     }
 
     public void validate() {

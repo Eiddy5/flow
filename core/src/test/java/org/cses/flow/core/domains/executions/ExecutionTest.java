@@ -27,8 +27,8 @@ final class ExecutionTest {
 
         assertEquals("execution-stable-1", execution.id());
         assertEquals("execution-domain-company", execution.companyId());
-        assertEquals("execution-domain-flow", execution.flowId());
-        assertEquals(3L, execution.flowReversion());
+        assertEquals("execution-domain-flow", execution.flowKey());
+        assertEquals(3L, execution.flowVersion());
     }
 
     @Test

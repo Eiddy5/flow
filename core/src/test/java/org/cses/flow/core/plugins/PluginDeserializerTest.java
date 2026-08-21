@@ -45,7 +45,7 @@ class PluginDeserializerTest {
         assertEquals("pause-id", pause.id());
         assertEquals("prepare", pause.pause().key());
         Input<?> input = pause.resume().getFirst();
-        assertEquals("decision", input.getKey());
+        assertEquals("decision", input.key());
         assertEquals("Decision", input.getDisplayName());
     }
 
@@ -86,7 +86,7 @@ class PluginDeserializerTest {
         );
 
         input.validateDefinition();
-        assertEquals("retry-count", input.getKey());
+        assertEquals("retry-count", input.key());
         assertEquals("retry-count", input.getDisplayName());
         assertEquals(3, input.getDefaultValue());
     }

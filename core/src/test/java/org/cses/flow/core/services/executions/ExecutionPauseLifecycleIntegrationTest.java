@@ -42,8 +42,8 @@ class ExecutionPauseLifecycleIntegrationTest {
                 1,
                 fixture.executionService().executions(fixture.session()).size()
             );
-            assertEquals(flow.id(), started.flowId());
-            assertEquals(1L, started.flowReversion());
+            assertEquals(flow.key(), started.flowKey());
+            assertEquals(1L, started.flowVersion());
             assertEquals(State.Type.PAUSED, started.state().current());
 
             fixture.restartServer();
@@ -134,8 +134,8 @@ class ExecutionPauseLifecycleIntegrationTest {
                 Map.of("decision", "APPROVED")
             );
 
-            assertEquals(1L, firstCompleted.flowReversion());
-            assertEquals(2L, secondCompleted.flowReversion());
+            assertEquals(1L, firstCompleted.flowVersion());
+            assertEquals(2L, secondCompleted.flowVersion());
             assertEquals(State.Type.SUCCESS, firstCompleted.state().current());
             assertEquals(State.Type.SUCCESS, secondCompleted.state().current());
             assertNotEquals(first.id(), second.id());
@@ -231,7 +231,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 )
             );
 
@@ -257,7 +257,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    "missing-flow-id"
+                    "missing-flow-key"
                 )
             );
 
@@ -273,7 +273,7 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             Flow otherFlow = fixture.flowService().deploy(
                 otherCompany,
-                otherDraft.id()
+                otherDraft.flowKey()
             );
             assertThrows(
                 WorkflowException.class,
@@ -287,7 +287,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 draft.raw(),
                 fixture.flowService().draft(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 ).orElseThrow().raw()
             );
             Flow deletedFlow = fixture.flowService().flow(
@@ -424,7 +424,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 Map.of("decision", "APPROVED")
             );
 
-            assertEquals(1L, completed.flowReversion());
+            assertEquals(1L, completed.flowVersion());
             assertEquals(started.id(), completed.id());
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(2, completed.taskRuns().size());
@@ -438,7 +438,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 newStarted.id(),
                 Map.of("decision", "APPROVED")
             );
-            assertEquals(2L, newCompleted.flowReversion());
+            assertEquals(2L, newCompleted.flowVersion());
             assertEquals(State.Type.SUCCESS, newCompleted.state().current());
             assertEquals(3, newCompleted.taskRuns().size());
             assertTrue(fixture.pausedTaskRuns().isEmpty());

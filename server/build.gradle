@@ -52,7 +52,6 @@ dependencies {
 
     runtimeOnly(libs.logback.classic)
 
-    testImplementation(testFixtures(project(':core')))
     testImplementation(libs.micronaut.validation)
     testImplementation(libs.logback.classic)
     testRuntimeOnly(libs.junit.platform.launcher)

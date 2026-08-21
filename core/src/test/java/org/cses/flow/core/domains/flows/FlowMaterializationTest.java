@@ -87,8 +87,40 @@ class FlowMaterializationTest {
             flow.outputs()
         );
         Task parent = flow.tasks().getFirst();
+        assertEquals("release-flow", flow.key());
+        assertEquals("prepare", parent.key());
         assertEquals("DIRECT", parent.route().source());
         assertEquals("approval", parent.tasks().getFirst().key());
+    }
+
+    @Test
+    void generatesMissingFlowAndTaskKeysAndReusesFlowFallback() {
+        Flow first = deploy(
+            null,
+            Map.of(
+                "tasks", List.of(Map.of(
+                    "type", AutomaticTask.class.getName()
+                ))
+            ),
+            null
+        );
+
+        assertTrue(first.key() != null && !first.key().isBlank());
+        assertTrue(first.tasks().getFirst().key() != null);
+        assertTrue(!first.tasks().getFirst().key().isBlank());
+
+        Flow second = deploy(
+            "unused-fallback",
+            Map.of(
+                "tasks", List.of(Map.of(
+                    "type", AutomaticTask.class.getName()
+                ))
+            ),
+            first
+        );
+
+        assertEquals(first.key(), second.key());
+        assertEquals(2L, second.reversion());
     }
 
     @Test

@@ -39,6 +39,7 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
     public String raw;
     public Long lockVersion;
     public Boolean deleted;
+    public String flowKey;
 
     public FlowDraftsObject() {}
 
@@ -57,6 +58,7 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         this.raw = value.raw;
         this.lockVersion = value.lockVersion;
         this.deleted = value.deleted;
+        this.flowKey = value.flowKey;
     }
 
     public FlowDraftsObject(
@@ -73,7 +75,8 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         OffsetDateTime deletedAt,
         String raw,
         Long lockVersion,
-        Boolean deleted
+        Boolean deleted,
+        String flowKey
     ) {
         this.id = id;
         this.companyId = companyId;
@@ -89,6 +92,7 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         this.raw = raw;
         this.lockVersion = lockVersion;
         this.deleted = deleted;
+        this.flowKey = flowKey;
     }
 
     /**
@@ -287,6 +291,20 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         this.deleted = deleted;
     }
 
+    /**
+     * Getter for <code>public.flow_drafts.flow_key</code>.
+     */
+    public String getFlowKey() {
+        return this.flowKey;
+    }
+
+    /**
+     * Setter for <code>public.flow_drafts.flow_key</code>.
+     */
+    public void setFlowKey(String flowKey) {
+        this.flowKey = flowKey;
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -380,6 +398,12 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         }
         else if (!this.deleted.equals(other.deleted))
             return false;
+        if (this.flowKey == null) {
+            if (other.flowKey != null)
+                return false;
+        }
+        else if (!this.flowKey.equals(other.flowKey))
+            return false;
         return true;
     }
 
@@ -401,6 +425,7 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.raw == null) ? 0 : this.raw.hashCode());
         result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
         result = prime * result + ((this.deleted == null) ? 0 : this.deleted.hashCode());
+        result = prime * result + ((this.flowKey == null) ? 0 : this.flowKey.hashCode());
         return result;
     }
 
@@ -439,6 +464,7 @@ public class FlowDraftsObject extends JooqPojo implements Serializable {
         map.put("raw", raw);
         map.put("lock_version", lockVersion);
         map.put("deleted", deleted);
+        map.put("flow_key", flowKey);
         return map;
     }
 

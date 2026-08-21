@@ -32,8 +32,8 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
     public JsonObjects inputs;
     public JsonObjects outputs;
     public JsonObject properties;
-    public String flowId;
-    public Long flowReversion;
+    public String flowKey;
+    public Long flowVersion;
     public String parentId;
     public Integer order;
     public String key;
@@ -49,8 +49,8 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         this.inputs = value.inputs;
         this.outputs = value.outputs;
         this.properties = value.properties;
-        this.flowId = value.flowId;
-        this.flowReversion = value.flowReversion;
+        this.flowKey = value.flowKey;
+        this.flowVersion = value.flowVersion;
         this.parentId = value.parentId;
         this.order = value.order;
         this.key = value.key;
@@ -65,8 +65,8 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         JsonObjects inputs,
         JsonObjects outputs,
         JsonObject properties,
-        String flowId,
-        Long flowReversion,
+        String flowKey,
+        Long flowVersion,
         String parentId,
         Integer order,
         String key,
@@ -79,8 +79,8 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         this.inputs = inputs;
         this.outputs = outputs;
         this.properties = properties;
-        this.flowId = flowId;
-        this.flowReversion = flowReversion;
+        this.flowKey = flowKey;
+        this.flowVersion = flowVersion;
         this.parentId = parentId;
         this.order = order;
         this.key = key;
@@ -186,31 +186,31 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flow_tasks.flow_id</code>.
+     * Getter for <code>public.flow_tasks.flow_key</code>.
      */
-    public String getFlowId() {
-        return this.flowId;
+    public String getFlowKey() {
+        return this.flowKey;
     }
 
     /**
-     * Setter for <code>public.flow_tasks.flow_id</code>.
+     * Setter for <code>public.flow_tasks.flow_key</code>.
      */
-    public void setFlowId(String flowId) {
-        this.flowId = flowId;
+    public void setFlowKey(String flowKey) {
+        this.flowKey = flowKey;
     }
 
     /**
-     * Getter for <code>public.flow_tasks.flow_reversion</code>.
+     * Getter for <code>public.flow_tasks.flow_version</code>.
      */
-    public Long getFlowReversion() {
-        return this.flowReversion;
+    public Long getFlowVersion() {
+        return this.flowVersion;
     }
 
     /**
-     * Setter for <code>public.flow_tasks.flow_reversion</code>.
+     * Setter for <code>public.flow_tasks.flow_version</code>.
      */
-    public void setFlowReversion(Long flowReversion) {
-        this.flowReversion = flowReversion;
+    public void setFlowVersion(Long flowVersion) {
+        this.flowVersion = flowVersion;
     }
 
     /**
@@ -320,17 +320,17 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         }
         else if (!this.properties.equals(other.properties))
             return false;
-        if (this.flowId == null) {
-            if (other.flowId != null)
+        if (this.flowKey == null) {
+            if (other.flowKey != null)
                 return false;
         }
-        else if (!this.flowId.equals(other.flowId))
+        else if (!this.flowKey.equals(other.flowKey))
             return false;
-        if (this.flowReversion == null) {
-            if (other.flowReversion != null)
+        if (this.flowVersion == null) {
+            if (other.flowVersion != null)
                 return false;
         }
-        else if (!this.flowReversion.equals(other.flowReversion))
+        else if (!this.flowVersion.equals(other.flowVersion))
             return false;
         if (this.parentId == null) {
             if (other.parentId != null)
@@ -370,8 +370,8 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
         result = prime * result + ((this.properties == null) ? 0 : this.properties.hashCode());
-        result = prime * result + ((this.flowId == null) ? 0 : this.flowId.hashCode());
-        result = prime * result + ((this.flowReversion == null) ? 0 : this.flowReversion.hashCode());
+        result = prime * result + ((this.flowKey == null) ? 0 : this.flowKey.hashCode());
+        result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
         result = prime * result + ((this.parentId == null) ? 0 : this.parentId.hashCode());
         result = prime * result + ((this.order == null) ? 0 : this.order.hashCode());
         result = prime * result + ((this.key == null) ? 0 : this.key.hashCode());
@@ -387,9 +387,9 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
 
     public FlowTasksTable table() { return Tables.FLOW_TASKS; }
 
-    public String[] primaryKeyNames() { return new String[]{"company_id","flow_id","flow_reversion","id"};}
+    public String[] primaryKeyNames() { return new String[]{"company_id","flow_key","flow_version","id"};}
 
-    public Object[] primaryKeyValues() { return new Object[]{companyId,flowId,flowReversion,id};}
+    public Object[] primaryKeyValues() { return new Object[]{companyId,flowKey,flowVersion,id};}
 
 
 
@@ -407,8 +407,8 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         map.put("inputs", inputs == null ? null : inputs.toString());
         map.put("outputs", outputs == null ? null : outputs.toString());
         map.put("properties", properties == null ? null : properties.toString());
-        map.put("flow_id", flowId);
-        map.put("flow_reversion", flowReversion);
+        map.put("flow_key", flowKey);
+        map.put("flow_version", flowVersion);
         map.put("parent_id", parentId);
         map.put("order", order);
         map.put("key", key);

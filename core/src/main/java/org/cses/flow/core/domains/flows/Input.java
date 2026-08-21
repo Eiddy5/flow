@@ -1,6 +1,5 @@
 package org.cses.flow.core.domains.flows;
 
-import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -54,15 +53,6 @@ public abstract class Input<T> extends SerializableObject implements Data {
     private boolean required;
     private T defaultValue;
 
-    /**
-     * Keeps PAAS JSON strict even when its default Jackson mapper is lenient.
-     */
-    @JsonAnySetter
-    private void rejectUnknownField(String field, Object value) {
-        throw new IllegalArgumentException(
-            "Unsupported Input field: " + field
-        );
-    }
 
     /**
      * Completes validation after JSON no-args construction and setter binding.
@@ -74,6 +64,11 @@ public abstract class Input<T> extends SerializableObject implements Data {
             : requireText(displayName, "Input displayName");
         validateSubtypeDefinition();
         validateDefaultValue();
+    }
+
+
+    public String key(){
+        return key;
     }
 
     /**
@@ -89,7 +84,7 @@ public abstract class Input<T> extends SerializableObject implements Data {
     public final Object normalized(Object value) {
         T normalized = value == null
             ? null
-            : (T) getType().normalize(value);
+            : (T) type().normalize(value);
         valid(normalized);
         return normalized;
     }
@@ -133,28 +128,6 @@ public abstract class Input<T> extends SerializableObject implements Data {
             && Objects.equals(displayName, other.displayName)
             && Objects.equals(defaultValue, other.defaultValue)
             && specificEquals(other);
-    }
-
-    @Override
-    public final int hashCode() {
-        return Objects.hash(
-            getClass(),
-            key,
-            displayName,
-            required,
-            defaultValue,
-            specificHashCode()
-        );
-    }
-
-    @Override
-    public final String toString() {
-        return getClass().getSimpleName()
-            + "{key='" + key + '\''
-            + ", displayName='" + displayName + '\''
-            + ", required=" + required
-            + ", defaultValue=" + defaultValue
-            + '}';
     }
 
     private static String requireText(String value, String field) {

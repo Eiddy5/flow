@@ -1,6 +1,5 @@
 package org.cses.flow.controller.flow;
 
-import io.micronaut.http.HttpRequest;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.annotation.Body;
@@ -18,23 +17,23 @@ import org.cses.flow.controller.flow.FlowModels.ErrorView;
 import org.cses.flow.controller.flow.FlowModels.ExecutionView;
 import org.cses.flow.controller.flow.FlowModels.FlowView;
 import org.cses.flow.controller.flow.FlowModels.InputTypeView;
-import org.cses.flow.controller.flow.FlowModels.ResumeRequest;
-import org.cses.flow.controller.flow.FlowModels.SaveDraftRequest;
 import org.cses.flow.controller.flow.FlowModels.SessionView;
-import org.cses.flow.controller.flow.FlowModels.StartRequest;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.executor.commands.Create;
+import org.cses.flow.core.serializers.FlowDefinitionSerializer;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.services.executions.ExecutionService;
+import org.cses.flow.core.services.flows.commands.SaveFlowDraftCommand;
 import org.cses.flow.core.services.flows.FlowService;
+import org.cses.flow.executor.commands.Create;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.paas.session.bind.UserSession;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -47,279 +46,312 @@ public final class FlowController {
     private final FlowService flowService;
     private final ExecutionService executionService;
     private final YamlParser yamlParser;
+    private final FlowDefinitionSerializer flowDefinitionSerializer;
 
     @Inject
     public FlowController(
-        FlowService flowService,
-        ExecutionService executionService,
-        YamlParser yamlParser
+            FlowService flowService,
+            ExecutionService executionService,
+            YamlParser yamlParser,
+            FlowDefinitionSerializer flowDefinitionSerializer
     ) {
         this.flowService = flowService;
         this.executionService = executionService;
         this.yamlParser = yamlParser;
+        this.flowDefinitionSerializer = flowDefinitionSerializer;
     }
 
     @Get("/session")
     public SessionView session(
-        @UserSession Session<User> session
+            @UserSession Session<User> session
     ) {
         return SessionView.from(session);
     }
 
     @Get("/data-types")
     public List<InputTypeView> dataTypes(
-        @UserSession Session<User> session
+            @UserSession Session<User> session
     ) {
         return InputTypeView.catalog();
     }
 
     @Get("/flows")
     public List<DraftView> drafts(
-        @UserSession Session<User> session
+            @UserSession Session<User> session
     ) {
         return flowService.drafts(session).stream()
-            .map(draft -> draftView(session, draft))
-            .toList();
+                .map(draft -> draftView(session, draft))
+                .toList();
     }
 
     @Post("/flows")
-    public HttpResponse<DraftView> createDraft(
-        @UserSession Session<User> session,
-        @Body SaveDraftRequest request
+    public HttpResponse<DraftView> saveDraft(
+            @UserSession Session<User> session,
+            @Body SaveFlowDraftCommand command
     ) {
         FlowDraft draft = flowService.saveDraft(
-            session,
-            requireRequest(request).getRaw()
+                session,
+                requireCommand(command)
         );
-        return HttpResponse.created(DraftView.from(draft, null));
+        return HttpResponse.ok(draftView(session, draft));
     }
 
     @Post("/flows/preview")
     public DefinitionView preview(
-        @UserSession Session<User> session,
-        @Body SaveDraftRequest request
+            @UserSession Session<User> session,
+            @Body SaveFlowDraftCommand command
     ) {
         return new DefinitionView(
-            yamlParser.parse(requireRequest(request).getRaw())
+                yamlParser.parse(requireCommand(command).raw())
         );
     }
 
-    @Get("/flows/{flowId}")
+    @Get("/flows/{flowKey}")
     public DraftView draft(
-        @UserSession Session<User> session,
-        String flowId
+            @UserSession Session<User> session,
+            String flowKey
     ) {
-        return draftView(session, requireDraft(session, flowId));
+        return draftView(session, requireDraft(session, flowKey));
     }
 
-    @Put("/flows/{flowId}")
-    public DraftView updateDraft(
-        @UserSession Session<User> session,
-        String flowId,
-        @Body SaveDraftRequest request
+    @Put("/flows/{flowKey}")
+    public DraftView saveDraft(
+            @UserSession Session<User> session,
+            String flowKey,
+            @Body SaveFlowDraftCommand command
     ) {
-        SaveDraftRequest checked = requireRequest(request);
-        FlowDraft draft;
-        if (checked.getExpectedLockVersion() == null) {
-            draft = flowService.saveDraft(
+        SaveFlowDraftCommand checked = requireCommand(command);
+        FlowDraft draft = flowService.saveDraft(
                 session,
-                flowId,
-                checked.getRaw()
-            );
-        } else {
-            draft = flowService.saveDraft(
-                session,
-                flowId,
-                checked.getExpectedLockVersion(),
-                checked.getRaw()
-            );
-        }
+                SaveFlowDraftCommand.from(
+                        flowKey,
+                        checked.expectedLockVersion(),
+                        checked.raw()
+                )
+        );
         return draftView(session, draft);
     }
 
-    @Post("/flows/{flowId}/deploy")
+    @Post("/flows/{flowKey}/deploy")
     public DraftView deploy(
-        @UserSession Session<User> session,
-        String flowId
+            @UserSession Session<User> session,
+            String flowKey
     ) {
-        Flow deployed = flowService.deploy(session, flowId);
+        Flow deployed = flowService.deploy(session, flowKey);
         return DraftView.from(
-            requireDraft(session, flowId),
-            deployed
+                requireDraft(session, flowKey),
+                deployed
         );
     }
 
     @Get("/flows/{flowKey}/reversions/{reversion}")
     public FlowView flowReversion(
-        @UserSession Session<User> session,
-        String flowKey,
-        long reversion
+            @UserSession Session<User> session,
+            String flowKey,
+            long reversion
     ) {
         Flow flow = flowService.flow(
-            session,
-            flowKey,
-            reversion
+                session,
+                flowKey,
+                reversion
         ).orElseThrow(() -> notFound(
-            "Flow reversion does not exist: "
-                + flowKey + "@" + reversion
+                "Flow reversion does not exist: "
+                        + flowKey + "@" + reversion
         ));
         return FlowView.from(flow);
     }
 
-    @Delete("/flows/{flowId}/draft")
-    public HttpResponse<?> deleteDraft(
-        @UserSession Session<User> session,
-        String flowId
+    @Get("/flows/{flowKey}/reversions/{reversion}/definition")
+    public DefinitionView flowDefinition(
+            @UserSession Session<User> session,
+            String flowKey,
+            long reversion
     ) {
-        flowService.deleteDraft(session, flowId);
+        Flow flow = flowService.flow(
+                session,
+                flowKey,
+                reversion
+        ).orElseThrow(() -> notFound(
+                "Flow reversion does not exist: "
+                        + flowKey + "@" + reversion
+        ));
+        return new DefinitionView(
+                flowDefinitionSerializer.definition(flow)
+        );
+    }
+
+    @Delete("/flows/{flowKey}/draft")
+    public HttpResponse<?> deleteDraft(
+            @UserSession Session<User> session,
+            String flowKey
+    ) {
+        flowService.deleteDraft(session, flowKey);
         return HttpResponse.noContent();
     }
 
-    @Delete("/flows/{flowId}")
+    @Delete("/flows/{flowKey}")
     public HttpResponse<?> deleteFlow(
-        @UserSession Session<User> session,
-        String flowId
+            @UserSession Session<User> session,
+            String flowKey
     ) {
-        if (flowService.latestFlow(session, flowId).isPresent()) {
-            flowService.delete(session, flowId);
+        if (flowService.latestFlow(session, flowKey).isPresent()) {
+            flowService.delete(session, flowKey);
         } else {
-            flowService.deleteDraft(session, flowId);
+            flowService.deleteDraft(session, flowKey);
         }
         return HttpResponse.noContent();
     }
 
     @Post("/flows/{flowKey}/executions")
     public HttpResponse<Create> start(
-        @UserSession Session<User> session,
-        String flowKey,
-        @Body StartRequest request
+            @UserSession Session<User> session,
+            String flowKey,
+            @Body Map<String, Object> body
     ) {
-        Map<String, ?> inputs = request == null || request.getInputs() == null
-            ? Map.of()
-            : request.getInputs();
+        Map<String, ?> inputs = bodyMap(body, "inputs");
         Create command = executionService.create(
-            session,
-            flowKey,
-            inputs
+                session,
+                flowKey,
+                inputs
         );
         return HttpResponse.<Create>accepted().body(command);
     }
 
     @Get("/executions")
     public List<ExecutionView> executions(
-        @UserSession Session<User> session
+            @UserSession Session<User> session
     ) {
         return executionService.executions(session).stream()
-            .sorted(
-                Comparator.comparingLong(
-                    FlowController::createdAt
-                ).reversed()
-            )
-            .map(ExecutionView::from)
-            .toList();
+                .sorted(
+                        Comparator.comparingLong(
+                                FlowController::createdAt
+                        ).reversed()
+                )
+                .map(ExecutionView::from)
+                .toList();
     }
 
     @Get("/executions/{executionId}")
     public ExecutionView execution(
-        @UserSession Session<User> session,
-        String executionId
+            @UserSession Session<User> session,
+            String executionId
     ) {
         return ExecutionView.from(
-            requireExecution(session, executionId)
+                requireExecution(session, executionId)
         );
     }
 
     @Post("/executions/{executionId}/cancel")
     public ExecutionView cancel(
-        @UserSession Session<User> session,
-        String executionId
+            @UserSession Session<User> session,
+            String executionId
     ) {
         return ExecutionView.from(
-            executionService.cancel(session, executionId)
+                executionService.cancel(session, executionId)
         );
     }
 
     @Post(
-        "/executions/{executionId}"
-            + "/task-runs/{taskRunId}/resume"
+            "/executions/{executionId}"
+                    + "/task-runs/{taskRunId}/resume"
     )
     public ExecutionView resume(
-        @UserSession Session<User> session,
-        String executionId,
-        String taskRunId,
-        @Body ResumeRequest request
+            @UserSession Session<User> session,
+            String executionId,
+            String taskRunId,
+            @Body Map<String, Object> body
     ) {
-        Map<String, Object> outputs =
-            request == null || request.getOutputs() == null
-                ? Map.of()
-                : request.getOutputs();
+        Map<String, ?> outputs = bodyMap(body, "outputs");
         return ExecutionView.from(executionService.resume(
-            session,
-            executionId,
-            taskRunId,
-            outputs
+                session,
+                executionId,
+                taskRunId,
+                outputs
         ));
     }
 
     @Error(exception = WorkflowException.class)
     public HttpResponse<ErrorView> workflowError(
-        HttpRequest<?> request,
-        WorkflowException exception
+            WorkflowException exception
     ) {
         return HttpResponse.status(HttpStatus.CONFLICT)
-            .body(new ErrorView(exception.getMessage()));
+                .body(new ErrorView(exception.getMessage()));
     }
 
     @Error(exception = IllegalArgumentException.class)
-    public HttpResponse<ErrorView> invalidRequest(
-        HttpRequest<?> request,
-        IllegalArgumentException exception
+    public HttpResponse<ErrorView> invalidArgument(
+            IllegalArgumentException exception
     ) {
         return HttpResponse.badRequest(
-            new ErrorView(exception.getMessage())
+                new ErrorView(exception.getMessage())
         );
     }
 
     private DraftView draftView(
-        Session<User> session,
-        FlowDraft draft
+            Session<User> session,
+            FlowDraft draft
     ) {
         Flow deployed = flowService.latestFlow(
-            session,
-            draft.id()
+                session,
+                draft.flowKey()
         ).orElse(null);
         return DraftView.from(draft, deployed);
     }
 
     private FlowDraft requireDraft(
-        Session<User> session,
-        String flowId
+            Session<User> session,
+            String flowKey
     ) {
-        return flowService.draft(session, flowId)
-            .orElseThrow(() -> notFound(
-                "Flow draft does not exist: " + flowId
-            ));
+        return flowService.draft(session, flowKey)
+                .orElseThrow(() -> notFound(
+                        "Flow draft does not exist: " + flowKey
+                ));
     }
 
     private Execution requireExecution(
-        Session<User> session,
-        String executionId
+            Session<User> session,
+            String executionId
     ) {
         return executionService.execution(session, executionId)
-            .orElseThrow(() -> notFound(
-                "Execution does not exist: " + executionId
-            ));
+                .orElseThrow(() -> notFound(
+                        "Execution does not exist: " + executionId
+                ));
     }
 
-    private static SaveDraftRequest requireRequest(
-        SaveDraftRequest request
+    private static SaveFlowDraftCommand requireCommand(
+            SaveFlowDraftCommand command
     ) {
-        if (request == null) {
+        if (command == null) {
             throw new IllegalArgumentException(
-                "Request body must not be empty"
+                    "Command body must not be empty"
             );
         }
-        return request;
+        return command;
+    }
+
+    private static Map<String, ?> bodyMap(
+            Map<String, Object> body,
+            String field
+    ) {
+        if (body == null || body.get(field) == null) {
+            return Map.of();
+        }
+        Object value = body.get(field);
+        if (!(value instanceof Map<?, ?> values)) {
+            throw new IllegalArgumentException(
+                    "Command field must be an object: " + field
+            );
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : values.entrySet()) {
+            if (!(entry.getKey() instanceof String key)) {
+                throw new IllegalArgumentException(
+                        "Command field keys must be strings: " + field
+                );
+            }
+            result.put(key, entry.getValue());
+        }
+        return result;
     }
 
     private static long createdAt(Execution execution) {

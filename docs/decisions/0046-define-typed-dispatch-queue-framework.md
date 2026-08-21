@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（Event 事务字段与同步发布事务来源条款由 ADR 0066 修订）
 
 ## 背景
 

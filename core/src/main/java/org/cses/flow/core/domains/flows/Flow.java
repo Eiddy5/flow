@@ -6,6 +6,7 @@ import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.utils.AssertUtil;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -100,27 +101,27 @@ public final class Flow implements Deletable<Flow> {
      * Creates one complete Flow reversion from already-bound definitions.
      */
     public static Flow deploy(
-        String companyId,
-        String flowKey,
-        String description,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        Flow latest,
-        ActorRef actor,
-        long deployedAt
+            String companyId,
+            String flowKey,
+            String description,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            Flow latest,
+            ActorRef actor,
+            long deployedAt
     ) {
         return deploy(
-            companyId,
-            flowKey,
-            description,
-            Map.of(),
-            inputs,
-            outputs,
-            tasks,
-            latest,
-            actor,
-            deployedAt
+                companyId,
+                flowKey,
+                description,
+                Map.of(),
+                inputs,
+                outputs,
+                tasks,
+                latest,
+                actor,
+                deployedAt
         );
     }
 
@@ -128,16 +129,16 @@ public final class Flow implements Deletable<Flow> {
      * Creates one complete Flow reversion with Flow-level variables.
      */
     public static Flow deploy(
-        String companyId,
-        String flowKey,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        Flow latest,
-        ActorRef actor,
-        long deployedAt
+            String companyId,
+            String flowKey,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            Flow latest,
+            ActorRef actor,
+            long deployedAt
     ) {
         Objects.requireNonNull(actor, "Flow creator");
         String normalizedCompanyId = requireText(companyId, "Company id");
@@ -148,18 +149,18 @@ public final class Flow implements Deletable<Flow> {
         if (latest != null) {
             if (!normalizedCompanyId.equals(latest.companyId)) {
                 throw new IllegalArgumentException(
-                    "Latest Flow belongs to another logical Flow"
+                        "Latest Flow belongs to another logical Flow"
                 );
             }
             if (latest.deleted) {
                 throw new WorkflowException(
-                    "Deleted Flow cannot be deployed: " + normalizedFlowKey
+                        "Deleted Flow cannot be deployed: " + normalizedFlowKey
                 );
             }
             if (!latest.key.equals(normalizedFlowKey)) {
                 throw new WorkflowException(
-                    "Flow key cannot change across reversion: "
-                        + latest.key + " -> " + normalizedFlowKey
+                        "Flow key cannot change across reversion: "
+                                + latest.key + " -> " + normalizedFlowKey
                 );
             }
             requireStableTaskIds(latest, boundTasks);
@@ -190,39 +191,39 @@ public final class Flow implements Deletable<Flow> {
      * Rehydrates a complete Flow from trusted persistence state.
      */
     public static Flow rehydrate(
-        String id,
-        String companyId,
-        String key,
-        long reversion,
-        String description,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        boolean deleted,
-        ActorRef creator,
-        ActorRef updater,
-        ActorRef deleter,
-        long createdAt,
-        long updatedAt,
-        Long deletedAt
+            String id,
+            String companyId,
+            String key,
+            long reversion,
+            String description,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            boolean deleted,
+            ActorRef creator,
+            ActorRef updater,
+            ActorRef deleter,
+            long createdAt,
+            long updatedAt,
+            Long deletedAt
     ) {
         return rehydrate(
-            id,
-            companyId,
-            key,
-            reversion,
-            description,
-            Map.of(),
-            inputs,
-            outputs,
-            tasks,
-            deleted,
-            creator,
-            updater,
-            deleter,
-            createdAt,
-            updatedAt,
-            deletedAt
+                id,
+                companyId,
+                key,
+                reversion,
+                description,
+                Map.of(),
+                inputs,
+                outputs,
+                tasks,
+                deleted,
+                creator,
+                updater,
+                deleter,
+                createdAt,
+                updatedAt,
+                deletedAt
         );
     }
 
@@ -230,22 +231,22 @@ public final class Flow implements Deletable<Flow> {
      * Rehydrates a complete Flow with persisted Flow-level variables.
      */
     public static Flow rehydrate(
-        String id,
-        String companyId,
-        String key,
-        long reversion,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        boolean deleted,
-        ActorRef creator,
-        ActorRef updater,
-        ActorRef deleter,
-        long createdAt,
-        long updatedAt,
-        Long deletedAt
+            String id,
+            String companyId,
+            String key,
+            long reversion,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            boolean deleted,
+            ActorRef creator,
+            ActorRef updater,
+            ActorRef deleter,
+            long createdAt,
+            long updatedAt,
+            Long deletedAt
     ) {
         return new Flow(
                 id,
@@ -269,8 +270,8 @@ public final class Flow implements Deletable<Flow> {
 
     @Override
     public Flow delete(
-        Session<? extends User> session,
-        long deletionTime
+            Session<? extends User> session,
+            long deletionTime
     ) {
         requireSessionCompany(session);
         return delete(ActorRef.from(session), deletionTime);
@@ -290,8 +291,8 @@ public final class Flow implements Deletable<Flow> {
 
     @Override
     public Flow updateAudit(
-        Session<? extends User> session,
-        long updateTime
+            Session<? extends User> session,
+            long updateTime
     ) {
         requireSessionCompany(session);
         return updateAudit(ActorRef.from(session), updateTime);
@@ -300,16 +301,14 @@ public final class Flow implements Deletable<Flow> {
     public Flow updateAudit(ActorRef updatedBy, long updateTime) {
         if (deleted) {
             throw new WorkflowException(
-                "Deleted Flow cannot be changed: " + id
+                    "Deleted Flow cannot be changed: " + id
             );
         }
         if (updateTime < updatedAt) {
             throw new IllegalArgumentException(
-                "Flow update time must not move backwards"
+                    "Flow update time must not move backwards"
             );
         }
-        updater = Objects.requireNonNull(updatedBy, "Flow updater");
-        updatedAt = updateTime;
         return this;
     }
 
@@ -414,28 +413,28 @@ public final class Flow implements Deletable<Flow> {
      */
     public Map<String, Object> normalizeInputs(Map<String, ?> actualInputs) {
         Map<String, ?> accepted = actualInputs == null
-            ? Map.of()
-            : actualInputs;
+                ? Map.of()
+                : actualInputs;
         Set<String> declared = inputs.stream()
-            .map(Input::getKey)
-            .collect(Collectors.toCollection(LinkedHashSet::new));
+                .map(Input::key)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         Set<String> unsupported = new LinkedHashSet<>(accepted.keySet());
         unsupported.removeAll(declared);
         if (!unsupported.isEmpty()) {
             throw new WorkflowException(
-                "Flow inputs were not declared: " + unsupported
+                    "Flow inputs were not declared: " + unsupported
             );
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Input<?> input : inputs) {
-            boolean provided = accepted.containsKey(input.getKey());
+            boolean provided = accepted.containsKey(input.key());
             Object value = provided
-                ? accepted.get(input.getKey())
-                : input.getDefaultValue();
+                    ? accepted.get(input.key())
+                    : input.getDefaultValue();
             try {
                 Object result = input.normalized(value);
                 if (result != null) {
-                    normalized.put(input.getKey(), result);
+                    normalized.put(input.key(), result);
                 }
             } catch (IllegalArgumentException exception) {
                 throw new WorkflowException(exception.getMessage());
@@ -615,10 +614,10 @@ public final class Flow implements Deletable<Flow> {
                     Data routeData = (parallelInput
                             ? parent.inputs().stream()
                             : parent.outputs().stream())
-                            .filter(data -> data.getKey().equals(outputKey))
+                            .filter(data -> data.key().equals(outputKey))
                             .findFirst()
                             .orElseThrow();
-                    if (!task.route().supports(routeData.getType())) {
+                    if (!task.route().supports(routeData.type())) {
                         throw new WorkflowException(
                                 "Task route is incompatible with parent context "
                                         + outputKey + ": " + taskKey
@@ -627,16 +626,16 @@ public final class Flow implements Deletable<Flow> {
                 });
                 task.route().referencedInputKey().ifPresent(inputKey -> {
                     Input<?> flowInput = flowInputs.stream()
-                        .filter(input -> input.getKey().equals(inputKey))
-                        .findFirst()
-                        .orElseThrow(() -> new WorkflowException(
-                            "Task route references undeclared Flow input "
-                                + inputKey + ": " + taskKey
-                        ));
-                    if (!task.route().supports(flowInput.getType())) {
+                            .filter(input -> input.key().equals(inputKey))
+                            .findFirst()
+                            .orElseThrow(() -> new WorkflowException(
+                                    "Task route references undeclared Flow input "
+                                            + inputKey + ": " + taskKey
+                            ));
+                    if (!task.route().supports(flowInput.type())) {
                         throw new WorkflowException(
-                            "Task route is incompatible with Flow input "
-                                + inputKey + ": " + taskKey
+                                "Task route is incompatible with Flow input "
+                                        + inputKey + ": " + taskKey
                         );
                     }
                 });
@@ -650,12 +649,12 @@ public final class Flow implements Deletable<Flow> {
                 }
             });
             validateTasks(
-                task.definitionChildren(),
-                keys,
-                ids,
-                task,
-                flowInputs,
-                flowVariables
+                    task.definitionChildren(),
+                    keys,
+                    ids,
+                    task,
+                    flowInputs,
+                    flowVariables
             );
         }
     }
@@ -732,9 +731,9 @@ public final class Flow implements Deletable<Flow> {
                         field + " must not contain null values"
                 );
             }
-            if (!keys.add(data.getKey())) {
+            if (!keys.add(data.key())) {
                 throw new IllegalArgumentException(
-                        field + " contains duplicate key: " + data.getKey()
+                        field + " contains duplicate key: " + data.key()
                 );
             }
             result.add(data);
@@ -766,12 +765,12 @@ public final class Flow implements Deletable<Flow> {
     private void requireSessionCompany(Session<? extends User> session) {
         Objects.requireNonNull(session, "Session");
         String sessionCompanyId = requireText(
-            session.getCompanyId(),
-            "Session company id"
+                session.getCompanyId(),
+                "Session company id"
         );
         if (!companyId.equals(sessionCompanyId)) {
             throw new WorkflowException(
-                "Session company cannot change Flow " + id
+                    "Session company cannot change Flow " + id
             );
         }
     }

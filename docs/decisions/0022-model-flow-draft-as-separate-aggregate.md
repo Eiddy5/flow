@@ -4,6 +4,10 @@
 
 Accepted
 
+本 ADR 关于 FlowDraft 业务身份、`key` 字段和与 Flow 共享 `id` 的旧表述，已由
+ADR 0062、ADR 0063 和 ADR 0064 修订；本 ADR 当前只保留 FlowDraft 独立聚合及
+`deleted` 生命周期的决策。
+
 ## 背景
 
 ADR 0008 和 ADR 0014 已经把未解析、可编辑的 Flow 来源与完整、不可变的 Flow
@@ -43,17 +47,20 @@ Repository 边界表达角色，只有会真实变化的 `deleted` 进入两个�
 
 - `FlowDraft` 取代旧名称 `FlowWithSource`，是 Flow 定义域内的独立聚合根，不建立新的
   顶级限界上下文。
-- `FlowDraft` 只保存稳定 `id`、`companyId`、原始 `raw`、删除事实、审计事实和
-  技术 `lockVersion`。
-- `FlowDraft` 不拥有 `draft`、`reversion`、`key`、description、inputs、
+- `FlowDraft` 保存数据库行标记 `id`、`company`、创建时确定且不可变的业务
+  `flowKey`、原始 `raw`、删除事实、审计事实和技术 `lockVersion`。
+- `FlowDraft` 不拥有 `draft`、`reversion`、description、inputs、
   outputs 或 tasks。
 - `Flow` 继续表示一次完整、已解析、已校验的部署 Reversion，不拥有 `draft`
   字段。
-- `FlowDraft` 与 `Flow` 共享逻辑 `id`，但没有继承关系，也不在部署时相互转换。
+- `FlowDraft` 与 `Flow` 不共享业务身份，也没有继承关系或对象转换；Draft 通过
+  `(companyId, flowKey)` 绑定要发布的 Flow，发布后的 Flow 拥有独立的技术行
+  `id` 和版本。
 
 ### 生命周期
 
-- `FlowDraft.create` 创建 `deleted=false` 的唯一可编辑草稿。
+- `FlowDraft.create` 创建 `deleted=false` 的唯一可编辑草稿；同一公司的同一
+  `flowKey` 由数据库唯一约束保证只能存在一行，软删除不会释放该 key。
 - `FlowDraft.revise` 只修改原始 YAML、更新审计并递增 `lockVersion`。
 - `FlowDraft.delete` 把 `deleted` 从 false 单向改为 true，记录删除审计并递增
   `lockVersion`。
@@ -64,10 +71,10 @@ Repository 边界表达角色，只有会真实变化的 `deleted` 进入两个�
 
 ### 查询与运行
 
-- FlowDraft 查询只通过 `FlowDraftRepository` 和 `flow_drafts` 表完成，活动草稿
-  只要求 `deleted=false`。
-- 当前 Flow 仍先选择同一 `id` 下最大 `reversion`，再要求 `deleted=false`；
-  不允许删除后回退到旧 Reversion。
+- FlowDraft 查询只通过 `companyId + flowKey` 选择未删除草稿；按数据库行标记
+  `id` 的方法仅供持久化适配器内部使用。
+- 当前 Flow 按同一 `(companyId, flowKey)` 下最大 `reversion` 选择，再要求
+  `deleted=false`；不允许删除后回退到旧 Reversion。
 - 已启动 Execution 继续按 `flowId + flowReversion` 精确读取定义，即使该
   Reversion 后来被删除。
 - 如果某个外部协议需要统一的 `draft` 展示字段，只能由 DTO 根据对象类型派生，
@@ -79,7 +86,8 @@ Repository 边界表达角色，只有会真实变化的 `deleted` 进入两个�
 erDiagram
     FLOW_DRAFTS {
         varchar company_id PK
-        varchar id PK
+        varchar id "technical row id"
+        varchar flow_key UK
         text raw
         boolean deleted
         bigint lock_version
@@ -108,7 +116,7 @@ erDiagram
         bigint flow_reversion
     }
 
-    FLOW_DRAFTS o|..o{ FLOWS : "同一逻辑 id 部署"
+    FLOW_DRAFTS o|..o{ FLOWS : "company_id + flow_key 部署"
     FLOWS ||--o{ FLOW_TASKS : "拥有定义快照"
     FLOWS ||--o{ EXECUTIONS : "按 id + reversion 绑定"
 ```
@@ -134,8 +142,8 @@ CHECK 约束。活动草稿索引只以 `deleted=false` 为条件。
 - PostgreSQL 追加迁移删除两个 `draft` 列，重建删除审计约束和活动草稿索引，并
   重新生成 JOOQ。
 - ADR 0018 中关于 `draft` 布尔事实的决策被本 ADR 取代；其删除语义继续有效。
-- 用户可观察的草稿创建、查询、修改、部署、删除、多租户和版本行为不变，因此
-  UC-01 与 UC-02 不需要新增用户场景。
+- 用户可观察的草稿创建、查询、修改、部署、删除、多租户和版本行为仍由现行
+  `companyId + flowKey` 业务身份决定；唯一性和 key 必填规则以 ADR 0064 为准。
 
 ## 取代关系
 

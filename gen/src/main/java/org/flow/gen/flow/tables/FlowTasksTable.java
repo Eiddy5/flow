@@ -91,14 +91,14 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
     public final TableField<FlowTasksRecord, JSONB> PROPERTIES = createField(DSL.name("properties"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
 
     /**
-     * The column <code>public.flow_tasks.flow_id</code>.
+     * The column <code>public.flow_tasks.flow_key</code>.
      */
-    public final TableField<FlowTasksRecord, String> FLOW_ID = createField(DSL.name("flow_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+    public final TableField<FlowTasksRecord, String> FLOW_KEY = createField(DSL.name("flow_key"), SQLDataType.VARCHAR(128).nullable(false), this, "");
 
     /**
-     * The column <code>public.flow_tasks.flow_reversion</code>.
+     * The column <code>public.flow_tasks.flow_version</code>.
      */
-    public final TableField<FlowTasksRecord, Long> FLOW_REVERSION = createField(DSL.name("flow_reversion"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<FlowTasksRecord, Long> FLOW_VERSION = createField(DSL.name("flow_version"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
      * The column <code>public.flow_tasks.parent_id</code>.
@@ -179,9 +179,9 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
             Internal.createCheck(this, DSL.name("ck_flow_tasks_outputs"), "((jsonb_typeof(outputs) = 'array'::text))", true),
             Internal.createCheck(this, DSL.name("ck_flow_tasks_parent"), "(((parent_id IS NULL) OR ((parent_id)::text <> (id)::text)))", true),
             Internal.createCheck(this, DSL.name("ck_flow_tasks_properties"), "((jsonb_typeof(properties) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_reversion"), "((flow_reversion > 0))", true),
             Internal.createCheck(this, DSL.name("ck_flow_tasks_route"), "((length(btrim(route)) > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_type"), "(((type <> ''::text) AND (type = btrim(type))))", true)
+            Internal.createCheck(this, DSL.name("ck_flow_tasks_type"), "(((type <> ''::text) AND (type = btrim(type))))", true),
+            Internal.createCheck(this, DSL.name("ck_flow_tasks_version"), "((flow_version > 0))", true)
         );
     }
 

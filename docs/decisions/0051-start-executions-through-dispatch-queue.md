@@ -4,6 +4,9 @@
 
 Accepted
 
+本 ADR 中 `Create.dsl()` 的兼容描述由 ADR 0066 修订；Create 现在不再声明事务方法，
+普通发布直接使用 Queue 自有事务。
+
 本 ADR 的外部 Command 受理边界继续有效；内部运行提交循环和状态交接已由
 [ADR 0059](0059-route-executor-state-handoffs-through-executor-event-queue.md) 修订为
 `ExecutorEvent` Queue 与 `handlers.ExecutorEventHandler`。

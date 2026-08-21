@@ -14,8 +14,8 @@ public final class Execution implements Lockable<Execution> {
 
     private final String id;
     private final String companyId;
-    private final String flowId;
-    private final long flowReversion;
+    private final String flowKey;
+    private final long flowVersion;
     private final List<TaskRun> taskRuns;
     private final boolean persisted;
     private State state;
@@ -24,20 +24,20 @@ public final class Execution implements Lockable<Execution> {
     private Map<String, Object> inputs;
 
     private Execution(
-        String id,
-        String companyId,
-        String flowId,
-        long flowReversion,
-        Map<String, ?> inputs,
-        boolean persisted
+            String id,
+            String companyId,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs,
+            boolean persisted
     ) {
         this.id = requireText(id, "Execution id");
         this.companyId = requireText(companyId, "Company id");
-        this.flowId = requireText(flowId, "Flow id");
-        if (flowReversion < 1) {
-            throw new IllegalArgumentException("Flow reversion must be positive");
+        this.flowKey = requireText(flowKey, "Flow key");
+        if (flowVersion < 1) {
+            throw new IllegalArgumentException("Flow version must be positive");
         }
-        this.flowReversion = flowReversion;
+        this.flowVersion = flowVersion;
         this.taskRuns = new ArrayList<>();
         this.inputs = immutableMap(inputs);
         this.state = State.created();
@@ -45,18 +45,18 @@ public final class Execution implements Lockable<Execution> {
     }
 
     public static Execution create(
-        String companyId,
-        String flowId,
-        long flowReversion,
-        Map<String, ?> inputs
+            String companyId,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs
     ) {
         return new Execution(
-            StringUtil.newId(),
-            companyId,
-            flowId,
-            flowReversion,
-            inputs,
-            false
+                StringUtil.newId(),
+                companyId,
+                flowKey,
+                flowVersion,
+                inputs,
+                false
         );
     }
 
@@ -64,19 +64,19 @@ public final class Execution implements Lockable<Execution> {
      * Creates a new Execution with a caller-owned stable technical id.
      */
     public static Execution create(
-        String id,
-        String companyId,
-        String flowId,
-        long flowReversion,
-        Map<String, ?> inputs
+            String id,
+            String companyId,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs
     ) {
         return new Execution(
-            id,
-            companyId,
-            flowId,
-            flowReversion,
-            inputs,
-            false
+                id,
+                companyId,
+                flowKey,
+                flowVersion,
+                inputs,
+                false
         );
     }
 
@@ -84,25 +84,25 @@ public final class Execution implements Lockable<Execution> {
      * Rehydrates a complete aggregate from a trusted persistence adapter.
      */
     public static Execution rehydrate(
-        String id,
-        String companyId,
-        String flowId,
-        long flowReversion,
-        Map<String, ?> inputs,
-        State state,
-        long lockVersion,
-        List<TaskRun> taskRuns
+            String id,
+            String companyId,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs,
+            State state,
+            long lockVersion,
+            List<TaskRun> taskRuns
     ) {
         if (lockVersion < 0) {
             throw new IllegalArgumentException("Execution lock version must not be negative");
         }
         Execution execution = new Execution(
-            id,
-            companyId,
-            flowId,
-            flowReversion,
-            inputs,
-            true
+                id,
+                companyId,
+                flowKey,
+                flowVersion,
+                inputs,
+                true
         );
         execution.state = Objects.requireNonNull(state, "Execution state");
         execution.lockVersion = lockVersion;
@@ -116,8 +116,8 @@ public final class Execution implements Lockable<Execution> {
     private Execution(Execution source) {
         this.id = source.id;
         this.companyId = source.companyId;
-        this.flowId = source.flowId;
-        this.flowReversion = source.flowReversion;
+        this.flowKey = source.flowKey;
+        this.flowVersion = source.flowVersion;
         this.taskRuns = source.taskRuns.stream().map(TaskRun::copy).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
         this.inputs = source.inputs;
         this.state = source.state;
@@ -139,24 +139,16 @@ public final class Execution implements Lockable<Execution> {
         return companyId;
     }
 
-    public String flowId() {
-        return flowId;
+    public String flowKey() {
+        return flowKey;
     }
 
-    public long flowReversion() {
-        return flowReversion;
-    }
-
-    /**
-     * Business-facing alias for the exact Flow version bound to this
-     * Execution. The persisted flow id remains the technical revision id.
-     */
     public long flowVersion() {
-        return flowReversion;
+        return flowVersion;
     }
 
     /**
-     * Returns the normalized values supplied for the exact Flow Reversion.
+     * Returns the normalized values supplied for the exact Flow version.
      */
     public Map<String, Object> inputs() {
         return inputs;
@@ -184,8 +176,8 @@ public final class Execution implements Lockable<Execution> {
     public Optional<TaskRun> findTaskRun(String taskRunId) {
         String normalizedId = requireText(taskRunId, "TaskRun id");
         return taskRuns.stream()
-            .filter(taskRun -> taskRun.identifiedBy(normalizedId))
-            .findFirst();
+                .filter(taskRun -> taskRun.identifiedBy(normalizedId))
+                .findFirst();
     }
 
     public List<TaskRun> taskRunsForTask(String taskId) {
@@ -244,7 +236,7 @@ public final class Execution implements Lockable<Execution> {
         Map<String, Object> normalized = immutableMap(confirmedInputs);
         if (!inputs.isEmpty() && !inputs.equals(normalized)) {
             throw new WorkflowException(
-                "Execution inputs cannot be replaced: " + id
+                    "Execution inputs cannot be replaced: " + id
             );
         }
         if (inputs.equals(normalized)) {
@@ -592,11 +584,11 @@ public final class Execution implements Lockable<Execution> {
         }
         Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> copy.put(
-            requireText(key, "Execution input key"),
-            immutableValue(Objects.requireNonNull(
-                value,
-                "Execution input value"
-            ))
+                requireText(key, "Execution input key"),
+                immutableValue(Objects.requireNonNull(
+                        value,
+                        "Execution input value"
+                ))
         ));
         return Collections.unmodifiableMap(copy);
     }
@@ -605,21 +597,21 @@ public final class Execution implements Lockable<Execution> {
         if (value instanceof Map<?, ?> map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             map.forEach((key, nested) -> copy.put(
-                requireText(String.valueOf(key), "Execution input key"),
-                immutableValue(Objects.requireNonNull(
-                    nested,
-                    "Execution input value"
-                ))
+                    requireText(String.valueOf(key), "Execution input key"),
+                    immutableValue(Objects.requireNonNull(
+                            nested,
+                            "Execution input value"
+                    ))
             ));
             return Collections.unmodifiableMap(copy);
         }
         if (value instanceof List<?> list) {
             return list.stream()
-                .map(item -> immutableValue(Objects.requireNonNull(
-                    item,
-                    "Execution input value"
-                )))
-                .toList();
+                    .map(item -> immutableValue(Objects.requireNonNull(
+                            item,
+                            "Execution input value"
+                    )))
+                    .toList();
         }
         return value;
     }

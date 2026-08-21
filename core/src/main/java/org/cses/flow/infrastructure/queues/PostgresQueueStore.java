@@ -219,15 +219,23 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         String eventKey
     ) {
 
+        static DeliveryAttempt from(
+            boolean delivered,
+            String messageId,
+            String eventKey
+        ) {
+            return new DeliveryAttempt(delivered, messageId, eventKey);
+        }
+
         static DeliveryAttempt empty() {
-            return new DeliveryAttempt(false, null, null);
+            return from(false, null, null);
         }
 
         static DeliveryAttempt delivered(
             String messageId,
             String eventKey
         ) {
-            return new DeliveryAttempt(
+            return from(
                 true,
                 messageId,
                 eventKey

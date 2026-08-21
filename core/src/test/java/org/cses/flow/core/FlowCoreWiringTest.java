@@ -55,12 +55,12 @@ class FlowCoreWiringTest {
             );
             service.deploy(
                 session,
-                draft.id()
+                draft.flowKey()
             );
 
             var current = service.flow(
                 session,
-                draft.id(),
+                draft.flowKey(),
                 1L
             ).orElseThrow();
             assertTrue(!current.isDeleted());
@@ -71,7 +71,7 @@ class FlowCoreWiringTest {
             );
             assertEquals(
                 draft.raw(),
-                service.draft(session, draft.id()).orElseThrow().raw()
+                service.draft(session, draft.flowKey()).orElseThrow().raw()
             );
         }
     }

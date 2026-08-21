@@ -51,7 +51,7 @@ class LogFlowIntegrationTest {
                     dependOn:
                       - write-log
                 """);
-            Flow flow = flowService.deploy(session, draft.id());
+            Flow flow = flowService.deploy(session, draft.flowKey());
 
             Execution started = fixture.startCreated(session, flow);
             var waiting = fixture.waitingForExecution(

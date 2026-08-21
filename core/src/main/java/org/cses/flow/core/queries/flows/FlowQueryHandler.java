@@ -25,9 +25,9 @@ public final class FlowQueryHandler {
 
     @Inject
     public FlowQueryHandler(
-        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
-        FlowRepository flowRepository,
-        FlowDraftRepository draftRepository
+            @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
+            FlowRepository flowRepository,
+            FlowDraftRepository draftRepository
     ) {
         this.jooq = jooq;
         this.flowRepository = flowRepository;
@@ -35,94 +35,71 @@ public final class FlowQueryHandler {
     }
 
     public <S extends Session<U>, U extends User>
-        List<FlowDraft> drafts(S session) {
+    List<FlowDraft> drafts(S session) {
 
         return jooq.read(dsl -> draftRepository.findAll(
-            dsl,
-            SessionValidation.requireCompanyId(session)
+                dsl,
+                SessionValidation.requireCompanyId(session)
         ));
     }
 
     public <S extends Session<U>, U extends User>
-        Optional<FlowDraft> draft(S session, String draftId) {
+    Optional<FlowDraft> draft(S session, String flowKey) {
 
-        requireDraftId(draftId);
-        return jooq.get(dsl -> draftRepository.findById(
-                dsl,
-                SessionValidation.requireCompanyId(session),
-                draftId
-            )
-            .filter(draft -> !draft.isDeleted())
+        String normalizedFlowKey = requireFlowKey(flowKey);
+        return jooq.get(dsl -> draftRepository.findByFlowKey(
+                        dsl,
+                        SessionValidation.requireCompanyId(session),
+                        normalizedFlowKey
+                )
         );
     }
 
     public <S extends Session<U>, U extends User>
-        Optional<Flow> flow(
+    Optional<Flow> flow(
             S session,
             String flowKey,
             long flowVersion
-        ) {
+    ) {
 
-        requireFlowKey(flowKey);
+        String normalizedFlowKey = requireFlowKey(flowKey);
         if (flowVersion < 1) {
             throw new IllegalArgumentException(
-                "Flow version must be positive"
+                    "Flow version must be positive"
             );
         }
         return jooq.get(dsl -> flowRepository.findByKey(
-            dsl,
-            SessionValidation.requireCompanyId(session),
-            flowKey,
-            flowVersion
-        ));
-    }
-
-    /**
-     * Restores an Execution-bound Flow revision by its technical row id.
-     */
-    public <S extends Session<U>, U extends User>
-        Optional<Flow> flowById(
-            S session,
-            String flowId,
-            long flowVersion
-        ) {
-
-        requireFlowKey(flowId);
-        if (flowVersion < 1) {
-            throw new IllegalArgumentException(
-                "Flow version must be positive"
-            );
-        }
-        return jooq.get(dsl -> flowRepository.findById(
-            dsl,
-            SessionValidation.requireCompanyId(session),
-            flowId,
-            flowVersion
+                dsl,
+                SessionValidation.requireCompanyId(session),
+                normalizedFlowKey,
+                flowVersion
         ));
     }
 
     public <S extends Session<U>, U extends User>
-        Optional<Flow> latestFlow(S session, String flowKey) {
+    Optional<Flow> latestFlow(S session, String flowKey) {
 
-        requireFlowKey(flowKey);
+        String normalizedFlowKey = requireFlowKey(flowKey);
         return jooq.get(dsl -> flowRepository.findLatestByKey(
                 dsl,
                 SessionValidation.requireCompanyId(session),
-                flowKey
-            )
-            .filter(flow -> !flow.isDeleted())
-        );
+                normalizedFlowKey
+        ).filter(flow -> !flow.isDeleted()));
     }
 
-    private static void requireFlowKey(String flowKey) {
+    /**
+     * Resolves the unique editable draft by its stable Flow key.
+     */
+    public <S extends Session<U>, U extends User>
+    Optional<FlowDraft> draftByFlowKey(S session, String flowKey) {
+        return draft(session, flowKey);
+    }
+
+    private static String requireFlowKey(String flowKey) {
         if (flowKey == null || flowKey.isBlank()) {
             throw new IllegalArgumentException("Flow key must not be blank");
         }
+        return flowKey.trim();
     }
 
-    private static void requireDraftId(String draftId) {
-        if (draftId == null || draftId.isBlank()) {
-            throw new IllegalArgumentException("FlowDraft id must not be blank");
-        }
-    }
 }

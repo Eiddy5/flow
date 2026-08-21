@@ -157,6 +157,9 @@ Web 入站适配层，负责：
 
 - 定义 HTTP 路由、请求和响应协议。
 - 完成协议层参数转换和基础输入校验。
+- 写操作优先直接接收 Core Command；没有一一对应 Command 的轻量 HTTP 字段使用
+  `Map` 或路径参数接收，由 Service 构建 Executor Command，不在 Controller 中定义
+  `*Request` DTO。
 - 调用 `core/services` 提供的公开业务入口。
 - 将稳定的业务结果或异常转换为 HTTP 响应。
 
@@ -174,9 +177,10 @@ Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 
 Worker 调度与异步消息传输契约不放在 `core`，分别由同级的 `executor`、`worker`
 和 `queues` 包负责。
 
-Flow 的业务身份由 `companyId + key + version` 确定：key 在 FlowDraft 创建时由后端
-生成并跨版本稳定，已发布每个版本的技术 `Flow.id` 重新生成。按技术 id 恢复历史
-Flow 只用于已经绑定的 Execution，不替代业务查询键。
+Flow 的业务身份由 `companyId + key + version` 确定：FlowDraft 创建时必须提供业务
+key，同一个 `companyId + key` 只能有一个 Draft；`FlowDraft.id` 是数据库行标记，不能
+替代业务查询键。解析后的 key 跨版本稳定，已发布每个版本的技术 `Flow.id` 重新生成。
+按技术 id 恢复历史 Flow 只用于已经绑定的 Execution，不替代业务查询键。
 
 外部调用方优先通过 `core/services` 使用核心能力，不能越过 Service 直接组合
 Handler、Repository 或领域内部状态。
@@ -279,7 +283,7 @@ repositories/flows/FlowRepository.java
 Execution 编排推进组件。它与 `core` 平级，负责：
 
 - 在 `executor/commands` 定义统一 `ExecutionCommand` 和具体 `Create`、`Resume`、`Cancel`
-  Command；`Create` 只传递 `companyId`、`flowKey`、`flowVersion`、`inputs`，
+  Command；`Create` 只传递 `company`、`flowKey`、`flowVersion`、`inputs`，
   `ExecutionService` 只等待 Queue 接受，不等待 Execution 创建或运行完成。
 - `DefaultExecutor` 同时订阅外部 Executor Command Queue 和内部 Executor Event Queue。
   外部消息只路由给 `executor/handlers/ExecutionCommandEventHandler`；该 Handler 恢复
@@ -316,9 +320,9 @@ Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor`
 ### `queues/`
 
 类型化异步消息传输契约。它与 `core`、`executor` 和 `worker` 平级，只保存公开
-Interface；`Event.dsl()` 和 `DispatchQueue.emitInTransaction(...)` 使用 JOOQ
-`DSLContext` 表达调用方事务；`ExecutionCommand` 实现统一返回 `null`，不携带事务状态；
-该目录不包含存储、序列化或中间件产品实现：
+Interface；`Event` 只表达业务 key，`DispatchQueue.emitInTransaction(...)` 使用 JOOQ
+`DSLContext` 显式表达一次发布的调用方事务；Event 不携带事务状态。该目录不包含
+存储、序列化或中间件产品实现：
 
 ```text
 queues/
@@ -334,9 +338,9 @@ queues/
 业务 Module 拥有具体 Event 的字段、key 和内部业务分类；每个 Event 契约对应一个
 类型化 Dispatch Queue。`DispatchQueue` 提供单条与批量、同步与异步发布，并使用
 Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次注册的暂停、恢复
-和关闭生命周期。`Event` 直接提供可空 `dsl()`：非空值只供同步发布加入调用方事务，
-`null` 表示由具体 Adapter 决定事务；不携带事务的 payload 可以通过
-`emitInTransaction(...)` 在调用点提供事务。它不是业务字段，也不能进入持久化消息。
+和关闭生命周期。普通 `emit(...)` 由具体 Adapter 使用 Queue 自有事务；调用方已经
+持有事务且要求业务写入与消息原子提交时，必须通过 `emitInTransaction(...)` 在调用点
+显式传入。事务是发布操作元数据，不属于 Event，也不能进入持久化消息。
 
 本目录不执行 JOOQ SQL，也不保存消息表、JSONB 转换、后台轮询器、ACK、重试或具体
 Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护，Queue 不建立中心
@@ -411,7 +415,8 @@ extensions/
 RunnableTask 与 `Pause.pause` 对接，Task 使用 `RunContext` 调用宿主 Service；跨进程
 场景才通过公开 `ExecutionService.resume(...)` 恢复 Pause。Task 不能直接调用 Worker、
 Executor 或 Handler。Pause 直接声明唯一必填的 `pause` Task、允许为空的 `resume` Input
-列表以及可选且成对配置的 `duration + behavior`；其通用 `tasks` 必须为空。
+列表以及可选且成对配置的 `duration + behavior`；继承的 `tasks` 保持普通完成后子任务
+语义，在 Resume 后执行，`definitionChildren()` 按 `pause`、`tasks` 顺序暴露完整定义树。
 完整定义遍历通过 `Task.definitionChildren()` 识别类型专有 Task，跨字段约束继续由
 `ModelValidator` 统一调用 `ModelInvariant` 校验。
 
@@ -462,7 +467,7 @@ Java Class 转换为字符串 DTO。
 core/src/main/java/org/cses/flow/infrastructure/
 ├── jooq/            # 具名 flow 数据源和 JOOQ 装配
 ├── queues/          # Default Dispatch Queue、统一消息表、JsonFactory 类型恢复与周期轮询
-│   └── entries/     # 排除 DSL、包含 queue_type 与 queue_name 的 Queue Message Entry
+│   └── entries/     # 保存业务 payload、queue_type 与 queue_name 的 Queue Message Entry
 ├── repositories/    # Repository 的具体生产实现
 │   └── <业务模块>/
 │       └── postgres/
@@ -477,13 +482,14 @@ core/src/main/java/org/cses/flow/infrastructure/
 
 - Repository 的 PostgreSQL、DataPilot 等生产实现。
 - `entries` 子包中的数据库 Entry，以及 Entry 与领域对象之间的转换。
-- `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；它直接读取 Event 的
-  可空 `dsl()` 选择同步事务，使用项目现有 `JsonFactory` 把 Event 重组为排除 DSL 的
-  JSONB Queue Entry，并通过装配时传入的 `Class<T>` 恢复业务类型。所有传输类别的
+- `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；普通发布使用 Queue
+  自有事务，显式事务发布使用调用方传入的 `DSLContext`。它使用项目现有 `JsonFactory`
+  把 Event 重组为只含业务数据的 JSONB Queue Entry，并通过装配时传入的 `Class<T>`
+  恢复业务类型。所有传输类别的
   Entry 写入统一 `queues`，用可扩展 `queue_type + queue_name` 隔离；当前
   Default Adapter 固定使用 `DISPATCH`。Adapter 使用具名 `flow` JOOQ、周期轮询和
-  `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务且不携带调用方
-  DSL。`ExecutorCommandQueueFactory` 和 `ExecutorEventQueueFactory` 是两条具名
+  `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务。
+  `ExecutorCommandQueueFactory` 和 `ExecutorEventQueueFactory` 是两条具名
   Executor Queue 的业务组合根。
 - 缓存、远程服务等其他技术适配器。
 - 只与具体框架或外部系统有关的配置和连接代码。
@@ -496,9 +502,9 @@ Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry
 完成数据库字段与项目对象的转换。详细规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
 
-跨模块测试夹具只放在 `core/src/testFixtures/java`，模块私有测试替身放在对应模块的
-`src/test/java`；测试夹具不能作为生产 Bean 放入 `src/main`。数据库集成测试统一使用
-PostgreSQL 测试适配器，单元测试替身只保留在测试类内部。相关决策见
+测试专用替身和辅助代码统一放在对应模块的 `src/test/java`，不能作为生产 Bean 放入
+`src/main`。数据库集成测试统一使用 PostgreSQL 测试适配器，单元测试替身只保留在
+测试类内部。相关决策见
 [`docs/decisions/0007-keep-test-adapters-out-of-production.md`](decisions/0007-keep-test-adapters-out-of-production.md)。
 
 ## Server 资源目录
@@ -516,12 +522,11 @@ server/src/main/resources/
 
 ## 测试目录
 
-测试代码跟随生产边界，并通过 Core test fixtures 复用跨模块替身：
+测试代码跟随生产边界，测试辅助代码归属各模块自己的测试源码：
 
 ```text
-core/src/test/java/          # Core、Executor、Worker、Repository 与非 HTTP 装配测试
-core/src/testFixtures/java/  # 跨模块复用的测试 Repository、事务和基础设施替身
-server/src/test/java/        # HTTP、Session、启动装配与 Server 边界测试
+core/src/test/java/    # Core、Executor、Worker、Repository 与非 HTTP 装配测试及测试辅助代码
+server/src/test/java/  # HTTP、Session、启动装配与 Server 边界测试及测试辅助代码
 ```
 
 测试包必须镜像生产代码包。例如：
@@ -535,8 +540,8 @@ core/src/test/java/org/cses/flow/core/services/flows/Uc01FlowLifecycleTest.java
 ```
 
 测试专用基础设施替身，例如内存 Repository、测试事务、测试 Session 和测试装配
-Bean，应放在 `core/src/testFixtures/java` 或所属模块的 `src/test/java` 中与所替代
-生产边界对应的包内，不能反向进入生产源码。
+Bean，应放在所属模块的 `src/test/java` 中与所替代生产边界对应的包内，不能反向
+进入生产源码。
 
 UC 测试的目录和一对一映射要求见
 [`docs/standards/uc-testing.md`](standards/uc-testing.md)。
@@ -609,9 +614,10 @@ queues/event
   Plugin 契约，
   `core/plugins` 不能反向依赖 `extensions`。
 - `core` 不能依赖 `controller` 或具体基础设施实现。
-- `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；它只在 `Event.dsl()`
-  与 `DispatchQueue.emitInTransaction(...)` 的公开发布契约中依赖 JOOQ `DSLContext` 类型，
-  不执行 SQL。Executor 的具体启动 Event 依赖该公开契约，消费后再进入 Worker 链路。
+- `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；只有
+  `DispatchQueue.emitInTransaction(...)` 的公开发布契约依赖 JOOQ `DSLContext` 类型，
+  `Event` 不依赖 JOOQ，Queue 契约不执行 SQL。Executor 的具体启动 Event 依赖该公开
+  契约，消费后再进入 Worker 链路。
 - `core` 内不能重新建立 `executors` 或 `workers` 技术目录。
 - 具体扩展实现和 Worker 不能接管 Executor 的 Execution 状态推进。
 - Controller 不能绕过 Core Service 直接访问 Repository。
@@ -656,7 +662,7 @@ queues/event
 | RunnableTask 具体执行逻辑 | 对应扩展目录中的具体类 |
 | 生产配置 | `server/src/main/resources/` |
 | Core 生产代码对应测试 | 与生产包一致的 `core/src/test/java/` |
-| 跨模块测试夹具 | `core/src/testFixtures/java/` |
+| 测试辅助代码和替身 | 对应模块的 `src/test/java/` |
 | HTTP 与启动装配测试 | 与生产包一致的 `server/src/test/java/` |
 | 开发期数据库建表基线入口 | `gen/sql/flow/001_create_flow_tables.sql` |
 | 单表建表、约束和索引 | `gen/sql/flow/tables/<table_name>.sql` |

@@ -42,8 +42,8 @@ public final class FlowTaskEntry extends FlowTasksObject {
         entry.properties = JsonObject.Parse(
             record.get(FLOW_TASKS.PROPERTIES).data()
         );
-        entry.flowId = record.getFlowId();
-        entry.flowReversion = record.getFlowReversion();
+        entry.flowKey = record.getFlowKey();
+        entry.flowVersion = record.getFlowVersion();
         entry.parentId = record.getParentId();
         entry.order = record.getOrder();
         entry.key = record.getKey();
@@ -55,8 +55,8 @@ public final class FlowTaskEntry extends FlowTasksObject {
 
     public static FlowTaskEntry fromDomain(
         String companyId,
-        String flowId,
-        long flowReversion,
+        String flowKey,
+        long flowVersion,
         Task task,
         String parentId,
         int order,
@@ -70,8 +70,8 @@ public final class FlowTaskEntry extends FlowTasksObject {
         entry.inputs = DataJsonCodec.encode(task.inputs());
         entry.outputs = DataJsonCodec.encode(task.outputs());
         entry.properties = JsonObject.FromMap(properties(task, jacksonMapper));
-        entry.flowId = flowId;
-        entry.flowReversion = flowReversion;
+        entry.flowKey = flowKey;
+        entry.flowVersion = flowVersion;
         entry.parentId = parentId;
         entry.order = order;
         entry.key = task.key();

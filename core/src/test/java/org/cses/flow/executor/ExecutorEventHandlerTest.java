@@ -42,6 +42,36 @@ final class ExecutorEventHandlerTest {
     );
 
     @Test
+    void acceptsExecutionWithDifferentCompanyWhenFlowReferenceMatches() {
+        Flow flow = PLUGINS.deploy(
+            "flow-company",
+            "company-independent-flow",
+            Map.of(
+                "key", "company-independent-flow",
+                "tasks", List.of(Map.of(
+                    "key", "task",
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class
+                        .getName()
+                ))
+            ),
+            null,
+            ActorRef.create("executor-user", "Executor User"),
+            1_785_312_000_000L
+        );
+        Execution execution = Execution.create(
+            "execution-company",
+            flow.key(),
+            flow.reversion(),
+            Map.of()
+        );
+
+        ExecutorContext context = new ExecutorContext(flow, execution);
+
+        assertEquals(flow, context.flow());
+        assertEquals(execution, context.execution());
+    }
+
+    @Test
     void persistsAndDispatchesUntilTheExecutionIsStable() {
         Flow flow = PLUGINS.deploy(
             "default-executor-company",
@@ -65,7 +95,7 @@ final class ExecutorEventHandlerTest {
         );
         Execution execution = Execution.create(
             flow.companyId(),
-            flow.id(),
+            flow.key(),
             flow.reversion(),
             Map.of()
         );
@@ -136,7 +166,7 @@ final class ExecutorEventHandlerTest {
         );
         Execution execution = Execution.create(
             flow.companyId(),
-            flow.id(),
+            flow.key(),
             flow.reversion(),
             Map.of()
         );
@@ -196,7 +226,7 @@ final class ExecutorEventHandlerTest {
         );
         Execution execution = Execution.create(
             flow.companyId(),
-            flow.id(),
+            flow.key(),
             flow.reversion(),
             Map.of()
         );
@@ -223,7 +253,7 @@ final class ExecutorEventHandlerTest {
             .orElseThrow();
         assertEquals(pauseRun.id(), actionRun.parentId().orElseThrow());
         assertEquals(
-            new RunIdentity(actionRun.id(), pauseRun.id()),
+            RunIdentity.from(actionRun.id(), pauseRun.id()),
             CAPTURED_RUN.get()
         );
     }
@@ -274,7 +304,7 @@ final class ExecutorEventHandlerTest {
         @Override
         public void save(DSLContext dsl, Execution execution) {
             executions.put(
-                new ExecutionKey(execution.companyId(), execution.id()),
+                ExecutionKey.from(execution.companyId(), execution.id()),
                 execution.copy()
             );
         }
@@ -284,7 +314,7 @@ final class ExecutorEventHandlerTest {
             String executionId
         ) {
             Execution execution = executions.get(
-                new ExecutionKey(companyId, executionId)
+                ExecutionKey.from(companyId, executionId)
             );
             return execution == null
                 ? Optional.empty()
@@ -293,6 +323,14 @@ final class ExecutorEventHandlerTest {
     }
 
     private record ExecutionKey(String companyId, String executionId) {
+
+        private static ExecutionKey from(
+            String companyId,
+            String executionId
+        ) {
+            return new ExecutionKey(companyId, executionId);
+        }
+
         private ExecutionKey {
             Objects.requireNonNull(companyId);
             Objects.requireNonNull(executionId);
@@ -300,6 +338,13 @@ final class ExecutorEventHandlerTest {
     }
 
     private record RunIdentity(String taskRunId, String parentTaskRunId) {
+
+        private static RunIdentity from(
+            String taskRunId,
+            String parentTaskRunId
+        ) {
+            return new RunIdentity(taskRunId, parentTaskRunId);
+        }
     }
 
     @Plugin
@@ -310,7 +355,7 @@ final class ExecutorEventHandlerTest {
 
         @Override
         public RunResult run(RunContext context) {
-            CAPTURED_RUN.set(new RunIdentity(
+            CAPTURED_RUN.set(RunIdentity.from(
                 context.taskRunId(),
                 context.parentTaskRunId().orElseThrow()
             ));

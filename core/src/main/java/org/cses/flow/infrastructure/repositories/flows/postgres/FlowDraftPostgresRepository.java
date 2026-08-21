@@ -39,11 +39,44 @@ public final class FlowDraftPostgresRepository
     public Optional<FlowDraft> findById(
         DSLContext dsl,
         String companyId,
-        String flowId
+        String rowId
     ) {
         FlowDraftEntry entry = dsl.selectFrom(FLOW_DRAFTS)
             .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
-            .and(FLOW_DRAFTS.ID.eq(flowId))
+            .and(FLOW_DRAFTS.ID.eq(rowId))
+            .fetchOne(FlowDraftEntry::fromRecord);
+        return entry == null
+            ? Optional.empty()
+            : Optional.of(entry.toDomain());
+    }
+
+    @Override
+    public Optional<FlowDraft> findByFlowKey(
+        DSLContext dsl,
+        String companyId,
+        String flowKey
+    ) {
+        FlowDraftEntry entry = dsl.selectFrom(FLOW_DRAFTS)
+            .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
+            .and(FLOW_DRAFTS.FLOW_KEY.eq(flowKey))
+            .and(FLOW_DRAFTS.DELETED.eq(false))
+            .fetchOne(FlowDraftEntry::fromRecord);
+        return entry == null
+            ? Optional.empty()
+            : Optional.of(entry.toDomain());
+    }
+
+    @Override
+    public Optional<FlowDraft> lockByFlowKey(
+        DSLContext dsl,
+        String companyId,
+        String flowKey
+    ) {
+        FlowDraftEntry entry = dsl.selectFrom(FLOW_DRAFTS)
+            .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
+            .and(FLOW_DRAFTS.FLOW_KEY.eq(flowKey))
+            .and(FLOW_DRAFTS.DELETED.eq(false))
+            .forUpdate()
             .fetchOne(FlowDraftEntry::fromRecord);
         return entry == null
             ? Optional.empty()
@@ -54,11 +87,11 @@ public final class FlowDraftPostgresRepository
     public Optional<FlowDraft> lockById(
         DSLContext dsl,
         String companyId,
-        String flowId
+        String rowId
     ) {
         FlowDraftEntry entry = dsl.selectFrom(FLOW_DRAFTS)
             .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
-            .and(FLOW_DRAFTS.ID.eq(flowId))
+            .and(FLOW_DRAFTS.ID.eq(rowId))
             .and(FLOW_DRAFTS.DELETED.eq(false))
             .forUpdate()
             .fetchOne(FlowDraftEntry::fromRecord);
@@ -114,7 +147,8 @@ public final class FlowDraftPostgresRepository
                 .execute();
         } catch (DataAccessException exception) {
             throw new WorkflowException(
-                "FlowDraft identity conflict for " + draft.id(),
+                "FlowDraft key conflict for "
+                    + draft.companyId() + ":" + draft.flowKey(),
                 exception
             );
         }
@@ -138,6 +172,7 @@ public final class FlowDraftPostgresRepository
         boolean identityAndCreationAuditMatch =
             stored.identifiedBy(attempted.identifier())
                 && stored.companyId().equals(attempted.companyId())
+                && stored.flowKey().equals(attempted.flowKey())
                 && stored.creator().equals(attempted.creator())
                 && stored.createdAt() == attempted.createdAt();
         if (!identityAndCreationAuditMatch

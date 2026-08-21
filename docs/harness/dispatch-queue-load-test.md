@@ -125,10 +125,10 @@ FLOW_QUEUE_LOAD_DRAIN_TIMEOUT_SECONDS=300 \
 Consumer 按 `runId + sequence` 记录首次交付、重复交付和跨 Queue 交付。回调线程只记录
 结果，不直接执行 JUnit 断言；场景结束后由测试线程统一校验。
 
-负载 Event 的 `dsl()` 返回 `null`，因此同步发布由 Queue 开启事务；异步发布按生产
-契约同样始终开启独立事务，后台任务只携带排除 DSL 的 JSONB Queue Entry。调用方 DSL
-的提交、回滚、同批同一 DSL、混合 DSL 拒绝、持久化 payload 排除 DSL 以及按
-`Class<T>` 恢复类型的规则由聚焦集成测试验证，不属于本手册的吞吐场景。
+负载场景使用普通发布，因此同步与异步发布都由 Queue 开启独立事务，后台任务只携带
+业务 JSONB Queue Entry。调用方 DSL 的提交、回滚、显式事务批量发布、普通发布与调用方
+事务隔离，以及按 `Class<T>` 恢复类型的规则由聚焦集成测试验证，不属于本手册的吞吐
+场景。
 
 ### Backlog 关闭并重开恢复
 

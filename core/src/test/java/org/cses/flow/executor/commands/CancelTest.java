@@ -11,7 +11,6 @@ import org.paas.session.User;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 final class CancelTest {
 
@@ -43,7 +42,6 @@ final class CancelTest {
         assertEquals(ExecutionCommand.Type.CANCEL, restoredCancel.getType());
         assertEquals("company-1", restoredCancel.getCompanyId());
         assertEquals("actor-1", restoredCancel.getActorId());
-        assertNull(restoredCancel.dsl());
     }
 
     private static Session<User> session() {

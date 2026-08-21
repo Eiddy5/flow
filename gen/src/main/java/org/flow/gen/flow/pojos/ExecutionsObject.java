@@ -28,8 +28,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
 
     public String id;
     public String companyId;
-    public String flowId;
-    public Long flowReversion;
+    public String flowKey;
+    public Long flowVersion;
     public JSONB state;
     public Long lockVersion;
     public JSONB creator;
@@ -45,8 +45,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public ExecutionsObject(ExecutionsObject value) {
         this.id = value.id;
         this.companyId = value.companyId;
-        this.flowId = value.flowId;
-        this.flowReversion = value.flowReversion;
+        this.flowKey = value.flowKey;
+        this.flowVersion = value.flowVersion;
         this.state = value.state;
         this.lockVersion = value.lockVersion;
         this.creator = value.creator;
@@ -61,8 +61,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public ExecutionsObject(
         String id,
         String companyId,
-        String flowId,
-        Long flowReversion,
+        String flowKey,
+        Long flowVersion,
         JSONB state,
         Long lockVersion,
         JSONB creator,
@@ -75,8 +75,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     ) {
         this.id = id;
         this.companyId = companyId;
-        this.flowId = flowId;
-        this.flowReversion = flowReversion;
+        this.flowKey = flowKey;
+        this.flowVersion = flowVersion;
         this.state = state;
         this.lockVersion = lockVersion;
         this.creator = creator;
@@ -117,31 +117,31 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.executions.flow_id</code>.
+     * Getter for <code>public.executions.flow_key</code>.
      */
-    public String getFlowId() {
-        return this.flowId;
+    public String getFlowKey() {
+        return this.flowKey;
     }
 
     /**
-     * Setter for <code>public.executions.flow_id</code>.
+     * Setter for <code>public.executions.flow_key</code>.
      */
-    public void setFlowId(String flowId) {
-        this.flowId = flowId;
+    public void setFlowKey(String flowKey) {
+        this.flowKey = flowKey;
     }
 
     /**
-     * Getter for <code>public.executions.flow_reversion</code>.
+     * Getter for <code>public.executions.flow_version</code>.
      */
-    public Long getFlowReversion() {
-        return this.flowReversion;
+    public Long getFlowVersion() {
+        return this.flowVersion;
     }
 
     /**
-     * Setter for <code>public.executions.flow_reversion</code>.
+     * Setter for <code>public.executions.flow_version</code>.
      */
-    public void setFlowReversion(Long flowReversion) {
-        this.flowReversion = flowReversion;
+    public void setFlowVersion(Long flowVersion) {
+        this.flowVersion = flowVersion;
     }
 
     /**
@@ -291,17 +291,17 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.companyId.equals(other.companyId))
             return false;
-        if (this.flowId == null) {
-            if (other.flowId != null)
+        if (this.flowKey == null) {
+            if (other.flowKey != null)
                 return false;
         }
-        else if (!this.flowId.equals(other.flowId))
+        else if (!this.flowKey.equals(other.flowKey))
             return false;
-        if (this.flowReversion == null) {
-            if (other.flowReversion != null)
+        if (this.flowVersion == null) {
+            if (other.flowVersion != null)
                 return false;
         }
-        else if (!this.flowReversion.equals(other.flowReversion))
+        else if (!this.flowVersion.equals(other.flowVersion))
             return false;
         if (this.state == null) {
             if (other.state != null)
@@ -366,8 +366,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         int result = 1;
         result = prime * result + ((this.id == null) ? 0 : this.id.hashCode());
         result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
-        result = prime * result + ((this.flowId == null) ? 0 : this.flowId.hashCode());
-        result = prime * result + ((this.flowReversion == null) ? 0 : this.flowReversion.hashCode());
+        result = prime * result + ((this.flowKey == null) ? 0 : this.flowKey.hashCode());
+        result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
         result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
         result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
         result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
@@ -403,8 +403,8 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         LinkedHashMap<String, Object> map = new java.util.LinkedHashMap<>();
         map.put("id", id);
         map.put("company_id", companyId);
-        map.put("flow_id", flowId);
-        map.put("flow_reversion", flowReversion);
+        map.put("flow_key", flowKey);
+        map.put("flow_version", flowVersion);
         map.put("state", state);
         map.put("lock_version", lockVersion);
         map.put("creator", creator);

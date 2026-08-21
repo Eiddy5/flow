@@ -11,7 +11,6 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
-import org.jooq.DSLContext;
 import org.jooq.JSONB;
 import org.paas.common.util.StringUtil;
 import org.paas.json.JsonFactory;
@@ -704,11 +703,6 @@ final class DefaultDispatchQueueIntegrationTest {
         @Override
         public String key() {
             return key;
-        }
-
-        @Override
-        public DSLContext dsl() {
-            return null;
         }
 
         public String value() {

@@ -1,10 +1,8 @@
 package org.cses.flow.executor.commands;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import org.cses.flow.queues.event.DispatchEvent;
-import org.jooq.DSLContext;
 
 /**
  * Durable instruction accepted by the Executor command Queue.
@@ -32,18 +30,6 @@ public sealed interface ExecutionCommand extends DispatchEvent permits Create, R
     Type getType();
 
     void validate();
-
-    /**
-     * Commands never carry a caller-owned transaction. Transactions for the
-     * command's business work begin after the command is consumed; a producer
-     * that must atomically publish with another write uses the Queue's
-     * explicit transaction API instead.
-     */
-    @Override
-    @JsonIgnore
-    default DSLContext dsl() {
-        return null;
-    }
 
     enum Type {
         CREATE,

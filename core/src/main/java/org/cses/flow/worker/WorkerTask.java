@@ -27,6 +27,72 @@ public record WorkerTask(
     Map<String, Object> variables
 ) {
 
+    public static WorkerTask from(
+        String executionId,
+        String taskRunId,
+        Task task,
+        Map<String, ?> inputs
+    ) {
+        return new WorkerTask(
+            executionId,
+            taskRunId,
+            null,
+            task,
+            inputs,
+            Map.of()
+        );
+    }
+
+    public static WorkerTask from(
+        String executionId,
+        String taskRunId,
+        Task task,
+        Map<String, ?> inputs,
+        Map<String, ?> variables
+    ) {
+        return new WorkerTask(
+            executionId,
+            taskRunId,
+            task,
+            inputs,
+            variables
+        );
+    }
+
+    public static WorkerTask from(
+        String executionId,
+        String taskRunId,
+        String parentTaskRunId,
+        Task task,
+        Map<String, ?> inputs,
+        Map<String, ?> variables
+    ) {
+        return new WorkerTask(
+            executionId,
+            taskRunId,
+            parentTaskRunId,
+            task,
+            inputs,
+            variables
+        );
+    }
+
+    public static WorkerTask from(
+        String executionId,
+        String taskRunId,
+        Optional<String> parentTaskRunId,
+        RunnableTask runnableTask,
+        Map<String, Object> variables
+    ) {
+        return new WorkerTask(
+            executionId,
+            taskRunId,
+            parentTaskRunId,
+            runnableTask,
+            variables
+        );
+    }
+
     public WorkerTask(
         String executionId,
         String taskRunId,

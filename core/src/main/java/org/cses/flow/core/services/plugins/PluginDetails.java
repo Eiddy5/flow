@@ -17,6 +17,13 @@ public record PluginDetails(
     Map<String, Object> schema
 ) {
 
+    public static PluginDetails from(
+        PluginMetadata<? extends Plugin> metadata,
+        Map<String, Object> schema
+    ) {
+        return new PluginDetails(metadata, schema);
+    }
+
     public PluginDetails {
         Objects.requireNonNull(metadata, "Plugin metadata");
         Objects.requireNonNull(schema, "Plugin schema");

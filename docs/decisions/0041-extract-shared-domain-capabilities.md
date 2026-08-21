@@ -104,7 +104,7 @@ FlowDraft 与 Execution 使用该能力。Execution 仍遵守一个已持久化�
 
 ActorRef 是共享的不可变值对象。`ActorRef.from(Session)` 以当前用户 ID 为首选身份，
 以 Session 中的用户或会话信息作受控补充，并保存可选显示名称。执行审计或删除前，
-拥有 `companyId` 的聚合必须校验 Session 公司与自身公司一致。
+拥有 `company` 的聚合必须校验 Session 公司与自身公司一致。
 
 ### 当前能力映射
 

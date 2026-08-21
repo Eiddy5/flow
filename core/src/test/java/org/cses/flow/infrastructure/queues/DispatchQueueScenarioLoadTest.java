@@ -11,7 +11,6 @@ import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestReporter;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.parallel.ResourceLock;
-import org.jooq.DSLContext;
 import org.paas.json.JsonFactory;
 import org.paas.json.JsonObject;
 import org.paas.json.SerializableObject;
@@ -458,7 +457,7 @@ final class DispatchQueueScenarioLoadTest {
                     failure.get()
                 );
             }
-            return new PublishResult(
+            return PublishResult.from(
                 accepted.intValue(),
                 startedAt,
                 finishedAt
@@ -567,7 +566,7 @@ final class DispatchQueueScenarioLoadTest {
                     scenarioConfig.publishTimeoutSeconds()
                 )
             );
-            return new PublishResult(
+            return PublishResult.from(
                 accepted,
                 startedAt,
                 System.nanoTime()
@@ -1008,9 +1007,24 @@ final class DispatchQueueScenarioLoadTest {
         long startedAt,
         long finishedAt
     ) {
+
+        private static PublishResult from(
+            int accepted,
+            long startedAt,
+            long finishedAt
+        ) {
+            return new PublishResult(accepted, startedAt, finishedAt);
+        }
     }
 
     private record DrainCheckpoint(long startedAt, int remaining) {
+
+        private static DrainCheckpoint from(
+            long startedAt,
+            int remaining
+        ) {
+            return new DrainCheckpoint(startedAt, remaining);
+        }
     }
 
     public static final class LoadEvent extends SerializableObject
@@ -1039,11 +1053,6 @@ final class DispatchQueueScenarioLoadTest {
         @Override
         public String key() {
             return runId + ":" + sequence;
-        }
-
-        @Override
-        public DSLContext dsl() {
-            return null;
         }
 
         public String runId() {
@@ -1180,7 +1189,7 @@ final class DispatchQueueScenarioLoadTest {
         private DrainCheckpoint drainCheckpoint() {
             long startedAt = System.nanoTime();
             int remaining = Math.toIntExact(uniqueDelivered.getCount());
-            return new DrainCheckpoint(startedAt, remaining);
+            return DrainCheckpoint.from(startedAt, remaining);
         }
 
         private ScenarioResult result(
@@ -1225,7 +1234,7 @@ final class DispatchQueueScenarioLoadTest {
             long publishNanos = publishFinished - publishStarted;
             long drainNanos = completedAt - drainStarted;
             long totalNanos = completedAt - publishStarted;
-            return new ScenarioResult(
+            return ScenarioResult.from(
                 scenario,
                 runId,
                 loadConfig,
@@ -1329,12 +1338,80 @@ final class DispatchQueueScenarioLoadTest {
         double maxMillis,
         Map<Integer, Long> consumerDistribution
     ) {
+
+        private static ScenarioResult from(
+            String scenario,
+            String runId,
+            LoadConfig loadConfig,
+            int requested,
+            int accepted,
+            int callbacks,
+            int unique,
+            int duplicates,
+            int missing,
+            int crossQueue,
+            int pendingAfterClose,
+            int cleanupDeleted,
+            int pendingAfterCleanup,
+            int drainStartRemaining,
+            int maxSubscriptionConcurrency,
+            boolean completedBeforeDeadline,
+            Throwable failure,
+            double publishMillis,
+            double drainMillis,
+            double totalMillis,
+            double shutdownMillis,
+            double publishPerSecond,
+            double deliveryPerSecond,
+            double endToEndPerSecond,
+            double p50Millis,
+            double p95Millis,
+            double p99Millis,
+            double maxMillis,
+            Map<Integer, Long> consumerDistribution
+        ) {
+            return new ScenarioResult(
+                scenario,
+                runId,
+                loadConfig,
+                requested,
+                accepted,
+                callbacks,
+                unique,
+                duplicates,
+                missing,
+                crossQueue,
+                pendingAfterClose,
+                cleanupDeleted,
+                pendingAfterCleanup,
+                drainStartRemaining,
+                maxSubscriptionConcurrency,
+                completedBeforeDeadline,
+                failure,
+                publishMillis,
+                drainMillis,
+                totalMillis,
+                shutdownMillis,
+                publishPerSecond,
+                deliveryPerSecond,
+                endToEndPerSecond,
+                p50Millis,
+                p95Millis,
+                p99Millis,
+                maxMillis,
+                consumerDistribution
+            );
+        }
     }
 
     private record Deadline(long expiresAt) {
 
+        private static Deadline from(long expiresAt) {
+            return new Deadline(expiresAt);
+        }
+
         private static Deadline afterSeconds(int seconds) {
-            return new Deadline(
+            return from(
                 System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds)
             );
         }
@@ -1364,6 +1441,40 @@ final class DispatchQueueScenarioLoadTest {
         int poolSize,
         int pollIntervalMillis
     ) {
+
+        private static LoadConfig from(
+            String profile,
+            int eventCount,
+            int publisherThreads,
+            int consumerSubscriptions,
+            int queueInstances,
+            int batchSize,
+            int maxAsyncInFlight,
+            int payloadBytes,
+            int repetitions,
+            int publishTimeoutSeconds,
+            int drainTimeoutSeconds,
+            int shutdownTimeoutSeconds,
+            int poolSize,
+            int pollIntervalMillis
+        ) {
+            return new LoadConfig(
+                profile,
+                eventCount,
+                publisherThreads,
+                consumerSubscriptions,
+                queueInstances,
+                batchSize,
+                maxAsyncInFlight,
+                payloadBytes,
+                repetitions,
+                publishTimeoutSeconds,
+                drainTimeoutSeconds,
+                shutdownTimeoutSeconds,
+                poolSize,
+                pollIntervalMillis
+            );
+        }
 
         private LoadConfig {
             positive(eventCount, "eventCount");
@@ -1406,15 +1517,15 @@ final class DispatchQueueScenarioLoadTest {
                 "smoke"
             ).toLowerCase(java.util.Locale.ROOT);
             LoadConfig defaults = switch (profile) {
-                case "smoke" -> new LoadConfig(
+                case "smoke" -> from(
                     profile, 2_000, 4, 4, 2, 50, 64, 128,
                     1, 60, 60, 30, 16, 10
                 );
-                case "baseline" -> new LoadConfig(
+                case "baseline" -> from(
                     profile, 50_000, 8, 8, 4, 100, 128, 1_024,
                     3, 300, 300, 60, 48, 5
                 );
-                case "soak" -> new LoadConfig(
+                case "soak" -> from(
                     profile, 1_000_000, 16, 32, 8, 250, 512, 1_024,
                     10, 1_800, 1_800, 120, 80, 10
                 );
@@ -1422,7 +1533,7 @@ final class DispatchQueueScenarioLoadTest {
                     "Unknown FLOW_QUEUE_LOAD_PROFILE: " + profile
                 );
             };
-            return new LoadConfig(
+            return from(
                 profile,
                 integer("FLOW_QUEUE_LOAD_EVENT_COUNT", defaults.eventCount),
                 integer(
@@ -1471,7 +1582,7 @@ final class DispatchQueueScenarioLoadTest {
         }
 
         private LoadConfig halfConcurrency() {
-            return new LoadConfig(
+            return from(
                 profile,
                 Math.max(1, eventCount / 2),
                 Math.max(1, publisherThreads / 2),
@@ -1490,7 +1601,7 @@ final class DispatchQueueScenarioLoadTest {
         }
 
         private LoadConfig backlog() {
-            return new LoadConfig(
+            return from(
                 profile,
                 eventCount,
                 1,

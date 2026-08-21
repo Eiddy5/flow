@@ -105,7 +105,7 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
 
 ## 本地启动验证
 
-内存 Repository、JOOQ 和无连接基础设施支架位于 `core/src/testFixtures`，不作为 UC 验证
+内存 Repository、JOOQ 和无连接基础设施支架位于 `core/src/test/java`，不作为 UC 验证
 模式。UC 使用生产 PostgreSQL Repository；数据库准备和迁移步骤见
 [`postgresql-repositories.md`](postgresql-repositories.md)。当前尚无 Flow HTTP
 Controller，因此本阶段通过公开 Service 验证，不把 HTTP 调用作为通过条件。

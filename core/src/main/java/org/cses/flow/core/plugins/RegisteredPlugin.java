@@ -14,6 +14,13 @@ public record RegisteredPlugin(
     List<PluginMetadata<Task>> tasks
 ) {
 
+    public static RegisteredPlugin from(
+        String packageName,
+        List<PluginMetadata<Task>> tasks
+    ) {
+        return new RegisteredPlugin(packageName, tasks);
+    }
+
     public RegisteredPlugin {
         if (packageName == null || packageName.isBlank()) {
             throw new IllegalArgumentException(

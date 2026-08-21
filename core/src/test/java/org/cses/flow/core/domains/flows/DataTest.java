@@ -76,9 +76,9 @@ class DataTest {
             input
         );
 
-        assertEquals("retryCount", integerInput.getKey());
+        assertEquals("retryCount", integerInput.key());
         assertEquals("重试次数", integerInput.getDisplayName());
-        assertEquals(DataType.INTEGER, integerInput.getType());
+        assertEquals(DataType.INTEGER, integerInput.type());
         assertEquals(3, integerInput.getDefaultValue());
         assertEquals(0, integerInput.getMin());
         assertEquals(10, integerInput.getMax());
@@ -117,7 +117,7 @@ class DataTest {
                     "defaultValue", defaults.get(type)
                 )
             );
-            assertEquals(type, input.getType());
+            assertEquals(type, input.type());
             assertTrue(
                 input.getClass().getSimpleName().endsWith("Input")
             );
@@ -139,10 +139,10 @@ class DataTest {
 
         input.validateDefinition();
 
-        assertEquals("request", input.getKey());
+        assertEquals("request", input.key());
         assertEquals("请求", input.getDisplayName());
         assertEquals("payload", input.getDefaultValue());
-        assertEquals(DataType.STRING, input.getType());
+        assertEquals(DataType.STRING, input.type());
     }
 
     @Test
@@ -157,7 +157,7 @@ class DataTest {
 
         input.validateDefinition();
 
-        assertEquals("retryCount", input.getKey());
+        assertEquals("retryCount", input.key());
         assertEquals("重试次数", input.getDisplayName());
         assertEquals(3, input.getDefaultValue());
         assertEquals(0, input.getMin());
@@ -219,8 +219,8 @@ class DataTest {
             DataType.STRING
         );
 
-        assertEquals("result", output.getKey());
-        assertEquals(DataType.STRING, output.getType());
+        assertEquals("result", output.key());
+        assertEquals(DataType.STRING, output.type());
         assertEquals(
             output,
             Output.rehydrate("result", DataType.STRING)

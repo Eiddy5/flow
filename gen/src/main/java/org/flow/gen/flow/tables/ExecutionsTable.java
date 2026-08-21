@@ -67,14 +67,14 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, String> COMPANY_ID = createField(DSL.name("company_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
 
     /**
-     * The column <code>public.executions.flow_id</code>.
+     * The column <code>public.executions.flow_key</code>.
      */
-    public final TableField<ExecutionsRecord, String> FLOW_ID = createField(DSL.name("flow_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+    public final TableField<ExecutionsRecord, String> FLOW_KEY = createField(DSL.name("flow_key"), SQLDataType.VARCHAR(128).nullable(false), this, "");
 
     /**
-     * The column <code>public.executions.flow_reversion</code>.
+     * The column <code>public.executions.flow_version</code>.
      */
-    public final TableField<ExecutionsRecord, Long> FLOW_REVERSION = createField(DSL.name("flow_reversion"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<ExecutionsRecord, Long> FLOW_VERSION = createField(DSL.name("flow_version"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
      * The column <code>public.executions.state</code>.
@@ -178,9 +178,9 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
             Internal.createCheck(this, DSL.name("ck_executions_deleter"), "(((deleter IS NULL) OR ((jsonb_typeof(deleter) = 'object'::text) AND (deleter ? 'id'::text))))", true),
             Internal.createCheck(this, DSL.name("ck_executions_inputs"), "((jsonb_typeof(inputs) = 'object'::text))", true),
             Internal.createCheck(this, DSL.name("ck_executions_lock_version"), "((lock_version >= 0))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_reversion"), "((flow_reversion > 0))", true),
             Internal.createCheck(this, DSL.name("ck_executions_state"), "(((jsonb_typeof(state) = 'object'::text) AND (state ? 'current'::text) AND (state ? 'history'::text) AND (jsonb_typeof((state -> 'current'::text)) = 'string'::text) AND ((state ->> 'current'::text) = ANY (ARRAY['CREATED'::text, 'RUNNING'::text, 'PAUSED'::text, 'RESTARTED'::text, 'SUCCESS'::text, 'WARNING'::text, 'FAILED'::text, 'KILLING'::text, 'KILLED'::text])) AND (jsonb_typeof((state -> 'history'::text)) = 'array'::text) AND (jsonb_array_length((state -> 'history'::text)) > 0) AND ((((state -> 'history'::text) -> 0) ->> 'state'::text) = 'CREATED'::text) AND ((((state -> 'history'::text) -> '-1'::integer) ->> 'state'::text) = (state ->> 'current'::text)) AND (jsonb_typeof((((state -> 'history'::text) -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof((((state -> 'history'::text) -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array((state -> 'history'::text), '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length((state -> 'history'::text))) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?((((((((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"PAUSED\") && @.\"state\" != \"RESTARTED\") && @.\"state\" != \"SUCCESS\") && @.\"state\" != \"WARNING\") && @.\"state\" != \"FAILED\") && @.\"state\" != \"KILLING\") && @.\"state\" != \"KILLED\")'::jsonpath)) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true)
+            Internal.createCheck(this, DSL.name("ck_executions_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true),
+            Internal.createCheck(this, DSL.name("ck_executions_version"), "((flow_version > 0))", true)
         );
     }
 

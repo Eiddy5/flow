@@ -598,7 +598,7 @@ curl -X POST 'http://datapilot.local/dataPilot/salesDb/orders/update' \
   -d '{
         "filter": { "fields": { "status": { "EQ": "PENDING" } } },
         "values": { "retry_count": 0 },
-        "operators": { "retry_count": { "type": "INCREMENT", "value": 1 } }
+        "operators": { "retry_count": { "type": "INCREMENT", "id": 1 } }
       }'
 ```
 

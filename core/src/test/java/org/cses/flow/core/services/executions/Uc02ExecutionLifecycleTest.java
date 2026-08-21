@@ -44,10 +44,10 @@ class Uc02ExecutionLifecycleTest {
             assertNotEquals(first.id(), second.id());
             assertEquals(State.Type.SUCCESS, first.state().current());
             assertEquals(State.Type.SUCCESS, second.state().current());
-            assertEquals(flow.id(), first.flowId());
-            assertEquals(flow.id(), second.flowId());
-            assertEquals(1L, first.flowReversion());
-            assertEquals(1L, second.flowReversion());
+            assertEquals(flow.key(), first.flowKey());
+            assertEquals(flow.key(), second.flowKey());
+            assertEquals(1L, first.flowVersion());
+            assertEquals(1L, second.flowVersion());
             assertEquals(
                 flow.tasks().stream().map(task -> task.id()).toList(),
                 first.taskRuns().stream().map(TaskRun::taskId).toList()

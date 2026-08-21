@@ -67,6 +67,25 @@ class PauseTest {
     }
 
     @Test
+    void keepsPauseActionSeparateFromPostResumeTasks() {
+        Task action = automatic("action-id", "create-approval");
+        Task continuation = automatic("continuation-id", "send-result");
+
+        Pause pause = plugins.modelValidator().validate(Pause.builder()
+            .id("pause-id")
+            .key("wait-approval")
+            .pause(action)
+            .tasks(List.of(continuation))
+            .build());
+
+        assertEquals(List.of(continuation), pause.tasks());
+        assertEquals(
+            List.of(action, continuation),
+            pause.definitionChildren()
+        );
+    }
+
+    @Test
     void mapsEveryTimeoutBehaviorDirectlyToStateType() {
         assertEquals(State.Type.RUNNING, Pause.Behavior.RESUME.state());
         assertEquals(State.Type.WARNING, Pause.Behavior.WARN.state());
@@ -164,12 +183,6 @@ class PauseTest {
         assertInvalid(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .build());
-        assertInvalid(Pause.builder()
-            .id("pause-id")
-            .key("wait")
-            .pause(automatic("action-id", "create"))
-            .tasks(List.of(automatic("legacy-id", "legacy")))
             .build());
         assertInvalid(Pause.builder()
             .id("pause-id")

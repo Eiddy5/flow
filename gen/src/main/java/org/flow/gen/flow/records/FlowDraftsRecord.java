@@ -217,6 +217,20 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         return (Boolean) get(13);
     }
 
+    /**
+     * Setter for <code>public.flow_drafts.flow_key</code>.
+     */
+    public void setFlowKey(String value) {
+        set(14, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_drafts.flow_key</code>.
+     */
+    public String getFlowKey() {
+        return (String) get(14);
+    }
+
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -240,7 +254,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
     /**
      * Create a detached, initialised FlowDraftsRecord
      */
-    public FlowDraftsRecord(String id, String companyId, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, String raw, Long lockVersion, Boolean deleted) {
+    public FlowDraftsRecord(String id, String companyId, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, String raw, Long lockVersion, Boolean deleted, String flowKey) {
         super(FlowDraftsTable.FLOW_DRAFTS);
 
         setId(id);
@@ -257,6 +271,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         setRaw(raw);
         setLockVersion(lockVersion);
         setDeleted(deleted);
+        setFlowKey(flowKey);
     }
 
 
@@ -282,6 +297,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
             setRaw(value.raw);
             setLockVersion(value.lockVersion);
             setDeleted(value.deleted);
+            setFlowKey(value.flowKey);
         }
     }
 
@@ -301,6 +317,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         object.raw = getRaw();
         object.lockVersion = getLockVersion();
         object.deleted = getDeleted();
+        object.flowKey = getFlowKey();
         return object;
     }
 
@@ -325,6 +342,7 @@ public class FlowDraftsRecord extends UpdatableRecordImpl<FlowDraftsRecord> {
         pojo.raw = getRaw();
         pojo.lockVersion = getLockVersion();
         pojo.deleted = getDeleted();
+        pojo.flowKey = getFlowKey();
         return pojo;
     }
 }

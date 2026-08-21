@@ -19,8 +19,8 @@ public final class ExecutionEntry extends ExecutionsObject {
         ExecutionEntry entry = new ExecutionEntry();
         entry.id = record.getId();
         entry.companyId = record.getCompanyId();
-        entry.flowId = record.getFlowId();
-        entry.flowReversion = record.getFlowReversion();
+        entry.flowKey = record.getFlowKey();
+        entry.flowVersion = record.getFlowVersion();
         org.jooq.JSONB storedInputs = record.get(EXECUTIONS.INPUTS);
         entry.inputs = storedInputs == null
             ? null
@@ -46,8 +46,8 @@ public final class ExecutionEntry extends ExecutionsObject {
         ExecutionEntry entry = new ExecutionEntry();
         entry.id = execution.id();
         entry.companyId = execution.companyId();
-        entry.flowId = execution.flowId();
-        entry.flowReversion = execution.flowReversion();
+        entry.flowKey = execution.flowKey();
+        entry.flowVersion = execution.flowVersion();
         entry.inputs = JsonObject.FromMap(execution.inputs());
         entry.state = StateJsonCodec.encode(execution.state());
         entry.lockVersion = execution.lockVersion();
@@ -59,16 +59,16 @@ public final class ExecutionEntry extends ExecutionsObject {
     }
 
     public Execution toDomain(List<TaskRun> taskRuns) {
-        if (flowReversion == null) {
+        if (flowVersion == null) {
             throw new IllegalStateException(
-                "Persisted Execution flowReversion must not be null"
+                "Persisted Execution flowVersion must not be null"
             );
         }
         return Execution.rehydrate(
             id,
             companyId,
-            flowId,
-            flowReversion,
+            flowKey,
+            flowVersion,
             inputs == null ? java.util.Map.of() : inputs.asMap(),
             StateJsonCodec.decode(state),
             lockVersion == null ? 0 : lockVersion,

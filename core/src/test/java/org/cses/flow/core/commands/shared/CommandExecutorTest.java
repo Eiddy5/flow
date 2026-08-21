@@ -1,6 +1,6 @@
 package org.cses.flow.core.commands.shared;
 
-import org.cses.flow.core.commands.*;
+import org.cses.flow.core.services.*;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -187,13 +187,13 @@ class CommandExecutorTest {
         public String handle(
             CommandContext<TestSession, User, String, TextCommand> context
         ) {
-            transactionalDsl = context.getDsl();
-            session = context.getSession();
-            sessionWasBound = context.getDsl().configuration()
-                .data(Session.class) == context.getSession();
-            contextWasBound = context.getDsl().configuration()
+            transactionalDsl = context.dsl();
+            session = context.session();
+            sessionWasBound = context.dsl().configuration()
+                .data(Session.class) == context.session();
+            contextWasBound = context.dsl().configuration()
                 .data(CommandContext.class) == context;
-            return "handled:" + context.getCommand().value();
+            return "handled:" + context.command().value();
         }
     }
 

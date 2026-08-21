@@ -12,10 +12,10 @@ import java.util.Objects;
  * and publishes the first internal Executor event in the same transaction.</p>
  */
 public record Create(
-    String companyId,
-    String flowKey,
-    long flowVersion,
-    Map<String, Object> inputs
+        String companyId,
+        String flowKey,
+        long flowVersion,
+        Map<String, Object> inputs
 ) implements ExecutionCommand {
 
     public Create {
@@ -23,23 +23,23 @@ public record Create(
         flowKey = requireText(flowKey, "Flow key");
         if (flowVersion < 1) {
             throw new IllegalArgumentException(
-                "Flow version must be positive"
+                    "Flow version must be positive"
             );
         }
         inputs = immutableInputs(inputs);
     }
 
-    public static Create of(
-        String companyId,
-        String flowKey,
-        long flowVersion,
-        Map<String, ?> inputs
+    public static Create from(
+            String companyId,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs
     ) {
         return new Create(
-            companyId,
-            flowKey,
-            flowVersion,
-            immutableInputs(inputs)
+                companyId,
+                flowKey,
+                flowVersion,
+                immutableInputs(inputs)
         );
     }
 
@@ -59,7 +59,7 @@ public record Create(
         requireText(flowKey, "Flow key");
         if (flowVersion < 1) {
             throw new IllegalArgumentException(
-                "Flow version must be positive"
+                    "Flow version must be positive"
             );
         }
         immutableInputs(inputs);
@@ -99,15 +99,15 @@ public record Create(
     }
 
     private static Map<String, Object> immutableInputs(
-        Map<String, ?> values
+            Map<String, ?> values
     ) {
         if (values == null || values.isEmpty()) {
             return Map.of();
         }
         Map<String, Object> copied = new LinkedHashMap<>();
         values.forEach((key, value) -> copied.put(
-            requireText(key, "Flow input key"),
-            Objects.requireNonNull(value, "Flow input value")
+                requireText(key, "Flow input key"),
+                Objects.requireNonNull(value, "Flow input value")
         ));
         return Map.copyOf(copied);
     }

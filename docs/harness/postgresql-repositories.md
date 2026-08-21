@@ -9,17 +9,18 @@ Task id 复用，以及乐观锁冲突。
 
 ```mermaid
 erDiagram
-    FLOW_DRAFTS ||--o{ FLOWS : "同一 company_id + id 的部署来源"
-    FLOWS ||--o{ FLOW_TASKS : "由 company_id + id + reversion 拥有"
-    FLOWS ||--o{ EXECUTIONS : "绑定精确 Flow Reversion"
+    FLOW_DRAFTS ||--o{ FLOWS : "company_id + draft.flow_key = flow.key"
+    FLOWS ||--o{ FLOW_TASKS : "company_id + key + version"
+    FLOWS ||--o{ EXECUTIONS : "company_id + flow_key + flow_version"
     FLOW_TASKS o|--o{ FLOW_TASKS : "parent_id 形成任务树"
     EXECUTIONS ||--o{ TASK_RUNS : "execution_id 形成运行历史"
-    FLOW_TASKS ||--o{ TASK_RUNS : "task_id 指向定义快照"
+    FLOW_TASKS ||--o{ TASK_RUNS : "Execution 的版本范围内由 task_id 解析"
     TASK_RUNS o|--o{ TASK_RUNS : "parent_id 形成运行树"
 
     FLOW_DRAFTS {
         varchar company_id PK
         varchar id PK
+        varchar flow_key UK
         text raw
         boolean deleted
         bigint lock_version
@@ -27,7 +28,8 @@ erDiagram
 
     FLOWS {
         varchar company_id PK
-        varchar id PK
+        varchar id PK "技术行 ID"
+        varchar key UK "稳定 Flow key"
         bigint reversion PK
         boolean deleted
         jsonb inputs
@@ -36,8 +38,8 @@ erDiagram
 
     FLOW_TASKS {
         varchar company_id PK
-        varchar flow_id PK
-        bigint flow_reversion PK
+        varchar flow_key PK
+        bigint flow_version PK
         varchar id PK
         varchar parent_id
         text type
@@ -49,8 +51,8 @@ erDiagram
     EXECUTIONS {
         varchar company_id PK
         varchar id PK
-        varchar flow_id
-        bigint flow_reversion
+        varchar flow_key
+        bigint flow_version
         jsonb state
         bigint lock_version
     }
@@ -67,7 +69,9 @@ erDiagram
 ```
 
 图中的关系都是逻辑关系。数据库不创建外键，由复合身份、唯一约束、应用校验和
-同事务写入保证。Flow/Task 的 Input、Output 和 Plugin properties 没有独立身份或
+同事务写入保证。Flow 的 `id` 只用于标识 `flows` 表中的技术行；Flow、Task 快照和
+Execution 的版本绑定统一使用 `(company_id, flow_key, flow_version)`。Flow/Task 的
+Input、Output 和 Plugin properties 没有独立身份或
 生命周期，作为不可变定义快照保存在 JSONB 中；Execution 与 TaskRun 的 inputs、
 outputs 保存运行事实，完整 State 以
 `{"current":"...","history":[...]}` 作为单一 JSONB 值对象持久化。按当前状态

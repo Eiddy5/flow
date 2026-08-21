@@ -3,14 +3,14 @@ package org.cses.flow.executor.handlers;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
-import org.cses.flow.core.commands.CommandContext;
+import org.cses.flow.core.services.CommandContext;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
+import org.cses.flow.core.services.flows.handlers.FlowHandlerSupport;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.executor.ExecutorContext;
@@ -126,7 +126,7 @@ public final class ExecutionCommandEventHandler implements
             || execution.state().is(State.Type.KILLING)) {
             return;
         }
-        eventQueue.emit(ExecutorEvent.from(command).inTransaction(dsl));
+        eventQueue.emitInTransaction(ExecutorEvent.from(command), dsl);
     }
 
     private void handleCreate(DSLContext dsl, Create command) {
@@ -149,7 +149,7 @@ public final class ExecutionCommandEventHandler implements
 
         Execution execution = Execution.create(
             flow.companyId(),
-            flow.id(),
+            flow.key(),
             flow.reversion(),
             normalizedInputs
         );
@@ -160,9 +160,9 @@ public final class ExecutionCommandEventHandler implements
             command,
             () -> {
                 executionRepository.save(dsl, execution);
-                eventQueue.emit(
-                    ExecutorEvent.from(command, execution, flow)
-                        .inTransaction(dsl)
+                eventQueue.emitInTransaction(
+                    ExecutorEvent.from(command, execution, flow),
+                    dsl
                 );
             }
         );
@@ -184,12 +184,12 @@ public final class ExecutionCommandEventHandler implements
             return;
         }
 
-        Flow flow = FlowHandlerSupport.requireFlowById(
+        Flow flow = FlowHandlerSupport.requireFlow(
             flowRepository,
             dsl,
             command.getCompanyId(),
-            execution.flowId(),
-            execution.flowReversion()
+            execution.flowKey(),
+            execution.flowVersion()
         );
         TaskRun taskRun = execution.requireTaskRun(command.getTaskRunId());
         if (!taskRun.state().is(State.Type.PAUSED)) {
@@ -209,8 +209,9 @@ public final class ExecutionCommandEventHandler implements
         Map<String, Object> normalizedOutputs = pause.validateResume(
             command.getOutputs()
         );
-        eventQueue.emit(
-            ExecutorEvent.from(command, normalizedOutputs).inTransaction(dsl)
+        eventQueue.emitInTransaction(
+            ExecutorEvent.from(command, normalizedOutputs),
+            dsl
         );
     }
 

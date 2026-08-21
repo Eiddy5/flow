@@ -31,12 +31,12 @@ public final class Output implements Data {
     }
 
     @Override
-    public String getKey() {
+    public String key() {
         return key;
     }
 
     @Override
-    public DataType getType() {
+    public DataType type() {
         return type;
     }
 

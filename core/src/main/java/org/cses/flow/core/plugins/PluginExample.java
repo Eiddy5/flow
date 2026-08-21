@@ -14,6 +14,15 @@ public record PluginExample(
     boolean full
 ) {
 
+    public static PluginExample from(
+        String title,
+        List<String> code,
+        String lang,
+        boolean full
+    ) {
+        return new PluginExample(title, code, lang, full);
+    }
+
     public PluginExample {
         title = title == null || title.isBlank() ? "" : title.trim();
         Objects.requireNonNull(code, "Plugin example code");

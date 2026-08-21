@@ -36,7 +36,7 @@ public final class PluginService {
             .orElseThrow(() -> new IllegalArgumentException(
                 "No plugin registered for type: " + canonicalType
             ));
-        return new PluginDetails(
+        return PluginDetails.from(
             metadata,
             schemaGenerator.generate(metadata)
         );

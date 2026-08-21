@@ -1,5 +1,6 @@
 package org.cses.flow.core.commands.executions;
 
+import org.cses.flow.core.services.executions.commands.CreateExecutionCommand;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -9,7 +10,7 @@ final class CreateExecutionCommandTest {
 
     @Test
     void acceptsAStableExecutionIdAndExactFlowVersion() {
-        CreateExecutionCommand command = new CreateExecutionCommand(
+        CreateExecutionCommand command = CreateExecutionCommand.from(
             "execution-1",
             "flow-1",
             7
@@ -26,12 +27,12 @@ final class CreateExecutionCommandTest {
     void rejectsInvalidRecoverableStartIdentity() {
         assertThrows(
             IllegalArgumentException.class,
-            () -> new CreateExecutionCommand(" ", "flow-1", 1)
+            () -> CreateExecutionCommand.from(" ", "flow-1", 1)
                 .validate()
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> new CreateExecutionCommand(
+            () -> CreateExecutionCommand.from(
                 "execution-1",
                 "flow-1",
                 0

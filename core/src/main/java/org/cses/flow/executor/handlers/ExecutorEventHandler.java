@@ -9,7 +9,7 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.handlers.flows.FlowHandlerSupport;
+import org.cses.flow.core.services.flows.handlers.FlowHandlerSupport;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.executor.ExecutorContext;
@@ -182,12 +182,12 @@ public final class ExecutorEventHandler implements
         ).orElseThrow(() -> new WorkflowException(
                 "Execution does not exist: " + event.getExecutionId()
         ));
-        Flow flow = FlowHandlerSupport.requireFlowById(
+        Flow flow = FlowHandlerSupport.requireFlow(
                 flowRepository,
                 dsl,
                 execution.companyId(),
-                execution.flowId(),
-                execution.flowReversion()
+                execution.flowKey(),
+                execution.flowVersion()
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
 
@@ -284,7 +284,7 @@ public final class ExecutorEventHandler implements
     }
 
     private void emitNext(DSLContext dsl, ExecutorEvent event) {
-        eventQueue.emit(event.nextProcess().inTransaction(dsl));
+        eventQueue.emitInTransaction(event.nextProcess(), dsl);
     }
 
     private boolean persistIfUpdated(

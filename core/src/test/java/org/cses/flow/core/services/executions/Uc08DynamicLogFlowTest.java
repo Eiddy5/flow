@@ -100,23 +100,23 @@ class Uc08DynamicLogFlowTest {
                 IllegalArgumentException.class,
                 () -> fixture.flowService().deploy(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 )
             );
 
             assertTrue(fixture.flowService().latestFlow(
                 fixture.session(),
-                draft.id()
+                draft.flowKey()
             ).isEmpty());
             assertEquals(executionsBefore, fixture.executionCount());
             assertTrue(logs.messages().isEmpty());
             fixture.flowService().deleteDraft(
                 fixture.session(),
-                draft.id()
+                draft.flowKey()
             );
             assertTrue(fixture.flowService().draft(
                 fixture.session(),
-                draft.id()
+                draft.flowKey()
             ).isEmpty());
         }
     }
@@ -176,7 +176,7 @@ class Uc08DynamicLogFlowTest {
         public RunResult run(RunContext context) {
             return switch (key()) {
                 case "prepare" -> RunResult.success(Map.of(
-                    outputs().getFirst().getKey(),
+                    outputs().getFirst().key(),
                     "ready"
                 ));
                 default -> RunResult.success(Map.of());

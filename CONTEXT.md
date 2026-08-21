@@ -213,9 +213,10 @@ _Avoid_: Activity, Task instance
 等待前必须执行的动作，通过 `resume` Input 列表定义外部回调，通过可选且成对出现
 的 `duration + behavior` 定义超时目标。Executor 先让 Pause TaskRun 保持
 `RUNNING` 并无条件执行完整 pause 子树，收敛后才使 Pause TaskRun 进入
-`PAUSED`；Execution 始终保持 `RUNNING`。Pause 的通用 `tasks` 必须为空，有效
-outputs 由 resume 的 key 和 Data Type 派生。它不定义审批人、表单、工单或其他
-外部业务规则。
+`PAUSED`；Execution 始终保持 `RUNNING`。`pause` 只表示暂停前必须完整执行的
+专有 Task；继承自 Task 的通用 `tasks` 表示 Resume 后按普通父子任务规则执行的
+后续 Task，二者都通过 `definitionChildren()` 纳入定义树。有效 outputs 由 resume
+的 key 和 Data Type 派生。它不定义审批人、表单、工单或其他外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
 
 **Execution Resume**:

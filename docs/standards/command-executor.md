@@ -24,8 +24,8 @@ Command，并投递到持久化
 `ExecutionCommandEventHandler`，不进入 Core `CommandExecutor`。该 Handler 只负责恢复
 外部命令上下文、校验并物化 Execution，然后在同一事务中投递内部 `ExecutorEvent`；
 它不直接推进 Executor 状态机。Resume Command 只携带
-`companyId`、`actorId`、`executionId`、`taskRunId` 和规范化 outputs；Cancel Command
-只携带 `companyId`、`actorId` 和 `executionId`；消费者从
+`company`、`actorId`、`executionId`、`taskRunId` 和规范化 outputs；Cancel Command
+只携带 `company`、`actorId` 和 `executionId`；消费者从
 Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Execution 时，Service
 使用 `CommandExecutor.execute(..., completion)` 在同一命令事务内完成 Create Queue
 投递；Handler 仍不得嵌套调用 CommandExecutor。

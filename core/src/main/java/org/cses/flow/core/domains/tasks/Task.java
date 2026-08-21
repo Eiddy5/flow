@@ -141,13 +141,13 @@ public abstract class Task implements Plugin, Identified {
 
     public final boolean declaresOutput(String outputKey) {
         return outputs().stream().anyMatch(output ->
-            output.getKey().equals(outputKey)
+            output.key().equals(outputKey)
         );
     }
 
     public final boolean declaresInput(String inputKey) {
         return inputs().stream().anyMatch(input ->
-            input.getKey().equals(inputKey)
+            input.key().equals(inputKey)
         );
     }
 
@@ -161,7 +161,7 @@ public abstract class Task implements Plugin, Identified {
             throw new WorkflowException("Task outputs must be provided");
         }
         LinkedHashSet<String> declared = outputs().stream()
-            .map(Output::getKey)
+            .map(Output::key)
             .collect(java.util.stream.Collectors.toCollection(
                 LinkedHashSet::new
             ));
@@ -177,7 +177,7 @@ public abstract class Task implements Plugin, Identified {
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Map.Entry<String, ?> entry : actualOutputs.entrySet()) {
             Output output = outputs().stream()
-                .filter(candidate -> candidate.getKey().equals(entry.getKey()))
+                .filter(candidate -> candidate.key().equals(entry.getKey()))
                 .findFirst()
                 .orElseThrow();
             try {

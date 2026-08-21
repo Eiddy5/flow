@@ -26,12 +26,12 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
-    public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_ID, ExecutionsTable.EXECUTIONS.FLOW_REVERSION }, false);
+    public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_KEY, ExecutionsTable.EXECUTIONS.FLOW_VERSION }, false);
     public static final Index IDX_FLOW_DRAFTS_CREATOR_ID = Internal.createIndex(DSL.name("idx_flow_drafts_creator_id"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.CREATOR_ID }, false);
     public static final Index IDX_FLOW_DRAFTS_CURRENT = Internal.createIndex(DSL.name("idx_flow_drafts_current"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.COMPANY_ID, FlowDraftsTable.FLOW_DRAFTS.ID }, false);
     public static final Index IDX_FLOW_DRAFTS_DELETER_ID = Internal.createIndex(DSL.name("idx_flow_drafts_deleter_id"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.DELETER_ID }, false);
     public static final Index IDX_FLOW_DRAFTS_UPDATER_ID = Internal.createIndex(DSL.name("idx_flow_drafts_updater_id"), FlowDraftsTable.FLOW_DRAFTS, new OrderField[] { FlowDraftsTable.FLOW_DRAFTS.UPDATER_ID }, false);
-    public static final Index IDX_FLOW_TASKS_TREE = Internal.createIndex(DSL.name("idx_flow_tasks_tree"), FlowTasksTable.FLOW_TASKS, new OrderField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_ID, FlowTasksTable.FLOW_TASKS.FLOW_REVERSION, FlowTasksTable.FLOW_TASKS.PARENT_ID, FlowTasksTable.FLOW_TASKS.ORDER }, false);
+    public static final Index IDX_FLOW_TASKS_TREE = Internal.createIndex(DSL.name("idx_flow_tasks_tree"), FlowTasksTable.FLOW_TASKS, new OrderField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_KEY, FlowTasksTable.FLOW_TASKS.FLOW_VERSION, FlowTasksTable.FLOW_TASKS.PARENT_ID, FlowTasksTable.FLOW_TASKS.ORDER }, false);
     public static final Index IDX_FLOW_TASKS_TYPE = Internal.createIndex(DSL.name("idx_flow_tasks_type"), FlowTasksTable.FLOW_TASKS, new OrderField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.TYPE }, false);
     public static final Index IDX_FLOWS_CREATOR_ID = Internal.createIndex(DSL.name("idx_flows_creator_id"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.CREATOR_ID }, false);
     public static final Index IDX_FLOWS_DELETER_ID = Internal.createIndex(DSL.name("idx_flows_deleter_id"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.DELETER_ID }, false);

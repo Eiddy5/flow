@@ -31,7 +31,7 @@ class Uc07NestedTaskFlowTest {
                 WorkflowException.class,
                 () -> fixture.flowService().deploy(
                     fixture.session(),
-                    draft.id()
+                    draft.flowKey()
                 )
             );
             assertTrue(exception.getMessage().contains(
@@ -40,14 +40,14 @@ class Uc07NestedTaskFlowTest {
 
             FlowDraft reloaded = fixture.flowService().draft(
                 fixture.session(),
-                draft.id()
+                draft.flowKey()
             ).orElseThrow();
 
             assertEquals(lockVersion, reloaded.lockVersion());
             assertEquals(draft.raw(), reloaded.raw());
             assertTrue(fixture.flowService().flow(
                 fixture.session(),
-                draft.id(),
+                draft.flowKey(),
                 1L
             ).isEmpty());
             assertEquals(

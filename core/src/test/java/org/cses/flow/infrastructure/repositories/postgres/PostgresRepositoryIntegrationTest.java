@@ -103,6 +103,7 @@ final class PostgresRepositoryIntegrationTest {
         long createdAt = 1_785_312_000_000L;
         FlowDraft draft = FlowDraft.create(
             companyId,
+            "postgres-flow",
             "key: postgres-flow",
             actor,
             createdAt
@@ -159,7 +160,7 @@ final class PostgresRepositoryIntegrationTest {
         Flow restoredFlow = read(dsl -> flowRepository.findLatestByKey(
             dsl,
             companyId,
-            draft.id()
+            first.key()
         ).orElseThrow());
         assertTrue(!restoredFlow.isDeleted());
         assertEquals(2, restoredFlow.reversion());
@@ -182,7 +183,7 @@ final class PostgresRepositoryIntegrationTest {
         Flow restoredFirst = read(dsl -> flowRepository.findByKey(
             dsl,
             companyId,
-            draft.id(),
+            first.key(),
             1
         ).orElseThrow());
         assertTrue(!restoredFirst.isDeleted());
@@ -190,7 +191,7 @@ final class PostgresRepositoryIntegrationTest {
         Execution execution = write(dsl -> {
             Execution created = Execution.create(
                 companyId,
-                restoredFlow.id(),
+                restoredFlow.key(),
                 2,
                 Map.of("amount", 1200)
             );
@@ -298,6 +299,62 @@ final class PostgresRepositoryIntegrationTest {
     }
 
     @Test
+    void enforcesCompanyFlowKeyUniquenessIncludingDeletedDrafts() {
+        ActorRef actor = ActorRef.create(
+            "unique-key-user",
+            "Unique Key Test"
+        );
+        long createdAt = 1_785_312_000_000L;
+        FlowDraft first = FlowDraft.create(
+            companyId,
+            "unique-repository-flow",
+            "key: unique-repository-flow",
+            actor,
+            createdAt
+        );
+        write(dsl -> {
+            draftRepository.save(dsl, first);
+            return null;
+        });
+
+        FlowDraft duplicate = FlowDraft.create(
+            companyId,
+            first.flowKey(),
+            first.raw(),
+            actor,
+            createdAt + 1_000L
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> write(dsl -> {
+                draftRepository.save(dsl, duplicate);
+                return null;
+            })
+        );
+
+        first.delete(actor, createdAt + 2_000L);
+        write(dsl -> {
+            draftRepository.save(dsl, first);
+            return null;
+        });
+
+        FlowDraft replacement = FlowDraft.create(
+            companyId,
+            first.flowKey(),
+            first.raw(),
+            actor,
+            createdAt + 3_000L
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> write(dsl -> {
+                draftRepository.save(dsl, replacement);
+                return null;
+            })
+        );
+    }
+
+    @Test
     void roundTripsAPluginSpecificFieldWithoutACompanionCodec() {
         ActorRef actor = ActorRef.create(
             "plugin-user",
@@ -354,7 +411,8 @@ final class PostgresRepositoryIntegrationTest {
                 dsl.select(FLOW_TASKS.PROPERTIES)
                     .from(FLOW_TASKS)
                     .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
-                    .and(FLOW_TASKS.FLOW_ID.eq(flow.id()))
+                    .and(FLOW_TASKS.FLOW_KEY.eq(flow.key()))
+                    .and(FLOW_TASKS.FLOW_VERSION.eq(flow.reversion()))
                     .fetchOne(FLOW_TASKS.PROPERTIES)
                     .data()
             ).getString("channel"))
@@ -403,10 +461,24 @@ final class PostgresRepositoryIntegrationTest {
                 .and(columnName.eq("state"))
                 .and(dataType.eq("jsonb"))
         ));
+        int flowVersionBindingColumnCount = read(dsl -> dsl.fetchCount(
+            columns,
+            tableSchema.eq("public")
+                .and(tableName.in("flow_tasks", "executions"))
+                .and(columnName.in("flow_key", "flow_version"))
+        ));
+        int legacyFlowBindingColumnCount = read(dsl -> dsl.fetchCount(
+            columns,
+            tableSchema.eq("public")
+                .and(tableName.in("flow_tasks", "executions"))
+                .and(columnName.in("flow_id", "flow_reversion"))
+        ));
 
         assertEquals(0, draftColumnCount);
         assertEquals(0, splitStateColumnCount);
         assertEquals(2, stateJsonbColumnCount);
+        assertEquals(4, flowVersionBindingColumnCount);
+        assertEquals(0, legacyFlowBindingColumnCount);
         assertEquals(
             "text",
             read(dsl -> dsl.select(dataType)
@@ -427,6 +499,7 @@ final class PostgresRepositoryIntegrationTest {
         long createdAt = 1_785_312_000_000L;
         FlowDraft draft = FlowDraft.create(
             companyId,
+            "lifecycle-flow",
             "key: lifecycle-flow",
             actor,
             createdAt
@@ -485,7 +558,7 @@ final class PostgresRepositoryIntegrationTest {
         Flow latest = read(dsl -> flowRepository.findLatestByKey(
             dsl,
             companyId,
-            draft.id()
+            second.key()
         ).orElseThrow());
         assertEquals(2L, latest.reversion());
         assertTrue(latest.isDeleted());
@@ -493,7 +566,7 @@ final class PostgresRepositoryIntegrationTest {
         Flow historical = read(dsl -> flowRepository.findByKey(
             dsl,
             companyId,
-            draft.id(),
+            second.key(),
             1L
         ).orElseThrow());
         assertFalse(historical.isDeleted());

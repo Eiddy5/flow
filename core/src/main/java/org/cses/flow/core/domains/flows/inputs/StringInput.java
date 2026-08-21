@@ -25,7 +25,7 @@ public final class StringInput extends Input<String> {
     }
 
     @Override
-    public DataType getType() {
+    public DataType type() {
         return DataType.STRING;
     }
 

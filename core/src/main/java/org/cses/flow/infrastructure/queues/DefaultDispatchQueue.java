@@ -23,18 +23,10 @@ import java.util.function.Consumer;
 /**
  * Default database-backed competing-consumer Queue.
  *
- * <p>Synchronous publishing joins the caller-owned {@link DSLContext}
- * returned by {@link DispatchEvent#dsl()}; a {@code null} result opens a
- * Queue-owned transaction. {@link #emitInTransaction(DispatchEvent,
- * DSLContext)} is an explicit alternative for payloads that do not carry
- * runtime transaction state. Asynchronous publishing never reads
- * {@code dsl()} and always uses a Queue-owned transaction.</p>
- *
- * <p>When synchronous publishing joins a caller transaction, returning from
- * {@code emit} only means the insert was staged successfully. The caller
- * remains responsible for committing or rolling back that transaction. A
- * synchronous batch must return the same {@code DSLContext} instance from
- * every Event, or return {@code null} from every Event.</p>
+ * <p>Ordinary synchronous and asynchronous publishing uses a Queue-owned
+ * transaction. {@link #emitInTransaction(DispatchEvent, DSLContext)} lets a
+ * caller explicitly stage publication in its existing transaction; returning
+ * from that method does not commit the caller-owned transaction.</p>
  *
  * <p>An external {@link #close()} waits for active Consumer calls. When a
  * Consumer of this Queue calls {@code close} itself, the call first stops all
@@ -108,7 +100,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
         requireOpen();
         T accepted = store.requireEvent(event);
         List<QueueMessageEntry> entries = store.prepare(accepted);
-        publishSynchronously(List.of(accepted), entries);
+        store.publish(entries);
         signalAvailable();
     }
 
@@ -117,7 +109,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
         requireOpen();
         T accepted = store.requireEvent(event);
         List<QueueMessageEntry> entries = store.prepare(accepted);
-        publishInTransaction(dsl, entries);
+        store.publish(dsl, entries);
         signalAvailable();
     }
 
@@ -126,7 +118,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
         requireOpen();
         List<T> accepted = store.snapshot(events);
         List<QueueMessageEntry> entries = store.prepare(accepted);
-        publishSynchronously(accepted, entries);
+        store.publish(entries);
         signalAvailable();
     }
 
@@ -135,7 +127,7 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
         requireOpen();
         List<T> accepted = store.snapshot(events);
         List<QueueMessageEntry> entries = store.prepare(accepted);
-        publishInTransaction(dsl, entries);
+        store.publish(dsl, entries);
         signalAvailable();
     }
 
@@ -239,57 +231,6 @@ public final class DefaultDispatchQueue<T extends DispatchEvent>
         } finally {
             lifecycleLock.unlock();
         }
-    }
-
-    private void publishSynchronously(
-        List<T> events,
-        List<QueueMessageEntry> entries
-    ) {
-        if (entries.isEmpty()) {
-            return;
-        }
-        DSLContext dsl = resolveSharedTransaction(events);
-        if (dsl == null) {
-            store.publish(entries);
-        } else {
-            store.publish(dsl, entries);
-        }
-    }
-
-    private DSLContext resolveSharedTransaction(List<T> events) {
-        DSLContext shared = null;
-        boolean first = true;
-        for (T event : events) {
-            DSLContext resolved;
-            try {
-                resolved = event.dsl();
-            } catch (RuntimeException exception) {
-                throw queueFailure(
-                    "Could not read Event transaction",
-                    exception
-                );
-            }
-            if (first) {
-                shared = resolved;
-                first = false;
-            } else if (resolved != shared) {
-                throw new QueueException(
-                    "A synchronous Queue batch must use one shared "
-                        + "DSLContext or no DSLContext"
-                );
-            }
-        }
-        return shared;
-    }
-
-    private void publishInTransaction(
-        DSLContext dsl,
-        List<QueueMessageEntry> entries
-    ) {
-        if (entries.isEmpty()) {
-            return;
-        }
-        store.publish(dsl, entries);
     }
 
     private CompletionStage<Void> submitAsync(

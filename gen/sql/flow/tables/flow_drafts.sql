@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS flow_drafts (
     id               varchar(64) NOT NULL,
     company_id       varchar(64) NOT NULL,
+    flow_key         varchar(128) NOT NULL,
 
     creator          jsonb NOT NULL,
     creator_id       varchar(64)
@@ -22,8 +23,12 @@ CREATE TABLE IF NOT EXISTS flow_drafts (
 
     CONSTRAINT pk_flow_drafts
         PRIMARY KEY (company_id, id),
+    CONSTRAINT uq_flow_drafts_company_flow_key
+        UNIQUE (company_id, flow_key),
     CONSTRAINT ck_flow_drafts_id
         CHECK (length(btrim(id)) > 0),
+    CONSTRAINT ck_flow_drafts_flow_key
+        CHECK (length(btrim(flow_key)) BETWEEN 1 AND 128),
     CONSTRAINT ck_flow_drafts_lock_version
         CHECK (lock_version >= 0),
     CONSTRAINT ck_flow_drafts_creator

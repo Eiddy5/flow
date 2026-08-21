@@ -1,15 +1,12 @@
 package org.cses.flow.controller.plugins;
 
-import io.micronaut.validation.validator.Validator;
 import org.cses.flow.controller.plugins.PluginModels.PluginDetailsView;
 import org.cses.flow.controller.plugins.PluginModels.RegisteredPluginView;
 import org.cses.flow.core.plugins.DefaultPluginRegistry;
 import org.cses.flow.core.plugins.PluginModule;
-import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.PluginSchemaGenerator;
 import org.cses.flow.core.services.plugins.PluginService;
-import org.cses.flow.core.validations.ModelValidator;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.flow.Parallel;
 import org.junit.jupiter.api.Test;
@@ -24,13 +21,9 @@ class PluginControllerTest {
     void exposesRealPackagePathsInCatalogGroupsAndTaskMetadata() {
         DefaultPluginRegistry registry = new DefaultPluginRegistry(
             List.of(
-                new TestNotificationTask(),
-                new AutomaticTask(),
-                new Parallel()
+                new Parallel(),
+                new AutomaticTask()
             )
-        );
-        ModelValidator validator = new ModelValidator(
-            Validator.getInstance()
         );
         JacksonMapper mapper = new JacksonMapper(
             new PluginModule(registry)
@@ -46,7 +39,6 @@ class PluginControllerTest {
 
         assertEquals(
             List.of(
-                TestNotificationTask.class.getPackageName(),
                 Parallel.class.getPackageName(),
                 AutomaticTask.class.getPackageName()
             ),
@@ -55,7 +47,7 @@ class PluginControllerTest {
                 .toList()
         );
         assertEquals(
-            TestNotificationTask.class.getPackageName(),
+            Parallel.class.getPackageName(),
             plugins.getFirst().tasks().getFirst().packageName()
         );
         assertEquals(
@@ -71,24 +63,23 @@ class PluginControllerTest {
         );
 
         PluginDetailsView details = controller.plugin(
-            TestNotificationTask.class.getCanonicalName()
+            AutomaticTask.class.getCanonicalName()
         );
         assertEquals(
-            TestNotificationTask.class.getPackageName(),
+            AutomaticTask.class.getPackageName(),
             details.metadata().packageName()
         );
         assertEquals(1, details.examples().size());
         assertEquals(
-            "发送流程告警",
+            "执行自动步骤",
             details.examples().getFirst().title()
         );
         assertEquals(
             List.of("""
-                key: notification-flow
+                key: automatic-task-flow
                 tasks:
-                  - key: notify-alerts
-                    type: org.cses.flow.core.plugins.TestNotificationTask
-                    channel: flow-alerts
+                  - key: automatic-step
+                    type: org.cses.flow.extensions.tasks.AutomaticTask
                 """),
             details.examples().getFirst().code()
         );

@@ -126,6 +126,11 @@ public class FlowDraftsTable extends TableImpl<FlowDraftsRecord> {
      */
     public final TableField<FlowDraftsRecord, Boolean> DELETED = createField(DSL.name("deleted"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
 
+    /**
+     * The column <code>public.flow_drafts.flow_key</code>.
+     */
+    public final TableField<FlowDraftsRecord, String> FLOW_KEY = createField(DSL.name("flow_key"), SQLDataType.VARCHAR(128).nullable(false), this, "");
+
     private FlowDraftsTable(Name alias, Table<FlowDraftsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
     }
@@ -171,11 +176,17 @@ public class FlowDraftsTable extends TableImpl<FlowDraftsRecord> {
     }
 
     @Override
+    public List<UniqueKey<FlowDraftsRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.UQ_FLOW_DRAFTS_COMPANY_FLOW_KEY);
+    }
+
+    @Override
     public List<Check<FlowDraftsRecord>> getChecks() {
         return Arrays.asList(
             Internal.createCheck(this, DSL.name("ck_flow_drafts_creator"), "(((jsonb_typeof(creator) = 'object'::text) AND (creator ? 'id'::text)))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_deleted"), "((((deleted IS FALSE) AND (deleter IS NULL) AND (deleted_at IS NULL)) OR ((deleted IS TRUE) AND (deleter IS NOT NULL) AND (deleted_at IS NOT NULL))))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_deleter"), "(((deleter IS NULL) OR ((jsonb_typeof(deleter) = 'object'::text) AND (deleter ? 'id'::text))))", true),
+            Internal.createCheck(this, DSL.name("ck_flow_drafts_flow_key"), "(((length(btrim((flow_key)::text)) >= 1) AND (length(btrim((flow_key)::text)) <= 128)))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_id"), "((length(btrim((id)::text)) > 0))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_lock_version"), "((lock_version >= 0))", true),
             Internal.createCheck(this, DSL.name("ck_flow_drafts_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true)

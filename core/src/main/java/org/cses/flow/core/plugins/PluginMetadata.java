@@ -15,6 +15,40 @@ public record PluginMetadata<T extends Plugin>(
     List<String> capabilities
 ) {
 
+    public static <T extends Plugin> PluginMetadata<T> from(
+        Class<? extends T> type,
+        Class<T> baseClass,
+        String title,
+        String description,
+        List<PluginExample> examples,
+        List<String> capabilities
+    ) {
+        return new PluginMetadata<>(
+            type,
+            baseClass,
+            title,
+            description,
+            examples,
+            capabilities
+        );
+    }
+
+    public static <T extends Plugin> PluginMetadata<T> from(
+        Class<? extends T> type,
+        Class<T> baseClass,
+        String title,
+        String description
+    ) {
+        return from(
+            type,
+            baseClass,
+            title,
+            description,
+            List.of(),
+            List.of()
+        );
+    }
+
     public PluginMetadata {
         Objects.requireNonNull(type, "Plugin class");
         Objects.requireNonNull(baseClass, "Plugin base class");

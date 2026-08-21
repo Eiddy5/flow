@@ -150,18 +150,17 @@ Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只
 Core 提供类型化 Dispatch Queue Interface，并已把 Execution 启动接入使用统一
 `queues` 表的 Default Adapter。该表以
 `queue_type + queue_name` 隔离传输类别和逻辑 Queue；当前 Adapter 只写入并领取
-`DISPATCH` 行。业务 Module 为具体 Event 提供 key、可空的 `dsl()`、确定的 `Class<T>` 和具名
-Bean；对于不应携带事务状态的纯数据 payload，调用方也可以通过 Queue 的显式发布方法传入
-事务。Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
+`DISPATCH` 行。业务 Module 为具体 Event 提供 key、确定的 `Class<T>` 和具名 Bean；
+Event 不携带事务状态，需要与业务写入原子提交时，调用方通过 Queue 的显式发布方法
+传入事务。Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
 `Create`、`Resume`、`Cancel`、具名 Queue Bean、只做两条 Queue 路由的 eager `DefaultExecutor`、
 `ExecutionCommandEventHandler` 和内部 `ExecutorEventHandler` 已连线；Broadcast
 Interface、消费游标或保留清理仍未实现。
 
-`DefaultDispatchQueue` 的普通同步发布继续读取 `Event.dsl()`：返回非空值时加入调用方事务，
-返回 `null` 时使用 Queue 自有事务；对于不携带运行时事务状态的 payload，也可以调用
-`emitInTransaction(...)` 显式传入 `DSLContext`。异步发布始终忽略 `dsl()` 并在独立事务中提交。
-Default Queue 使用项目现有 `JsonFactory` 把业务 Event 重组为 JSONB Queue Entry，并用装配时
-传入的 `Class<T>` 恢复类型，后台任务只携带 Entry，不携带调用方事务。每个 Subscription 使用虚拟线程周期轮询
+`DefaultDispatchQueue` 的普通同步与异步发布都使用 Queue 自有事务；需要加入调用方
+事务时必须调用 `emitInTransaction(...)` 显式传入 `DSLContext`。Default Queue 使用项目
+现有 `JsonFactory` 把业务 Event 重组为 JSONB Queue Entry，并用装配时传入的 `Class<T>`
+恢复类型，后台任务只携带 Entry。每个 Subscription 使用虚拟线程周期轮询
 数据库，并在领取事务内按 `queue_type = 'DISPATCH'`、`queue_name` 通过
 `FOR UPDATE SKIP LOCKED` 竞争并调用 Consumer；只有 Consumer 正常返回才删除消息，
 异常会回滚领取事务并重试。未来 Broadcast 消息载荷仍写入 `queues`，所需的
@@ -300,9 +299,11 @@ flowchart TD
 
 流程图强调当前实现中的关键事实：
 
-1. Flow 的业务身份是 `companyId + key + version`。key 在 Draft 创建时由后端生成并跨版本
-   稳定；每次部署都生成新的技术 `Flow.id`，历史版本不会复用该 id。
-2. 普通启动由 `ExecutionService` 构造只含 `companyId`、`flowKey`、`flowVersion`、
+1. Flow 的业务身份是 `companyId + key + version`。Draft 的保存选择器是调用方提供的
+   `companyId + key`，同公司同 key 只有一个 Draft；保存时按该 key upsert，存在则修订，
+   不存在则创建。`FlowDraft.id` 和每个部署生成的 `Flow.id` 都只是技术行标记。修订
+   YAML 可以省略顶层 `key`，但如果提供必须与 Draft key 一致，历史版本不会复用技术 id。
+2. 普通启动由 `ExecutionService` 构造只含 `company`、`flowKey`、`flowVersion`、
    `inputs` 的 `Create` 并写入 Executor Command Queue；Service 返回只代表队列受理。
    `ExecutionCommandEventHandler` 在消费事务中按三字段加载精确 Flow，规范化 inputs、
    创建 Execution 并原子投递 `ExecutorEvent`。可信 pending continuation 仍在同一
@@ -331,7 +332,7 @@ flowchart TD
 - [`server/src/main/java/org/cses/flow/controller/plugins/PluginController.java`](../server/src/main/java/org/cses/flow/controller/plugins/PluginController.java)
 - [`server/src/main/java/org/cses/flow/controller/flow/FlowController.java`](../server/src/main/java/org/cses/flow/controller/flow/FlowController.java)
 - [`server/src/main/resources/flow/index.html`](../server/src/main/resources/flow/index.html)
-- [`core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/commands/CommandExecutor.java)
+- [`../core/src/main/java/org/cses/flow/core/services/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/services/commands/CommandExecutor.java)
 - [`core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java`](../core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`](../core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/Create.java`](../core/src/main/java/org/cses/flow/executor/commands/Create.java)

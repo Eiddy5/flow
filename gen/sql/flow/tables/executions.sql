@@ -1,8 +1,8 @@
 CREATE TABLE IF NOT EXISTS executions (
     id               varchar(64) NOT NULL,
     company_id       varchar(64) NOT NULL,
-    flow_id          varchar(64) NOT NULL,
-    flow_reversion   bigint NOT NULL,
+    flow_key         varchar(128) NOT NULL,
+    flow_version      bigint NOT NULL,
     state            jsonb NOT NULL,
     lock_version     bigint NOT NULL DEFAULT 0,
 
@@ -20,9 +20,9 @@ CREATE TABLE IF NOT EXISTS executions (
     CONSTRAINT uq_executions_id
         UNIQUE (id),
     CONSTRAINT uq_executions_flow
-        UNIQUE (company_id, id, flow_id, flow_reversion),
-    CONSTRAINT ck_executions_reversion
-        CHECK (flow_reversion > 0),
+        UNIQUE (company_id, id, flow_key, flow_version),
+    CONSTRAINT ck_executions_version
+        CHECK (flow_version > 0),
     CONSTRAINT ck_executions_inputs
         CHECK (jsonb_typeof(inputs) = 'object'),
     CONSTRAINT ck_executions_state
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS executions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_executions_flow
-    ON executions (company_id, flow_id, flow_reversion);
+    ON executions (company_id, flow_key, flow_version);
 
 CREATE INDEX IF NOT EXISTS idx_executions_state_current
     ON executions (company_id, (state ->> 'current'));

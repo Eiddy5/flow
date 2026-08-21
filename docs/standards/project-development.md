@@ -90,6 +90,11 @@ new Random().nextLong();
 简单 Command、查询条件、边界请求/响应、不可变内部传输信封和测试参数可以选择
 `record`，也可以继续使用 `final class`；不要求为了简短而迁移已有类型。
 
+- Java `record` 的实例统一通过类型提供的静态 `from(...)` 工厂创建；业务代码、
+  测试代码和其他类型不得直接调用 `new RecordType(...)`。record 自身的
+  `from(...)` 实现可以调用其构造方法；语义更明确的 `success(...)`、
+  `failed(...)` 等便捷工厂也必须委托给 `from(...)`。
+
 ```java
 public record ExecutionSummary(
     String id,

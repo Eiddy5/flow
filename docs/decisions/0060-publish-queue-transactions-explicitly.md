@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted
+Accepted（保留 Event.dsl 兼容入口的条款由 ADR 0066 修订；显式事务发布 Interface
+继续有效）
 
 ## 背景
 

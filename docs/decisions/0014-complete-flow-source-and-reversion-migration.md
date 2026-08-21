@@ -50,7 +50,7 @@ ADR 0008 已将唯一可编辑来源定义为 `FlowDraft`，将每次成功部�
 采用方案二，并完成以下模型与存储迁移：
 
 - 部署成功后保留 `FlowDraft`，作为下一轮编辑基线。
-- `FlowDraft` 使用稳定 `id`、`companyId`、原始 `raw`、审计字段和纯技术
+- `FlowDraft` 使用稳定 `id`、`company`、原始 `raw`、审计字段和纯技术
   `lockVersion`；它没有业务 `reversion`、状态、description、inputs、outputs
   或 tasks。
 - `Flow` 每个对象和每行记录只表达一个 `id + reversion`。它保存 ADR 0013

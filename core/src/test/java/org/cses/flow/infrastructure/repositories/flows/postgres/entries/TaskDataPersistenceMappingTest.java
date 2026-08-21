@@ -147,10 +147,15 @@ class TaskDataPersistenceMappingTest {
             .id("action-id")
             .key("create-approval")
             .build();
+        Task continuation = AutomaticTask.builder()
+            .id("continuation-id")
+            .key("send-result")
+            .build();
         Pause task = Pause.builder()
             .id("pause-id")
             .key("wait-approval")
             .pause(action)
+            .tasks(List.of(continuation))
             .resume(List.of(StringInput.builder()
                 .key("decision")
                 .displayName("Decision")
@@ -175,11 +180,15 @@ class TaskDataPersistenceMappingTest {
         assertEquals("P1M", entry.properties.asMap().get("duration"));
         Pause restored = assertInstanceOf(
             Pause.class,
-            entry.toDomain(plugins.jacksonMapper(), List.of())
+            entry.toDomain(plugins.jacksonMapper(), List.of(continuation))
         );
         assertEquals(task, restored);
         assertEquals(action, restored.pause());
-        assertEquals(List.of(action), restored.definitionChildren());
+        assertEquals(List.of(continuation), restored.tasks());
+        assertEquals(
+            List.of(action, continuation),
+            restored.definitionChildren()
+        );
         assertEquals(
             List.of(Output.create("decision", DataType.STRING)),
             restored.outputs()

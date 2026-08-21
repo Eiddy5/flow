@@ -54,7 +54,7 @@ public final class DefaultPluginRegistry implements PluginRegistry {
         this.metadataByType = Map.copyOf(registrations);
         this.registeredPlugins = tasksByPackage.entrySet().stream()
                 .sorted(Comparator.comparing(Map.Entry::getKey))
-                .map(entry -> new RegisteredPlugin(
+                .map(entry -> RegisteredPlugin.from(
                         entry.getKey(),
                         entry.getValue()
                 ))
@@ -160,7 +160,7 @@ public final class DefaultPluginRegistry implements PluginRegistry {
         }
 
         Class<? extends Task> taskClass = pluginClass.asSubclass(Task.class);
-        PluginMetadata<Task> metadata = new PluginMetadata<>(
+        PluginMetadata<Task> metadata = PluginMetadata.from(
                 taskClass,
                 Task.class,
                 annotation.title(),
@@ -185,7 +185,7 @@ public final class DefaultPluginRegistry implements PluginRegistry {
 
     private static List<PluginExample> examples(Example[] declarations) {
         return Arrays.stream(declarations)
-                .map(declaration -> new PluginExample(
+                .map(declaration -> PluginExample.from(
                         declaration.title(),
                         List.copyOf(Arrays.asList(declaration.code())),
                         declaration.lang(),

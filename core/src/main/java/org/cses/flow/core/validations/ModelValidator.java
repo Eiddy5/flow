@@ -92,9 +92,9 @@ public final class ModelValidator {
                     field + " must not contain null values"
                 );
             }
-            if (!keys.add(value.getKey())) {
+            if (!keys.add(value.key())) {
                 throw new IllegalArgumentException(
-                    field + " contains duplicate key: " + value.getKey()
+                    field + " contains duplicate key: " + value.key()
                 );
             }
         }

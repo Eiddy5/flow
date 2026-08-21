@@ -45,10 +45,26 @@ public record Resume(
         }
         ActorRef actor = ActorRef.from(session);
 
-        return new Resume(
+        return from(
             executionId,
             session.getCompanyId(),
             actor.id(),
+            taskRunId,
+            immutableOutputs(outputs)
+        );
+    }
+
+    public static Resume from(
+        String executionId,
+        String companyId,
+        String actorId,
+        String taskRunId,
+        Map<String, ?> outputs
+    ) {
+        return new Resume(
+            executionId,
+            companyId,
+            actorId,
             taskRunId,
             immutableOutputs(outputs)
         );

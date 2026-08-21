@@ -11,21 +11,22 @@ import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.PluginDeserializationContext;
 import org.cses.flow.core.validations.ModelValidator;
+import org.paas.common.util.StringUtil;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
  * Materializes one deployed Flow from strict YAML.
  *
- * <p>The stable Flow key is supplied by the backend from the FlowDraft
- * identity. A legacy top-level {@code key} field remains accepted as a
- * payload field for compatibility, but it is not used as the deployed
- * identity.</p>
+ * <p>A top-level {@code key} supplied by the caller is the deployed Flow
+ * identity. When it is absent, the caller-provided stable fallback is used;
+ * direct serializer callers without a fallback receive a generated key.</p>
  *
  * <p>Task polymorphism is owned by Jackson's registered
  * {@code PluginDeserializer}. This class only owns Flow fields, deployment
@@ -58,6 +59,17 @@ public final class FlowDefinitionDeserializer {
         this.modelValidator = modelValidator;
     }
 
+    /**
+     * Reads the optional business key without materializing the Flow.
+     * Deployment uses this before loading the latest revision so a draft's
+     * generated fallback key cannot hide an externally declared key.
+     */
+    public Optional<String> declaredFlowKey(String source) {
+        return Optional.ofNullable(
+            declaredFlowKey(parseDefinition(source))
+        );
+    }
+
     public Flow deserialize(
         String source,
         String companyId,
@@ -66,8 +78,12 @@ public final class FlowDefinitionDeserializer {
         ActorRef actor,
         long deployedAt
     ) {
-        ObjectNode definition = yamlParser.parseTree(source);
-        rejectUnknownFields(definition, FLOW_FIELDS, "Flow");
+        ObjectNode definition = parseDefinition(source);
+
+        String externalFlowKey = declaredFlowKey(definition);
+        String effectiveFlowKey = externalFlowKey == null
+            ? fallbackFlowKey(flowKey, latest)
+            : externalFlowKey;
 
         Map<String, String> taskIdsByKey = new LinkedHashMap<>();
         if (latest != null) {
@@ -78,7 +94,7 @@ public final class FlowDefinitionDeserializer {
 
         return Flow.deploy(
             companyId,
-            flowKey,
+            effectiveFlowKey,
             optionalText(definition, "description", "", "Flow"),
             variables(definition.get("variables"), "Flow.variables"),
             inputs(definition.get("inputs"), "Flow.inputs"),
@@ -92,6 +108,31 @@ public final class FlowDefinitionDeserializer {
             actor,
             deployedAt
         );
+    }
+
+    private ObjectNode parseDefinition(String source) {
+        ObjectNode definition = yamlParser.parseTree(source);
+        rejectUnknownFields(definition, FLOW_FIELDS, "Flow");
+        return definition;
+    }
+
+    private static String declaredFlowKey(ObjectNode definition) {
+        return optionalText(
+            definition,
+            "key",
+            null,
+            "Flow"
+        );
+    }
+
+    private static String fallbackFlowKey(String supplied, Flow latest) {
+        if (latest != null) {
+            return latest.key();
+        }
+        if (supplied != null && !supplied.isBlank()) {
+            return supplied.trim();
+        }
+        return StringUtil.newId();
     }
 
     private Map<String, Object> variables(JsonNode value, String path) {

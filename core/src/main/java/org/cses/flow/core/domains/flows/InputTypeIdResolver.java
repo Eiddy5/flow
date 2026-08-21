@@ -44,7 +44,7 @@ public final class InputTypeIdResolver extends TypeIdResolverBase {
     @Override
     public String idFromValueAndType(Object value, Class<?> suggestedType) {
         if (value instanceof Input<?> input) {
-            return input.getType().name();
+            return input.type().name();
         }
         return suggestedType.getSimpleName();
     }

@@ -42,7 +42,7 @@ public final class TaskPluginTestSupport {
         ModelValidator validator = new ModelValidator(VALIDATOR);
         PluginModule module = new PluginModule(registry);
         JacksonMapper mapper = new JacksonMapper(module);
-        return new Context(
+        return Context.from(
             mapper,
             new FlowDefinitionDeserializer(
                 new YamlParser(mapper),
@@ -58,6 +58,18 @@ public final class TaskPluginTestSupport {
         FlowDefinitionDeserializer flowDeserializer,
         ModelValidator modelValidator
     ) {
+
+        public static Context from(
+            JacksonMapper jacksonMapper,
+            FlowDefinitionDeserializer flowDeserializer,
+            ModelValidator modelValidator
+        ) {
+            return new Context(
+                jacksonMapper,
+                flowDeserializer,
+                modelValidator
+            );
+        }
 
         public Flow deploy(
             String companyId,

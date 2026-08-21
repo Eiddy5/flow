@@ -31,9 +31,8 @@ public final class ExecutorContext {
     public ExecutorContext(Flow flow, Execution execution) {
         this.flow = Objects.requireNonNull(flow, "flow");
         this.execution = Objects.requireNonNull(execution, "execution");
-        if (!flow.identifiedBy(execution.flowId())
-            || !flow.companyId().equals(execution.companyId())
-            || flow.reversion() != execution.flowReversion()) {
+        if (!flow.key().equals(execution.flowKey())
+            || flow.reversion() != execution.flowVersion()) {
             throw new IllegalArgumentException(
                 "Execution does not belong to the exact Flow reversion"
             );

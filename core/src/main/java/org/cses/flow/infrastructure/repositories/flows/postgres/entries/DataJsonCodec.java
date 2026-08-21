@@ -89,9 +89,9 @@ final class DataJsonCodec {
         }
         return Map.of(
             "key",
-            data.getKey(),
+            data.key(),
             "type",
-            data.getType().name()
+            data.type().name()
         );
     }
 

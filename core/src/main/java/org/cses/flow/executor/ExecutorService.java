@@ -114,7 +114,7 @@ public final class ExecutorService {
         for (TaskRun taskRun : context.nexts()) {
             Task task = requireTask(context, taskRun);
             if (task instanceof RunnableTask) {
-                workerTasks.add(new WorkerTask(
+                workerTasks.add(WorkerTask.from(
                     context.execution().id(),
                     taskRun.id(),
                     taskRun.parentId().orElse(null),
@@ -206,7 +206,12 @@ public final class ExecutorService {
                     iterationOutputs(
                         context,
                         task,
-                        new IterationScope(task, taskRun.id(), iteration, null)
+                        IterationScope.from(
+                            task,
+                            taskRun.id(),
+                            iteration,
+                            null
+                        )
                     )
                 );
             if (decision == OrchestrationTask.IterationDecision.SUCCESS) {
@@ -475,7 +480,7 @@ public final class ExecutorService {
             context.execution(),
             loopRun.id()
         ).orElse(1);
-        IterationScope scope = new IterationScope(
+        IterationScope scope = IterationScope.from(
             task,
             loopRun.id(),
             iteration,
@@ -506,7 +511,7 @@ public final class ExecutorService {
                     + loopRun.id()
             );
         }
-        IterationScope nextScope = new IterationScope(
+        IterationScope nextScope = IterationScope.from(
             task,
             loopRun.id(),
             nextIteration,
@@ -925,6 +930,15 @@ public final class ExecutorService {
         int iteration,
         IterationScope parent
     ) {
+
+        private static IterationScope from(
+            Task loop,
+            String loopRunId,
+            int iteration,
+            IterationScope parent
+        ) {
+            return new IterationScope(loop, loopRunId, iteration, parent);
+        }
     }
 
     private static final class SearchResult {

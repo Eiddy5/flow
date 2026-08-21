@@ -26,6 +26,7 @@ class FlowDeletionLifecycleTest {
     void draftDeletesOnlyOnce() {
         FlowDraft draft = FlowDraft.create(
             "company-1",
+            "lifecycle-flow",
             "key: lifecycle-flow",
             ACTOR,
             CREATED_AT
@@ -94,6 +95,7 @@ class FlowDeletionLifecycleTest {
             () -> FlowDraft.rehydrate(
                 "draft-1",
                 "company-1",
+                "lifecycle-flow",
                 "key: lifecycle-flow",
                 false,
                 ACTOR,
@@ -110,6 +112,7 @@ class FlowDeletionLifecycleTest {
             () -> FlowDraft.rehydrate(
                 "draft-1",
                 "company-1",
+                "lifecycle-flow",
                 "key: lifecycle-flow",
                 true,
                 ACTOR,

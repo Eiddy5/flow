@@ -52,14 +52,17 @@ public final class PluginDeserializationContext {
         rejectSystemField(definition, "taskId");
 
         JsonNode keyNode = definition.get("key");
-        if (keyNode == null || !keyNode.isTextual()
-            || keyNode.textValue().isBlank()) {
+        String key;
+        if (keyNode == null || keyNode.isNull()) {
+            key = StringUtil.newId();
+        } else if (!keyNode.isTextual() || keyNode.textValue().isBlank()) {
             throw new IllegalArgumentException(
                 "Task key must be non-blank text"
             );
+        } else {
+            key = keyNode.textValue().trim();
         }
 
-        String key = keyNode.textValue().trim();
         definition.put("key", key);
         definition.put(
             "id",

@@ -21,20 +21,40 @@ public interface FlowDraftRepository {
 
     /**
      * Loads one exact draft, including a logically deleted draft.
+     * This is an adapter-level lookup by the database row marker.
      */
     Optional<FlowDraft> findById(
         DSLContext dsl,
         String companyId,
-        String flowId
+        String rowId
     );
 
     /**
-     * Locks only an editable, undeleted draft for mutation.
+     * Loads the current editable draft associated with a stable Flow key.
+     */
+    Optional<FlowDraft> findByFlowKey(
+        DSLContext dsl,
+        String companyId,
+        String flowKey
+    );
+
+    /**
+     * Locks only an editable, undeleted draft for mutation by its business key.
+     */
+    Optional<FlowDraft> lockByFlowKey(
+        DSLContext dsl,
+        String companyId,
+        String flowKey
+    );
+
+    /**
+     * Internal exact-row lock for persistence tests and adapter-only recovery.
+     * Business callers must use {@link #lockByFlowKey(DSLContext, String, String)}.
      */
     Optional<FlowDraft> lockById(
         DSLContext dsl,
         String companyId,
-        String flowId
+        String rowId
     );
 
     void save(DSLContext dsl, FlowDraft draft);

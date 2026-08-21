@@ -3,7 +3,7 @@ package org.cses.flow.infrastructure.repositories.executions.postgres;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.commands.CommandContext;
+import org.cses.flow.core.services.CommandContext;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.infrastructure.repositories.executions.postgres.entries.ExecutionEntry;

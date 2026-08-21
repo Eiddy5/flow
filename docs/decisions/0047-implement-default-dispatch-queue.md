@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted
+Accepted（Event 事务字段、普通同步发布和 JSONB 排除 DSL 条款由 ADR 0066 修订）
 
 本决策修订 ADR 0046 “当前范围”中暂不提供数据库 Adapter、消息表和后台消费线程的
 阶段性结论；ADR 0046 的类型化 Queue Interface 与业务 Event 所有权决策保持不变。

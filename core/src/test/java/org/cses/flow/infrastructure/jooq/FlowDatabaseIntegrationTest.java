@@ -95,7 +95,7 @@ final class FlowDatabaseIntegrationTest {
             );
             assertEquals(
                 draft.id(),
-                flowService.draft(session(companyId), draft.id())
+                flowService.draft(session(companyId), draft.flowKey())
                     .orElseThrow()
                     .id()
             );

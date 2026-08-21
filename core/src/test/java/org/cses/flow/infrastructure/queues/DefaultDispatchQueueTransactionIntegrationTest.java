@@ -2,9 +2,7 @@ package org.cses.flow.infrastructure.queues;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
-import org.cses.flow.queues.QueueException;
 import org.cses.flow.queues.event.DispatchEvent;
-import org.jooq.DSLContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -17,7 +15,6 @@ import org.paas.json.SerializableObject;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.flow.gen.flow.Tables.QUEUES;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -56,7 +53,7 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     }
 
     @Test
-    void synchronousEventUsesExplicitDslContext() {
+    void synchronousEventUsesExplicitTransaction() {
         String queueName = queuePrefix + "-explicit-dsl";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
@@ -77,24 +74,7 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     }
 
     @Test
-    void synchronousEventUsesItsDslContext() {
-        String queueName = queuePrefix + "-event-dsl";
-        DefaultDispatchQueue<TestEvent> queue = queue(queueName);
-
-        assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
-            queue.emit(new TestEvent("rollback", "discard", dsl));
-            throw new RollbackSignal();
-        }));
-        assertEquals(0, pending(queueName));
-
-        database.run(dsl -> queue.emit(
-            new TestEvent("commit", "retain", dsl)
-        ));
-        assertEquals(1, pending(queueName));
-    }
-
-    @Test
-    void synchronousEventWithoutExplicitDslUsesQueueTransaction() {
+    void ordinarySynchronousEventUsesQueueTransaction() {
         String queueName = queuePrefix + "-owned-transaction";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
@@ -110,26 +90,19 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     void asynchronousEventAlwaysUsesQueueTransaction() {
         String queueName = queuePrefix + "-async-transaction";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
-        AtomicInteger dslReads = new AtomicInteger();
 
         assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
-            queue.emitAsync(new TestEvent(
-                "async",
-                "retain",
-                dsl,
-                dslReads
-            ))
+            queue.emitAsync(new TestEvent("async", "retain"))
                 .toCompletableFuture()
                 .join();
             throw new RollbackSignal();
         }));
 
-        assertEquals(0, dslReads.get());
         assertEquals(1, pending(queueName));
     }
 
     @Test
-    void synchronousBatchUsesExplicitDslContext() {
+    void synchronousBatchUsesExplicitTransaction() {
         String queueName = queuePrefix + "-shared-batch";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
@@ -156,54 +129,19 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
     }
 
     @Test
-    void synchronousBatchUsesOneSharedDslContext() {
-        String queueName = queuePrefix + "-event-shared-batch";
+    void ordinarySynchronousBatchUsesQueueTransaction() {
+        String queueName = queuePrefix + "-owned-batch";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
         assertThrows(RollbackSignal.class, () -> database.run(dsl -> {
             queue.emit(List.of(
-                new TestEvent("rollback-1", "discard", dsl),
-                new TestEvent("rollback-2", "discard", dsl)
+                new TestEvent("owned-1", "retain"),
+                new TestEvent("owned-2", "retain")
             ));
             throw new RollbackSignal();
         }));
-        assertEquals(0, pending(queueName));
 
-        database.run(dsl -> queue.emit(List.of(
-            new TestEvent("commit-1", "retain", dsl),
-            new TestEvent("commit-2", "retain", dsl)
-        )));
         assertEquals(2, pending(queueName));
-    }
-
-    @Test
-    void synchronousBatchRejectsMixedTransactionScopes() {
-        String queueName = queuePrefix + "-mixed-batch";
-        DefaultDispatchQueue<TestEvent> queue = queue(queueName);
-
-        database.run(dsl -> assertThrows(QueueException.class, () ->
-            queue.emit(List.of(
-                new TestEvent("transactional", "discard", dsl),
-                new TestEvent("owned", "discard", null)
-            ))
-        ));
-
-        assertEquals(0, pending(queueName));
-    }
-
-    @Test
-    void synchronousBatchRejectsDifferentDslContexts() {
-        String queueName = queuePrefix + "-different-dsl-batch";
-        DefaultDispatchQueue<TestEvent> queue = queue(queueName);
-
-        database.run(firstDsl -> database.run(secondDsl ->
-            assertThrows(QueueException.class, () -> queue.emit(List.of(
-                new TestEvent("first", "discard", firstDsl),
-                new TestEvent("second", "discard", secondDsl)
-            )))
-        ));
-
-        assertEquals(0, pending(queueName));
     }
 
     @Test
@@ -211,9 +149,7 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
         String queueName = queuePrefix + "-jsonb";
         DefaultDispatchQueue<TestEvent> queue = queue(queueName);
 
-        database.run(dsl -> queue.emit(
-            new TestEvent("json-key", "json-value", dsl)
-        ));
+        queue.emit(new TestEvent("json-key", "json-value"));
 
         JsonObject payload = database.runReturn(dsl -> JsonObject.Parse(
             dsl.select(QUEUES.PAYLOAD)
@@ -253,43 +189,18 @@ final class DefaultDispatchQueueTransactionIntegrationTest {
 
         private String key;
         private String value;
-        private transient DSLContext dsl;
-        private transient AtomicInteger dslReads;
 
         public TestEvent() {
         }
 
         TestEvent(String key, String value) {
-            this(key, value, null);
-        }
-
-        TestEvent(String key, String value, DSLContext dsl) {
-            this(key, value, dsl, null);
-        }
-
-        TestEvent(
-            String key,
-            String value,
-            DSLContext dsl,
-            AtomicInteger dslReads
-        ) {
             this.key = key;
             this.value = value;
-            this.dsl = dsl;
-            this.dslReads = dslReads;
         }
 
         @Override
         public String key() {
             return key;
-        }
-
-        @Override
-        public DSLContext dsl() {
-            if (dslReads != null) {
-                dslReads.incrementAndGet();
-            }
-            return dsl;
         }
 
         public String getKey() {

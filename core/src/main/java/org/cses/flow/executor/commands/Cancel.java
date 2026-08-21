@@ -10,9 +10,9 @@ import java.util.Objects;
  * Requests cancellation of one Execution through the Executor command Queue.
  */
 public record Cancel(
-    String executionId,
-    String companyId,
-    String actorId
+        String executionId,
+        String companyId,
+        String actorId
 ) implements ExecutionCommand {
 
     public Cancel {
@@ -22,17 +22,25 @@ public record Cancel(
     }
 
     public static Cancel from(
-        Session<? extends User> session,
-        String executionId
+            Session<? extends User> session,
+            String executionId
     ) {
         Objects.requireNonNull(session, "Session must not be null");
         ActorRef actor = ActorRef.from(session);
 
-        return new Cancel(
-            executionId,
-            session.getCompanyId(),
-            actor.id()
+        return from(
+                executionId,
+                session.getCompanyId(),
+                actor.id()
         );
+    }
+
+    public static Cancel from(
+            String executionId,
+            String companyId,
+            String actorId
+    ) {
+        return new Cancel(executionId, companyId, actorId);
     }
 
     @Override

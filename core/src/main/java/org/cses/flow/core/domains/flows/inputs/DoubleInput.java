@@ -24,8 +24,9 @@ public final class DoubleInput extends Input<Double> {
         setDefaultValue(defaultValue);
     }
 
+
     @Override
-    public DataType getType() {
+    public DataType type() {
         return DataType.DOUBLE;
     }
 
@@ -34,7 +35,7 @@ public final class DoubleInput extends Input<Double> {
         validateRequired(value);
         if (value != null && !Double.isFinite(value)) {
             throw new IllegalArgumentException(
-                "Input " + getKey() + " must be finite"
+                "Input " + key() + " must be finite"
             );
         }
     }

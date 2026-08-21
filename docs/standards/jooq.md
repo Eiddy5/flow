@@ -294,8 +294,8 @@ dsl.insertInto(EXECUTIONS)
 dsl.insertInto(EXECUTIONS)
     .set(EXECUTIONS.ID, entry.id)
     .set(EXECUTIONS.COMPANY_ID, entry.companyId)
-    .set(EXECUTIONS.FLOW_ID, entry.flowId)
-    .set(EXECUTIONS.FLOW_REVERSION, entry.flowReversion)
+    .set(EXECUTIONS.FLOW_KEY, entry.flowKey)
+    .set(EXECUTIONS.FLOW_VERSION, entry.flowVersion)
     .set(EXECUTIONS.STATE, entry.state)
     .execute();
 ```

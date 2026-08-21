@@ -41,13 +41,13 @@ public final class IntegerInput extends Input<Integer> {
     protected void validateSubtypeDefinition() {
         if (min != null && max != null && min > max) {
             throw new IllegalArgumentException(
-                "Input " + getKey() + " min must not exceed max"
+                "Input " + key() + " min must not exceed max"
             );
         }
     }
 
     @Override
-    public DataType getType() {
+    public DataType type() {
         return DataType.INTEGER;
     }
 
@@ -59,12 +59,12 @@ public final class IntegerInput extends Input<Integer> {
         }
         if (min != null && value < min) {
             throw new IllegalArgumentException(
-                "Input " + getKey() + " must be at least " + min
+                "Input " + key() + " must be at least " + min
             );
         }
         if (max != null && value > max) {
             throw new IllegalArgumentException(
-                "Input " + getKey() + " must be at most " + max
+                "Input " + key() + " must be at most " + max
             );
         }
     }

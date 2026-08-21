@@ -13,7 +13,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 final class ResumeTest {
 
@@ -58,7 +57,6 @@ final class ResumeTest {
             Map.of("decision", "APPROVED"),
             restoredResume.getOutputs()
         );
-        assertNull(restoredResume.dsl());
     }
 
     private static Session<User> session() {

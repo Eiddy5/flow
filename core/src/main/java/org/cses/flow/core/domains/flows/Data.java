@@ -8,10 +8,10 @@ public interface Data {
     /**
      * Returns the unique business key within the owning direction.
      */
-    String getKey();
+    String key();
 
     /**
      * Returns the stable value type of this data definition.
      */
-    DataType getType();
+    DataType type();
 }

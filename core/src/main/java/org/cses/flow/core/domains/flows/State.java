@@ -13,6 +13,7 @@ public final class State {
 
     public enum Type {
         CREATED,
+
         RUNNING,
         PAUSED,
         RESTARTED,

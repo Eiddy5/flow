@@ -35,69 +35,6 @@ public final class FlowModels {
 
     @Getter
     @Setter
-    public static final class SaveDraftRequest extends SerializableObject {
-
-        private String raw;
-        private Long expectedLockVersion;
-
-        public SaveDraftRequest() {
-        }
-
-        public String getRaw() {
-            return raw;
-        }
-
-        public void setRaw(String raw) {
-            this.raw = raw;
-        }
-
-        public Long getExpectedLockVersion() {
-            return expectedLockVersion;
-        }
-
-        public void setExpectedLockVersion(Long expectedLockVersion) {
-            this.expectedLockVersion = expectedLockVersion;
-        }
-    }
-
-    @Getter
-    @Setter
-    public static final class ResumeRequest extends SerializableObject {
-
-        private Map<String, Object> outputs = new LinkedHashMap<>();
-
-        public ResumeRequest() {
-        }
-
-        public Map<String, Object> getOutputs() {
-            return outputs;
-        }
-
-        public void setOutputs(Map<String, Object> outputs) {
-            this.outputs = outputs;
-        }
-    }
-
-    @Getter
-    @Setter
-    public static final class StartRequest extends SerializableObject {
-
-        private Map<String, Object> inputs = new LinkedHashMap<>();
-
-        public StartRequest() {
-        }
-
-        public Map<String, Object> getInputs() {
-            return inputs;
-        }
-
-        public void setInputs(Map<String, Object> inputs) {
-            this.inputs = inputs;
-        }
-    }
-
-    @Getter
-    @Setter
     public static final class SessionView extends SerializableObject {
 
         private final String companyId;
@@ -140,6 +77,7 @@ public final class FlowModels {
     public static final class DraftView extends SerializableObject {
 
         private final String id;
+        private final String flowKey;
         private final String raw;
         private final long lockVersion;
         private final long createdAt;
@@ -150,6 +88,7 @@ public final class FlowModels {
 
         private DraftView(
             String id,
+            String flowKey,
             String raw,
             long lockVersion,
             long createdAt,
@@ -159,6 +98,7 @@ public final class FlowModels {
             FlowView deployedFlow
         ) {
             this.id = id;
+            this.flowKey = flowKey;
             this.raw = raw;
             this.lockVersion = lockVersion;
             this.createdAt = createdAt;
@@ -174,6 +114,7 @@ public final class FlowModels {
         ) {
             return new DraftView(
                 draft.id(),
+                draft.flowKey(),
                 draft.raw(),
                 draft.lockVersion(),
                 draft.createdAt(),
@@ -186,6 +127,10 @@ public final class FlowModels {
 
         public String getId() {
             return id;
+        }
+
+        public String getFlowKey() {
+            return flowKey;
         }
 
         public String getRaw() {
@@ -516,8 +461,8 @@ public final class FlowModels {
                     defaultValue = character.toString();
                 }
                 return new DataView(
-                    input.getKey(),
-                    input.getType().name(),
+                    input.key(),
+                    input.type().name(),
                     input.getDisplayName(),
                     input.isRequired(),
                     defaultValue,
@@ -525,8 +470,8 @@ public final class FlowModels {
                 );
             }
             return new DataView(
-                data.getKey(),
-                data.getType().name(),
+                data.key(),
+                data.type().name(),
                 null,
                 null,
                 null,
@@ -684,8 +629,8 @@ public final class FlowModels {
     public static final class ExecutionView extends SerializableObject {
 
         private final String id;
-        private final String flowId;
-        private final long flowReversion;
+        private final String flowKey;
+        private final long flowVersion;
         private final String state;
         private final long lockVersion;
         private final long createdAt;
@@ -695,8 +640,8 @@ public final class FlowModels {
 
         private ExecutionView(
             String id,
-            String flowId,
-            long flowReversion,
+            String flowKey,
+            long flowVersion,
             String state,
             long lockVersion,
             long createdAt,
@@ -705,8 +650,8 @@ public final class FlowModels {
             List<TaskRunView> taskRuns
         ) {
             this.id = id;
-            this.flowId = flowId;
-            this.flowReversion = flowReversion;
+            this.flowKey = flowKey;
+            this.flowVersion = flowVersion;
             this.state = state;
             this.lockVersion = lockVersion;
             this.createdAt = createdAt;
@@ -720,8 +665,8 @@ public final class FlowModels {
                 execution.state().history();
             return new ExecutionView(
                 execution.id(),
-                execution.flowId(),
-                execution.flowReversion(),
+                execution.flowKey(),
+                execution.flowVersion(),
                 execution.state().current().name(),
                 execution.lockVersion(),
                 stateHistory.getFirst().date(),
@@ -737,12 +682,12 @@ public final class FlowModels {
             return id;
         }
 
-        public String getFlowId() {
-            return flowId;
+        public String getFlowKey() {
+            return flowKey;
         }
 
-        public long getFlowReversion() {
-            return flowReversion;
+        public long getFlowVersion() {
+            return flowVersion;
         }
 
         public String getState() {

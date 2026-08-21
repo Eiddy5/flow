@@ -10,7 +10,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertNull;
 
 final class CreateTest {
 
@@ -21,7 +20,7 @@ final class CreateTest {
 
     @Test
     void restoresTheConcreteCreateCommandThroughTheExecutorContract() {
-        Create command = new Create(
+        Create command = Create.from(
             "company-1",
             "flow-key-1",
             7,
@@ -41,6 +40,5 @@ final class CreateTest {
         assertEquals("flow-key-1", create.getFlowKey());
         assertEquals(7L, create.getFlowVersion());
         assertEquals(Map.of("amount", 1200.5), create.getInputs());
-        assertNull(create.dsl());
     }
 }

@@ -2,9 +2,6 @@ package org.cses.flow.infrastructure.queues.entries;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.queues.event.DispatchEvent;
-import org.jooq.DSLContext;
-import org.jooq.SQLDialect;
-import org.jooq.impl.DSL;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
@@ -15,7 +12,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
 final class QueueMessageEntryTest {
@@ -29,8 +25,7 @@ final class QueueMessageEntryTest {
     void createsTypedTechnicalIdentityAndSnapshotsJsonPayload() {
         TestEvent source = new TestEvent(
             null,
-            "original",
-            DSL.using(SQLDialect.POSTGRES)
+            "original"
         );
 
         QueueMessageEntry entry = QueueMessageEntry.create(
@@ -60,7 +55,6 @@ final class QueueMessageEntryTest {
 
         TestEvent restored = entry.toEvent(TestEvent.class);
         assertEquals("original", restored.getValue());
-        assertNull(restored.dsl());
     }
 
     public static final class TestEvent extends SerializableObject
@@ -68,25 +62,18 @@ final class QueueMessageEntryTest {
 
         private String key;
         private String value;
-        private transient DSLContext dsl;
 
         public TestEvent() {
         }
 
-        private TestEvent(String key, String value, DSLContext dsl) {
+        private TestEvent(String key, String value) {
             this.key = key;
             this.value = value;
-            this.dsl = dsl;
         }
 
         @Override
         public String key() {
             return key;
-        }
-
-        @Override
-        public DSLContext dsl() {
-            return dsl;
         }
 
         public String getKey() {

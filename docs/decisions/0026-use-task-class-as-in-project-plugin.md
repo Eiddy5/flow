@@ -104,8 +104,9 @@ Jackson 先读取 `type`，再通过注册表选择具体类并执行严格字�
 
 ### 身份与父子关系
 
-- YAML 中的 `key` 是用户可维护的稳定节点身份。系统为首次出现的 key 生成技术
-  `id`，后续 reversion 对同一 key 复用该 id；同一旧 id 不得转移给另一个 key。
+- YAML 中的 `key` 是可选的用户维护节点身份。提供时保留外部 key；缺少时系统在当前
+  物化版本生成 key。系统为首次出现的 key 生成技术 `id`，后续 reversion 对同一 key
+  复用该 id；同一旧 id 不得转移给另一个 key。
 - YAML 不接受 `id`、`parentId` 或 `taskId` 等系统身份字段。
 - Task 领域对象只用递归 `tasks` 表达编排树，不包含 `parentId`。
 - `TaskRun.parentId` 继续表达运行时血缘。关系库的 `flow_tasks.parent_id` 也保留，

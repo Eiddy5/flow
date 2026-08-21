@@ -16,6 +16,7 @@ public final class FlowDraftEntry extends FlowDraftsObject {
         FlowDraftEntry entry = new FlowDraftEntry();
         entry.id = record.getId();
         entry.companyId = record.getCompanyId();
+        entry.flowKey = record.getFlowKey();
         entry.deleted = record.getDeleted();
         entry.creator = record.getCreator();
         entry.creatorId = record.getCreatorId();
@@ -37,6 +38,7 @@ public final class FlowDraftEntry extends FlowDraftsObject {
         FlowDraftEntry entry = new FlowDraftEntry();
         entry.id = draft.id();
         entry.companyId = draft.companyId();
+        entry.flowKey = draft.flowKey();
         entry.deleted = draft.isDeleted();
         entry.creator = ActorRefJsonCodec.encode(draft.creator());
         entry.updater = ActorRefJsonCodec.encode(draft.updater());
@@ -57,6 +59,7 @@ public final class FlowDraftEntry extends FlowDraftsObject {
         return FlowDraft.rehydrate(
             id,
             companyId,
+            flowKey,
             raw,
             requiredBoolean(deleted, "FlowDraft.deleted"),
             ActorRefJsonCodec.decode(creator, "FlowDraft.creator"),

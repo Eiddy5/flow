@@ -44,7 +44,7 @@ Optional<ExecutorContext> handle(T event);
 - `ExecutorEvent` 是可持久化的内部交接消息，Queue 名为
   `flow-executor-event`；当前类型包括 `PROCESS`、`RESUME` 和 `CANCEL`。
 - Event 只保存重新建立运行边界所需的租户、调用方和命令事实：
-  `executionId`、`companyId`、Actor/Session 元数据，以及 Resume 的目标 TaskRun
+  `executionId`、`company`、Actor/Session 元数据，以及 Resume 的目标 TaskRun
   和规范化 outputs。它不保存 Flow、Execution、`ExecutorContext`、Repository、
   `DSLContext` 或 Worker 对象。
 - 一个 Event 的处理完成后，如果 Execution 仍可推进，内部 Handler 在当前事务中
