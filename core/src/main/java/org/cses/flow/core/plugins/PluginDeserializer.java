@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.cses.flow.core.domains.tasks.Task;
+import org.paas.common.util.StringUtil;
 
 import java.io.IOException;
 
@@ -15,13 +16,22 @@ import static java.util.Objects.requireNonNull;
 /**
  * Resolves a plugin's exact class before Jackson binds its fields.
  */
-public final class PluginDeserializer<T extends Plugin>
+public class PluginDeserializer<T extends Plugin>
     extends JsonDeserializer<T> {
 
-    private final PluginRegistry registry;
+    private PluginRegistry registry;
+    private boolean sourceDefinition;
 
     public PluginDeserializer(PluginRegistry registry) {
+        this(registry, false);
+    }
+
+    PluginDeserializer(
+        PluginRegistry registry,
+        boolean sourceDefinition
+    ) {
         this.registry = requireNonNull(registry, "Plugin registry");
+        this.sourceDefinition = sourceDefinition;
     }
 
     @Override
@@ -61,23 +71,47 @@ public final class PluginDeserializer<T extends Plugin>
 
         ObjectNode fields = object.deepCopy();
         fields.remove("type");
-        prepareTask(fields, context, concreteType);
+        prepareSourceTask(fields, concreteType);
         return (T) context.readTreeAsValue(fields, concreteType);
     }
 
-    private static void prepareTask(
+    private void prepareSourceTask(
         ObjectNode definition,
-        DeserializationContext context,
         Class<? extends Plugin> concreteType
     ) {
-        if (!Task.class.isAssignableFrom(concreteType)) {
+        if (!sourceDefinition
+            || !Task.class.isAssignableFrom(concreteType)) {
             return;
         }
-        Object attribute = context.getAttribute(
-            PluginDeserializationContext.ATTRIBUTE
-        );
-        if (attribute instanceof PluginDeserializationContext binding) {
-            binding.prepareTask(definition);
+
+        rejectSystemField(definition, "id");
+        rejectSystemField(definition, "parentId");
+        rejectSystemField(definition, "taskId");
+
+        JsonNode keyNode = definition.get("key");
+        String key;
+        if (keyNode == null || keyNode.isNull()) {
+            key = StringUtil.newId();
+        } else if (!keyNode.isTextual() || keyNode.textValue().isBlank()) {
+            throw new IllegalArgumentException(
+                "Task key must be non-blank text"
+            );
+        } else {
+            key = keyNode.textValue().trim();
+        }
+
+        definition.put("key", key);
+        definition.put("id", StringUtil.newId());
+    }
+
+    private static void rejectSystemField(
+        ObjectNode definition,
+        String field
+    ) {
+        if (definition.has(field)) {
+            throw new IllegalArgumentException(
+                "Task must not declare system field " + field
+            );
         }
     }
 }

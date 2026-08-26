@@ -161,8 +161,8 @@ class TaskTest {
                 .build()
         );
 
-        assertEquals("payload", task.inputs().getFirst().key());
-        assertEquals("payload", task.outputs().getFirst().key());
+        assertEquals("payload", task.inputs().getFirst().getKey());
+        assertEquals("payload", task.outputs().getFirst().getKey());
     }
 
     @Test

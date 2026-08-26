@@ -1,19 +1,23 @@
 package org.cses.flow.core.domains.executions;
 
+import org.cses.flow.core.domains.ActorRef;
+import org.cses.flow.core.domains.BaseDomain;
 import org.cses.flow.core.domains.Lockable;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.utils.RequiredUtil;
 import org.paas.common.util.StringUtil;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.*;
 
 /**
  * Aggregate root for one complete Flow start instance.
  */
-public final class Execution implements Lockable<Execution> {
+public final class Execution extends BaseDomain
+        implements Lockable<Execution> {
 
-    private final String id;
-    private final String companyId;
     private final String flowKey;
     private final long flowVersion;
     private final List<TaskRun> taskRuns;
@@ -21,18 +25,16 @@ public final class Execution implements Lockable<Execution> {
     private State state;
     private long lockVersion;
     private boolean modified;
-    private Map<String, Object> inputs;
+    private final Map<String, Object> inputs;
 
     private Execution(
             String id,
-            String companyId,
+            Session<? extends User> session,
             String flowKey,
             long flowVersion,
-            Map<String, ?> inputs,
-            boolean persisted
+            Map<String, ?> inputs
     ) {
-        this.id = requireText(id, "Execution id");
-        this.companyId = requireText(companyId, "Company id");
+        super(id, session);
         this.flowKey = requireText(flowKey, "Flow key");
         if (flowVersion < 1) {
             throw new IllegalArgumentException("Flow version must be positive");
@@ -41,51 +43,70 @@ public final class Execution implements Lockable<Execution> {
         this.taskRuns = new ArrayList<>();
         this.inputs = immutableMap(inputs);
         this.state = State.created();
-        this.persisted = persisted;
+        this.persisted = false;
     }
 
-    public static Execution create(
-            String companyId,
-            String flowKey,
-            long flowVersion,
-            Map<String, ?> inputs
-    ) {
-        return new Execution(
-                StringUtil.newId(),
-                companyId,
-                flowKey,
-                flowVersion,
-                inputs,
-                false
-        );
-    }
-
-    /**
-     * Creates a new Execution with a caller-owned stable technical id.
-     */
-    public static Execution create(
+    private Execution(
             String id,
             String companyId,
+            ActorRef creator,
+            long createdAt,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs,
+            State state,
+            long lockVersion,
+            List<TaskRun> taskRuns,
+            boolean persisted,
+            boolean modified
+    ) {
+        super(id, companyId, creator, createdAt);
+        this.flowKey = requireText(flowKey, "Flow key");
+        if (flowVersion < 1) {
+            throw new IllegalArgumentException("Flow version must be positive");
+        }
+        this.flowVersion = flowVersion;
+        if (lockVersion < 0) {
+            throw new IllegalArgumentException(
+                    "Execution lock version must not be negative"
+            );
+        }
+        this.inputs = immutableMap(inputs);
+        this.state = RequiredUtil.required(state, "Execution state");
+        this.lockVersion = lockVersion;
+        this.taskRuns = new ArrayList<>();
+        if (taskRuns != null) {
+            taskRuns.stream().map(TaskRun::copy).forEach(this.taskRuns::add);
+        }
+        this.persisted = persisted;
+        this.modified = modified;
+        validateRehydratedState();
+    }
+
+    public static Execution create(
+            String requestedId,
+            Session<? extends User> session,
             String flowKey,
             long flowVersion,
             Map<String, ?> inputs
     ) {
+        String id = requestedId == null || requestedId.isBlank()
+                ? StringUtil.newId()
+                : requestedId;
         return new Execution(
                 id,
-                companyId,
+                session,
                 flowKey,
                 flowVersion,
-                inputs,
-                false
+                inputs
         );
     }
 
-    /**
-     * Rehydrates a complete aggregate from a trusted persistence adapter.
-     */
     public static Execution rehydrate(
             String id,
             String companyId,
+            ActorRef creator,
+            long createdAt,
             String flowKey,
             long flowVersion,
             Map<String, ?> inputs,
@@ -93,50 +114,20 @@ public final class Execution implements Lockable<Execution> {
             long lockVersion,
             List<TaskRun> taskRuns
     ) {
-        if (lockVersion < 0) {
-            throw new IllegalArgumentException("Execution lock version must not be negative");
-        }
-        Execution execution = new Execution(
+        return new Execution(
                 id,
                 companyId,
+                creator,
+                createdAt,
                 flowKey,
                 flowVersion,
                 inputs,
-                true
+                state,
+                lockVersion,
+                taskRuns,
+                true,
+                false
         );
-        execution.state = Objects.requireNonNull(state, "Execution state");
-        execution.lockVersion = lockVersion;
-        if (taskRuns != null) {
-            taskRuns.stream().map(TaskRun::copy).forEach(execution.taskRuns::add);
-        }
-        execution.validateRehydratedState();
-        return execution;
-    }
-
-    private Execution(Execution source) {
-        this.id = source.id;
-        this.companyId = source.companyId;
-        this.flowKey = source.flowKey;
-        this.flowVersion = source.flowVersion;
-        this.taskRuns = source.taskRuns.stream().map(TaskRun::copy).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-        this.inputs = source.inputs;
-        this.state = source.state;
-        this.lockVersion = source.lockVersion;
-        this.persisted = source.persisted;
-        this.modified = source.modified;
-    }
-
-    public String id() {
-        return id;
-    }
-
-    @Override
-    public String identifier() {
-        return id;
-    }
-
-    public String companyId() {
-        return companyId;
     }
 
     public String flowKey() {
@@ -193,9 +184,9 @@ public final class Execution implements Lockable<Execution> {
     /**
      * Locates the TaskRun for one concrete definition occurrence.
      */
-    public Optional<TaskRun> taskRunForOccurrence(String taskId, String parentId, Integer iteration) {
+    public Optional<TaskRun> taskRunForOccurrence(String taskId, String parentTaskRunId, Integer iteration) {
         String normalizedTaskId = requireText(taskId, "Task id");
-        return taskRuns.stream().filter(taskRun -> taskRun.taskId().equals(normalizedTaskId)).filter(taskRun -> Objects.equals(taskRun.parentId().orElse(null), parentId)).filter(taskRun -> Objects.equals(taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null, iteration)).findFirst();
+        return taskRuns.stream().filter(taskRun -> taskRun.taskId().equals(normalizedTaskId)).filter(taskRun -> Objects.equals(taskRun.parentTaskRunId().orElse(null), parentTaskRunId)).filter(taskRun -> Objects.equals(taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null, iteration)).findFirst();
     }
 
     public List<TaskRun> activeTaskRuns() {
@@ -225,28 +216,6 @@ public final class Execution implements Lockable<Execution> {
     }
 
     /**
-     * Binds the normalized Flow inputs before a pending Execution starts.
-     *
-     * <p>An empty map is a valid confirmed input set. A pending Execution may
-     * be completed from an empty set to a non-empty set, but a non-empty set
-     * can never be replaced by another set.</p>
-     */
-    public void bindInputs(Map<String, ?> confirmedInputs) {
-        requireState(State.Type.CREATED);
-        Map<String, Object> normalized = immutableMap(confirmedInputs);
-        if (!inputs.isEmpty() && !inputs.equals(normalized)) {
-            throw new WorkflowException(
-                    "Execution inputs cannot be replaced: " + id
-            );
-        }
-        if (inputs.equals(normalized)) {
-            return;
-        }
-        markModified();
-        inputs = normalized;
-    }
-
-    /**
      * Starts a new Execution and accepts its first scheduling batch atomically.
      */
     public void startWithTaskRuns(List<TaskRun> nexts) {
@@ -260,8 +229,8 @@ public final class Execution implements Lockable<Execution> {
         taskRuns.addAll(accepted);
     }
 
-    public TaskRun createTaskRun(String taskId, String parentId, Map<String, ?> inputs) {
-        TaskRun taskRun = TaskRun.create(taskId, parentId, inputs);
+    public TaskRun createTaskRun(String taskId, String parentTaskRunId, Map<String, ?> inputs) {
+        TaskRun taskRun = TaskRun.create(taskId, parentTaskRunId, inputs);
         addTaskRuns(List.of(taskRun));
         return requireTaskRun(taskRun.id());
     }
@@ -302,9 +271,9 @@ public final class Execution implements Lockable<Execution> {
             if (!occurrences.add(TaskOccurrence.from(taskRun))) {
                 throw new WorkflowException("Execution already has this TaskRun occurrence: " + taskRun.taskId());
             }
-            taskRun.parentId().ifPresent(parentId -> {
-                if (!taskRunIds.contains(parentId)) {
-                    throw new WorkflowException("Parent TaskRun does not exist: " + parentId);
+            taskRun.parentTaskRunId().ifPresent(parentTaskRunId -> {
+                if (!taskRunIds.contains(parentTaskRunId)) {
+                    throw new WorkflowException("Parent TaskRun does not exist: " + parentTaskRunId);
                 }
             });
             taskRunIds.add(taskRun.id());
@@ -366,13 +335,13 @@ public final class Execution implements Lockable<Execution> {
     }
 
     private void resumePausedAncestors(TaskRun taskRun) {
-        Optional<String> parentId = taskRun.parentId();
-        while (parentId.isPresent()) {
-            TaskRun parent = requireTaskRun(parentId.orElseThrow());
+        Optional<String> parentTaskRunId = taskRun.parentTaskRunId();
+        while (parentTaskRunId.isPresent()) {
+            TaskRun parent = requireTaskRun(parentTaskRunId.orElseThrow());
             if (parent.state().is(State.Type.PAUSED)) {
                 parent.resume(parent.outputs());
             }
-            parentId = parent.parentId();
+            parentTaskRunId = parent.parentTaskRunId();
         }
     }
 
@@ -399,7 +368,9 @@ public final class Execution implements Lockable<Execution> {
     public void succeed() {
         requireRunning();
         if (!unfinishedTaskRuns().isEmpty()) {
-            throw new WorkflowException("Execution has unfinished TaskRun: " + id);
+            throw new WorkflowException(
+                    "Execution has unfinished TaskRun: " + id()
+            );
         }
         markModified();
         state = state.success();
@@ -408,10 +379,15 @@ public final class Execution implements Lockable<Execution> {
     public void warn() {
         requireRunning();
         if (!unfinishedTaskRuns().isEmpty()) {
-            throw new WorkflowException("Execution has unfinished TaskRun: " + id);
+            throw new WorkflowException(
+                    "Execution has unfinished TaskRun: " + id()
+            );
         }
         if (taskRuns.stream().noneMatch(taskRun -> taskRun.state().is(State.Type.WARNING))) {
-            throw new WorkflowException("Execution cannot finish with WARNING without a warning " + "TaskRun: " + id);
+            throw new WorkflowException(
+                    "Execution cannot finish with WARNING without a warning "
+                            + "TaskRun: " + id()
+            );
         }
         markModified();
         state = state.warning();
@@ -420,7 +396,10 @@ public final class Execution implements Lockable<Execution> {
     public void pause() {
         requireRunning();
         if (!activeTaskRuns().isEmpty() || pausedTaskRuns().isEmpty()) {
-            throw new WorkflowException("Execution can pause only at a stable Pause TaskRun: " + id);
+            throw new WorkflowException(
+                    "Execution can pause only at a stable Pause TaskRun: "
+                            + id()
+            );
         }
         markModified();
         state = state.paused();
@@ -444,7 +423,9 @@ public final class Execution implements Lockable<Execution> {
     public void finishKilling() {
         requireState(State.Type.KILLING);
         if (!unfinishedTaskRuns().isEmpty()) {
-            throw new WorkflowException("Execution still has unfinished TaskRun: " + id);
+            throw new WorkflowException(
+                    "Execution still has unfinished TaskRun: " + id()
+            );
         }
         markModified();
         state = state.killed();
@@ -455,7 +436,20 @@ public final class Execution implements Lockable<Execution> {
     }
 
     public Execution copy() {
-        return new Execution(this);
+        return new Execution(
+                id(),
+                companyId(),
+                creator(),
+                createdAt(),
+                flowKey,
+                flowVersion,
+                inputs,
+                state,
+                lockVersion,
+                taskRuns,
+                persisted,
+                modified
+        );
     }
 
     private void markModified() {
@@ -475,8 +469,8 @@ public final class Execution implements Lockable<Execution> {
             if (!occurrences.add(TaskOccurrence.from(taskRun))) {
                 throw new IllegalArgumentException("Execution has duplicate TaskRun occurrence: " + taskRun.taskId());
             }
-            taskRun.parentId().ifPresent(parentId -> {
-                if (!ids.contains(parentId)) {
+            taskRun.parentTaskRunId().ifPresent(parentTaskRunId -> {
+                if (!ids.contains(parentTaskRunId)) {
                     throw new IllegalArgumentException("TaskRun parent must precede child in Execution: " + taskRun.id());
                 }
             });
@@ -496,17 +490,17 @@ public final class Execution implements Lockable<Execution> {
     private static final class TaskOccurrence {
 
         private final String taskId;
-        private final String parentId;
+        private final String parentTaskRunId;
         private final Integer iteration;
 
-        private TaskOccurrence(String taskId, String parentId, Integer iteration) {
+        private TaskOccurrence(String taskId, String parentTaskRunId, Integer iteration) {
             this.taskId = taskId;
-            this.parentId = parentId;
+            this.parentTaskRunId = parentTaskRunId;
             this.iteration = iteration;
         }
 
         private static TaskOccurrence from(TaskRun taskRun) {
-            return new TaskOccurrence(taskRun.taskId(), taskRun.parentId().orElse(null), taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null);
+            return new TaskOccurrence(taskRun.taskId(), taskRun.parentTaskRunId().orElse(null), taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null);
         }
 
         @Override
@@ -517,12 +511,12 @@ public final class Execution implements Lockable<Execution> {
             if (!(value instanceof TaskOccurrence other)) {
                 return false;
             }
-            return Objects.equals(taskId, other.taskId) && Objects.equals(parentId, other.parentId) && Objects.equals(iteration, other.iteration);
+            return Objects.equals(taskId, other.taskId) && Objects.equals(parentTaskRunId, other.parentTaskRunId) && Objects.equals(iteration, other.iteration);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(taskId, parentId, iteration);
+            return Objects.hash(taskId, parentTaskRunId, iteration);
         }
     }
 
@@ -552,16 +546,24 @@ public final class Execution implements Lockable<Execution> {
 
     private void requireState(State.Type expected) {
         if (!state.is(expected)) {
-            throw new WorkflowException("Execution must be " + expected + " but was " + state + ": " + id);
+            throw new WorkflowException(
+                    "Execution must be " + expected + " but was " + state
+                            + ": " + id()
+            );
         }
     }
 
     private void requireUnfinished() {
         if (state.isTerminal()) {
-            throw new WorkflowException("Execution must be unfinished but was " + state + ": " + id);
+            throw new WorkflowException(
+                    "Execution must be unfinished but was " + state
+                            + ": " + id()
+            );
         }
         if (state.is(State.Type.KILLING)) {
-            throw new WorkflowException("Execution is already KILLING: " + id);
+            throw new WorkflowException(
+                    "Execution is already KILLING: " + id()
+            );
         }
     }
 
@@ -572,10 +574,8 @@ public final class Execution implements Lockable<Execution> {
     }
 
     private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
-        }
-        return value.trim();
+        return RequiredUtil.required(value, field + " must not be blank")
+                .trim();
     }
 
     private static Map<String, Object> immutableMap(Map<String, ?> source) {

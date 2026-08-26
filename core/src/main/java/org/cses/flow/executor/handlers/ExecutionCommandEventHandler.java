@@ -7,10 +7,10 @@ import org.cses.flow.core.services.CommandContext;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.services.flows.handlers.FlowHandlerSupport;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.executor.ExecutorContext;
@@ -36,19 +36,20 @@ import java.util.Optional;
 /**
  * The only external command entry into the Executor.
  *
- * <p>This handler validates command facts, materializes the durable
- * Execution when necessary, and atomically publishes an internal
- * {@link ExecutorEvent}. It never drives the state machine directly.</p>
+ * <p>This handler validates command facts, materializes or updates the durable
+ * Execution as necessary, and atomically publishes an internal
+ * {@link ExecutorEvent}. It does not create an {@link ExecutorContext} or
+ * drive the scheduling cycle.</p>
  */
 @Singleton
-public final class ExecutionCommandEventHandler implements
+public class ExecutionCommandEventHandler implements
     org.cses.flow.executor.ExecutorEventHandler<ExecutionCommand> {
 
-    private final JOOQ jooq;
-    private final SessionFactory<?, ?> sessionFactory;
-    private final FlowRepository flowRepository;
-    private final ExecutionRepository executionRepository;
-    private final DispatchQueue<ExecutorEvent> eventQueue;
+    private JOOQ jooq;
+    private SessionFactory<?, ?> sessionFactory;
+    private FlowRepository flowRepository;
+    private ExecutionRepository executionRepository;
+    private DispatchQueue<ExecutorEvent> eventQueue;
 
     @Inject
     public ExecutionCommandEventHandler(
@@ -126,46 +127,88 @@ public final class ExecutionCommandEventHandler implements
             || execution.state().is(State.Type.KILLING)) {
             return;
         }
-        eventQueue.emitInTransaction(ExecutorEvent.from(command), dsl);
+        execution.beginKilling();
+        executionRepository.save(dsl, execution);
+        eventQueue.emitInTransaction(
+            ExecutorEvent.from(
+                execution,
+                ExecutorEvent.EventType.TERMINATED
+            ),
+            dsl
+        );
     }
 
     private void handleCreate(DSLContext dsl, Create command) {
-        Flow flow = FlowHandlerSupport.requireFlow(
-            flowRepository,
-            dsl,
+        Session<?> session = restoreSession(
             command.getCompanyId(),
-            command.getFlowKey(),
-            command.getFlowVersion()
+            command.getActorId()
         );
-        if (flow.isDeleted()) {
-            throw new WorkflowException(
-                "Only an undeleted Flow can start an Execution: "
-                    + flow.key() + "@" + flow.reversion()
-            );
-        }
-        Map<String, Object> normalizedInputs = flow.normalizeInputs(
-            command.getInputs()
-        );
-
-        Execution execution = Execution.create(
-            flow.companyId(),
-            flow.key(),
-            flow.reversion(),
-            normalizedInputs
-        );
-        Session<?> session = restoreSession(flow);
         inCommandScope(
             dsl,
             session,
             command,
             () -> {
+                Optional<Execution> existing = executionRepository.findById(
+                    dsl,
+                    command.getCompanyId(),
+                    command.getExecutionId()
+                );
+                if (existing.isPresent()) {
+                    validateRepeatedCreate(existing.orElseThrow(), command);
+                    return;
+                }
+                Flow flow = flowRepository.findByFlowId(
+                    dsl,
+                    FlowId.from(
+                        command.getCompanyId(),
+                        command.getFlowKey(),
+                        command.getFlowVersion()
+                    )
+                ).orElseThrow(() -> new WorkflowException(
+                    "Flow version does not exist: "
+                        + command.getFlowKey() + ":"
+                        + command.getFlowVersion()
+                ));
+                if (flow.deleted()) {
+                    throw new WorkflowException(
+                        "Only an undeleted Flow can start an Execution: "
+                            + flow.key() + "@" + flow.reversion()
+                    );
+                }
+                Map<String, Object> normalizedInputs = flow.normalizeInputs(
+                    command.getInputs()
+                );
+                Execution execution = Execution.create(
+                    command.getExecutionId(),
+                    session,
+                    flow.key(),
+                    flow.reversion(),
+                    normalizedInputs
+                );
                 executionRepository.save(dsl, execution);
                 eventQueue.emitInTransaction(
-                    ExecutorEvent.from(command, execution, flow),
+                    ExecutorEvent.from(
+                        execution,
+                        ExecutorEvent.EventType.CREATED
+                    ),
                     dsl
                 );
             }
         );
+    }
+
+    private static void validateRepeatedCreate(
+        Execution execution,
+        Create command
+    ) {
+        if (!execution.flowKey().equals(command.getFlowKey())
+            || execution.flowVersion() != command.getFlowVersion()
+            || !execution.inputs().equals(command.getInputs())) {
+            throw new WorkflowException(
+                "Execution id already belongs to another start request: "
+                    + command.getExecutionId()
+            );
+        }
     }
 
     private void handleResume(DSLContext dsl, Resume command) {
@@ -184,13 +227,17 @@ public final class ExecutionCommandEventHandler implements
             return;
         }
 
-        Flow flow = FlowHandlerSupport.requireFlow(
-            flowRepository,
+        Flow flow = flowRepository.findByFlowId(
             dsl,
-            command.getCompanyId(),
-            execution.flowKey(),
-            execution.flowVersion()
-        );
+            FlowId.from(
+                command.getCompanyId(),
+                execution.flowKey(),
+                execution.flowVersion()
+            )
+        ).orElseThrow(() -> new WorkflowException(
+            "Flow version does not exist: "
+                + execution.flowKey() + ":" + execution.flowVersion()
+        ));
         TaskRun taskRun = execution.requireTaskRun(command.getTaskRunId());
         if (!taskRun.state().is(State.Type.PAUSED)) {
             return;
@@ -209,8 +256,13 @@ public final class ExecutionCommandEventHandler implements
         Map<String, Object> normalizedOutputs = pause.validateResume(
             command.getOutputs()
         );
+        execution.resumeTaskRun(taskRun.id(), normalizedOutputs);
+        executionRepository.save(dsl, execution);
         eventQueue.emitInTransaction(
-            ExecutorEvent.from(command, normalizedOutputs),
+            ExecutorEvent.from(
+                execution,
+                ExecutorEvent.EventType.UPDATED
+            ),
             dsl
         );
     }
@@ -269,20 +321,6 @@ public final class ExecutionCommandEventHandler implements
 
     private Session<?> restoreSession(Cancel command) {
         return restoreSession(command.getCompanyId(), command.getActorId());
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private Session<?> restoreSession(Flow flow) {
-        Session restored = restoreSession(
-            flow.companyId(),
-            flow.creator().id()
-        );
-        User user = restored.getUser();
-        flow.creator().name().ifPresent(name -> {
-            user.setName(name);
-            user.setUserName(name);
-        });
-        return restored;
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})

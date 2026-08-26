@@ -21,7 +21,7 @@ public interface Lockable<T extends Lockable<T>> extends Identified {
     default void requireLockVersion(long expectedLockVersion) {
         if (!hasLockVersion(expectedLockVersion)) {
             throw new WorkflowException(
-                "Lock conflict for " + identifier()
+                "Lock conflict for " + id()
                     + ": expected " + expectedLockVersion
                     + " but was " + lockVersion()
             );

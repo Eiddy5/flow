@@ -179,7 +179,7 @@ class CommandExecutorTest {
         private boolean contextWasBound;
 
         @Override
-        public Class<TextCommand> commandType() {
+        public Class<TextCommand> type() {
             return TextCommand.class;
         }
 
@@ -228,7 +228,7 @@ class CommandExecutorTest {
         }
 
         @Override
-        public Class<RejectingCommand> commandType() {
+        public Class<RejectingCommand> type() {
             return RejectingCommand.class;
         }
 

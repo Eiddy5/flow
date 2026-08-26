@@ -1,7 +1,8 @@
 package org.cses.flow.core.services.executions;
 
-import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,10 +17,12 @@ class Uc07NestedTaskFlowTest {
     @Test
     void s3RejectsDuplicateKeyAcrossNestedBranchesAtomically() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            FlowDraft draft = fixture.flowService().saveDraft(
+            Flow draft = fixture.flowService().save(
                 fixture.session(),
-                NestedPauseResumeIntegrationTest.duplicateNestedKeyYaml(
+                PublishFlowCommand.from(
+                    NestedPauseResumeIntegrationTest.duplicateNestedKeyYaml(
                     "uc07-s3-flow"
+                    )
                 )
             );
             long lockVersion = draft.lockVersion();
@@ -29,25 +32,25 @@ class Uc07NestedTaskFlowTest {
 
             WorkflowException exception = assertThrows(
                 WorkflowException.class,
-                () -> fixture.flowService().deploy(
+                () -> fixture.flowService().save(
                     fixture.session(),
-                    draft.flowKey()
+                    PublishFlowCommand.from(draft.key(), false)
                 )
             );
             assertTrue(exception.getMessage().contains(
                 "Duplicate Task key: backend-review"
             ));
 
-            FlowDraft reloaded = fixture.flowService().draft(
+            Flow reloaded = fixture.flowService().draft(
                 fixture.session(),
-                draft.flowKey()
+                draft.key()
             ).orElseThrow();
 
             assertEquals(lockVersion, reloaded.lockVersion());
-            assertEquals(draft.raw(), reloaded.raw());
+            assertEquals(draft.source(), reloaded.source());
             assertTrue(fixture.flowService().flow(
                 fixture.session(),
-                draft.flowKey(),
+                draft.key(),
                 1L
             ).isEmpty());
             assertEquals(

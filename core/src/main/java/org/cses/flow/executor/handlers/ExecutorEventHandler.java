@@ -4,18 +4,15 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.services.flows.handlers.FlowHandlerSupport;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorEvent;
 import org.cses.flow.executor.ExecutorService;
-import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.DispatchQueue;
 import org.cses.flow.worker.WorkerDispatcher;
@@ -42,16 +39,16 @@ import java.util.concurrent.atomic.AtomicReference;
  * Queue or retained between deliveries.</p>
  */
 @Singleton
-public final class ExecutorEventHandler implements
+public class ExecutorEventHandler implements
         org.cses.flow.executor.ExecutorEventHandler<ExecutorEvent> {
 
-    private final JOOQ jooq;
-    private final SessionFactory<?, ?> sessionFactory;
-    private final FlowRepository flowRepository;
-    private final ExecutionRepository executionRepository;
-    private final ExecutorService executorService;
-    private final WorkerDispatcher workerDispatcher;
-    private final DispatchQueue<ExecutorEvent> eventQueue;
+    private JOOQ jooq;
+    private SessionFactory<?, ?> sessionFactory;
+    private FlowRepository flowRepository;
+    private ExecutionRepository executionRepository;
+    private ExecutorService executorService;
+    private WorkerDispatcher workerDispatcher;
+    private DispatchQueue<ExecutorEvent> eventQueue;
 
     @Inject
     public ExecutorEventHandler(
@@ -121,16 +118,10 @@ public final class ExecutorEventHandler implements
                 event,
                 "event"
         );
-        accepted.validate();
         requireProductionRuntime();
-        Session<?> session = restoreSession(accepted);
         AtomicReference<ExecutorContext> processed =
                 new AtomicReference<>();
-        jooq.run(dsl -> inEventScope(
-                dsl,
-                session,
-                () -> processed.set(process(session, dsl, accepted))
-        ));
+        jooq.run(dsl -> processed.set(process(dsl, accepted)));
         return Optional.ofNullable(processed.get());
     }
 
@@ -171,27 +162,50 @@ public final class ExecutorEventHandler implements
     }
 
     private ExecutorContext process(
-            Session<?> session,
             DSLContext dsl,
             ExecutorEvent event
     ) {
         Execution execution = executionRepository.lockById(
                 dsl,
-                event.getCompanyId(),
-                event.getExecutionId()
+                event.companyId(),
+                event.executionId()
         ).orElseThrow(() -> new WorkflowException(
-                "Execution does not exist: " + event.getExecutionId()
+                "Execution does not exist: " + event.executionId()
         ));
-        Flow flow = FlowHandlerSupport.requireFlow(
-                flowRepository,
-                dsl,
+        Flow flow = flowRepository.findByFlowId(
+            dsl,
+            FlowId.from(
                 execution.companyId(),
                 execution.flowKey(),
                 execution.flowVersion()
+            )
+        ).orElseThrow(() -> new WorkflowException(
+            "Flow version does not exist: "
+                + execution.flowKey() + ":" + execution.flowVersion()
+        ));
+        Session<?> session = restoreSession(flow);
+        AtomicReference<ExecutorContext> processed =
+                new AtomicReference<>();
+        inEventScope(
+                dsl,
+                session,
+                () -> processed.set(
+                        process(session, dsl, flow, execution, event)
+                )
         );
+        return processed.get();
+    }
+
+    private ExecutorContext process(
+            Session<?> session,
+            DSLContext dsl,
+            Flow flow,
+            Execution execution,
+            ExecutorEvent event
+    ) {
         ExecutorContext context = new ExecutorContext(flow, execution);
 
-        if (!applyEvent(context, flow, event)) {
+        if (!applyEvent(context, event)) {
             return context;
         }
 
@@ -214,7 +228,7 @@ public final class ExecutorEventHandler implements
             WorkerTaskResult result = dispatchWorkerTask(
                     session,
                     workerTask,
-                    event.getType() != ExecutorEvent.Type.CANCEL
+                    event.eventType() != ExecutorEvent.EventType.TERMINATED
             );
             executorService.applyResult(context, result);
             executionUpdated |= persistIfUpdated(dsl, context);
@@ -232,59 +246,24 @@ public final class ExecutorEventHandler implements
 
     private boolean applyEvent(
             ExecutorContext context,
-            Flow flow,
             ExecutorEvent event
     ) {
-        return switch (event.getType()) {
-            case PROCESS -> true;
-            case CANCEL -> {
+        return switch (event.eventType()) {
+            case CREATED, UPDATED -> true;
+            case TERMINATED -> {
                 if (context.execution().isTerminal()) {
                     yield false;
                 }
-                executorService.kill(context);
+                if (!context.execution().state().is(State.Type.KILLING)) {
+                    executorService.kill(context);
+                }
                 yield true;
             }
-            case RESUME -> applyResume(context, flow, event);
         };
     }
 
-    private boolean applyResume(
-            ExecutorContext context,
-            Flow flow,
-            ExecutorEvent event
-    ) {
-        Execution execution = context.execution();
-        if (execution.isTerminal() || !execution.state().is(State.Type.PAUSED)) {
-            return false;
-        }
-        TaskRun taskRun = execution.requireTaskRun(event.getTaskRunId());
-        if (!taskRun.state().is(State.Type.PAUSED)) {
-            return false;
-        }
-        Task task = flow.findTask(taskRun.taskId()).orElseThrow(() ->
-                new WorkflowException(
-                        "Task definition does not exist: " + taskRun.taskId()
-                )
-        );
-        if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
-            throw new WorkflowException(
-                    "Only a paused Orchestration TaskRun can be resumed: "
-                            + taskRun.id()
-            );
-        }
-        Map<String, Object> normalizedOutputs = pause.validateResume(
-                event.getOutputs()
-        );
-        executorService.resume(
-                context,
-                taskRun.id(),
-                normalizedOutputs
-        );
-        return true;
-    }
-
     private void emitNext(DSLContext dsl, ExecutorEvent event) {
-        eventQueue.emitInTransaction(event.nextProcess(), dsl);
+        eventQueue.emitInTransaction(event.nextUpdate(), dsl);
     }
 
     private boolean persistIfUpdated(
@@ -374,23 +353,17 @@ public final class ExecutorEventHandler implements
         executionRepository.save(dsl, context.execution());
     }
 
-    private Session<?> restoreSession(ExecutorEvent event) {
+    private Session<?> restoreSession(Flow flow) {
         @SuppressWarnings({"rawtypes", "unchecked"})
         Session restored = sessionFactory.session();
-        User user = restoreUser(event.getActorId());
-        user.setId(event.getActorId());
-        user.setCompanyId(event.getCompanyId());
-        if (event.getActorName() != null) {
-            user.setName(event.getActorName());
-            user.setUserName(event.getActorName());
-        }
-        restored.setCompanyId(event.getCompanyId());
-        restored.setId(event.getSessionId());
-        restored.setIp(event.getIp());
-        restored.setDevice(event.getDevice());
-        restored.setDeviceId(event.getDeviceId());
-        restored.setAppVersion(event.getAppVersion());
-        restored.setOsVersion(event.getOsVersion());
+        User user = restoreUser(flow.creator().id());
+        user.setId(flow.creator().id());
+        user.setCompanyId(flow.companyId());
+        flow.creator().name().ifPresent(name -> {
+            user.setName(name);
+            user.setUserName(name);
+        });
+        restored.setCompanyId(flow.companyId());
         restored.setUser(user);
         user.onSessionBound();
         return restored;

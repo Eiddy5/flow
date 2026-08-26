@@ -8,7 +8,6 @@ import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.flows.Input;
-import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -109,13 +108,6 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
     }
 
     @Override
-    public List<Output> outputs() {
-        return resume().stream()
-            .map(input -> Output.create(input.key(), input.type()))
-            .toList();
-    }
-
-    @Override
     public List<Task> definitionChildren() {
         return pause == null
             ? tasks()
@@ -129,7 +121,8 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
 
     /**
      * Validates and normalizes external Resume data using the configured
-     * concrete Input definitions.
+     * concrete Input definitions. This input contract is independent from
+     * the Task.outputs contract inherited by Pause.
      */
     public Map<String, Object> validateResume(
         Map<String, ?> actualInputs
@@ -139,7 +132,7 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
         }
 
         LinkedHashSet<String> declared = resume().stream()
-            .map(Input::key)
+            .map(Input::getKey)
             .collect(java.util.stream.Collectors.toCollection(
                 LinkedHashSet::new
             ));
@@ -155,7 +148,7 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
 
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Input<?> input : resume()) {
-            String key = input.key();
+            String key = input.getKey();
             boolean supplied = actualInputs.containsKey(key);
             Object value = supplied
                 ? actualInputs.get(key)
@@ -199,20 +192,12 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
                 );
             }
             input.validateDefinition();
-            if (!keys.add(input.key())) {
+            if (!keys.add(input.getKey())) {
                 throw new IllegalArgumentException(
                     "Pause resume inputs contains duplicate key: "
-                        + input.key()
+                        + input.getKey()
                 );
             }
-        }
-
-        List<Output> derivedOutputs = outputs();
-        if (!configuredOutputs().isEmpty()
-            && !configuredOutputs().equals(derivedOutputs)) {
-            throw new IllegalArgumentException(
-                "Pause outputs must match the resume Input definitions"
-            );
         }
 
         if ((duration == null) != (behavior == null)) {

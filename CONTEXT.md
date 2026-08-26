@@ -4,13 +4,29 @@
 
 ## Language
 
+**Entity ID**:
+一个领域实体创建时产生并在保存、恢复和状态变化中保持不变的非空字符串标识；对象自身称为 `id`，被其他对象引用时使用 `executionId`、`taskId`、`taskRunId` 等明确名称。Entity ID 不替代租户、业务 key 或 version 组成的业务选择器。`FlowId` 不是 Entity ID，而是 Flow Repository 的业务查询选择器。
+_Avoid_: recordId, identifier, entity-id wrapper, business key as entity id
+
 **Flow**:
-由 FlowDraft 在部署时完成解析和校验后形成的完整工作流定义；同一逻辑 Flow 的各次部署共享稳定 `id`，每个 Flow 都有正式 `reversion`，并持有 variables、inputs、outputs 和 Task 定义。Flow 不是草稿，也不保存某次 Execution 的运行 State。
-_Avoid_: Raw Flow, Draft, Process
+可保存、可部署和可恢复的工作流定义，由具体聚合 `Flow` 统一表达。它拥有稳定 Entity ID、稳定 key、原始 YAML `source` 和明确的 `draft` 状态；草稿的 version 为空，正式版本持有正整数 version，二者都可在创建时绑定 YAML 定义。Flow 不保存某次 Execution 的运行 State。
+_Avoid_: separate source aggregate, recordId, Process
+
+**Flow Creation**:
+从外部 YAML 正向形成一个尚未补齐运行身份的 Flow 定义；草稿和部署都可以物化同一份 YAML，之后由所属会话补充租户、操作者、审计和生命周期事实。
+_Avoid_: source-only draft, parser-specific aggregate
+
+**Flow Recovery**:
+从持久化的 Flow 事实恢复同一个聚合及其身份、审计、状态、版本和 Task 快照；原始 `source` 用于回显，不因为恢复而重新生成身份或反向解析 YAML。
+_Avoid_: recreate, redeploy, source reparse
+
+**Flow ID**:
+用于 Flow Repository 查询的业务选择器，包含 `companyId`、`key` 和可空 `version`。`version` 存在时指向精确正式版本；`version` 为空时用于逻辑 Flow 的最新正式版本或唯一草稿选择。它不等于 `Flow.id`，不作为实体身份或跨对象引用。
+_Avoid_: Flow entity id, recordId, FlowDraft id
 
 **Flow Draft**:
-独立于 Flow 的唯一可编辑原始定义，只保存尚未解析的 YAML，并且没有正式 `reversion`；部署成功会从它映射出新的 Flow Reversion，但不会把它转换为 Flow。
-_Avoid_: FlowWithSource, generic Draft, Draft status, Raw Flow, parsed Flow, Flow Version
+`Flow` 的可编辑状态，由 `draft=true` 明确表达并默认创建于该状态。它按租户和稳定 Flow key 唯一，`version` 为空，`source` 原样保存 YAML；创建时可以直接物化 YAML 中的公共字段和 Task，完整部署校验留到发布正式版本时执行。部署从同一类型创建正式版本快照。
+_Avoid_: separate FlowDraft entity, generic Draft, Draft status enum, recordId
 
 **Flow Reversion**:
 同一逻辑 Flow 的一次成功部署所形成的、具有正式 `reversion` 且可独立读取的不可变 Flow 快照。
@@ -21,11 +37,15 @@ _Avoid_: Flow Version, Revision, Draft, mutable Flow
 _Avoid_: Execution Input, Task Output, Writable Shared State
 
 **Current Flow Reversion**:
-某个 Flow 同一 `id` 下最大的 reversion；只有该最大 reversion 尚未删除时，它才供普通的新 Execution 启动绑定。最大 reversion 已删除时不存在可启动的当前 Flow，不能回退到旧 reversion；已经由外部业务持久承诺的精确 Execution Binding 按其原 Flow Reversion 物化，不属于普通新启动。
+某个租户和 Flow key 下 version 最大的 Flow Reversion；只有该最大 Reversion 尚未删除时，它才供普通的新 Execution 启动绑定。最大 Reversion 已删除时不存在可启动的当前 Flow，不能回退到旧 Reversion；已经由外部业务持久承诺的精确 Execution Binding 按其原 Flow Reversion 物化，不属于普通新启动。
 _Avoid_: Current Flow Version, Only version, mutable version
 
+**Audit Status**:
+可审计领域对象当前的通用记录状态；新对象从 Open 开始，Delete 是带完整删除操作者和时间的不可逆终态，其他记录状态可以为宿主兼容而保留。它不是工作流运行状态，也不是完整操作日志。
+_Avoid_: Workflow Runtime State, deleted flag, audit log
+
 **Flow Deletion**:
-Flow 定义被用户删除后的不可用事实，由 `deleted=true` 表达；新建 FlowDraft 和新部署版本均从 `deleted=false` 开始。删除后不能编辑 FlowDraft、继续部署或启动新的 Execution，但已经启动的 Execution 继续绑定原 Flow Reversion。
+一个 Flow 定义状态被用户删除后的不可用事实，由 Audit Status 的 Delete 及同一次删除审计共同表达。删除目标由 Flow 自身的 `draft` 状态明确选择：删除草稿不改变已部署版本，删除最新 Flow Reversion 也不改变草稿或更早的 Reversion。被删除的草稿不能继续编辑或部署；最新 Reversion 被删除后不能回退到旧 Reversion 启动新的 Execution，但已经启动的 Execution 继续绑定原 Flow Reversion。
 _Avoid_: CLOSED status, FlowDefinitionStatus, physical deletion, version replacement
 
 **Workflow Runtime State**:
@@ -64,7 +84,7 @@ Data Type 描述所属定义可以产生并交给下游的数据；实际输出�
 _Avoid_: Output interface, Output value, response DTO
 
 **Task**:
-Flow Reversion 中不可分割的流程步骤定义；其领域字段 `id` 跨 reversion 保持稳定，被引用时称为 `taskId`。Task 通过 `parentId` 表达定义父子关系，并声明输入、输出、路由、依赖及直接子 Task，但不保存实际运行结果；YAML 只声明业务 `key`，完整 Task 仅在成功部署时产生。
+Flow 定义中不可分割的流程步骤定义；其领域字段 `id` 在正式 reversion 间保持稳定，被引用时称为 `taskId`。Task 通过 `parentId` 表达定义父子关系，并声明输入、输出、路由、依赖及直接子 Task，但不保存实际运行结果；YAML 只声明业务 `key`，创建时可先物化，正式部署时才确认完整约束和跨 reversion 的身份稳定性。
 RunnableTask 与 OrchestrationTask 是具体 Task 可拥有的两种互斥能力，离开 Task 后没有
 独立业务意义；Worker 和 Executor 分别调用或解释这些能力，但不拥有它们。
 _Avoid_: Node, Activity
@@ -153,18 +173,18 @@ _Avoid_: Route Expression, arbitrary script, mutable runtime context
 _Avoid_: LogTask, Audit Log, logging service
 
 **Execution**:
-Flow Reversion 被启动后形成的一次完整运行实例；它永久绑定启动时的 `flowId + flowReversion`，保存生命周期状态和有序 TaskRun 历史，并且可以同时拥有多个活动 TaskRun。Execution 不是移动游标，实际执行路径由 TaskRun 事实表达。
+Flow Reversion 被启动后形成的一次完整运行实例；它拥有稳定字符串 `id`，永久绑定启动时的 `companyId + flowKey + flowVersion`，保存生命周期状态和有序 TaskRun 历史，并且可以同时拥有多个活动 TaskRun。Execution 不是移动游标，实际执行路径由 TaskRun 事实表达。
 _Avoid_: Process, workflow instance
 
 **Durable Execution Materialization**:
-可信外部业务把已经持久承诺的 `executionId + flowId + flowReversion` 精确、幂等地物化为待运行 Execution；它不重新选择 Current Flow Reversion，也不允许普通调用方任意启动历史 Reversion。
+可信外部业务把已经持久承诺的 `executionId + companyId + flowKey + flowVersion` 精确、幂等地物化为待运行 Execution；它不重新选择 Current Flow Reversion，也不允许普通调用方任意启动历史 Reversion。
 _Avoid_: Historical Flow Start, Latest Flow Fallback, Execution Retry Copy
 
 **Executor Scheduling Cycle**:
 以一个 Execution 及其精确 Flow Reversion 为输入、从已有 TaskRun 事实重建下一
 批工作并推进到下一个可提交点的一次可恢复调度循环。循环内的 ExecutorContext
 只暂存 nexts、Runnable WorkerTask、暂停效果、编排作用域完成和状态变化增量；它不是持久化游标，也不持有
-FlowDraft、Session 或 DSLContext。
+草稿状态 Flow、Session 或 DSLContext。
 _Avoid_: Execution cursor, transaction context, persisted next queue
 
 **Queue Event**:
@@ -203,7 +223,7 @@ _Avoid_: storage-specific public Queue name, Transactional Outbox, Retry Queue, 
 Execution 实际执行某个 Task 时产生的真实实例。Executor Scheduling Cycle 可以
 先在 nexts 中构造 CREATED TaskRun，但只有 `onNexts` 经 Execution 聚合接受后
 才成为真实历史。它通过 `taskId` 关联确定 Flow Reversion 中的 Task，通过
-`parentId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。循环体
+`parentTaskRunId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。循环体
 直接子 TaskRun 还以可空的正整数 iteration 表达所属轮次；同一 Task 可以因循环
 产生多个 TaskRun，其列表顺序表达真实运行顺序。
 _Avoid_: Activity, Task instance
@@ -215,8 +235,9 @@ _Avoid_: Activity, Task instance
 `RUNNING` 并无条件执行完整 pause 子树，收敛后才使 Pause TaskRun 进入
 `PAUSED`；Execution 始终保持 `RUNNING`。`pause` 只表示暂停前必须完整执行的
 专有 Task；继承自 Task 的通用 `tasks` 表示 Resume 后按普通父子任务规则执行的
-后续 Task，二者都通过 `definitionChildren()` 纳入定义树。有效 outputs 由 resume
-的 key 和 Data Type 派生。它不定义审批人、表单、工单或其他外部业务规则。
+后续 Task，二者都通过 `definitionChildren()` 纳入定义树。Pause 的 `outputs` 直接使用
+Task 的普通可配置输出契约；`resume` 只定义外部回调输入，不从 resume 派生 outputs，
+也不要求两者字段一致。它不定义审批人、表单、工单或其他外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
 
 **Execution Resume**:

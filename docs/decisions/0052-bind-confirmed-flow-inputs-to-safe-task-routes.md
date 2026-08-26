@@ -58,8 +58,8 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
 
 - `ExecutionService.create(session, flowId, inputs)` 在 Queue 受理前使用精确 Flow
   Reversion 校验未知 key、required、defaultValue、DataType 和具体 Input 约束。
-- `continueExecution(session, executionId, inputs)` 只在 pending Execution 仍为
-  `CREATED` 时确认输入并投递 `Create`；执行一旦启动，后续推进不能替换输入。
+- Execution 不提供 pending/continue 两阶段入口；完整 inputs 只能随首次 `create`
+  一次确认，执行启动后不能替换。
 - 不保留旧的无输入兼容构造或兼容持久化路径；没有必填 Input 的 Flow 仍由调用方传入
   空 Map，带必填 Input 的首次启动会明确失败。
 - Executor `Create` Command 持有已规范化且不可变的 Input Map，使异步 Queue 消费
@@ -86,7 +86,8 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
   稳定 Input key，并在发起时提交对应值。
 - 宿主可提供级联选择器并生成 Flow 原生 YAML；配置人员不得直接输入表达式或代码。
 - YAML 的解析、Task 插件物化、Route 类型检查和拓扑校验只属于 Flow。审批宿主可以
-  原样调用 `FlowService.saveDraft/deploy`，但不得复制 Flow 解析器或另建编译模型。
+  调用 `FlowService.save(..., PublishFlowCommand)`，以 `draft=true/false` 区分草稿和
+  正式版本，但不得复制 Flow 解析器或另建编译模型。
 - Flow 只校验结构和值类型，不查询 Form 服务，也不保存表单定义或表单数据 ID。
 
 ## 不变量

@@ -34,7 +34,8 @@ class CoreArchitectureStandardTest {
             "workers"
         );
     private static final Pattern RECORD_DECLARATION = Pattern.compile(
-        "\\brecord\\s+[A-Za-z_$][A-Za-z\\d_$]*"
+        "(?m)^\\s*(?:(?:public|protected|private|static|final)\\s+)*"
+            + "record\\s+[A-Za-z_$][A-Za-z\\d_$]*"
     );
     private static final Pattern RECORD_DECLARATION_NAME = Pattern.compile(
         "(?m)^\\s*(?:(?:public|protected|private|static|final)\\s+)*"
@@ -119,6 +120,7 @@ class CoreArchitectureStandardTest {
             .map(CORE::resolve)
             .filter(Files::isDirectory)
             .flatMap(directory -> directJavaFiles(directory).stream())
+            .filter(path -> !isSharedServiceProtocol(path))
             .map(Path::toString)
             .toList();
 
@@ -257,19 +259,11 @@ class CoreArchitectureStandardTest {
                 + "without carrying transaction runtime objects"
         );
 
-        for (String handler : List.of("ContinueExecutionHandler.java")) {
-            String source = Files.readString(CORE.resolve(
-                "handlers/executions/" + handler
-            ));
-            assertTrue(
-                source.contains("executionRepository.lockById("),
-                () -> handler
-                    + " must lock the Execution before mutation"
-            );
-        }
-
         String executionService = Files.readString(CORE.resolve(
             "services/executions/ExecutionService.java"
+        ));
+        String executionDomain = Files.readString(CORE.resolve(
+            "domains/executions/Execution.java"
         ));
         String defaultExecutor = Files.readString(FLOW.resolve(
             "executor/DefaultExecutor.java"
@@ -280,13 +274,31 @@ class CoreArchitectureStandardTest {
         String eventHandler = Files.readString(FLOW.resolve(
             "executor/handlers/ExecutorEventHandler.java"
         ));
+        long publicCreateMethods = Pattern.compile(
+            "(?m)^\\s*public\\s+.*\\sCreate\\s+create\\("
+        ).matcher(executionService).results().count();
         assertTrue(
-            executionService.contains("Create.from(")
+            publicCreateMethods == 2
+                && executionService.contains("Create.from(")
                 && executionService.contains("normalizedInputs")
                 && executionService.contains("executorCommandQueue.emit(command)")
-                && executionService.contains(
-                    "executorEventQueue.emitInTransaction("
-                )
+                && !executionService.contains("createPending")
+                && !executionService.contains("continueExecution")
+                && !executionService.contains("CommandExecutor")
+                && !executionService.contains("DispatchQueue<ExecutorEvent>")
+                && !executionDomain.contains("bindInputs(")
+                && Files.notExists(CORE.resolve(
+                    "services/executions/commands/CreateExecutionCommand.java"
+                ))
+                && Files.notExists(CORE.resolve(
+                    "services/executions/commands/ContinueExecutionCommand.java"
+                ))
+                && Files.notExists(CORE.resolve(
+                    "services/executions/handlers/CreateExecutionHandler.java"
+                ))
+                && Files.notExists(CORE.resolve(
+                    "services/executions/handlers/ContinueExecutionHandler.java"
+                ))
                 && executionService.contains("Resume.from(")
                 && executionService.contains("Cancel.from(")
                 && defaultExecutor.contains(
@@ -300,6 +312,8 @@ class CoreArchitectureStandardTest {
                 && commandHandler.contains("case Create create")
                 && commandHandler.contains("case Resume resume")
                 && commandHandler.contains("case Cancel cancel")
+                && commandHandler.contains("command.getExecutionId()")
+                && commandHandler.contains("validateRepeatedCreate(")
                 && commandHandler.contains("eventQueue.emitInTransaction(")
                 && eventHandler.contains("executorService.process(context)")
                 && eventHandler.contains("eventQueue.emitInTransaction(")
@@ -594,12 +608,37 @@ class CoreArchitectureStandardTest {
                     "executorService.process(context)"
                 )
                 && executorEventHandler.contains(
-                    "eventQueue.emit("
+                    "eventQueue.emitInTransaction("
                 )
                 && !executorEventHandler.contains("dispatchBranch("),
             "DefaultExecutor must only route Queue events while "
                 + "ExecutorEventHandler submits Worker effects and "
                 + "ExecutorService owns OrchestrationTask state progression"
+        );
+    }
+
+    @Test
+    void flowIsTheOnlyConcreteDefinitionAggregate() throws IOException {
+        Path flows = CORE.resolve("domains/flows");
+        Path flowPath = flows.resolve("Flow.java");
+
+        assertTrue(Files.isRegularFile(flowPath));
+        assertTrue(Files.notExists(flows.resolve("FlowWithDraft.java")));
+
+        String flow = Files.readString(flowPath);
+        assertTrue(
+            flow.contains(
+                "public class Flow extends AbstractFlow "
+                    + "implements Lockable<Flow>"
+            )
+                && flow.contains("String source;")
+                && flow.contains("long lockVersion;")
+                && flow.contains("public static Flow create(")
+                && flow.contains("public static Flow deploy(")
+                && flow.contains("public static Flow rehydrate(")
+                && flow.contains("public void initialize("),
+            "Flow must remain the only concrete draft and deployed "
+                + "definition aggregate"
         );
     }
 
@@ -680,21 +719,78 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
+    void domainEntityIdsRemainPlainStrings() throws IOException {
+        Path domains = CORE.resolve("domains");
+        List<Path> removedWrappers = List.of(
+            domains.resolve("Identity.java"),
+            domains.resolve("executions/ExecutionId.java"),
+            domains.resolve("executions/TaskRunId.java"),
+            domains.resolve("tasks/TaskId.java")
+        );
+        assertTrue(
+            removedWrappers.stream().noneMatch(Files::exists),
+            () -> "Typed id wrappers must remain removed: "
+                + removedWrappers
+        );
+
+        Path flowId = domains.resolve("flows/FlowId.java");
+        assertTrue(
+            Files.isRegularFile(flowId),
+            "FlowId is the approved Flow Repository business selector"
+        );
+        String flowIdSource = Files.readString(flowId);
+        assertTrue(
+            flowIdSource.contains("record FlowId")
+                && flowIdSource.contains("String companyId")
+                && flowIdSource.contains("String key")
+                && flowIdSource.contains("Long version"),
+            "FlowId must contain companyId, key and nullable version"
+        );
+
+        List<String> parallelIdentityInterfaces = new ArrayList<>();
+        try (var paths = Files.walk(domains)) {
+            for (Path path : paths
+                .filter(file -> file.toString().endsWith(".java"))
+                .toList()) {
+
+                String source = Files.readString(path);
+                if (source.contains("recordId(")
+                    || source.contains("identifier(")) {
+                    parallelIdentityInterfaces.add(path.toString());
+                }
+            }
+        }
+        assertTrue(
+            parallelIdentityInterfaces.isEmpty(),
+            () -> "Domain ids must use only String id(): "
+                + parallelIdentityInterfaces
+        );
+
+        String baseDomain = Files.readString(
+            domains.resolve("BaseDomain.java")
+        );
+        assertTrue(
+            baseDomain.contains("String id;")
+                && baseDomain.contains("public final String id()"),
+            "BaseDomain must own and expose the stable String entity id "
+                + "without final property fields"
+        );
+    }
+
+    @Test
     void serializationCentralizesJacksonAndKeepsYamlParsingNeutral()
         throws IOException {
 
         Path serialization = CORE.resolve("serializers");
         Path yamlParser = serialization.resolve("YamlParser.java");
         Path jacksonMapper = serialization.resolve("JacksonMapper.java");
-        Path flowDeserializer = serialization.resolve(
-            "FlowDefinitionDeserializer.java"
-        );
         assertTrue(
             Files.isRegularFile(yamlParser)
                 && Files.isRegularFile(jacksonMapper)
-                && Files.isRegularFile(flowDeserializer),
-            "Serialization must expose one mapper, YAML parser, and Flow "
-                + "definition deserializer"
+                && Files.notExists(serialization.resolve(
+                    "FlowDefinitionDeserializer.java"
+                )),
+            "Serialization must expose one mapper and generic YAML parser"
         );
 
         List<String> nestedDirectories;
@@ -711,7 +807,9 @@ class CoreArchitectureStandardTest {
 
         String source = Files.readString(yamlParser);
         String mapperSource = Files.readString(jacksonMapper);
-        String flowDeserializerSource = Files.readString(flowDeserializer);
+        String pluginModuleSource = Files.readString(CORE.resolve(
+            "plugins/PluginModule.java"
+        ));
         assertTrue(
             mapperSource.contains(
                 "com.fasterxml.jackson.databind.ObjectMapper"
@@ -725,20 +823,21 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             source.contains("JacksonMapper")
+                && source.contains("parse(String source, Class<T> type)")
                 && !source.contains("YAMLFactory")
-                && !source.contains("org.cses.flow.core.domains")
-                && !source.contains("org.cses.flow.core.commands")
+                && !source.contains("PluginDeserializationContext")
+                && !source.contains(
+                    "org.cses.flow.core.domains.flows.Flow"
+                )
                 && !source.contains("org.cses.flow.extensions"),
-            "YamlParser must not interpret Flow, Task, or extension types"
+            "YamlParser must remain generic and must not interpret Flow or "
+                + "extension types"
         );
         assertTrue(
-            !flowDeserializerSource.contains("PluginRegistry")
-                && !flowDeserializerSource.contains("java.lang.reflect")
-                && !flowDeserializerSource.contains(
-                    "normalizeDefinitionFields"
-                ),
-            "Flow definition binding must delegate Task polymorphism to "
-                + "Jackson PluginDeserializer"
+            mapperSource.contains("pluginModule.sourceDefinitions()")
+                && pluginModuleSource.contains("sourceDefinitions()"),
+            "The registered YAML plugin module must own source-specific "
+                + "Task binding without caller attributes"
         );
         assertTrue(
             Files.notExists(CORE.resolve(
@@ -867,7 +966,7 @@ class CoreArchitectureStandardTest {
                     "PluginDefinitionPreparer"
                 )
                 && pluginModuleSource.contains(
-                    "new PluginDeserializer<>(registry)"
+                    "new PluginDeserializer<>(registry, sourceDefinition)"
                 )
                 && !deserializerSource.contains("switch")
                 && !deserializerSource.contains("AutomaticTask")
@@ -950,6 +1049,17 @@ class CoreArchitectureStandardTest {
                 exception
             );
         }
+    }
+
+    private static boolean isSharedServiceProtocol(Path path) {
+        return path.getParent().endsWith(Path.of("core/services"))
+            && Set.of(
+                "Command.java",
+                "CommandContext.java",
+                "CommandExecutor.java",
+                "CommandHandler.java",
+                "CommandHandlerRegistry.java"
+            ).contains(path.getFileName().toString());
     }
 
     private static void inspectSources(

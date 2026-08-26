@@ -1,12 +1,11 @@
-package org.cses.flow.core.queries.flows;
+package org.cses.flow.core.services.flows.queries;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.repositories.flows.FlowRepository;
-import org.cses.flow.core.repositories.flows.FlowDraftRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
@@ -17,40 +16,39 @@ import java.util.List;
 import java.util.Optional;
 
 @Singleton
-public final class FlowQueryHandler {
+public class FlowQueryHandler {
 
-    private final JOOQ jooq;
-    private final FlowRepository flowRepository;
-    private final FlowDraftRepository draftRepository;
+    private JOOQ jooq;
+    private FlowRepository flowRepository;
 
     @Inject
     public FlowQueryHandler(
             @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
-            FlowRepository flowRepository,
-            FlowDraftRepository draftRepository
+            FlowRepository flowRepository
     ) {
         this.jooq = jooq;
         this.flowRepository = flowRepository;
-        this.draftRepository = draftRepository;
     }
 
     public <S extends Session<U>, U extends User>
-    List<FlowDraft> drafts(S session) {
+    List<Flow> drafts(S session) {
 
-        return jooq.read(dsl -> draftRepository.findAll(
+        return jooq.read(dsl -> flowRepository.findDrafts(
                 dsl,
                 SessionValidation.requireCompanyId(session)
         ));
     }
 
     public <S extends Session<U>, U extends User>
-    Optional<FlowDraft> draft(S session, String flowKey) {
+    Optional<Flow> draft(S session, String flowKey) {
 
         String normalizedFlowKey = requireFlowKey(flowKey);
-        return jooq.get(dsl -> draftRepository.findByFlowKey(
+        return jooq.get(dsl -> flowRepository.findDraftByFlowId(
                         dsl,
-                        SessionValidation.requireCompanyId(session),
-                        normalizedFlowKey
+                        FlowId.from(
+                            SessionValidation.requireCompanyId(session),
+                            normalizedFlowKey
+                        )
                 )
         );
     }
@@ -68,11 +66,13 @@ public final class FlowQueryHandler {
                     "Flow version must be positive"
             );
         }
-        return jooq.get(dsl -> flowRepository.findByKey(
+        return jooq.get(dsl -> flowRepository.findByFlowId(
                 dsl,
-                SessionValidation.requireCompanyId(session),
-                normalizedFlowKey,
-                flowVersion
+                FlowId.from(
+                    SessionValidation.requireCompanyId(session),
+                    normalizedFlowKey,
+                    flowVersion
+                )
         ));
     }
 
@@ -80,18 +80,20 @@ public final class FlowQueryHandler {
     Optional<Flow> latestFlow(S session, String flowKey) {
 
         String normalizedFlowKey = requireFlowKey(flowKey);
-        return jooq.get(dsl -> flowRepository.findLatestByKey(
+        return jooq.get(dsl -> flowRepository.findLatestByFlowId(
                 dsl,
-                SessionValidation.requireCompanyId(session),
-                normalizedFlowKey
-        ).filter(flow -> !flow.isDeleted()));
+                FlowId.from(
+                    SessionValidation.requireCompanyId(session),
+                    normalizedFlowKey
+                )
+        ).filter(flow -> !flow.deleted()));
     }
 
     /**
      * Resolves the unique editable draft by its stable Flow key.
      */
     public <S extends Session<U>, U extends User>
-    Optional<FlowDraft> draftByFlowKey(S session, String flowKey) {
+    Optional<Flow> draftByFlowKey(S session, String flowKey) {
         return draft(session, flowKey);
     }
 

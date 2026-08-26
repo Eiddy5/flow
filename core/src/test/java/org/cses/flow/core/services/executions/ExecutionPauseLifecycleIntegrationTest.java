@@ -4,8 +4,8 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -110,18 +110,20 @@ class ExecutionPauseLifecycleIntegrationTest {
             Execution first = fixture.startAndAwait(reversion1);
             String firstTaskId = reversion1.tasks().getFirst().id();
 
-            fixture.flowService().saveDraft(
+            fixture.flowService().save(
                 fixture.session(),
-                reversion1.key(),
-                WorkflowUcFixture.pauseYaml(
+                PublishFlowCommand.from(
+                    reversion1.key(),
+                    WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-reversion-flow",
                     "升级审批 Flow",
                     true
+                    )
                 )
             );
-            Flow reversion2 = fixture.flowService().deploy(
+            Flow reversion2 = fixture.flowService().save(
                 fixture.session(),
-                reversion1.key()
+                PublishFlowCommand.from(reversion1.key(), false)
             );
             Execution second = fixture.startAndAwait(reversion2);
 
@@ -150,7 +152,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                 reversion1.key(),
                 1L
             ).orElseThrow();
-            assertTrue(!storedReversion1.isDeleted());
+            assertTrue(!storedReversion1.deleted());
             assertEquals(
                 reversion2,
                 fixture.flowService().flow(
@@ -219,19 +221,19 @@ class ExecutionPauseLifecycleIntegrationTest {
     @Test
     void createRejectsDraftDeletedMissingAndCrossTenantFlows() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            FlowDraft draft = fixture.flowService().saveDraft(
+            Flow draft = fixture.flowService().save(
                 fixture.session(),
-                WorkflowUcFixture.pauseYaml(
+                PublishFlowCommand.from(WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-draft",
                     "未发布 Flow",
                     false
-                )
+                ))
             );
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    draft.flowKey()
+                    draft.key()
                 )
             );
 
@@ -244,7 +246,8 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             fixture.flowService().delete(
                 fixture.session(),
-                deployed.key()
+                deployed.key(),
+                false
             );
             assertThrows(
                 WorkflowException.class,
@@ -263,17 +266,17 @@ class ExecutionPauseLifecycleIntegrationTest {
 
             Session<User> otherCompany =
                 fixture.sessionFor("company-2");
-            FlowDraft otherDraft = fixture.flowService().saveDraft(
+            Flow otherDraft = fixture.flowService().save(
                 otherCompany,
-                WorkflowUcFixture.pauseYaml(
+                PublishFlowCommand.from(WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-other-company",
                     "其他公司 Flow",
                     false
-                )
+                ))
             );
-            Flow otherFlow = fixture.flowService().deploy(
+            Flow otherFlow = fixture.flowService().save(
                 otherCompany,
-                otherDraft.flowKey()
+                PublishFlowCommand.from(otherDraft.key(), false)
             );
             assertThrows(
                 WorkflowException.class,
@@ -284,18 +287,18 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
 
             assertEquals(
-                draft.raw(),
+                draft.source(),
                 fixture.flowService().draft(
                     fixture.session(),
-                    draft.flowKey()
-                ).orElseThrow().raw()
+                    draft.key()
+                ).orElseThrow().source()
             );
             Flow deletedFlow = fixture.flowService().flow(
                 fixture.session(),
                 deployed.key(),
                 1L
             ).orElseThrow();
-            assertTrue(deletedFlow.isDeleted());
+            assertTrue(deletedFlow.deleted());
             assertTrue(
                 fixture.flowService().latestFlow(
                     fixture.session(),
@@ -405,18 +408,20 @@ class ExecutionPauseLifecycleIntegrationTest {
             );
             Execution started = fixture.startAndAwait(reversion1);
 
-            fixture.flowService().saveDraft(
+            fixture.flowService().save(
                 fixture.session(),
-                reversion1.key(),
-                WorkflowUcFixture.pauseYaml(
+                PublishFlowCommand.from(
+                    reversion1.key(),
+                    WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-bound-reversion-flow",
                     "升级审批 Flow",
                     true
+                    )
                 )
             );
-            Flow reversion2 = fixture.flowService().deploy(
+            Flow reversion2 = fixture.flowService().save(
                 fixture.session(),
-                reversion1.key()
+                PublishFlowCommand.from(reversion1.key(), false)
             );
 
             Execution completed = fixture.resumeAfterRestart(

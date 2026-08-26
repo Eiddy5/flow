@@ -1,18 +1,22 @@
 package org.cses.flow.core.serializers;
 
+import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 
 class YamlParserTest {
 
-    private final YamlParser parser = new YamlParser(
+    private YamlParser parser = new YamlParser(
         builtInContext().jacksonMapper()
     );
 
@@ -40,6 +44,26 @@ class YamlParserTest {
             UnsupportedOperationException.class,
             task::clear
         );
+    }
+
+    @Test
+    void bindsFlowDirectlyThroughJacksonWithoutFlowSpecificParser() {
+        Flow flow = parser.parse(
+            """
+            key: release-flow
+            tasks:
+              - key: prepare
+                type: %s
+            """.formatted(AutomaticTask.class.getName()),
+            Flow.class
+        );
+
+        assertNull(flow.id());
+        assertTrue(flow.draft());
+        assertEquals("release-flow", flow.key());
+        assertFalse(flow.tasks().isEmpty());
+        assertEquals("prepare", flow.tasks().getFirst().key());
+        assertFalse(flow.tasks().getFirst().id().isBlank());
     }
 
     @Test

@@ -22,6 +22,8 @@ final class CreateTest {
     void restoresTheConcreteCreateCommandThroughTheExecutorContract() {
         Create command = Create.from(
             "company-1",
+            "execution-1",
+            "actor-1",
             "flow-key-1",
             7,
             Map.of("amount", 1200.5)
@@ -37,6 +39,11 @@ final class CreateTest {
         Create create = assertInstanceOf(Create.class, restored);
         assertEquals(ExecutionCommand.Type.CREATE, create.getType());
         assertEquals("company-1", create.getCompanyId());
+        assertEquals(
+            "execution-1",
+            create.getExecutionId()
+        );
+        assertEquals("actor-1", create.getActorId());
         assertEquals("flow-key-1", create.getFlowKey());
         assertEquals(7L, create.getFlowVersion());
         assertEquals(Map.of("amount", 1200.5), create.getInputs());

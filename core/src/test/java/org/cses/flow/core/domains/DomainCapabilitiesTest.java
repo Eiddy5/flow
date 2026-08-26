@@ -4,9 +4,7 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.expressions.Express;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
-import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.flows.State;
@@ -14,9 +12,18 @@ import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.utils.SessionUtil;
 import org.junit.jupiter.api.Test;
+import org.paas.session.RecordState;
 import org.paas.session.Session;
 import org.paas.session.User;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -25,27 +32,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class DomainCapabilitiesTest {
 
-    private static final long CREATED_AT = 1_786_003_200_000L;
+    @Test
+    void tenantAggregatesKeepOnlyCreateAndFullRehydratePaths() {
+        assertFalse(Modifier.isAbstract(Flow.class.getModifiers()));
+        assertConstructionPaths(Flow.class);
+        assertConstructionPaths(Execution.class);
+
+        assertEquals(2, BaseDomain.class.getDeclaredConstructors().length);
+        assertEquals(2, Audited.class.getDeclaredConstructors().length);
+    }
 
     @Test
     void domainObjectsDeclareOnlyCapabilitiesTheyActuallyOwn() {
         assertTrue(Identified.class.isAssignableFrom(Flow.class));
-        assertTrue(Identified.class.isAssignableFrom(FlowDraft.class));
         assertTrue(Identified.class.isAssignableFrom(Execution.class));
         assertTrue(Identified.class.isAssignableFrom(Task.class));
         assertTrue(Identified.class.isAssignableFrom(TaskRun.class));
-        assertTrue(Auditable.class.isAssignableFrom(Flow.class));
-        assertTrue(Auditable.class.isAssignableFrom(FlowDraft.class));
-        assertTrue(Deletable.class.isAssignableFrom(Flow.class));
-        assertTrue(Deletable.class.isAssignableFrom(FlowDraft.class));
-        assertTrue(Lockable.class.isAssignableFrom(FlowDraft.class));
+        assertTrue(BaseDomain.class.isAssignableFrom(Flow.class));
+        assertTrue(Audited.class.isAssignableFrom(Flow.class));
+        assertTrue(Lockable.class.isAssignableFrom(Flow.class));
         assertTrue(Lockable.class.isAssignableFrom(Execution.class));
 
-        assertFalse(Auditable.class.isAssignableFrom(Execution.class));
-        assertFalse(Deletable.class.isAssignableFrom(Execution.class));
+        assertTrue(BaseDomain.class.isAssignableFrom(Execution.class));
         assertFalse(Lockable.class.isAssignableFrom(TaskRun.class));
         assertFalse(Identified.class.isAssignableFrom(ActorRef.class));
-        assertFalse(Identified.class.isAssignableFrom(FlowId.class));
         assertFalse(Identified.class.isAssignableFrom(Input.class));
         assertFalse(Identified.class.isAssignableFrom(Output.class));
         assertFalse(Identified.class.isAssignableFrom(State.class));
@@ -74,34 +84,39 @@ final class DomainCapabilitiesTest {
             "deleter-1",
             "Deleter"
         );
-        ActorRef creator = ActorRef.from(creatorSession);
-        FlowDraft draft = FlowDraft.create(
-            "company-1",
+        Flow draft = Flow.create(
+            creatorSession,
             "capability-flow",
-            "key: capability-flow",
-            creator,
-            CREATED_AT
+            "",
+            Map.of(),
+            List.of(),
+            List.of(),
+            "key: capability-flow"
         );
+        ActorRef creator = SessionUtil.user(creatorSession);
+        long createdAt = draft.createdAt();
 
         Identified identified = draft;
-        Auditable<FlowDraft> auditable = draft;
-        Deletable<FlowDraft> deletable = draft;
-        Lockable<FlowDraft> lockable = draft;
+        Audited audited = draft;
+        Lockable<Flow> lockable = draft;
 
-        assertEquals(draft.id(), identified.identifier());
-        assertTrue(identified.identifiedBy("  " + draft.id() + "  "));
+        assertEquals(draft.id(), identified.id());
+        assertFalse(draft.id().isBlank());
+        assertEquals("capability-flow", draft.key());
+        assertTrue(identified.identifiedBy(draft.id()));
         assertFalse(identified.identifiedBy("another-draft"));
         identified.requireIdentifier(draft.id());
         assertThrows(
             WorkflowException.class,
             () -> identified.requireIdentifier("another-draft")
         );
-        assertEquals(creator, auditable.creator());
-        assertEquals(creator, auditable.updater());
-        assertEquals(CREATED_AT, auditable.createdAt());
-        assertEquals(CREATED_AT, auditable.updatedAt());
-        assertTrue(deletable.deleter().isEmpty());
-        assertTrue(deletable.deletedAt().isEmpty());
+        assertEquals(creator, audited.creator());
+        assertEquals(creator, audited.updater());
+        assertEquals(createdAt, audited.createdAt());
+        assertEquals(createdAt, audited.updatedAt());
+        assertEquals(RecordState.Open, audited.status());
+        assertTrue(audited.deleter().isEmpty());
+        assertTrue(audited.deletedAt().isEmpty());
         assertTrue(lockable.hasLockVersion(0));
         lockable.requireLockVersion(0);
         assertThrows(
@@ -109,43 +124,102 @@ final class DomainCapabilitiesTest {
             () -> lockable.requireLockVersion(1)
         );
 
-        auditable.updateAudit(editorSession, CREATED_AT + 1_000L);
+        draft.revise(
+            "revised",
+            Map.of(),
+            List.of(),
+            List.of(),
+            "key: capability-flow\ndescription: revised",
+            editorSession,
+            createdAt + 1_000L
+        );
 
-        assertEquals(ActorRef.from(editorSession), auditable.updater());
-        assertEquals(CREATED_AT + 1_000L, auditable.updatedAt());
+        assertEquals(SessionUtil.user(editorSession), audited.updater());
+        assertEquals(createdAt + 1_000L, audited.updatedAt());
         assertTrue(lockable.hasLockVersion(1));
         lockable.requireLockVersion(1);
 
-        deletable.delete(deleterSession, CREATED_AT + 2_000L);
+        draft.delete(deleterSession, createdAt + 2_000L);
 
-        assertTrue(deletable.isDeleted());
+        assertTrue(audited.deleted());
         assertEquals(
-            ActorRef.from(deleterSession),
-            deletable.deleter().orElseThrow()
+            SessionUtil.user(deleterSession),
+            audited.deleter().orElseThrow()
         );
         assertEquals(
-            CREATED_AT + 2_000L,
-            deletable.deletedAt().orElseThrow()
+            createdAt + 2_000L,
+            audited.deletedAt().orElseThrow()
         );
-        assertEquals(ActorRef.from(deleterSession), auditable.updater());
-        assertEquals(CREATED_AT + 2_000L, auditable.updatedAt());
+        assertEquals(SessionUtil.user(deleterSession), audited.updater());
+        assertEquals(createdAt + 2_000L, audited.updatedAt());
         assertTrue(lockable.hasLockVersion(2));
         assertThrows(
             WorkflowException.class,
-            () -> deletable.delete(
+            () -> draft.delete(
                 deleterSession,
-                CREATED_AT + 3_000L
+                createdAt + 3_000L
             )
         );
         assertThrows(
             WorkflowException.class,
-            () -> auditable.updateAudit(
+            () -> draft.revise(
+                "invalid",
+                Map.of(),
+                List.of(),
+                List.of(),
+                "key: capability-flow\ndescription: invalid",
                 editorSession,
-                CREATED_AT + 3_000L
+                createdAt + 3_000L
             )
         );
-        assertThrows(WorkflowException.class, lockable::lock);
-        assertEquals(2, lockable.lockVersion());
+        lockable.lock();
+        assertEquals(3, lockable.lockVersion());
+    }
+
+    @Test
+    void withStateAcceptsEveryRecordStateAndDeleteRemainsTerminal() {
+        Session<User> operator = session(
+            "company-1",
+            "operator-1",
+            "Operator"
+        );
+        ActorRef actor = SessionUtil.user(operator);
+        Flow draft = Flow.create(
+            operator,
+            "state-compatible-flow",
+            "",
+            Map.of(),
+            List.of(),
+            List.of(),
+            "key: state-compatible-flow"
+        );
+        long changedAt = draft.createdAt();
+
+        for (RecordState status : RecordState.values()) {
+            if (RecordState.Delete.equals(status)) {
+                continue;
+            }
+            changedAt += 1_000L;
+            draft.withState(status, operator, changedAt);
+            assertEquals(status, draft.status());
+        }
+
+        changedAt += 1_000L;
+        draft.withState(RecordState.Delete, operator, changedAt);
+
+        assertEquals(RecordState.Delete, draft.status());
+        assertEquals(actor, draft.updater());
+        assertEquals(actor, draft.deleter().orElseThrow());
+        assertEquals(draft.updatedAt(), draft.deletedAt().orElseThrow());
+        long terminalTime = changedAt;
+        assertThrows(
+            WorkflowException.class,
+            () -> draft.withState(
+                RecordState.Open,
+                operator,
+                terminalTime + 1_000L
+            )
+        );
     }
 
     @Test
@@ -155,12 +229,14 @@ final class DomainCapabilitiesTest {
             "owner-1",
             "Owner"
         );
-        FlowDraft draft = FlowDraft.create(
-            "company-1",
+        Flow draft = Flow.create(
+            ownerSession,
             "tenant-capability-flow",
-            "key: tenant-capability-flow",
-            ActorRef.from(ownerSession),
-            CREATED_AT
+            "",
+            Map.of(),
+            List.of(),
+            List.of(),
+            "key: tenant-capability-flow"
         );
         Session<User> anotherCompany = session(
             "company-2",
@@ -170,10 +246,10 @@ final class DomainCapabilitiesTest {
 
         assertThrows(
             WorkflowException.class,
-            () -> draft.delete(anotherCompany, CREATED_AT + 1_000L)
+            () -> draft.delete(anotherCompany, draft.createdAt() + 1_000L)
         );
 
-        assertFalse(draft.isDeleted());
+        assertFalse(draft.deleted());
         assertTrue(draft.deleter().isEmpty());
         assertTrue(draft.deletedAt().isEmpty());
         assertEquals(0, draft.lockVersion());
@@ -195,5 +271,36 @@ final class DomainCapabilitiesTest {
         session.setCompanyId(companyId);
         session.setUser(user);
         return session;
+    }
+
+    private static void assertConstructionPaths(Class<?> domainType) {
+        assertTrue(Arrays.stream(domainType.getDeclaredConstructors())
+            .noneMatch(constructor -> Modifier.isPublic(
+                constructor.getModifiers()
+            )));
+
+        Set<String> factoryNames = Arrays.stream(domainType.getDeclaredMethods())
+            .filter(method -> Modifier.isStatic(method.getModifiers()))
+            .filter(method -> domainType.equals(method.getReturnType()))
+            .map(Method::getName)
+            .collect(java.util.stream.Collectors.toSet());
+        assertTrue(factoryNames.contains("rehydrate"));
+        assertTrue(factoryNames.contains("create"));
+
+        Method create = Arrays.stream(domainType.getDeclaredMethods())
+            .filter(method -> method.getName().equals("create"))
+            .findFirst()
+            .orElseThrow();
+        assertTrue(Arrays.asList(create.getParameterTypes()).contains(
+            Session.class
+        ));
+
+        Method rehydrate = Arrays.stream(domainType.getDeclaredMethods())
+            .filter(method -> method.getName().equals("rehydrate"))
+            .findFirst()
+            .orElseThrow();
+        assertFalse(Arrays.asList(rehydrate.getParameterTypes()).contains(
+            Session.class
+        ));
     }
 }

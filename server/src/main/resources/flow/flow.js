@@ -138,7 +138,9 @@
                     message = text;
                 }
             }
-            throw new Error(message);
+            const error = new Error(message);
+            error.status = response.status;
+            throw error;
         }
         if (response.status === 204) {
             return null;
@@ -3133,6 +3135,7 @@
         const body = {
             key: currentFlowKey(),
             raw: state.raw,
+            draft: true,
         };
         if (state.current.flowKey) {
             body.expectedLockVersion = state.current.lockVersion;
@@ -3224,7 +3227,7 @@
         if (!state.current?.deployedFlow) {
             throw new Error("请先发布流程");
         }
-        const execution = await api(
+        const receipt = await api(
             `/flows/${encodeURIComponent(currentFlowKey())}/executions`,
             {
                 method: "POST",
@@ -3232,15 +3235,10 @@
             },
         );
         state.modal = null;
-        mergeExecution(execution);
-        state.selectedExecutionId = execution.id;
+        state.selectedExecutionId = receipt.executionId;
         state.runCollapsed = false;
-        showToast(
-            execution.state === "CREATED"
-                ? "Execution 已受理，后台开始运行"
-                : `Execution 当前状态：${stateLabel(execution.state)}`,
-        );
-        replayExecution(execution);
+        showToast("Execution 已受理，后台开始运行");
+        render();
         schedulePoll();
     }
 
@@ -3256,7 +3254,12 @@
             return;
         }
         const flowKey = currentFlowKey();
-        await api(`/flows/${encodeURIComponent(flowKey)}`, {
+        if (state.current.deployedFlow) {
+            await api(`/flows/${encodeURIComponent(flowKey)}?draft=false`, {
+                method: "DELETE",
+            });
+        }
+        await api(`/flows/${encodeURIComponent(flowKey)}?draft=true`, {
             method: "DELETE",
         });
         state.drafts = state.drafts.filter(
@@ -3862,7 +3865,7 @@
         try {
             const result = await api("/flows/preview", {
                 method: "POST",
-                body: { raw: rawAtRequest },
+                body: { source: rawAtRequest },
             });
             if (
                 sequence !== previewSequence ||
@@ -4012,13 +4015,12 @@
 
     function selectedExecution() {
         const executions = selectedFlowExecutions();
-        return (
-            executions.find(
+        if (state.selectedExecutionId) {
+            return executions.find(
                 (item) => item.id === state.selectedExecutionId,
-            ) ||
-            executions[0] ||
-            null
-        );
+            ) || null;
+        }
+        return executions[0] || null;
     }
 
     function selectedTask() {
@@ -4569,21 +4571,24 @@
     function schedulePoll() {
         clearTimeout(pollTimer);
         const execution = selectedExecution();
+        const executionId = state.selectedExecutionId;
         if (
-            !execution ||
-            !["CREATED", "RUNNING"].includes(execution.state)
+            !executionId ||
+            (execution && !["CREATED", "RUNNING"].includes(execution.state))
         ) {
             return;
         }
         pollTimer = setTimeout(async () => {
             try {
                 const refreshed = await api(
-                    `/executions/${encodeURIComponent(execution.id)}`,
+                    `/executions/${encodeURIComponent(executionId)}`,
                 );
                 mergeExecution(refreshed);
                 render();
             } catch (error) {
-                showToast(error.message, true);
+                if (error.status !== 404) {
+                    showToast(error.message, true);
+                }
             }
             schedulePoll();
         }, 1200);

@@ -1,6 +1,7 @@
 package org.cses.flow.executor.commands;
 
 import org.cses.flow.core.domains.ActorRef;
+import org.cses.flow.core.utils.SessionUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -26,7 +27,7 @@ public record Cancel(
             String executionId
     ) {
         Objects.requireNonNull(session, "Session must not be null");
-        ActorRef actor = ActorRef.from(session);
+        ActorRef actor = SessionUtil.user(session);
 
         return from(
                 executionId,

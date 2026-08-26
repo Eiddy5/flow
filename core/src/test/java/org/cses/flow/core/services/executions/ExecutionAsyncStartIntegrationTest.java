@@ -45,40 +45,6 @@ final class ExecutionAsyncStartIntegrationTest {
     }
 
     @Test
-    void continuingPendingExecutionReturnsAfterQueueAcceptance()
-        throws InterruptedException {
-        Uc03AutomaticTask.blockNextRun();
-        try (WorkflowUcFixture fixture =
-                 WorkflowUcFixture.openWithProperties(AUTO_TASK)) {
-            Flow flow = fixture.deploy("""
-                key: execution-async-continue
-                description: continue returns before task completion
-                tasks:
-                  - key: target-block
-                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
-                """);
-            Execution pending = fixture.executionService().createPending(
-                fixture.session(),
-                flow.key()
-            );
-
-            Execution accepted = fixture.executionService()
-                .continueExecution(fixture.session(), pending.id());
-
-            assertEquals(State.Type.CREATED, accepted.state().current());
-            assertTrue(Uc03AutomaticTask.awaitBlockingRun());
-
-            Uc03AutomaticTask.releaseBlockingRun();
-            assertEquals(
-                State.Type.SUCCESS,
-                fixture.awaitStable(accepted).state().current()
-            );
-        } finally {
-            Uc03AutomaticTask.releaseBlockingRun();
-        }
-    }
-
-    @Test
     void returnsAfterResumeQueueAcceptanceBeforeContinuationCompletes()
         throws InterruptedException {
         Uc03AutomaticTask.blockNextRun();
@@ -94,6 +60,9 @@ final class ExecutionAsyncStartIntegrationTest {
                       key: create-confirmation
                       type: org.cses.flow.extensions.tasks.AutomaticTask
                     resume:
+                      - key: decision
+                        type: STRING
+                    outputs:
                       - key: decision
                         type: STRING
                   - key: target-block

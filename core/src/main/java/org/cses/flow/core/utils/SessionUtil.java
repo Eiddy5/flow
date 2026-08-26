@@ -5,26 +5,39 @@ import org.paas.exception.DataException;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-public class SessionUtil {
+public final class SessionUtil {
 
-    public static <S extends Session<U>,U extends User> String company(S session ) {
-        AssertUtil.assertNotNull(session, "session is required");
-        AssertUtil.assertNotBlank(session.getCompanyId().trim(), "session.companyId is required");
-        return session.getCompanyId();
+    private SessionUtil() {
     }
 
-    public static  <S extends Session<U>,U extends User> ActorRef user(S session) {
+    public static String company(Session<? extends User> session) {
+        Session<? extends User> requiredSession = RequiredUtil.required(
+            session,
+            "session is required"
+        );
+        return RequiredUtil.required(
+            requiredSession.getCompanyId(),
+            "session.companyId is required"
+        ).trim();
+    }
+
+    public static ActorRef user(Session<? extends User> session) {
         String companyId = company(session);
-        org.paas.session.User sessionUser = session.getUser();
-        if (sessionUser == null) {
-            throw new DataException("current user is required");
-        }
-        if (sessionUser.getId() == null || sessionUser.getId().isBlank()) {
-            throw new DataException("current user id is required");
-        }
+        User sessionUser = RequiredUtil.required(
+            session.getUser(),
+            "current user is required"
+        );
+        String userId = RequiredUtil.required(
+            sessionUser.getId(),
+            "current user id is required"
+        );
         if (!companyId.equals(sessionUser.getCompanyId())) {
             throw new DataException("current user does not belong to company");
         }
-        return ActorRef.from(session);
+        String actorName = sessionUser.getName();
+        if (actorName == null || actorName.isBlank()) {
+            actorName = session.getUserName();
+        }
+        return ActorRef.create(userId, actorName);
     }
 }

@@ -36,7 +36,7 @@ Pause CREATED/RUNNING
     -> 执行 pause 子树
     -> Pause PAUSED
     -> 外部 Resume
-    -> Pause SUCCESS，生成 resume outputs
+    -> Pause SUCCESS，保存 Resume 回调结果
     -> 执行普通 tasks
 ```
 

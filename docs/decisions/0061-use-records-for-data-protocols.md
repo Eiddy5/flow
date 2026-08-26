@@ -13,10 +13,9 @@ Flow 中有一组对象只负责承载一次调用、队列消息或 Worker 运�
 
 ## 决策
 
-- Core 的简单写命令使用 Java `record`：
-  `CreateExecutionCommand`、`ContinueExecutionCommand`、
-  `SaveFlowDraftCommand`、`DeployFlowCommand`、`DeleteFlowDraftCommand` 和
-  `DeleteFlowCommand`。
+- Core 的简单写命令使用 Java `record`：`PublishFlowCommand` 和
+  `DeleteFlowCommand`。两个命令都以 `draft=true/false` 选择草稿或正式版本；
+  Execution 启动不再经过 Core Command，而是直接发布 Executor `Create`。
 - Executor 的 `Create`、`Resume`、`Cancel` 使用 Java `record` 表达队列中的
   Command payload；它们不继承 `SerializableObject`，也不持有 `DSLContext`。
 - Worker 侧的 `WorkerTask`、`WorkerTaskResult` 以及任务执行结果 `RunResult`

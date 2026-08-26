@@ -3,12 +3,12 @@ package org.cses.flow.core.domains.executions;
 import org.cses.flow.core.domains.Identified;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.utils.RequiredUtil;
 import org.paas.common.util.StringUtil;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalInt;
 
@@ -52,10 +52,10 @@ public final class TaskRun implements Identified {
      */
     public static TaskRun create(
         String taskId,
-        String parentId,
+        String parentTaskRunId,
         Map<String, ?> inputs
     ) {
-        return create(taskId, parentId, inputs, null);
+        return create(taskId, parentTaskRunId, inputs, null);
     }
 
     /**
@@ -63,14 +63,14 @@ public final class TaskRun implements Identified {
      */
     public static TaskRun create(
         String taskId,
-        String parentId,
+        String parentTaskRunId,
         Map<String, ?> inputs,
         Integer iteration
     ) {
         return new TaskRun(
             StringUtil.newId(),
             taskId,
-            parentId,
+            parentTaskRunId,
             iteration,
             inputs
         );
@@ -91,7 +91,7 @@ public final class TaskRun implements Identified {
         this.parentId = normalizeOptionalText(parentId);
         this.iteration = normalizeIteration(iteration, this.parentId);
         this.inputs = immutableMap(inputs);
-        this.state = Objects.requireNonNull(state, "TaskRun state");
+        this.state = RequiredUtil.required(state, "TaskRun state");
         this.outputs = immutableMap(outputs);
         this.error = normalizeOptionalText(error);
         if (!state.is(State.Type.FAILED) && this.error != null) {
@@ -108,7 +108,7 @@ public final class TaskRun implements Identified {
     public static TaskRun rehydrate(
         String id,
         String taskId,
-        String parentId,
+        String parentTaskRunId,
         Integer iteration,
         Map<String, ?> inputs,
         State state,
@@ -118,7 +118,7 @@ public final class TaskRun implements Identified {
         return new TaskRun(
             id,
             taskId,
-            parentId,
+            parentTaskRunId,
             iteration,
             inputs,
             state,
@@ -127,25 +127,7 @@ public final class TaskRun implements Identified {
         );
     }
 
-    private TaskRun(TaskRun source) {
-        this.id = source.id;
-        // Recreate the reference so orchestration tests cannot accidentally
-        // pass by relying on String object identity.
-        this.taskId = new String(source.taskId);
-        this.parentId = source.parentId;
-        this.iteration = source.iteration;
-        this.inputs = source.inputs;
-        this.state = source.state;
-        this.outputs = source.outputs;
-        this.error = source.error;
-    }
-
     public String id() {
-        return id;
-    }
-
-    @Override
-    public String identifier() {
         return id;
     }
 
@@ -153,7 +135,7 @@ public final class TaskRun implements Identified {
         return taskId;
     }
 
-    public Optional<String> parentId() {
+    public Optional<String> parentTaskRunId() {
         return Optional.ofNullable(parentId);
     }
 
@@ -247,7 +229,16 @@ public final class TaskRun implements Identified {
     }
 
     TaskRun copy() {
-        return new TaskRun(this);
+        return rehydrate(
+            id,
+            taskId,
+                parentId,
+            iteration,
+            inputs,
+            state,
+            outputs,
+            error
+        );
     }
 
     private void requireState(State.Type expected) {
@@ -301,12 +292,8 @@ public final class TaskRun implements Identified {
     }
 
     private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(
-                field + " must not be blank"
-            );
-        }
-        return value.trim();
+        return RequiredUtil.required(value, field + " must not be blank")
+            .trim();
     }
 
     private static String normalizeOptionalText(String value) {
@@ -315,7 +302,7 @@ public final class TaskRun implements Identified {
 
     private static Integer normalizeIteration(
         Integer value,
-        String parentId
+        String parentTaskRunId
     ) {
         if (value == null) {
             return null;
@@ -325,7 +312,7 @@ public final class TaskRun implements Identified {
                 "TaskRun iteration must be positive"
             );
         }
-        if (parentId == null) {
+        if (parentTaskRunId == null) {
             throw new IllegalArgumentException(
                 "An iterated TaskRun must have a parent"
             );

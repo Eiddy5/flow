@@ -1,9 +1,9 @@
 package org.cses.flow.core.plugins;
 
 import io.micronaut.validation.validator.Validator;
+import jakarta.validation.ConstraintViolationException;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.serializers.FlowDefinitionDeserializer;
 import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.validations.ModelValidator;
@@ -13,6 +13,9 @@ import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Parallel;
+import org.paas.common.util.StringUtil;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,9 +24,9 @@ import java.util.Map;
 /**
  * Builds the production plugin serialization chain without Micronaut.
  */
-public final class TaskPluginTestSupport {
+public class TaskPluginTestSupport {
 
-    private static final Validator VALIDATOR = Validator.getInstance();
+    private static Validator VALIDATOR = Validator.getInstance();
 
     private TaskPluginTestSupport() {
     }
@@ -44,29 +47,25 @@ public final class TaskPluginTestSupport {
         JacksonMapper mapper = new JacksonMapper(module);
         return Context.from(
             mapper,
-            new FlowDefinitionDeserializer(
-                new YamlParser(mapper),
-                mapper,
-                validator
-            ),
+            new YamlParser(mapper),
             validator
         );
     }
 
     public record Context(
         JacksonMapper jacksonMapper,
-        FlowDefinitionDeserializer flowDeserializer,
+        YamlParser yamlParser,
         ModelValidator modelValidator
     ) {
 
         public static Context from(
             JacksonMapper jacksonMapper,
-            FlowDefinitionDeserializer flowDeserializer,
+            YamlParser yamlParser,
             ModelValidator modelValidator
         ) {
             return new Context(
                 jacksonMapper,
-                flowDeserializer,
+                yamlParser,
                 modelValidator
             );
         }
@@ -79,14 +78,60 @@ public final class TaskPluginTestSupport {
             ActorRef actor,
             long deployedAt
         ) {
-            return flowDeserializer.deserialize(
-                jacksonMapper.writeYaml(definition),
-                companyId,
+            String source = jacksonMapper.writeYaml(definition);
+            return deploy(
+                source,
                 flowId,
                 latest,
-                actor,
-                deployedAt
+                session(companyId, actor)
             );
+        }
+
+        public Flow deploy(
+            String source,
+            String flowKey,
+            Flow latest,
+            Session<User> session
+        ) {
+            Flow flow = yamlParser.parse(source, Flow.class);
+            String fallback = flow.key() == null || flow.key().isBlank()
+                ? latest != null
+                    ? latest.key()
+                    : flowKey == null || flowKey.isBlank()
+                        ? StringUtil.newId()
+                        : flowKey
+                : null;
+            flow.resolveKey(fallback);
+            flow.inputs().forEach(input -> input.validateDefinition());
+            flow.tasks().forEach(task -> {
+                try {
+                    modelValidator.validate(task);
+                } catch (ConstraintViolationException exception) {
+                    throw new IllegalArgumentException(
+                        exception.getMessage(),
+                        exception
+                    );
+                }
+            });
+            flow.initialize(session, false, latest, source);
+            return flow;
+        }
+
+        private static Session<User> session(
+            String companyId,
+            ActorRef actor
+        ) {
+            User user = new User();
+            user.setId(actor.id());
+            user.setName(actor.name().orElse(null));
+            user.setUserName(actor.name().orElse(null));
+            user.setCompanyId(companyId);
+
+            Session<User> session = new Session<>();
+            session.setId("session-" + actor.id());
+            session.setCompanyId(companyId);
+            session.setUser(user);
+            return session;
         }
     }
 }

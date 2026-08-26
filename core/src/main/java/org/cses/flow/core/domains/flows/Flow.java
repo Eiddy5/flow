@@ -1,13 +1,15 @@
 package org.cses.flow.core.domains.flows;
 
 import org.cses.flow.core.domains.ActorRef;
-import org.cses.flow.core.domains.Deletable;
+import org.cses.flow.core.domains.Lockable;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.utils.AssertUtil;
+import org.cses.flow.core.utils.RequiredUtil;
+import org.cses.flow.core.utils.SessionUtil;
 import org.paas.common.util.StringUtil;
+import org.paas.session.RecordState;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -16,386 +18,392 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * One complete, deployed Flow reversion.
+ * Concrete Flow aggregate for editable drafts and deployed versions.
  */
-public final class Flow implements Deletable<Flow> {
+public class Flow extends AbstractFlow implements Lockable<Flow> {
 
-    private final String id;
-    private final String companyId;
-    private final String key;
-    private final long reversion;
-    private final String description;
-    private final Map<String, Object> variables;
-    private final List<Input<?>> inputs;
-    private final List<Output> outputs;
-    private final List<Task> tasks;
-    private final ActorRef creator;
-    private final long createdAt;
-    private boolean deleted;
-    private ActorRef updater;
-    private ActorRef deleter;
-    private long updatedAt;
-    private Long deletedAt;
+    List<Task> tasks = List.of();
+    String source;
+    long lockVersion;
+
+    public Flow() {
+        super();
+    }
 
     private Flow(
-            String id,
-            String companyId,
-            String key,
-            long reversion,
-            String description,
-            Map<String, ?> variables,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            boolean deleted,
-            ActorRef creator,
-            ActorRef updater,
-            ActorRef deleter,
-            long createdAt,
-            long updatedAt,
-            Long deletedAt
+        String id,
+        String key,
+        Long version,
+        boolean draft,
+        Session<? extends User> session,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        String source
     ) {
-        this.id = requireText(id, "Flow id");
-        this.companyId = requireText(companyId, "Company id");
-        this.key = requireText(key, "Flow key");
-        if (reversion < 1) {
-            throw new IllegalArgumentException(
-                    "Flow reversion must be positive"
-            );
-        }
-        this.reversion = reversion;
-        this.description = description == null ? "" : description;
-        this.variables = immutableVariables(variables);
-        this.inputs = immutableData(inputs, "Flow inputs");
-        this.outputs = immutableData(outputs, "Flow outputs");
-        this.tasks = tasks == null ? List.of() : List.copyOf(tasks);
-        validateDefinition(this.variables, this.inputs, this.tasks);
-        this.creator = Objects.requireNonNull(creator, "Flow creator");
-        this.updater = Objects.requireNonNull(updater, "Flow updater");
-        if (createdAt < 0 || updatedAt < createdAt) {
-            throw new IllegalArgumentException("Flow timestamps are invalid");
-        }
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.deleted = deleted;
-        this.deleter = deleter;
-        this.deletedAt = deletedAt;
-        if ((deleter == null) != (deletedAt == null)) {
-            throw new IllegalArgumentException(
-                    "Flow deleter and deletedAt must both be empty or present"
-            );
-        }
-        if (!deleted && deleter != null) {
-            throw new IllegalArgumentException(
-                    "Undeleted Flow must not have deletion audit"
-            );
-        }
-        if (deleted && deleter == null) {
-            throw new IllegalArgumentException(
-                    "Deleted Flow requires deletion audit"
-            );
-        }
+        super(
+            id,
+            key,
+            version,
+            draft,
+            session,
+            description,
+            variables,
+            inputs,
+            outputs
+        );
+        this.tasks = immutableTasks(tasks);
+        this.source = RequiredUtil.required(source, "Flow source");
+        validateTasksForState();
     }
 
-    /**
-     * Creates one complete Flow reversion from already-bound definitions.
-     */
-    public static Flow deploy(
-            String companyId,
-            String flowKey,
-            String description,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            Flow latest,
-            ActorRef actor,
-            long deployedAt
+    private Flow(
+        String id,
+        String key,
+        Long version,
+        boolean draft,
+        String companyId,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        RecordState status,
+        ActorRef creator,
+        ActorRef updater,
+        ActorRef deleter,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt,
+        String source,
+        long lockVersion
     ) {
-        return deploy(
-                companyId,
-                flowKey,
-                description,
-                Map.of(),
-                inputs,
-                outputs,
-                tasks,
-                latest,
-                actor,
-                deployedAt
+        super(
+            id,
+            key,
+            version,
+            draft,
+            companyId,
+            description,
+            variables,
+            inputs,
+            outputs,
+            creator,
+            createdAt,
+            status,
+            updater,
+            updatedAt,
+            deleter,
+            deletedAt
+        );
+        this.tasks = immutableTasks(tasks);
+        this.source = RequiredUtil.required(source, "Flow source");
+        if (lockVersion < 0) {
+            throw new IllegalArgumentException(
+                "Flow lockVersion must not be negative"
+            );
+        }
+        this.lockVersion = lockVersion;
+        validateTasksForState();
+    }
+
+    public static Flow create(
+        Session<? extends User> session,
+        String key,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        String source
+    ) {
+        return create(
+            session,
+            key,
+            description,
+            variables,
+            inputs,
+            outputs,
+            List.of(),
+            source
+        );
+    }
+
+    public static Flow create(
+        Session<? extends User> session,
+        String key,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        String source
+    ) {
+        return new Flow(
+            StringUtil.newId(),
+            key,
+            null,
+            true,
+            session,
+            description,
+            variables,
+            inputs,
+            outputs,
+            tasks,
+            source
+        );
+    }
+
+    public static Flow deploy(
+        Session<? extends User> session,
+        String key,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        String source,
+        Flow latest
+    ) {
+        String normalizedKey = requireText(key, "Flow key");
+        List<Task> boundTasks = tasks == null
+            ? List.of()
+            : List.copyOf(tasks);
+        long version = nextVersion(
+            session,
+            normalizedKey,
+            boundTasks,
+            latest
+        );
+        return new Flow(
+            StringUtil.newId(),
+            normalizedKey,
+            version,
+            false,
+            session,
+            description,
+            variables,
+            inputs,
+            outputs,
+            boundTasks,
+            source
+        );
+    }
+
+    public static Flow rehydrate(
+        String id,
+        String companyId,
+        String key,
+        boolean draft,
+        Long version,
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> tasks,
+        RecordState status,
+        ActorRef creator,
+        ActorRef updater,
+        ActorRef deleter,
+        long createdAt,
+        long updatedAt,
+        Long deletedAt,
+        String source,
+        long lockVersion
+    ) {
+        return new Flow(
+            id,
+            key,
+            version,
+            draft,
+            companyId,
+            description,
+            variables,
+            inputs,
+            outputs,
+            tasks,
+            status,
+            creator,
+            updater,
+            deleter,
+            createdAt,
+            updatedAt,
+            deletedAt,
+            source,
+            lockVersion
         );
     }
 
     /**
-     * Creates one complete Flow reversion with Flow-level variables.
+     * Completes a Flow created by Jackson's no-args binding path.
+     * YAML supplies the definition; this method supplies identity, tenant,
+     * audit, lifecycle and raw source facts.
      */
-    public static Flow deploy(
-            String companyId,
-            String flowKey,
-            String description,
-            Map<String, ?> variables,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            Flow latest,
-            ActorRef actor,
-            long deployedAt
+    public void initialize(
+        Session<? extends User> session,
+        boolean draft,
+        Flow latest,
+        String rawSource
     ) {
-        Objects.requireNonNull(actor, "Flow creator");
-        String normalizedCompanyId = requireText(companyId, "Company id");
-        String normalizedFlowKey = requireText(flowKey, "Flow key");
-        List<Task> boundTasks = tasks == null ? List.of() : List.copyOf(tasks);
-
-        long reversion = 1;
-        if (latest != null) {
-            if (!normalizedCompanyId.equals(latest.companyId)) {
-                throw new IllegalArgumentException(
-                        "Latest Flow belongs to another logical Flow"
-                );
-            }
-            if (latest.deleted) {
-                throw new WorkflowException(
-                        "Deleted Flow cannot be deployed: " + normalizedFlowKey
-                );
-            }
-            if (!latest.key.equals(normalizedFlowKey)) {
-                throw new WorkflowException(
-                        "Flow key cannot change across reversion: "
-                                + latest.key + " -> " + normalizedFlowKey
-                );
-            }
-            requireStableTaskIds(latest, boundTasks);
-            reversion = latest.reversion + 1;
+        if (id() != null) {
+            throw new IllegalStateException("Flow is already initialized");
         }
-
-        return new Flow(
-                StringUtil.newId(),
-                normalizedCompanyId,
-                normalizedFlowKey,
-                reversion,
-                description,
-                variables,
-                inputs,
-                outputs,
+        String normalizedKey = requireText(key, "Flow key");
+        List<Task> boundTasks = immutableTasks(tasks);
+        long nextVersion = 0;
+        if (!draft) {
+            rebindTaskIds(latest, boundTasks);
+            nextVersion = nextVersion(
+                session,
+                normalizedKey,
                 boundTasks,
-                false,
-                actor,
-                actor,
-                null,
-                deployedAt,
-                deployedAt,
-                null
-        );
-    }
-
-    /**
-     * Rehydrates a complete Flow from trusted persistence state.
-     */
-    public static Flow rehydrate(
-            String id,
-            String companyId,
-            String key,
-            long reversion,
-            String description,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            boolean deleted,
-            ActorRef creator,
-            ActorRef updater,
-            ActorRef deleter,
-            long createdAt,
-            long updatedAt,
-            Long deletedAt
-    ) {
-        return rehydrate(
-                id,
-                companyId,
-                key,
-                reversion,
-                description,
-                Map.of(),
-                inputs,
-                outputs,
-                tasks,
-                deleted,
-                creator,
-                updater,
-                deleter,
-                createdAt,
-                updatedAt,
-                deletedAt
-        );
-    }
-
-    /**
-     * Rehydrates a complete Flow with persisted Flow-level variables.
-     */
-    public static Flow rehydrate(
-            String id,
-            String companyId,
-            String key,
-            long reversion,
-            String description,
-            Map<String, ?> variables,
-            List<? extends Input<?>> inputs,
-            List<? extends Output> outputs,
-            List<? extends Task> tasks,
-            boolean deleted,
-            ActorRef creator,
-            ActorRef updater,
-            ActorRef deleter,
-            long createdAt,
-            long updatedAt,
-            Long deletedAt
-    ) {
-        return new Flow(
-                id,
-                companyId,
-                key,
-                reversion,
-                description,
-                variables,
-                inputs,
-                outputs,
-                tasks,
-                deleted,
-                creator,
-                updater,
-                deleter,
-                createdAt,
-                updatedAt,
-                deletedAt
-        );
-    }
-
-    @Override
-    public Flow delete(
-            Session<? extends User> session,
-            long deletionTime
-    ) {
-        requireSessionCompany(session);
-        return delete(ActorRef.from(session), deletionTime);
-    }
-
-    public Flow delete(ActorRef deletedBy, long deletionTime) {
-        if (deleted) {
-            throw new WorkflowException("Flow is already deleted: " + id);
+                latest
+            );
         }
-        ActorRef actor = Objects.requireNonNull(deletedBy, "Flow deleter");
-        updateAudit(actor, deletionTime);
-        deleter = actor;
-        deletedAt = deletionTime;
-        deleted = true;
-        return this;
+
+        initializeAudit(session);
+        initializeDefinition(
+            normalizedKey,
+            draft ? null : nextVersion,
+            draft,
+            description,
+            variables,
+            inputs,
+            outputs
+        );
+        tasks = boundTasks;
+        source = RequiredUtil.required(rawSource, "Flow source");
+        lockVersion = 0;
+        validateTasksForState();
     }
 
-    @Override
-    public Flow updateAudit(
-            Session<? extends User> session,
-            long updateTime
-    ) {
-        requireSessionCompany(session);
-        return updateAudit(ActorRef.from(session), updateTime);
-    }
-
-    public Flow updateAudit(ActorRef updatedBy, long updateTime) {
-        if (deleted) {
+    public String resolveKey(String suppliedKey) {
+        if (id() != null) {
+            throw new IllegalStateException("Flow is already initialized");
+        }
+        String supplied = suppliedKey == null || suppliedKey.isBlank()
+            ? null
+            : suppliedKey.trim();
+        if (key == null || key.isBlank()) {
+            if (supplied == null) {
+                throw new IllegalArgumentException(
+                    "Flow key or top-level YAML key must be provided"
+                );
+            }
+            key = supplied;
+            return key;
+        }
+        String declared = key.trim();
+        if (supplied != null && !supplied.equals(declared)) {
             throw new WorkflowException(
-                    "Deleted Flow cannot be changed: " + id
+                "Flow key does not match YAML: "
+                    + supplied + " -> " + declared
             );
         }
-        if (updateTime < updatedAt) {
-            throw new IllegalArgumentException(
-                    "Flow update time must not move backwards"
-            );
-        }
-        return this;
-    }
-
-    public String id() {
-        return id;
-    }
-
-    @Override
-    public String identifier() {
-        return id;
-    }
-
-    public String companyId() {
-        return companyId;
-    }
-
-    public String key() {
+        key = declared;
         return key;
-    }
-
-    public long reversion() {
-        return reversion;
-    }
-
-    /**
-     * Business-facing name for the immutable deployed version.
-     */
-    public long version() {
-        return reversion;
-    }
-
-    public String description() {
-        return description;
-    }
-
-    /**
-     * Returns the immutable Flow-level variable snapshot.
-     */
-    public Map<String, Object> variables() {
-        return variables;
-    }
-
-    public List<Input<?>> inputs() {
-        return inputs;
-    }
-
-    public List<Output> outputs() {
-        return outputs;
     }
 
     public List<Task> tasks() {
         return tasks;
     }
 
-    @Override
-    public boolean isDeleted() {
-        return deleted;
+    public String source() {
+        return source;
+    }
+
+    public void revise(
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        String revisedSource,
+        Session<? extends User> session,
+        long revisedAt
+    ) {
+        revise(
+            description,
+            variables,
+            inputs,
+            outputs,
+            tasks,
+            revisedSource,
+            session,
+            revisedAt
+        );
+    }
+
+    public void revise(
+        String description,
+        Map<String, ?> variables,
+        List<? extends Input<?>> inputs,
+        List<? extends Output> outputs,
+        List<? extends Task> revisedTasks,
+        String revisedSource,
+        Session<? extends User> session,
+        long revisedAt
+    ) {
+        requireDraft();
+        String checkedSource = RequiredUtil.required(
+            revisedSource,
+            "Flow source"
+        );
+        reviseDraftDefinition(
+            session,
+            revisedAt,
+            description,
+            variables,
+            inputs,
+            outputs
+        );
+        List<Task> boundTasks = immutableTasks(revisedTasks);
+        rebindTaskIds(this, boundTasks);
+        tasks = boundTasks;
+        source = checkedSource;
     }
 
     @Override
-    public ActorRef creator() {
-        return creator;
+    public long lockVersion() {
+        return lockVersion;
     }
 
     @Override
-    public ActorRef updater() {
-        return updater;
+    public Flow lock() {
+        lockVersion++;
+        return this;
     }
 
     @Override
-    public Optional<ActorRef> deleter() {
-        return Optional.ofNullable(deleter);
+    protected void onAuditChanged() {
+        lock();
     }
 
-    @Override
-    public long createdAt() {
-        return createdAt;
-    }
-
-    @Override
-    public long updatedAt() {
-        return updatedAt;
-    }
-
-    @Override
-    public Optional<Long> deletedAt() {
-        return Optional.ofNullable(deletedAt);
+    /**
+     * Returns a detached copy while preserving the complete Flow state.
+     */
+    public Flow copy() {
+        return rehydrate(
+            id(),
+            companyId(),
+            key(),
+            draft(),
+            versionOrNull(),
+            description(),
+            variables(),
+            inputs(),
+            outputs(),
+            tasks,
+            status(),
+            creator(),
+            updater(),
+            deleter().orElse(null),
+            createdAt(),
+            updatedAt(),
+            deletedAt().orElse(null),
+            source,
+            lockVersion
+        );
     }
 
     public Optional<Task> findTask(String taskId) {
@@ -412,11 +420,12 @@ public final class Flow implements Deletable<Flow> {
      * Validates and normalizes one confirmed Flow input payload.
      */
     public Map<String, Object> normalizeInputs(Map<String, ?> actualInputs) {
+        requireDeployed();
         Map<String, ?> accepted = actualInputs == null
                 ? Map.of()
                 : actualInputs;
-        Set<String> declared = inputs.stream()
-                .map(Input::key)
+        Set<String> declared = inputs().stream()
+                .map(Input::getKey)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Set<String> unsupported = new LinkedHashSet<>(accepted.keySet());
         unsupported.removeAll(declared);
@@ -426,42 +435,21 @@ public final class Flow implements Deletable<Flow> {
             );
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
-        for (Input<?> input : inputs) {
-            boolean provided = accepted.containsKey(input.key());
+        for (Input<?> input : inputs()) {
+            boolean provided = accepted.containsKey(input.getKey());
             Object value = provided
-                    ? accepted.get(input.key())
+                    ? accepted.get(input.getKey())
                     : input.getDefaultValue();
             try {
                 Object result = input.normalized(value);
                 if (result != null) {
-                    normalized.put(input.key(), result);
+                    normalized.put(input.getKey(), result);
                 }
             } catch (IllegalArgumentException exception) {
                 throw new WorkflowException(exception.getMessage());
             }
         }
         return Collections.unmodifiableMap(normalized);
-    }
-
-    public Flow copy() {
-        return rehydrate(
-                id,
-                companyId,
-                key,
-                reversion,
-                description,
-                variables,
-                inputs,
-                outputs,
-                tasks,
-                deleted,
-                creator,
-                updater,
-                deleter,
-                createdAt,
-                updatedAt,
-                deletedAt
-        );
     }
 
     @Override
@@ -472,47 +460,83 @@ public final class Flow implements Deletable<Flow> {
         if (!(value instanceof Flow other)) {
             return false;
         }
-        return reversion == other.reversion
-                && deleted == other.deleted
-                && Objects.equals(id, other.id)
-                && Objects.equals(companyId, other.companyId)
-                && Objects.equals(key, other.key)
-                && Objects.equals(description, other.description)
-                && Objects.equals(variables, other.variables)
-                && Objects.equals(inputs, other.inputs)
-                && Objects.equals(outputs, other.outputs)
+        return createdAt() == other.createdAt()
+                && updatedAt() == other.updatedAt()
+                && Objects.equals(id(), other.id())
+                && Objects.equals(companyId(), other.companyId())
+                && Objects.equals(key(), other.key())
+                && Objects.equals(versionOrNull(), other.versionOrNull())
+                && draft() == other.draft()
+                && Objects.equals(description(), other.description())
+                && Objects.equals(variables(), other.variables())
+                && Objects.equals(inputs(), other.inputs())
+                && Objects.equals(outputs(), other.outputs())
                 && Objects.equals(tasks, other.tasks)
-                && Objects.equals(creator, other.creator)
-                && Objects.equals(updater, other.updater)
-                && Objects.equals(deleter, other.deleter)
-                && Objects.equals(createdAt, other.createdAt)
-                && Objects.equals(updatedAt, other.updatedAt)
-                && Objects.equals(deletedAt, other.deletedAt);
+                && Objects.equals(source, other.source)
+                && lockVersion == other.lockVersion
+                && Objects.equals(status(), other.status())
+                && Objects.equals(creator(), other.creator())
+                && Objects.equals(updater(), other.updater())
+                && Objects.equals(deleter(), other.deleter())
+                && Objects.equals(deletedAt(), other.deletedAt());
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(
-                id,
-                companyId,
-                key,
-                reversion,
-                description,
-                variables,
-                inputs,
-                outputs,
+                id(),
+                companyId(),
+                key(),
+                versionOrNull(),
+                draft(),
+                description(),
+                variables(),
+                inputs(),
+                outputs(),
                 tasks,
-                deleted,
-                creator,
-                updater,
-                deleter,
-                createdAt,
-                updatedAt,
-                deletedAt
+                source,
+                lockVersion,
+                status(),
+                creator(),
+                updater(),
+                deleter(),
+                createdAt(),
+                updatedAt(),
+                deletedAt()
         );
     }
 
-    private static void requireStableTaskIds(
+    protected static long nextVersion(
+        Session<? extends User> session,
+        String flowKey,
+        List<Task> tasks,
+        Flow latest
+    ) {
+        String companyId = SessionUtil.company(session);
+        if (latest == null) {
+            return 1;
+        }
+        if (!companyId.equals(latest.companyId())) {
+            throw new IllegalArgumentException(
+                "Latest Flow belongs to another logical Flow"
+            );
+        }
+        if (latest.deleted()) {
+            throw new WorkflowException(
+                "Deleted Flow cannot be deployed: " + flowKey
+            );
+        }
+        if (!latest.key().equals(flowKey)) {
+            throw new WorkflowException(
+                "Flow key cannot change across reversion: "
+                    + latest.key() + " -> " + flowKey
+            );
+        }
+        requireStableTaskIds(latest, tasks);
+        return latest.version() + 1;
+    }
+
+    protected static void requireStableTaskIds(
             Flow latest,
             List<Task> tasks
     ) {
@@ -522,7 +546,8 @@ public final class Flow implements Deletable<Flow> {
                 .collect(Collectors.toMap(Task::id, Task::key));
         for (Task task : flatten(tasks)) {
             String previousId = previousIdByKey.get(task.key());
-            if (previousId != null && !task.identifiedBy(previousId)) {
+            if (previousId != null
+                && !task.identifiedBy(previousId)) {
                 throw new WorkflowException(
                         "Task id cannot change across reversion: " + task.key()
                 );
@@ -537,7 +562,7 @@ public final class Flow implements Deletable<Flow> {
         }
     }
 
-    private static void validateDefinition(
+    protected static void validateDefinition(
             Map<String, Object> flowVariables,
             List<Input<?>> flowInputs,
             List<Task> tasks
@@ -558,6 +583,43 @@ public final class Flow implements Deletable<Flow> {
                 flowVariables
         );
         validateDependencies(tasks, keys);
+    }
+
+    private void validateTasksForState() {
+        if (draft()) {
+            return;
+        }
+        validateDefinition(variables(), inputs(), tasks);
+    }
+
+    private static void rebindTaskIds(Flow previous, List<Task> tasks) {
+        if (previous == null) {
+            return;
+        }
+        Map<String, String> previousIdByKey = previous.allTasks().stream()
+            .collect(Collectors.toMap(Task::key, Task::id));
+        rebindTaskIds(tasks, previousIdByKey);
+    }
+
+    private static void rebindTaskIds(
+        List<Task> tasks,
+        Map<String, String> previousIdByKey
+    ) {
+        for (Task task : tasks) {
+            String previousId = previousIdByKey.get(task.key());
+            if (previousId != null) {
+                task.reidentify(previousId);
+            }
+            rebindTaskIds(task.definitionChildren(), previousIdByKey);
+        }
+    }
+
+    private static List<Task> immutableTasks(
+        List<? extends Task> source
+    ) {
+        return source == null || source.isEmpty()
+            ? List.of()
+            : List.copyOf(source);
     }
 
     private static void validateTasks(
@@ -614,10 +676,10 @@ public final class Flow implements Deletable<Flow> {
                     Data routeData = (parallelInput
                             ? parent.inputs().stream()
                             : parent.outputs().stream())
-                            .filter(data -> data.key().equals(outputKey))
+                            .filter(data -> data.getKey().equals(outputKey))
                             .findFirst()
                             .orElseThrow();
-                    if (!task.route().supports(routeData.type())) {
+                    if (!task.route().supports(routeData.getType())) {
                         throw new WorkflowException(
                                 "Task route is incompatible with parent context "
                                         + outputKey + ": " + taskKey
@@ -626,13 +688,13 @@ public final class Flow implements Deletable<Flow> {
                 });
                 task.route().referencedInputKey().ifPresent(inputKey -> {
                     Input<?> flowInput = flowInputs.stream()
-                            .filter(input -> input.key().equals(inputKey))
+                            .filter(input -> input.getKey().equals(inputKey))
                             .findFirst()
                             .orElseThrow(() -> new WorkflowException(
                                     "Task route references undeclared Flow input "
                                             + inputKey + ": " + taskKey
                             ));
-                    if (!task.route().supports(flowInput.type())) {
+                    if (!task.route().supports(flowInput.getType())) {
                         throw new WorkflowException(
                                 "Task route is incompatible with Flow input "
                                         + inputKey + ": " + taskKey
@@ -716,62 +778,9 @@ public final class Flow implements Deletable<Flow> {
                 .toList();
     }
 
-    private static <T extends Data> List<T> immutableData(
-            List<? extends T> source,
-            String field
-    ) {
-        if (source == null || source.isEmpty()) {
-            return List.of();
-        }
-        List<T> result = new ArrayList<>(source.size());
-        Set<String> keys = new HashSet<>();
-        for (T data : source) {
-            if (data == null) {
-                throw new IllegalArgumentException(
-                        field + " must not contain null values"
-                );
-            }
-            if (!keys.add(data.key())) {
-                throw new IllegalArgumentException(
-                        field + " contains duplicate key: " + data.key()
-                );
-            }
-            result.add(data);
-        }
-        return List.copyOf(result);
+    protected static String requireText(String value, String field) {
+        return RequiredUtil.required(value, field + " must not be blank")
+            .trim();
     }
 
-    private static Map<String, Object> immutableVariables(
-            Map<String, ?> source
-    ) {
-        if (source == null || source.isEmpty()) {
-            return Map.of();
-        }
-        Map<String, Object> result = new LinkedHashMap<>();
-        source.forEach((key, value) -> result.put(
-                Objects.requireNonNull(key, "Flow variable key"),
-                value
-        ));
-        return Collections.unmodifiableMap(result);
-    }
-
-    private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
-        }
-        return value.trim();
-    }
-
-    private void requireSessionCompany(Session<? extends User> session) {
-        Objects.requireNonNull(session, "Session");
-        String sessionCompanyId = requireText(
-                session.getCompanyId(),
-                "Session company id"
-        );
-        if (!companyId.equals(sessionCompanyId)) {
-            throw new WorkflowException(
-                    "Session company cannot change Flow " + id
-            );
-        }
-    }
 }

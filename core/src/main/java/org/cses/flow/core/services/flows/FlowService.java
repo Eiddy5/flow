@@ -2,15 +2,11 @@ package org.cses.flow.core.services.flows;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import org.cses.flow.core.services.flows.commands.DeleteFlowCommand;
-import org.cses.flow.core.services.flows.commands.DeleteFlowDraftCommand;
-import org.cses.flow.core.services.flows.commands.DeployFlowCommand;
-import org.cses.flow.core.services.flows.commands.SaveFlowDraftCommand;
-import org.cses.flow.core.services.CommandExecutor;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
-import org.cses.flow.core.queries.flows.FlowQueryHandler;
-import org.cses.flow.core.serializers.YamlParser;
+import org.cses.flow.core.services.CommandExecutor;
+import org.cses.flow.core.services.flows.commands.DeleteFlowCommand;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
+import org.cses.flow.core.services.flows.queries.FlowQueryHandler;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -18,98 +14,45 @@ import java.util.List;
 import java.util.Optional;
 
 @Singleton
-public final class FlowService {
+public class FlowService {
 
-    private final CommandExecutor commandExecutor;
-    private final FlowQueryHandler queryHandler;
-    private final YamlParser yamlParser;
+    private CommandExecutor commandExecutor;
+    private FlowQueryHandler queryHandler;
 
     @Inject
     public FlowService(
             CommandExecutor commandExecutor,
-            FlowQueryHandler queryHandler,
-            YamlParser yamlParser
+            FlowQueryHandler queryHandler
     ) {
         this.commandExecutor = commandExecutor;
         this.queryHandler = queryHandler;
-        this.yamlParser = yamlParser;
     }
 
-    public <S extends Session<U>, U extends User> FlowDraft saveDraft(S session, String raw) {
-        return saveDraft(session, keyFromRaw(raw), raw);
-    }
-
-    public <S extends Session<U>, U extends User> FlowDraft saveDraft(
+    public <S extends Session<U>, U extends User> Flow save(
             S session,
-            String flowKey,
-            String raw
-    ) {
-        return commandExecutor.execute(
-                session,
-                SaveFlowDraftCommand.from(flowKey, null, raw)
-        );
-    }
-
-    public <S extends Session<U>, U extends User> FlowDraft saveDraft(
-            S session,
-            String flowKey,
-            Long expectedLockVersion,
-            String raw
-    ) {
-
-        return commandExecutor.execute(session, SaveFlowDraftCommand.from(
-                flowKey,
-                expectedLockVersion,
-                raw
-        ));
-    }
-
-    public <S extends Session<U>, U extends User> FlowDraft saveDraft(
-            S session,
-            SaveFlowDraftCommand command
+            PublishFlowCommand command
     ) {
         return commandExecutor.execute(session, command);
     }
 
-    public <S extends Session<U>, U extends User> Flow deploy(
-            S session,
-            String flowKey
-    ) {
-
-        return commandExecutor.execute(
-                session,
-                DeployFlowCommand.from(flowKey)
-        );
-    }
-
-    public <S extends Session<U>, U extends User> FlowDraft deleteDraft(
-            S session,
-            String flowKey
-    ) {
-
-        return commandExecutor.execute(
-                session,
-                DeleteFlowDraftCommand.from(flowKey)
-        );
-    }
-
     public <S extends Session<U>, U extends User> Flow delete(
             S session,
-            String flowKey
+            String flowKey,
+            Boolean draft
     ) {
 
         return commandExecutor.execute(
                 session,
-                DeleteFlowCommand.from(flowKey)
+                DeleteFlowCommand.from(flowKey, draft)
         );
     }
 
-    public <S extends Session<U>, U extends User> List<FlowDraft> drafts(S session) {
+    public <S extends Session<U>, U extends User> List<Flow> drafts(S session) {
 
         return queryHandler.drafts(session);
     }
 
-    public <S extends Session<U>, U extends User> Optional<FlowDraft> draft(
+    public <S extends Session<U>, U extends User> Optional<Flow> draft(
             S session,
             String flowKey
     ) {
@@ -133,13 +76,4 @@ public final class FlowService {
         return queryHandler.latestFlow(session, flowKey);
     }
 
-    private String keyFromRaw(String raw) {
-        Object key = yamlParser.parse(raw).get("key");
-        if (!(key instanceof String text) || text.isBlank()) {
-            throw new IllegalArgumentException(
-                    "New FlowDraft requires a non-blank top-level key"
-            );
-        }
-        return text.trim();
-    }
 }

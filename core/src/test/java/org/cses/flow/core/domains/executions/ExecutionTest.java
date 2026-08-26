@@ -1,8 +1,11 @@
 package org.cses.flow.core.domains.executions;
 
+import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.junit.jupiter.api.Test;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.List;
 import java.util.Map;
@@ -19,7 +22,7 @@ final class ExecutionTest {
     void createsAnExecutionWithACallerProvidedStableId() {
         Execution execution = Execution.create(
             "execution-stable-1",
-            "execution-domain-company",
+            session("execution-domain-company"),
             "execution-domain-flow",
             3,
             Map.of()
@@ -34,7 +37,8 @@ final class ExecutionTest {
     @Test
     void storesConfirmedFlowInputsOnTheExecutionAggregate() {
         Execution execution = Execution.create(
-            "execution-input-company",
+            null,
+            session("execution-input-company"),
             "execution-input-flow",
             1,
             Map.of(
@@ -57,33 +61,10 @@ final class ExecutionTest {
     }
 
     @Test
-    void bindsPendingInputsOnceBeforeExecutionStarts() {
-        Execution execution = Execution.create(
-            "execution-bind-company",
-            "execution-bind-flow",
-            1,
-            Map.of()
-        );
-
-        execution.bindInputs(Map.of("amount", 1200));
-        execution.bindInputs(Map.of("amount", 1200));
-
-        assertEquals(Map.of("amount", 1200), execution.inputs());
-        assertThrows(
-            WorkflowException.class,
-            () -> execution.bindInputs(Map.of("amount", 1300))
-        );
-        execution.start();
-        assertThrows(
-            WorkflowException.class,
-            () -> execution.bindInputs(Map.of("amount", 1200))
-        );
-    }
-
-    @Test
     void createTaskRunShouldGenerateStableChildIdentity() {
         Execution execution = Execution.create(
-            "execution-domain-company",
+            null,
+            session("execution-domain-company"),
             "execution-domain-flow",
             1,
             Map.of()
@@ -117,7 +98,8 @@ final class ExecutionTest {
     @Test
     void executionAndTaskRunUseTheSharedWorkflowState() {
         Execution execution = Execution.create(
-            "execution-state-company",
+            null,
+            session("execution-state-company"),
             "execution-state-flow",
             1,
             Map.of()
@@ -185,7 +167,8 @@ final class ExecutionTest {
     @Test
     void executionAndTaskRunShouldProtectTheirOwnRoutes() {
         Execution execution = Execution.create(
-            "execution-route-company",
+            null,
+            session("execution-route-company"),
             "execution-route-flow",
             1,
             Map.of()
@@ -217,7 +200,8 @@ final class ExecutionTest {
     @Test
     void addTaskRunsShouldRejectAnInvalidBatchAtomically() {
         Execution execution = Execution.create(
-            "execution-batch-company",
+            null,
+            session("execution-batch-company"),
             "execution-batch-flow",
             1,
             Map.of()
@@ -245,7 +229,8 @@ final class ExecutionTest {
     @Test
     void loopIterationsAreDistinctOccurrencesOfTheSameTask() {
         Execution execution = Execution.create(
-            "loop-company",
+            null,
+            session("loop-company"),
             "loop-flow",
             1,
             Map.of()
@@ -312,6 +297,8 @@ final class ExecutionTest {
             () -> Execution.rehydrate(
                 "execution-route-execution",
                 "execution-route-company",
+                ActorRef.create("execution-creator", "Execution creator"),
+                100L,
                 "execution-route-flow",
                 1,
                 Map.of(),
@@ -326,5 +313,17 @@ final class ExecutionTest {
         return state.history().stream()
             .map(State.History::state)
             .toList();
+    }
+
+    private static Session<User> session(String companyId) {
+        User user = new User();
+        user.setId("execution-creator");
+        user.setName("Execution creator");
+        user.setCompanyId(companyId);
+
+        Session<User> session = new Session<>();
+        session.setCompanyId(companyId);
+        session.setUser(user);
+        return session;
     }
 }

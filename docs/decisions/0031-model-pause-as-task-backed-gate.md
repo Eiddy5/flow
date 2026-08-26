@@ -4,7 +4,7 @@
 
 Accepted（2026-08-05）
 
-本决策修订 ADR 0016、0024、0026 和 0029 中关于 Pause 具体类名、定义字段、
+本决策（2026-08-21 修订输出契约）修订 ADR 0016、0024、0026 和 0029 中关于 Pause 具体类名、定义字段、
 定义包含关系以及 Resume 直接完成 TaskRun 的条款。统一 Resume 入口、Task 直接
 作为 Plugin、OrchestrationTask 不进入 Worker、Pause TaskRun 独占 `PAUSED` 且
 Execution 始终保持 `RUNNING` 的决定继续有效。
@@ -55,8 +55,8 @@ Execution 始终保持 `RUNNING` 的决定继续有效。
   - `Pause.Behavior behavior`：可选的超时行为，必须与 duration 同时存在或同时
     缺失。
 - Pause 不接受通用 `tasks` 作为自身定义子树。`Task.tasks()` 对 Pause 必须为空。
-- Pause 的有效 outputs 由 resume 的 key 与 DataType 按顺序派生，不维护第二份
-  用户定义的结果契约。
+- Pause 复用 Task 的 `outputs` 作为独立的用户定义结果契约；`resume` 只定义外部
+  Resume 回调输入，不从它派生 outputs，也不要求两者字段一致。
 
 ### 定义包含关系
 
@@ -105,7 +105,8 @@ Execution 始终保持 `RUNNING` 的决定继续有效。
 1. Pause 是 Task 和 Plugin，且只拥有 OrchestrationTask 运行能力。
 2. 每个 Pause 恰好包含一个非 null pause Task；`tasks()` 始终为空。
 3. resume 非 null、key 不重复，每个元素都由具体 Input 自己校验定义和值。
-4. Pause outputs 与 resume 的 key、DataType 和顺序完全一致。
+4. Pause outputs 由 Task 的通用 outputs 字段独立配置；resume 与 outputs 可以拥有
+   不同的 key、DataType 和数量。
 5. duration 与 behavior 同时存在或同时缺失；duration 必须为正 ISO 8601 表达式。
 6. Pause TaskRun 只有在 pause 子树收敛后才能进入 PAUSED。
 7. 外部 Resume 不能指定运行状态；成功路线必须经过 PAUSED -> RUNNING。
@@ -114,6 +115,7 @@ Execution 始终保持 `RUNNING` 的决定继续有效。
 ## 验证场景
 
 - 正向：任意 RunnableTask、Parallel 或嵌套 Pause 作为 pause；空或多项 resume；
+  resume 与 outputs 独立配置且可以不一致；
   `PT5M`、`P1M` 与全部 Behavior 映射；YAML 和 PostgreSQL 往返保持完整定义。
 - 反向：缺少 pause、非空通用 tasks、重复 resume key、额外或非法回调值、只配置
   duration/behavior 一侧、零值或负 duration、旧 `PauseTask` 类型。
@@ -135,7 +137,8 @@ Execution 始终保持 `RUNNING` 的决定继续有效。
 ## 后果
 
 - 所有 Java、YAML、Demo、测试和持久化类型地址需要从 `PauseTask` 一次性迁移为
-  `Pause`，旧 outputs 迁移为 resume，旧通用 tasks 不能继续挂在 Pause 下。
+  `Pause`；旧 outputs 继续作为 Task.outputs 保留，旧通用 tasks 不能继续挂在
+  Pause 下。
 - Task、Flow、定义物化和查找必须识别类型专有定义子任务；Repository 必须无损保存
   properties 中的嵌套具体 Task。
 - Resume Handler 需要调用 Pause 的 resume 输入校验，TaskRun 的状态转换需要支持

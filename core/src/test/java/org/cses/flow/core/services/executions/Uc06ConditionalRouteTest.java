@@ -1,6 +1,7 @@
 package org.cses.flow.core.services.executions;
 
-import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -14,24 +15,24 @@ class Uc06ConditionalRouteTest {
     @Test
     void s4RejectsInvalidRouteWhenDeployingFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            FlowDraft draft = fixture.flowService().saveDraft(
+            Flow draft = fixture.flowService().save(
                 fixture.session(),
-                routeYaml(
+                PublishFlowCommand.from(routeYaml(
                     "uc06-s4-flow",
                     "outputs.decision =="
-                )
+                ))
             );
             IllegalArgumentException failure = assertThrows(
                 IllegalArgumentException.class,
-                () -> fixture.flowService().deploy(
+                () -> fixture.flowService().save(
                     fixture.session(),
-                    draft.flowKey()
+                    PublishFlowCommand.from(draft.key(), false)
                 )
             );
             assertTrue(failure.getMessage().contains("route expression"));
             assertTrue(
                 fixture.flowService()
-                    .latestFlow(fixture.session(), draft.flowKey())
+                    .latestFlow(fixture.session(), draft.key())
                     .isEmpty()
             );
             assertTrue(
@@ -52,6 +53,9 @@ class Uc06ConditionalRouteTest {
                   key: create-approval-decision
                   type: org.cses.flow.extensions.tasks.AutomaticTask
                 resume:
+                  - key: decision
+                    type: STRING
+                outputs:
                   - key: decision
                     type: STRING
               - key: route-decision

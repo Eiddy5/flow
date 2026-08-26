@@ -93,16 +93,19 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
 - Core 优先接收领域对象和值类型。JSON 只是 HTTP、配置或持久化格式时，应在
   Controller、Serializer、Entry 或其他边界完成转换，不能让 JSON 技术类型扩散
   为领域模型。
-- Flow YAML 中的 Flow 字段由 `FlowDefinitionDeserializer` 读取；Input/Output 和
-  Task 由受控 `JacksonMapper` 绑定。`Task.class` 注册 `PluginDeserializer`，它从
+- Flow YAML 由 `YamlParser.parse(source, Flow.class)` 直接绑定；Input/Output 和
+  Task 由受控 `JacksonMapper` 配置的 Mapper 绑定。`Task.class` 已通过
+  `PluginModule` 注册 `PluginDeserializer`，它从
   `type` 读取精确插件标识、通过注册中心解析具体类，再让 Jackson 递归绑定所有
-  Task 字段。`FlowDefinitionDeserializer` 随后调用 `ModelValidator`，校验失败的
-  对象不能进入聚合。持久化 Input 继续由 Repository Codec 使用 PAAS JSON 恢复。
+  Task 字段。`PublishFlowHandler` 在补充 Session、draft、版本和 source 后调用
+  `ModelValidator`，校验失败的部署对象不能进入聚合。持久化 Input 继续由
+  Repository Codec 使用 PAAS JSON 恢复。
 - Task 插件 properties 的拆分与合并由 `FlowTaskEntry` 调用同一个
   `JacksonMapper` 完成。Entry 不持有 ObjectMapper，不注册 Module，也不自行处理
-  插件类型；恢复具体 Task 仍经过注册表驱动的 `PluginDeserializer`。部署期需要
-  生成或复用 Task ID 时，调用方通过 reader attribute 提供一次性的
-  `PluginDeserializationContext`，不得使用线程局部状态。
+  插件类型；恢复具体 Task 仍经过注册表驱动的 `PluginDeserializer`。YAML Mapper
+  注册 source 定义配置，自动拒绝用户声明的 Task 系统字段并生成首次身份；JSON
+  Mapper 注册持久化配置，按原值恢复已保存身份。调用方不得传递业务 reader
+  attribute 或创建第二套 Mapper。
 - JOOQ Entry 中的 JSON/JSONB 字段转换必须使用 `JsonObject`、
   `JsonObjects` 或 `JsonFactory`。转换和扩展方法仍放在对应的 `XxxEntry` 或其
   专用 Codec 中。
@@ -142,7 +145,8 @@ PAAS 公共能力演进。
 
 1. `core/serializers/JacksonMapper` 按 ADR 0026 集中创建严格 JSON/YAML Mapper、
    注册 `PluginModule` 并隐藏具体 ObjectMapper。`YamlParser` 和
-   `FlowDefinitionDeserializer` 可在同一包内使用 Jackson tree model；
+   `PluginSchemaGenerator` 可在同一包内使用 Jackson tree model；`YamlParser`
+   不接收 reader attributes，也不导入、创建或解释业务绑定上下文；
    `core/plugins/PluginDeserializer` 可在一次 Jackson 回调内读取插件节点并通过
    当前 `DeserializationContext` 递归绑定具体类。该例外只服务 Flow 定义和 Task
    插件的多态绑定，不得成为公共领域契约。

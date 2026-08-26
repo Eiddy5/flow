@@ -6,7 +6,8 @@ Accepted
 
 本 ADR 关于 FlowDraft 业务身份、`key` 字段和与 Flow 共享 `id` 的旧表述，已由
 ADR 0062、ADR 0063 和 ADR 0064 修订；本 ADR 当前只保留 FlowDraft 独立聚合及
-`deleted` 生命周期的决策。
+删除生命周期的决策。删除事实改由 Audit Status 与删除审计共同表达，独立
+`deleted` 布尔字段已由 ADR 0067 取代。
 
 ## 背景
 

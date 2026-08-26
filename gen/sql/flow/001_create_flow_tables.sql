@@ -6,7 +6,6 @@
 
 BEGIN;
 
-\ir tables/flow_drafts.sql
 \ir tables/flows.sql
 \ir tables/flow_tasks.sql
 \ir tables/executions.sql

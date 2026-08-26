@@ -68,9 +68,9 @@ TaskRun   = WAITING
 
 ```text
 ExecutionService
-  -> CommandExecutor
-  -> CreateExecutionHandler
-  -> Execution.create(...)
+  -> ExecutionCommand Queue
+  -> ExecutionCommandEventHandler
+  -> Execution.create(...) + ExecutorEvent Queue
   -> ExecutorEventHandler
   -> ExecutorService.process
   -> WorkerDispatcher
@@ -78,10 +78,10 @@ ExecutionService
 ```
 
 - Controller 位于 Core 外。
-- `CreateExecutionHandler` 的兼容入口加载最新已部署 Flow，并调用
-  `Execution.create(...)` 创建 CREATED Execution。需要可靠恢复的调用方同时提供稳定
-  Execution id 和精确 Flow reversion；同租户、同 id、同 Flow 引用的重放返回原
-  Execution，不同 Flow id 或 reversion 的重放拒绝冲突，避免重试漂移到 latest。
+- `ExecutionService` 在受理时选择最新已部署 Flow、规范化 inputs 并生成稳定 Execution
+  id；`ExecutionCommandEventHandler` 按 Command 的精确 Flow 引用调用
+  `Execution.create(...)`，原子保存 CREATED Execution 并发布首个内部 Event。具体
+  单一启动 Interface 由 ADR 0068 定义。
 - `ExecutorContext` 只保存精确 Flow、Execution 和本轮增量；
   `ExecutorEventHandler` 管理单个 Event 周期内的中间聚合保存和 Worker 调用；
   `DefaultExecutor` 的当前 Queue 路由职责由 ADR 0059 定义。

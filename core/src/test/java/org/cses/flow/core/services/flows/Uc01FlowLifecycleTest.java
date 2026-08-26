@@ -1,8 +1,9 @@
 package org.cses.flow.core.services.flows;
 
-import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
@@ -37,29 +38,29 @@ class Uc01FlowLifecycleTest {
         String initial = validYaml("uc01-s1", "initial");
         String revised = validYaml("uc01-s1", "revised");
 
-        FlowDraft created = service.saveDraft(user, initial);
+        Flow created = saveDraft(service, user, initial);
         assertFalse(created.id().isBlank());
-        assertFalse(created.isDeleted());
+        assertFalse(created.deleted());
         assertEquals(
             initial,
-            service.draft(user, created.flowKey()).orElseThrow().raw()
+            service.draft(user, created.key()).orElseThrow().source()
         );
 
-        FlowDraft edited = service.saveDraft(
+        Flow edited = saveDraft(service,
             user,
-            created.flowKey(),
+            created.key(),
             revised
         );
         assertEquals(created.id(), edited.id());
         assertEquals(
             revised,
-            service.draft(user, created.flowKey()).orElseThrow().raw()
+            service.draft(user, created.key()).orElseThrow().source()
         );
-        assertTrue(service.latestFlow(user, created.flowKey()).isEmpty());
+        assertTrue(service.latestFlow(user, created.key()).isEmpty());
 
-        FlowDraft deleted = service.deleteDraft(user, created.flowKey());
-        assertTrue(deleted.isDeleted());
-        assertTrue(service.draft(user, created.flowKey()).isEmpty());
+        Flow deleted = service.delete(user, created.key(), true);
+        assertTrue(deleted.deleted());
+        assertTrue(service.draft(user, created.key()).isEmpty());
     }
 
     @Test
@@ -67,27 +68,37 @@ class Uc01FlowLifecycleTest {
         WorkflowUcFixture fixture = fixture();
         FlowService service = fixture.flowService();
         Session<User> user = fixture.session();
-        String invalid = "key: [invalid";
+        String invalid = """
+            key: uc01-invalid
+            tasks:
+              - key: unresolved
+                type: missing.Plugin
+            """;
 
-        FlowDraft draft = service.saveDraft(user, "uc01-invalid", invalid);
+        Flow draft = saveDraft(service, user, "uc01-invalid", invalid);
         assertEquals(
             invalid,
-            service.draft(user, draft.flowKey()).orElseThrow().raw()
+            service.draft(user, draft.key()).orElseThrow().source()
         );
         assertThrows(
             RuntimeException.class,
-            () -> service.deploy(user, draft.flowKey())
+            () -> deploy(service, user, draft.key())
         );
         assertEquals(
             invalid,
-            service.draft(user, draft.flowKey()).orElseThrow().raw()
+            service.draft(user, draft.key()).orElseThrow().source()
         );
-        assertTrue(service.latestFlow(user, draft.flowKey()).isEmpty());
+        assertTrue(service.latestFlow(user, draft.key()).isEmpty());
 
-        service.saveDraft(user, draft.flowKey(), "still invalid: [");
-        service.deleteDraft(user, draft.flowKey());
-        assertTrue(service.draft(user, draft.flowKey()).isEmpty());
-        assertTrue(service.latestFlow(user, draft.flowKey()).isEmpty());
+        saveDraft(service, user, draft.key(), """
+            key: uc01-invalid
+            tasks:
+              - key: still-unresolved
+                type: missing.AnotherPlugin
+            """);
+        service.delete(user, draft.key(), true);
+        assertTrue(service.draft(user, draft.key()).isEmpty());
+        assertTrue(service.latestFlow(user, draft.key()).isEmpty());
     }
 
     @Test
@@ -98,38 +109,38 @@ class Uc01FlowLifecycleTest {
         Session<User> tenantB = fixture.sessionFor("tenant-b");
         String sameRaw = validYaml("uc01-s3", "same");
 
-        FlowDraft draftA = service.saveDraft(tenantA, sameRaw);
-        FlowDraft draftB = service.saveDraft(tenantB, sameRaw);
+        Flow draftA = saveDraft(service, tenantA, sameRaw);
+        Flow draftB = saveDraft(service, tenantB, sameRaw);
         assertNotEquals(draftA.id(), draftB.id());
         assertEquals(
             draftA.id(),
-            service.draft(tenantA, draftB.flowKey()).orElseThrow().id()
+            service.draft(tenantA, draftB.key()).orElseThrow().id()
         );
         assertEquals(
             draftB.id(),
-            service.draft(tenantB, draftA.flowKey()).orElseThrow().id()
+            service.draft(tenantB, draftA.key()).orElseThrow().id()
         );
 
-        service.saveDraft(
+        saveDraft(service,
             tenantA,
-            draftA.flowKey(),
+            draftA.key(),
             validYaml("uc01-s3", "tenant-a")
         );
         assertEquals(
             sameRaw,
-            service.draft(tenantB, draftB.flowKey()).orElseThrow().raw()
+            service.draft(tenantB, draftB.key()).orElseThrow().source()
         );
-        service.saveDraft(
+        saveDraft(service,
             tenantB,
-            draftB.flowKey(),
+            draftB.key(),
             validYaml("uc01-s3", "tenant-b")
         );
 
-        service.deleteDraft(tenantA, draftA.flowKey());
-        assertTrue(service.draft(tenantA, draftA.flowKey()).isEmpty());
-        assertTrue(service.draft(tenantB, draftB.flowKey()).isPresent());
-        service.deleteDraft(tenantB, draftB.flowKey());
-        assertTrue(service.draft(tenantB, draftB.flowKey()).isEmpty());
+        service.delete(tenantA, draftA.key(), true);
+        assertTrue(service.draft(tenantA, draftA.key()).isEmpty());
+        assertTrue(service.draft(tenantB, draftB.key()).isPresent());
+        service.delete(tenantB, draftB.key(), true);
+        assertTrue(service.draft(tenantB, draftB.key()).isEmpty());
     }
 
     @Test
@@ -148,32 +159,32 @@ class Uc01FlowLifecycleTest {
             "Editor"
         );
 
-        FlowDraft created = service.saveDraft(
+        Flow created = saveDraft(service,
             creator,
             validYaml("uc01-s4", "created")
         );
-        FlowDraft seenByEditor = service.draft(
+        Flow seenByEditor = service.draft(
             editor,
-            created.flowKey()
+            created.key()
         ).orElseThrow();
-        service.saveDraft(
+        saveDraft(service,
             editor,
-            created.flowKey(),
+            created.key(),
             validYaml("uc01-s4", "edited")
         );
-        FlowDraft edited = service.draft(
+        Flow edited = service.draft(
             creator,
-            created.flowKey()
+            created.key()
         ).orElseThrow();
 
         assertEquals("creator-user", edited.creator().id());
         assertEquals(created.createdAt(), edited.createdAt());
         assertEquals("editor-user", edited.updater().id());
         assertTrue(edited.updatedAt() >= seenByEditor.updatedAt());
-        assertTrue(edited.raw().contains("edited"));
+        assertTrue(edited.source().contains("edited"));
 
-        service.deleteDraft(creator, created.flowKey());
-        assertTrue(service.draft(creator, created.flowKey()).isEmpty());
+        service.delete(creator, created.key(), true);
+        assertTrue(service.draft(creator, created.key()).isEmpty());
     }
 
     @Test
@@ -181,13 +192,13 @@ class Uc01FlowLifecycleTest {
         WorkflowUcFixture fixture = fixture();
         FlowService service = fixture.flowService();
         Session<User> user = fixture.session();
-        FlowDraft control = service.saveDraft(
+        Flow control = saveDraft(service,
             user,
             validYaml("uc01-s5", "control")
         );
-        FlowDraft before = service.draft(
+        Flow before = service.draft(
             user,
-            control.flowKey()
+            control.key()
         ).orElseThrow();
 
         assertTrue(service.draft(user, "missing-draft-key").isEmpty());
@@ -197,11 +208,11 @@ class Uc01FlowLifecycleTest {
         );
         assertEquals(
             before,
-            service.draft(user, control.flowKey()).orElseThrow()
+            service.draft(user, control.key()).orElseThrow()
         );
 
-        service.deleteDraft(user, control.flowKey());
-        assertTrue(service.draft(user, control.flowKey()).isEmpty());
+        service.delete(user, control.key(), true);
+        assertTrue(service.draft(user, control.key()).isEmpty());
     }
 
     @Test
@@ -210,39 +221,39 @@ class Uc01FlowLifecycleTest {
         FlowService service = fixture.flowService();
         Session<User> owner = fixture.session();
         Session<User> noTenant = session(null, "no-tenant", "No tenant");
-        FlowDraft control = service.saveDraft(
+        Flow control = saveDraft(service,
             owner,
             validYaml("uc01-s6", "control")
         );
-        FlowDraft before = service.draft(
+        Flow before = service.draft(
             owner,
-            control.flowKey()
+            control.key()
         ).orElseThrow();
 
         assertThrows(
             IllegalArgumentException.class,
-            () -> service.saveDraft(noTenant, "raw")
+            () -> saveDraft(service, noTenant, "raw")
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> service.draft(noTenant, control.flowKey())
+            () -> service.draft(noTenant, control.key())
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> service.saveDraft(noTenant, control.flowKey(), "changed")
+            () -> saveDraft(service, noTenant, control.key(), "changed")
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> service.deleteDraft(noTenant, control.flowKey())
+            () -> service.delete(noTenant, control.key(), true)
         );
         assertEquals(
             before,
-            service.draft(owner, control.flowKey()).orElseThrow()
+            service.draft(owner, control.key()).orElseThrow()
         );
-        assertTrue(service.latestFlow(owner, control.flowKey()).isEmpty());
+        assertTrue(service.latestFlow(owner, control.key()).isEmpty());
 
-        service.deleteDraft(owner, control.flowKey());
-        assertTrue(service.draft(owner, control.flowKey()).isEmpty());
+        service.delete(owner, control.key(), true);
+        assertTrue(service.draft(owner, control.key()).isEmpty());
     }
 
     @Test
@@ -251,22 +262,22 @@ class Uc01FlowLifecycleTest {
         FlowService service = fixture.flowService();
         Session<User> owner = fixture.session();
         Session<User> other = fixture.sessionFor("tenant-b");
-        FlowDraft draft = service.saveDraft(
+        Flow draft = saveDraft(service,
             owner,
             validYaml("uc01-s7", "owner")
         );
-        FlowDraft before = service.draft(
+        Flow before = service.draft(
             owner,
-            draft.flowKey()
+            draft.key()
         ).orElseThrow();
 
-        assertTrue(service.draft(other, draft.flowKey()).isEmpty());
+        assertTrue(service.draft(other, draft.key()).isEmpty());
         assertEquals(
             before,
-            service.draft(owner, draft.flowKey()).orElseThrow()
+            service.draft(owner, draft.key()).orElseThrow()
         );
-        service.deleteDraft(owner, draft.flowKey());
-        assertTrue(service.draft(owner, draft.flowKey()).isEmpty());
+        service.delete(owner, draft.key(), true);
+        assertTrue(service.draft(owner, draft.key()).isEmpty());
     }
 
     @Test
@@ -275,36 +286,36 @@ class Uc01FlowLifecycleTest {
         FlowService service = fixture.flowService();
         Session<User> owner = fixture.session();
         Session<User> other = fixture.sessionFor("tenant-b");
-        FlowDraft draft = service.saveDraft(
+        Flow draft = saveDraft(service,
             owner,
             validYaml("uc01-s8", "owner")
         );
-        FlowDraft before = service.draft(
+        Flow before = service.draft(
             owner,
-            draft.flowKey()
+            draft.key()
         ).orElseThrow();
 
-        FlowDraft otherDraft = service.saveDraft(
+        Flow otherDraft = saveDraft(service,
             other,
-            draft.flowKey(),
+            draft.key(),
             validYaml("uc01-s8", "intruder")
         );
         assertNotEquals(draft.id(), otherDraft.id());
         assertEquals(
             before,
-            service.draft(owner, draft.flowKey()).orElseThrow()
+            service.draft(owner, draft.key()).orElseThrow()
         );
         assertTrue(
-            service.draft(other, draft.flowKey())
+            service.draft(other, draft.key())
                 .orElseThrow()
-                .raw()
+                .source()
                 .contains("intruder")
         );
 
-        service.deleteDraft(owner, draft.flowKey());
-        assertTrue(service.draft(owner, draft.flowKey()).isEmpty());
-        service.deleteDraft(other, otherDraft.flowKey());
-        assertTrue(service.draft(other, otherDraft.flowKey()).isEmpty());
+        service.delete(owner, draft.key(), true);
+        assertTrue(service.draft(owner, draft.key()).isEmpty());
+        service.delete(other, otherDraft.key(), true);
+        assertTrue(service.draft(other, otherDraft.key()).isEmpty());
     }
 
     @Test
@@ -313,29 +324,29 @@ class Uc01FlowLifecycleTest {
         FlowService service = fixture.flowService();
         Session<User> owner = fixture.session();
         Session<User> other = fixture.sessionFor("tenant-b");
-        FlowDraft draft = service.saveDraft(
+        Flow draft = saveDraft(service,
             owner,
             validYaml("uc01-s9", "owner")
         );
 
         assertThrows(
             WorkflowException.class,
-            () -> service.deleteDraft(other, draft.flowKey())
+            () -> service.delete(other, draft.key(), true)
         );
-        service.saveDraft(
+        saveDraft(service,
             owner,
-            draft.flowKey(),
+            draft.key(),
             validYaml("uc01-s9", "owner-edited")
         );
         assertTrue(
-            service.draft(owner, draft.flowKey())
+            service.draft(owner, draft.key())
                 .orElseThrow()
-                .raw()
+                .source()
                 .contains("owner-edited")
         );
 
-        service.deleteDraft(owner, draft.flowKey());
-        assertTrue(service.draft(owner, draft.flowKey()).isEmpty());
+        service.delete(owner, draft.key(), true);
+        assertTrue(service.draft(owner, draft.key()).isEmpty());
     }
 
     @Test
@@ -345,21 +356,21 @@ class Uc01FlowLifecycleTest {
         Session<User> owner = fixture.session();
         Session<User> other = fixture.sessionFor("tenant-b");
         String raw = validYaml("uc01-s10", "deployable");
-        FlowDraft draft = service.saveDraft(owner, raw);
+        Flow draft = saveDraft(service, owner, raw);
 
         assertThrows(
             WorkflowException.class,
-            () -> service.deploy(other, draft.flowKey())
+            () -> deploy(service, other, draft.key())
         );
-        assertTrue(service.latestFlow(owner, draft.flowKey()).isEmpty());
-        assertTrue(service.latestFlow(other, draft.flowKey()).isEmpty());
+        assertTrue(service.latestFlow(owner, draft.key()).isEmpty());
+        assertTrue(service.latestFlow(other, draft.key()).isEmpty());
         assertEquals(
             raw,
-            service.draft(owner, draft.flowKey()).orElseThrow().raw()
+            service.draft(owner, draft.key()).orElseThrow().source()
         );
 
-        service.deleteDraft(owner, draft.flowKey());
-        assertTrue(service.draft(owner, draft.flowKey()).isEmpty());
+        service.delete(owner, draft.key(), true);
+        assertTrue(service.draft(owner, draft.key()).isEmpty());
     }
 
     @Test
@@ -367,26 +378,26 @@ class Uc01FlowLifecycleTest {
         WorkflowUcFixture fixture = fixture();
         FlowService service = fixture.flowService();
         Session<User> user = fixture.session();
-        FlowDraft draft = service.saveDraft(
+        Flow draft = saveDraft(service,
             user,
             validYaml("uc01-s11", "deleted")
         );
-        service.deleteDraft(user, draft.flowKey());
+        service.delete(user, draft.key(), true);
 
         assertThrows(
             WorkflowException.class,
-            () -> service.saveDraft(
+            () -> saveDraft(service,
                 user,
-                draft.flowKey(),
+                draft.key(),
                 validYaml("uc01-s11", "revived")
             )
         );
         assertThrows(
             WorkflowException.class,
-            () -> service.deploy(user, draft.flowKey())
+            () -> deploy(service, user, draft.key())
         );
-        assertTrue(service.draft(user, draft.flowKey()).isEmpty());
-        assertTrue(service.latestFlow(user, draft.flowKey()).isEmpty());
+        assertTrue(service.draft(user, draft.key()).isEmpty());
+        assertTrue(service.latestFlow(user, draft.key()).isEmpty());
     }
 
     @Test
@@ -395,21 +406,21 @@ class Uc01FlowLifecycleTest {
         FlowService service = fixture.flowService();
         Session<User> user = fixture.session();
         String raw = validYaml("uc01-s12", "draft-only");
-        FlowDraft draft = service.saveDraft(user, raw);
+        Flow draft = saveDraft(service, user, raw);
 
-        assertTrue(service.latestFlow(user, draft.flowKey()).isEmpty());
-        assertTrue(service.flow(user, draft.flowKey(), 1).isEmpty());
+        assertTrue(service.latestFlow(user, draft.key()).isEmpty());
+        assertTrue(service.flow(user, draft.key(), 1).isEmpty());
         assertEquals(
             raw,
-            service.draft(user, draft.flowKey()).orElseThrow().raw()
+            service.draft(user, draft.key()).orElseThrow().source()
         );
 
-        service.deleteDraft(user, draft.flowKey());
-        assertTrue(service.draft(user, draft.flowKey()).isEmpty());
+        service.delete(user, draft.key(), true);
+        assertTrue(service.draft(user, draft.key()).isEmpty());
     }
 
     @Test
-    void s13SystemFieldsRemainOpaqueDraftAndCannotBeInjected() {
+    void s13SystemFieldsCannotBeInjectedIntoDraft() {
         WorkflowUcFixture fixture = fixture();
         FlowService service = fixture.flowService();
         Session<User> user = fixture.session();
@@ -425,27 +436,43 @@ class Uc01FlowLifecycleTest {
               - key: start
                 type: org.cses.flow.extensions.tasks.AutomaticTask
             """;
-        FlowDraft draft = service.saveDraft(user, raw);
-        FlowDraft before = service.draft(
-            user,
-            draft.flowKey()
-        ).orElseThrow();
-
-        assertNotEquals("user-controlled-id", draft.id());
-        assertEquals(raw, before.raw());
-        assertEquals(user.getUserId(), before.creator().id());
         assertThrows(
             IllegalArgumentException.class,
-            () -> service.deploy(user, draft.flowKey())
+            () -> saveDraft(service, user, raw)
         );
-        assertEquals(
-            before,
-            service.draft(user, draft.flowKey()).orElseThrow()
-        );
-        assertTrue(service.latestFlow(user, draft.flowKey()).isEmpty());
+        assertTrue(service.draft(user, "uc01-s13").isEmpty());
+        assertTrue(service.latestFlow(user, "uc01-s13").isEmpty());
+    }
 
-        service.deleteDraft(user, draft.flowKey());
-        assertTrue(service.draft(user, draft.flowKey()).isEmpty());
+    private static Flow saveDraft(
+        FlowService service,
+        Session<User> session,
+        String raw
+    ) {
+        return service.save(session, PublishFlowCommand.from(raw));
+    }
+
+    private static Flow saveDraft(
+        FlowService service,
+        Session<User> session,
+        String flowKey,
+        String raw
+    ) {
+        return service.save(
+            session,
+            PublishFlowCommand.from(flowKey, raw)
+        );
+    }
+
+    private static Flow deploy(
+        FlowService service,
+        Session<User> session,
+        String flowKey
+    ) {
+        return service.save(
+            session,
+            PublishFlowCommand.from(flowKey, false)
+        );
     }
 
     private WorkflowUcFixture fixture() {

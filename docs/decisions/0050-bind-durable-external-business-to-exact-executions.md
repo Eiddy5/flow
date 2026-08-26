@@ -2,9 +2,11 @@
 
 ## 状态
 
-Accepted（修订 [`ADR 0004`](0004-use-yaml-and-exact-flow-reference.md) 中普通新启动
-与精确引用的关系，以及
-[`ADR 0038`](0038-keep-approval-business-in-cses.md) 中 Approval 与 Pause 的绑定粒度）
+Superseded by
+[`ADR 0068`](0068-remove-two-phase-execution-start.md)
+
+本文保留被取代的两阶段物化方案及其历史背景；当前 Execution 启动只允许一次完整的
+`create` 操作。
 
 ## 背景
 

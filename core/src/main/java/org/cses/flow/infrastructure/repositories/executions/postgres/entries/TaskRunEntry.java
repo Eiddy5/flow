@@ -48,7 +48,7 @@ public final class TaskRunEntry extends TaskRunsObject {
         entry.id = taskRun.id();
         entry.executionId = executionId;
         entry.taskId = taskRun.taskId();
-        entry.parentId = taskRun.parentId().orElse(null);
+        entry.parentId = taskRun.parentTaskRunId().orElse(null);
         entry.iteration = taskRun.iteration().isPresent()
             ? taskRun.iteration().getAsInt()
             : null;

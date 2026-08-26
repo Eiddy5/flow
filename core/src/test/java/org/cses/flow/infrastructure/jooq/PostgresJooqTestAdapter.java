@@ -13,7 +13,6 @@ import java.sql.SQLException;
 import java.util.List;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
-import static org.flow.gen.flow.Tables.FLOW_DRAFTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
 import static org.flow.gen.flow.Tables.QUEUES;
@@ -119,9 +118,6 @@ public final class PostgresJooqTestAdapter extends JOOQ {
                 .execute();
             dsl.deleteFrom(FLOW_TASKS)
                 .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
-                .execute();
-            dsl.deleteFrom(FLOW_DRAFTS)
-                .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
                 .execute();
             dsl.deleteFrom(FLOWS)
                 .where(FLOWS.COMPANY_ID.eq(companyId))

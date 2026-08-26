@@ -1,9 +1,10 @@
 package org.cses.flow.core.serializers;
 
-import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.junit.jupiter.api.Test;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.List;
 import java.util.Map;
@@ -20,13 +21,11 @@ final class FlowDefinitionSerializerTest {
         FlowDefinitionSerializer serializer = new FlowDefinitionSerializer(
             plugins.jacksonMapper()
         );
-        Flow deployed = plugins.flowDeserializer().deserialize(
+        Flow deployed = plugins.deploy(
             source(),
-            "company-1",
             "purchase-approval",
             null,
-            ActorRef.create("admin", "管理员"),
-            1_786_982_400_000L
+            session()
         );
 
         String yaml = serializer.serialize(deployed);
@@ -54,13 +53,11 @@ final class FlowDefinitionSerializerTest {
         assertFalse(wait.containsKey("id"));
         assertFalse(pause.containsKey("id"));
 
-        Flow reloaded = plugins.flowDeserializer().deserialize(
+        Flow reloaded = plugins.deploy(
             yaml,
-            "company-1",
             "purchase-approval",
             null,
-            ActorRef.create("admin", "管理员"),
-            1_786_982_400_100L
+            session()
         );
         assertEquals(
             definition,
@@ -103,5 +100,17 @@ final class FlowDefinitionSerializerTest {
                     type: org.cses.flow.extensions.log.Log
                     message: '申请 {{ inputs.amount }}'
             """;
+    }
+
+    private static Session<User> session() {
+        User user = new User();
+        user.setId("admin");
+        user.setName("管理员");
+        user.setCompanyId("company-1");
+
+        Session<User> session = new Session<>();
+        session.setCompanyId("company-1");
+        session.setUser(user);
+        return session;
     }
 }

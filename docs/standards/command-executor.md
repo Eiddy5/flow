@@ -21,9 +21,10 @@ Execution 的启动、外部 Resume 和 Cancel 是已确认的异步 Executor �
 `ExecutionService` 直接构造 Executor Module 拥有的 `Create`、`Resume` 或 `Cancel`
 Command，并投递到持久化
 `ExecutionCommand` Queue；`DefaultExecutor` 只把 Queue 消息路由给
-`ExecutionCommandEventHandler`，不进入 Core `CommandExecutor`。该 Handler 只负责恢复
-外部命令上下文、校验并物化 Execution，然后在同一事务中投递内部 `ExecutorEvent`；
-它不直接推进 Executor 状态机。Resume Command 只携带
+`ExecutionCommandEventHandler`，不进入 Core `CommandExecutor`。该 Handler 负责恢复
+外部命令上下文、校验并物化或更新 Execution，然后在同一事务中投递只携带生命周期
+身份的内部 `ExecutorEvent`；它不创建 `ExecutorContext` 或调用 `ExecutorService`。
+Resume Command 只携带
 `company`、`actorId`、`executionId`、`taskRunId` 和规范化 outputs；Cancel Command
 只携带 `company`、`actorId` 和 `executionId`；消费者从
 Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Execution 时，Service
@@ -85,7 +86,7 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
   `org.cses.flow.core.handlers.<业务模块>`，例如 Flow Handler 放在
   `org.cses.flow.core.handlers.flows`。业务模块分包规则见
   [`../project-structure.md`](../project-structure.md)。
-- Handler 名称必须包含动作和领域，例如 `DeployFlowHandler`。
+- Handler 名称必须包含动作和领域，例如 `PublishFlowHandler`。
 - 一个 Command 必须且只能注册一个 Handler。
 - Handler 按“加载聚合、调用领域行为、保存聚合、返回结果”的顺序编排。
 - Handler 不保存请求级可变状态，也不直接发布 Core Queue Event；Execution 启动由

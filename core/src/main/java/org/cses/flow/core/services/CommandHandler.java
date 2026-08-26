@@ -21,7 +21,7 @@ public interface CommandHandler<
     /**
      * Returns the exact command type handled by this handler.
      */
-    Class<C> commandType();
+    Class<C> type();
 
     /**
      * Executes the command using the transaction-scoped context.

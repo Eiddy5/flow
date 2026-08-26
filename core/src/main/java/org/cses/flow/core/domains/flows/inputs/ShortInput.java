@@ -25,7 +25,7 @@ public final class ShortInput extends Input<Short> {
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return DataType.SHORT;
     }
 

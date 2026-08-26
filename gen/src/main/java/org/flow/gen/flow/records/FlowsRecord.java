@@ -9,7 +9,7 @@ import java.time.OffsetDateTime;
 import org.flow.gen.flow.pojos.FlowsObject;
 import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.JSONB;
-import org.jooq.Record3;
+import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
 import org.paas.json.JsonObject;
 import org.paas.json.JsonObjects;
@@ -80,199 +80,241 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     }
 
     /**
+     * Setter for <code>public.flows.draft</code>.
+     */
+    public void setDraft(Boolean value) {
+        set(4, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.draft</code>.
+     */
+    public Boolean getDraft() {
+        return (Boolean) get(4);
+    }
+
+    /**
+     * Setter for <code>public.flows.source</code>.
+     */
+    public void setSource(String value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.source</code>.
+     */
+    public String getSource() {
+        return (String) get(5);
+    }
+
+    /**
+     * Setter for <code>public.flows.lock_version</code>.
+     */
+    public void setLockVersion(Long value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.lock_version</code>.
+     */
+    public Long getLockVersion() {
+        return (Long) get(6);
+    }
+
+    /**
      * Setter for <code>public.flows.description</code>.
      */
     public void setDescription(String value) {
-        set(4, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.flows.description</code>.
      */
     public String getDescription() {
-        return (String) get(4);
+        return (String) get(7);
     }
 
     /**
      * Setter for <code>public.flows.creator</code>.
      */
     public void setCreator(JSONB value) {
-        set(5, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.flows.creator</code>.
      */
     public JSONB getCreator() {
-        return (JSONB) get(5);
+        return (JSONB) get(8);
     }
 
     /**
      * Setter for <code>public.flows.creator_id</code>.
      */
     public void setCreatorId(String value) {
-        set(6, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.flows.creator_id</code>.
      */
     public String getCreatorId() {
-        return (String) get(6);
+        return (String) get(9);
     }
 
     /**
      * Setter for <code>public.flows.updater</code>.
      */
     public void setUpdater(JSONB value) {
-        set(7, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.flows.updater</code>.
      */
     public JSONB getUpdater() {
-        return (JSONB) get(7);
+        return (JSONB) get(10);
     }
 
     /**
      * Setter for <code>public.flows.updater_id</code>.
      */
     public void setUpdaterId(String value) {
-        set(8, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.flows.updater_id</code>.
      */
     public String getUpdaterId() {
-        return (String) get(8);
+        return (String) get(11);
     }
 
     /**
      * Setter for <code>public.flows.deleter</code>.
      */
     public void setDeleter(JSONB value) {
-        set(9, value);
+        set(12, value);
     }
 
     /**
      * Getter for <code>public.flows.deleter</code>.
      */
     public JSONB getDeleter() {
-        return (JSONB) get(9);
+        return (JSONB) get(12);
     }
 
     /**
      * Setter for <code>public.flows.deleter_id</code>.
      */
     public void setDeleterId(String value) {
-        set(10, value);
+        set(13, value);
     }
 
     /**
      * Getter for <code>public.flows.deleter_id</code>.
      */
     public String getDeleterId() {
-        return (String) get(10);
+        return (String) get(13);
     }
 
     /**
      * Setter for <code>public.flows.created_at</code>.
      */
     public void setCreatedAt(OffsetDateTime value) {
-        set(11, value);
+        set(14, value);
     }
 
     /**
      * Getter for <code>public.flows.created_at</code>.
      */
     public OffsetDateTime getCreatedAt() {
-        return (OffsetDateTime) get(11);
+        return (OffsetDateTime) get(14);
     }
 
     /**
      * Setter for <code>public.flows.updated_at</code>.
      */
     public void setUpdatedAt(OffsetDateTime value) {
-        set(12, value);
+        set(15, value);
     }
 
     /**
      * Getter for <code>public.flows.updated_at</code>.
      */
     public OffsetDateTime getUpdatedAt() {
-        return (OffsetDateTime) get(12);
+        return (OffsetDateTime) get(15);
     }
 
     /**
      * Setter for <code>public.flows.deleted_at</code>.
      */
     public void setDeletedAt(OffsetDateTime value) {
-        set(13, value);
+        set(16, value);
     }
 
     /**
      * Getter for <code>public.flows.deleted_at</code>.
      */
     public OffsetDateTime getDeletedAt() {
-        return (OffsetDateTime) get(13);
+        return (OffsetDateTime) get(16);
     }
 
     /**
      * Setter for <code>public.flows.inputs</code>.[[before= ][]]
      */
     public void setInputs(JsonObjects value) {
-        set(14, value);
+        set(17, value);
     }
 
     /**
      * Getter for <code>public.flows.inputs</code>.[[before= ][]]
      */
     public JsonObjects getInputs() {
-        return (JsonObjects) get(14);
+        return (JsonObjects) get(17);
     }
 
     /**
      * Setter for <code>public.flows.outputs</code>.[[before= ][]]
      */
     public void setOutputs(JsonObjects value) {
-        set(15, value);
+        set(18, value);
     }
 
     /**
      * Getter for <code>public.flows.outputs</code>.[[before= ][]]
      */
     public JsonObjects getOutputs() {
-        return (JsonObjects) get(15);
-    }
-
-    /**
-     * Setter for <code>public.flows.deleted</code>.
-     */
-    public void setDeleted(Boolean value) {
-        set(16, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.deleted</code>.
-     */
-    public Boolean getDeleted() {
-        return (Boolean) get(16);
+        return (JsonObjects) get(18);
     }
 
     /**
      * Setter for <code>public.flows.variables</code>.[[before= ][]]
      */
     public void setVariables(JsonObject value) {
-        set(17, value == null ? null : value.toString());
+        set(19, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.flows.variables</code>.[[before= ][]]
      */
     public JsonObject getVariables() {
-        return JsonObject.Parse((String) get(17));
+        return JsonObject.Parse((String) get(19));
+    }
+
+    /**
+     * Setter for <code>public.flows.status</code>.
+     */
+    public void setStatus(String value) {
+        set(20, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.status</code>.
+     */
+    public String getStatus() {
+        return (String) get(20);
     }
 
     // -------------------------------------------------------------------------
@@ -280,8 +322,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     // -------------------------------------------------------------------------
 
     @Override
-    public Record3<String, String, Long> key() {
-        return (Record3) super.key();
+    public Record2<String, String> key() {
+        return (Record2) super.key();
     }
 
     // -------------------------------------------------------------------------
@@ -298,13 +340,16 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     /**
      * Create a detached, initialised FlowsRecord
      */
-    public FlowsRecord(String id, String key, String companyId, Long reversion, String description, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JsonObjects inputs, JsonObjects outputs, Boolean deleted, JsonObject variables) {
+    public FlowsRecord(String id, String key, String companyId, Long reversion, Boolean draft, String source, Long lockVersion, String description, JSONB creator, String creatorId, JSONB updater, String updaterId, JSONB deleter, String deleterId, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime deletedAt, JsonObjects inputs, JsonObjects outputs, JsonObject variables, String status) {
         super(FlowsTable.FLOWS);
 
         setId(id);
         setKey(key);
         setCompanyId(companyId);
         setReversion(reversion);
+        setDraft(draft);
+        setSource(source);
+        setLockVersion(lockVersion);
         setDescription(description);
         setCreator(creator);
         setCreatorId(creatorId);
@@ -317,8 +362,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         setDeletedAt(deletedAt);
         setInputs(inputs);
         setOutputs(outputs);
-        setDeleted(deleted);
         setVariables(variables);
+        setStatus(status);
     }
 
 
@@ -334,6 +379,9 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
             setKey(value.key);
             setCompanyId(value.companyId);
             setReversion(value.reversion);
+            setDraft(value.draft);
+            setSource(value.source);
+            setLockVersion(value.lockVersion);
             setDescription(value.description);
             setCreator(value.creator);
             setCreatorId(value.creatorId);
@@ -346,8 +394,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
             setDeletedAt(value.deletedAt);
             setInputs(value.inputs);
             setOutputs(value.outputs);
-            setDeleted(value.deleted);
             setVariables(value.variables);
+            setStatus(value.status);
         }
     }
 
@@ -357,6 +405,9 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         object.key = getKey();
         object.companyId = getCompanyId();
         object.reversion = getReversion();
+        object.draft = getDraft();
+        object.source = getSource();
+        object.lockVersion = getLockVersion();
         object.description = getDescription();
         object.creator = getCreator();
         object.creatorId = getCreatorId();
@@ -369,8 +420,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         object.deletedAt = getDeletedAt();
         object.inputs = getInputs();
         object.outputs = getOutputs();
-        object.deleted = getDeleted();
         object.variables = getVariables();
+        object.status = getStatus();
         return object;
     }
 
@@ -385,6 +436,9 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         pojo.key = getKey();
         pojo.companyId = getCompanyId();
         pojo.reversion = getReversion();
+        pojo.draft = getDraft();
+        pojo.source = getSource();
+        pojo.lockVersion = getLockVersion();
         pojo.description = getDescription();
         pojo.creator = getCreator();
         pojo.creatorId = getCreatorId();
@@ -397,8 +451,8 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         pojo.deletedAt = getDeletedAt();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
-        pojo.deleted = getDeleted();
         pojo.variables = getVariables();
+        pojo.status = getStatus();
         return pojo;
     }
 }

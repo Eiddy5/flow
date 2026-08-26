@@ -6,7 +6,6 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -259,6 +258,9 @@ class ConditionalRouteResumeIntegrationTest {
                   key: create-approval-decision
                   type: org.cses.flow.extensions.tasks.AutomaticTask
                 resume:
+                  - key: decision
+                    type: STRING
+                outputs:
                   - key: decision
                     type: STRING
               - key: route-decision

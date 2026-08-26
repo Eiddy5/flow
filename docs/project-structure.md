@@ -177,10 +177,13 @@ Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 
 Worker 调度与异步消息传输契约不放在 `core`，分别由同级的 `executor`、`worker`
 和 `queues` 包负责。
 
-Flow 的业务身份由 `companyId + key + version` 确定：FlowDraft 创建时必须提供业务
-key，同一个 `companyId + key` 只能有一个 Draft；`FlowDraft.id` 是数据库行标记，不能
-替代业务查询键。解析后的 key 跨版本稳定，已发布每个版本的技术 `Flow.id` 重新生成。
-按技术 id 恢复历史 Flow 只用于已经绑定的 Execution，不替代业务查询键。
+Flow 的草稿与正式版本统一由 `Flow` 表达，并始终保留原始 YAML `source`。
+草稿由默认 `draft=true` 表达，创建时必须提供业务 key，同一个 `companyId + key`
+只能有一个草稿；正式版本由 `companyId + key + version` 精确选择。Flow、Execution、Task 与
+TaskRun 都通过 `String id()` 暴露稳定实体标识；跨对象引用使用 `executionId`、
+`taskId`、`taskRunId` 等明确字符串字段；`FlowId` 仅在 Flow Repository 中表达业务
+选择器，不建立实体 `*Id` 包装领域。Execution 始终通过
+`companyId + key + version` 恢复历史 Flow，不使用 `flows.id` 作为业务选择器。
 
 外部调用方优先通过 `core/services` 使用核心能力，不能越过 Service 直接组合
 Handler、Repository 或领域内部状态。
@@ -216,12 +219,15 @@ core/
 | `services` | 提供稳定、少量的公开业务入口 | 具体 HTTP 或数据库代码 |
 | `validations` | 对框架绑定或项目代码直接创建的模型执行统一主动校验 | YAML 语法解析、Flow 树身份生成 |
 
-`serializers` 是 Core 技术目录中的明确例外，保持扁平。`YamlParser` 提供严格
-YAML 树/只读 Map 解析，`FlowDefinitionDeserializer` 负责 Flow 字段和部署入口，
-`JacksonMapper` 是该链路唯一受控的 Jackson 配置入口；`PluginDeserializer` 通过
-构造器接收注册中心，解析具体 Task 并由 Jackson 自然递归绑定嵌套插件。部署期
-Task 身份通过 Jackson reader attribute 传入 `PluginDeserializationContext`，不再
-由 Flow 反射扫描插件字段。
+`serializers` 是 Core 技术目录中的明确例外，保持扁平。`JacksonMapper` 只负责
+集中创建和配置受控的 JSON/YAML Mapper，并提供通用对象转换；
+`YamlParser` 只负责严格 YAML 树、只读 Map 和通用目标类型解析。它不导入或创建
+Flow、Task 等业务类型。`PluginModule` 在 Mapper 创建时注册
+`PluginDeserializer`；YAML Mapper 使用其 source 定义配置，自动拒绝 Task 系统字段
+并生成首次身份，JSON Mapper 则按原值恢复持久化身份。`PublishFlowHandler` 只调用
+`parse(source, Flow.class)`，并在绑定后补充 Session、状态、版本和原始 source；
+`PluginDeserializer` 通过构造器接收注册中心，解析具体 Task 并由 Jackson 自然
+递归绑定嵌套插件，不再由 Flow 反射扫描插件字段。
 `plugins` 的运行机制放在包根，只有注解位于 `plugins/annotations`；
 `DefaultPluginRegistry` 直接从插件类的 `Class#getPackageName()` 取得真实包路径，
 并以此构造全局只读目录。`PluginSchemaGenerator` 位于
@@ -257,7 +263,7 @@ core/
 
 | 业务模块 | 负责内容 |
 | --- | --- |
-| `flows` | FlowDraft、Flow 定义、统一运行 `State`、`deleted` 生命周期事实、草稿、发布、升级、删除和版本读取 |
+| `flows` | 统一的 `Flow` 定义、原始 YAML `source`、`draft` 状态、审计删除事实、发布、升级和版本读取 |
 | `executions` | 使用统一 State 的 Execution 创建、推进、恢复、取消和 TaskRun 历史 |
 | `expressions` | 受限条件与模板表达式的解析和求值；Express 由 Route、Loop Until 复用，TemplateExpression 由需要渲染运行输入的 Task 复用 |
 | `plugins` | 按真实 Java 包分组的全局只读插件、Task 元信息和具体定义 Schema 查询 |
@@ -267,8 +273,8 @@ core/
 同一条业务链路在不同技术目录中必须使用相同模块名。例如：
 
 ```text
-commands/flows/SaveFlowDraftCommand.java
-handlers/flows/SaveFlowDraftHandler.java
+commands/flows/PublishFlowCommand.java
+handlers/flows/PublishFlowHandler.java
 services/flows/FlowService.java
 repositories/flows/FlowRepository.java
 ```
@@ -643,7 +649,7 @@ queues/event
 | Flow 管理页面与布局资源 | `server/src/main/resources/flow/` |
 | 模型主动校验 | `core/src/main/java/org/cses/flow/core/validations/` |
 | 工作流统一运行 State 与迁移规则 | `core/src/main/java/org/cses/flow/core/domains/flows/State.java` |
-| Flow 草稿聚合与删除生命周期事实 | `core/src/main/java/org/cses/flow/core/domains/flows/` |
+| Flow 聚合与删除生命周期事实 | `core/src/main/java/org/cses/flow/core/domains/flows/` |
 | Task 能力接口及 RunnableTask 直接调用契约 | `core/src/main/java/org/cses/flow/core/domains/tasks/` |
 | Execution 编排推进、单轮上下文或 nexts 批次逻辑 | `core/src/main/java/org/cses/flow/executor/` |
 | Execution 启动 Queue Command、Publisher 与 Consumer | `core/src/main/java/org/cses/flow/executor/` |

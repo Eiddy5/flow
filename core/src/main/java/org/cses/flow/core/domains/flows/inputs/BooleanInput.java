@@ -25,7 +25,7 @@ public final class BooleanInput extends Input<Boolean> {
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return DataType.BOOLEAN;
     }
 

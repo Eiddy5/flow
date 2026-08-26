@@ -6,21 +6,31 @@ import org.flow.gen.flow.pojos.FlowsObject;
 import org.flow.gen.flow.records.FlowsRecord;
 import org.paas.json.JsonObject;
 import org.paas.json.JsonObjects;
+
+import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
 import static org.flow.gen.flow.Tables.FLOWS;
 
-public final class FlowEntry extends FlowsObject {
+/**
+ * Persistence mapping for both editable and deployed Flow states.
+ */
+public class FlowEntry extends FlowsObject {
 
     public static FlowEntry fromRecord(FlowsRecord record) {
         FlowEntry entry = new FlowEntry();
         entry.id = record.getId();
         entry.key = record.getKey();
         entry.companyId = record.getCompanyId();
-        entry.deleted = record.getDeleted();
         entry.reversion = record.getReversion();
+        entry.draft = record.getDraft();
+        entry.source = record.getSource();
+        entry.lockVersion = record.getLockVersion();
         entry.description = record.getDescription();
+        entry.status = record.getStatus();
         entry.creator = record.getCreator();
         entry.creatorId = record.getCreatorId();
         entry.updater = record.getUpdater();
@@ -30,15 +40,9 @@ public final class FlowEntry extends FlowsObject {
         entry.createdAt = record.getCreatedAt();
         entry.updatedAt = record.getUpdatedAt();
         entry.deletedAt = record.getDeletedAt();
-        entry.inputs = JsonObjects.Parse(
-            record.get(FLOWS.INPUTS).data()
-        );
-        entry.outputs = JsonObjects.Parse(
-            record.get(FLOWS.OUTPUTS).data()
-        );
-        entry.variables = JsonObject.Parse(
-            record.get(FLOWS.VARIABLES).data()
-        );
+        entry.inputs = JsonObjects.Parse(record.get(FLOWS.INPUTS).data());
+        entry.outputs = JsonObjects.Parse(record.get(FLOWS.OUTPUTS).data());
+        entry.variables = JsonObject.Parse(record.get(FLOWS.VARIABLES).data());
         return entry;
     }
 
@@ -47,22 +51,21 @@ public final class FlowEntry extends FlowsObject {
         entry.id = flow.id();
         entry.key = flow.key();
         entry.companyId = flow.companyId();
-        entry.deleted = flow.isDeleted();
-        entry.reversion = flow.reversion();
+        entry.reversion = flow.versionOrNull();
+        entry.draft = flow.draft();
+        entry.source = flow.source();
+        entry.lockVersion = flow.lockVersion();
         entry.description = flow.description();
+        entry.status = AuditStatusCodec.encode(flow.status());
         entry.creator = ActorRefJsonCodec.encode(flow.creator());
         entry.updater = ActorRefJsonCodec.encode(flow.updater());
         entry.deleter = flow.deleter()
             .map(ActorRefJsonCodec::encode)
             .orElse(null);
-        entry.createdAt = FlowDraftEntry.toOffsetDateTime(
-            flow.createdAt()
-        );
-        entry.updatedAt = FlowDraftEntry.toOffsetDateTime(
-            flow.updatedAt()
-        );
+        entry.createdAt = toOffsetDateTime(flow.createdAt());
+        entry.updatedAt = toOffsetDateTime(flow.updatedAt());
         entry.deletedAt = flow.deletedAt()
-            .map(FlowDraftEntry::toOffsetDateTime)
+            .map(FlowEntry::toOffsetDateTime)
             .orElse(null);
         entry.inputs = DataJsonCodec.encode(flow.inputs());
         entry.outputs = DataJsonCodec.encode(flow.outputs());
@@ -71,45 +74,45 @@ public final class FlowEntry extends FlowsObject {
     }
 
     public Flow toDomain(List<Task> tasks) {
-        if (reversion == null) {
-            throw new IllegalStateException(
-                "Persisted Flow reversion must not be null"
-            );
-        }
+        boolean editable = Boolean.TRUE.equals(draft);
         return Flow.rehydrate(
             id,
             companyId,
             key,
+            editable,
             reversion,
             description,
             variables == null ? Map.of() : variables.asMap(),
             DataJsonCodec.decodeInputs(inputs, "Flow.inputs"),
             DataJsonCodec.decodeOutputs(outputs, "Flow.outputs"),
-            tasks,
-            requiredBoolean(deleted, "Flow.deleted"),
+            editable ? List.of() : tasks,
+            AuditStatusCodec.decode(status, "Flow.status"),
             ActorRefJsonCodec.decode(creator, "Flow.creator"),
             ActorRefJsonCodec.decode(updater, "Flow.updater"),
             ActorRefJsonCodec.decodeOptional(deleter, "Flow.deleter"),
-            FlowDraftEntry.toEpochMillis(
-                createdAt,
-                "Flow.createdAt"
-            ),
-            FlowDraftEntry.toEpochMillis(
-                updatedAt,
-                "Flow.updatedAt"
-            ),
+            toEpochMillis(createdAt, "Flow.createdAt"),
+            toEpochMillis(updatedAt, "Flow.updatedAt"),
             deletedAt == null
                 ? null
-                : deletedAt.toInstant().toEpochMilli()
+                : deletedAt.toInstant().toEpochMilli(),
+            source,
+            lockVersion == null ? 0 : lockVersion
         );
     }
 
-    private static boolean requiredBoolean(Boolean value, String field) {
+    static OffsetDateTime toOffsetDateTime(long epochMillis) {
+        return OffsetDateTime.ofInstant(
+            Instant.ofEpochMilli(epochMillis),
+            ZoneOffset.UTC
+        );
+    }
+
+    static long toEpochMillis(OffsetDateTime value, String field) {
         if (value == null) {
             throw new IllegalStateException(
                 "Persisted " + field + " must not be null"
             );
         }
-        return value;
+        return value.toInstant().toEpochMilli();
     }
 }

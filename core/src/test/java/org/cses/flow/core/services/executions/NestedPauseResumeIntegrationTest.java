@@ -6,7 +6,6 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -273,7 +272,7 @@ class NestedPauseResumeIntegrationTest {
             assertEquals(State.Type.PAUSED, securityApprove.state().current());
             assertEquals(
                 securityCheck.id(),
-                securityApprove.parentId().orElseThrow()
+                securityApprove.parentTaskRunId().orElseThrow()
             );
             assertEquals(
                 State.Type.PAUSED,
@@ -627,15 +626,15 @@ class NestedPauseResumeIntegrationTest {
 
             assertEquals(
                 prepare.id(),
-                backendReview.parentId().orElseThrow()
+                backendReview.parentTaskRunId().orElseThrow()
             );
             assertNotEquals(
                 backendBuild.id(),
-                backendReview.parentId().orElseThrow()
+                backendReview.parentTaskRunId().orElseThrow()
             );
             assertEquals(
                 frontendBuild.id(),
-                frontendReview.parentId().orElseThrow()
+                frontendReview.parentTaskRunId().orElseThrow()
             );
 
             fixture.restartServer();
@@ -825,7 +824,7 @@ class NestedPauseResumeIntegrationTest {
         Map<String, String> topology = new LinkedHashMap<>();
         execution.taskRuns().forEach(taskRun -> {
             String key = taskById(tasks, taskRun.taskId()).key();
-            String parentKey = taskRun.parentId()
+            String parentKey = taskRun.parentTaskRunId()
                 .map(parentRunId -> taskById(
                     tasks,
                     runsByTaskId.values().stream()
@@ -1039,6 +1038,9 @@ class NestedPauseResumeIntegrationTest {
                         resume:
                           - key: backendResult
                             type: STRING
+                        outputs:
+                          - key: backendResult
+                            type: STRING
 
                   - key: frontend-build
                     type: org.cses.flow.extensions.tasks.AutomaticTask
@@ -1049,6 +1051,9 @@ class NestedPauseResumeIntegrationTest {
                           key: create-frontend-review
                           type: org.cses.flow.extensions.tasks.AutomaticTask
                         resume:
+                          - key: frontendResult
+                            type: STRING
+                        outputs:
                           - key: frontendResult
                             type: STRING
 
@@ -1070,6 +1075,9 @@ class NestedPauseResumeIntegrationTest {
                           key: create-security-approval
                           type: org.cses.flow.extensions.tasks.AutomaticTask
                         resume:
+                          - key: securityDecision
+                            type: STRING
+                        outputs:
                           - key: securityDecision
                             type: STRING
 
@@ -1103,6 +1111,9 @@ class NestedPauseResumeIntegrationTest {
                     resume:
                       - key: backendResult
                         type: STRING
+                    outputs:
+                      - key: backendResult
+                        type: STRING
 
                   - key: frontend-build
                     type: org.cses.flow.extensions.tasks.AutomaticTask
@@ -1113,6 +1124,9 @@ class NestedPauseResumeIntegrationTest {
                           key: create-frontend-review
                           type: org.cses.flow.extensions.tasks.AutomaticTask
                         resume:
+                          - key: frontendResult
+                            type: STRING
+                        outputs:
                           - key: frontendResult
                             type: STRING
 
@@ -1134,6 +1148,9 @@ class NestedPauseResumeIntegrationTest {
                           key: create-security-approval
                           type: org.cses.flow.extensions.tasks.AutomaticTask
                         resume:
+                          - key: securityDecision
+                            type: STRING
+                        outputs:
                           - key: securityDecision
                             type: STRING
 
@@ -1159,6 +1176,9 @@ class NestedPauseResumeIntegrationTest {
                       key: create-approval
                       type: org.cses.flow.extensions.tasks.AutomaticTask
                     resume:
+                      - key: decision
+                        type: STRING
+                    outputs:
                       - key: decision
                         type: STRING
                   - key: route-approval

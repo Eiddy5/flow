@@ -1,9 +1,7 @@
 package org.cses.flow.core.serializers;
 
 import com.fasterxml.jackson.core.JsonLocation;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -19,28 +17,34 @@ import java.util.Map;
  * Parses a YAML mapping without applying any business interpretation.
  */
 @Singleton
-public final class YamlParser {
+public class YamlParser {
 
-    private final ObjectMapper objectMapper;
+    private ObjectMapper objectMapper;
 
     public YamlParser(JacksonMapper jacksonMapper) {
         this.objectMapper = jacksonMapper.yamlMapper();
     }
 
     public Map<String, Object> parse(String source) {
-        Object parsed = objectMapper.convertValue(
-            parseTree(source),
-            Object.class
+        return immutableStringMap(
+            objectMapper.convertValue(parseTree(source), Object.class),
+            "YAML root"
         );
-        return immutableStringMap(parsed, "YAML root");
+    }
+
+    public <T> T parse(String source, Class<T> type) {
+        requireSource(source);
+        try {
+            return objectMapper
+                .readerFor(type)
+                .readValue(source);
+        } catch (JsonProcessingException exception) {
+            throw parseFailure(exception);
+        }
     }
 
     public ObjectNode parseTree(String source) {
-        if (source == null || source.isBlank()) {
-            throw new IllegalArgumentException(
-                "YAML source must not be blank"
-            );
-        }
+        requireSource(source);
         try {
             JsonNode parsed = objectMapper.readTree(source);
             if (!(parsed instanceof ObjectNode object)) {
@@ -49,6 +53,14 @@ public final class YamlParser {
             return object;
         } catch (JsonProcessingException exception) {
             throw parseFailure(exception);
+        }
+    }
+
+    private static void requireSource(String source) {
+        if (source == null || source.isBlank()) {
+            throw new IllegalArgumentException(
+                "YAML source must not be blank"
+            );
         }
     }
 

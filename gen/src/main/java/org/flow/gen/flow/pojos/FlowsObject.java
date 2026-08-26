@@ -31,6 +31,9 @@ public class FlowsObject extends JooqPojo implements Serializable {
     public String key;
     public String companyId;
     public Long reversion;
+    public Boolean draft;
+    public String source;
+    public Long lockVersion;
     public String description;
     public JSONB creator;
     public String creatorId;
@@ -43,8 +46,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
     public OffsetDateTime deletedAt;
     public JsonObjects inputs;
     public JsonObjects outputs;
-    public Boolean deleted;
     public JsonObject variables;
+    public String status;
 
     public FlowsObject() {}
 
@@ -53,6 +56,9 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.key = value.key;
         this.companyId = value.companyId;
         this.reversion = value.reversion;
+        this.draft = value.draft;
+        this.source = value.source;
+        this.lockVersion = value.lockVersion;
         this.description = value.description;
         this.creator = value.creator;
         this.creatorId = value.creatorId;
@@ -65,8 +71,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.deletedAt = value.deletedAt;
         this.inputs = value.inputs;
         this.outputs = value.outputs;
-        this.deleted = value.deleted;
         this.variables = value.variables;
+        this.status = value.status;
     }
 
     public FlowsObject(
@@ -74,6 +80,9 @@ public class FlowsObject extends JooqPojo implements Serializable {
         String key,
         String companyId,
         Long reversion,
+        Boolean draft,
+        String source,
+        Long lockVersion,
         String description,
         JSONB creator,
         String creatorId,
@@ -86,13 +95,16 @@ public class FlowsObject extends JooqPojo implements Serializable {
         OffsetDateTime deletedAt,
         JsonObjects inputs,
         JsonObjects outputs,
-        Boolean deleted,
-        JsonObject variables
+        JsonObject variables,
+        String status
     ) {
         this.id = id;
         this.key = key;
         this.companyId = companyId;
         this.reversion = reversion;
+        this.draft = draft;
+        this.source = source;
+        this.lockVersion = lockVersion;
         this.description = description;
         this.creator = creator;
         this.creatorId = creatorId;
@@ -105,8 +117,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
         this.inputs = inputs;
         this.outputs = outputs;
-        this.deleted = deleted;
         this.variables = variables;
+        this.status = status;
     }
 
     /**
@@ -163,6 +175,48 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setReversion(Long reversion) {
         this.reversion = reversion;
+    }
+
+    /**
+     * Getter for <code>public.flows.draft</code>.
+     */
+    public Boolean getDraft() {
+        return this.draft;
+    }
+
+    /**
+     * Setter for <code>public.flows.draft</code>.
+     */
+    public void setDraft(Boolean draft) {
+        this.draft = draft;
+    }
+
+    /**
+     * Getter for <code>public.flows.source</code>.
+     */
+    public String getSource() {
+        return this.source;
+    }
+
+    /**
+     * Setter for <code>public.flows.source</code>.
+     */
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    /**
+     * Getter for <code>public.flows.lock_version</code>.
+     */
+    public Long getLockVersion() {
+        return this.lockVersion;
+    }
+
+    /**
+     * Setter for <code>public.flows.lock_version</code>.
+     */
+    public void setLockVersion(Long lockVersion) {
+        this.lockVersion = lockVersion;
     }
 
     /**
@@ -334,20 +388,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flows.deleted</code>.
-     */
-    public Boolean getDeleted() {
-        return this.deleted;
-    }
-
-    /**
-     * Setter for <code>public.flows.deleted</code>.
-     */
-    public void setDeleted(Boolean deleted) {
-        this.deleted = deleted;
-    }
-
-    /**
      * Getter for <code>public.flows.variables</code>.
      */
     public JsonObject getVariables() {
@@ -359,6 +399,20 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setVariables(JsonObject variables) {
         this.variables = variables;
+    }
+
+    /**
+     * Getter for <code>public.flows.status</code>.
+     */
+    public String getStatus() {
+        return this.status;
+    }
+
+    /**
+     * Setter for <code>public.flows.status</code>.
+     */
+    public void setStatus(String status) {
+        this.status = status;
     }
 
     @Override
@@ -393,6 +447,24 @@ public class FlowsObject extends JooqPojo implements Serializable {
                 return false;
         }
         else if (!this.reversion.equals(other.reversion))
+            return false;
+        if (this.draft == null) {
+            if (other.draft != null)
+                return false;
+        }
+        else if (!this.draft.equals(other.draft))
+            return false;
+        if (this.source == null) {
+            if (other.source != null)
+                return false;
+        }
+        else if (!this.source.equals(other.source))
+            return false;
+        if (this.lockVersion == null) {
+            if (other.lockVersion != null)
+                return false;
+        }
+        else if (!this.lockVersion.equals(other.lockVersion))
             return false;
         if (this.description == null) {
             if (other.description != null)
@@ -466,17 +538,17 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.outputs.equals(other.outputs))
             return false;
-        if (this.deleted == null) {
-            if (other.deleted != null)
-                return false;
-        }
-        else if (!this.deleted.equals(other.deleted))
-            return false;
         if (this.variables == null) {
             if (other.variables != null)
                 return false;
         }
         else if (!this.variables.equals(other.variables))
+            return false;
+        if (this.status == null) {
+            if (other.status != null)
+                return false;
+        }
+        else if (!this.status.equals(other.status))
             return false;
         return true;
     }
@@ -489,6 +561,9 @@ public class FlowsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.key == null) ? 0 : this.key.hashCode());
         result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
         result = prime * result + ((this.reversion == null) ? 0 : this.reversion.hashCode());
+        result = prime * result + ((this.draft == null) ? 0 : this.draft.hashCode());
+        result = prime * result + ((this.source == null) ? 0 : this.source.hashCode());
+        result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
         result = prime * result + ((this.description == null) ? 0 : this.description.hashCode());
         result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
         result = prime * result + ((this.creatorId == null) ? 0 : this.creatorId.hashCode());
@@ -501,8 +576,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
-        result = prime * result + ((this.deleted == null) ? 0 : this.deleted.hashCode());
         result = prime * result + ((this.variables == null) ? 0 : this.variables.hashCode());
+        result = prime * result + ((this.status == null) ? 0 : this.status.hashCode());
         return result;
     }
 
@@ -514,9 +589,9 @@ public class FlowsObject extends JooqPojo implements Serializable {
 
     public FlowsTable table() { return Tables.FLOWS; }
 
-    public String[] primaryKeyNames() { return new String[]{"company_id","id","reversion"};}
+    public String[] primaryKeyNames() { return new String[]{"company_id","id"};}
 
-    public Object[] primaryKeyValues() { return new Object[]{companyId,id,reversion};}
+    public Object[] primaryKeyValues() { return new Object[]{companyId,id};}
 
 
 
@@ -531,6 +606,9 @@ public class FlowsObject extends JooqPojo implements Serializable {
         map.put("key", key);
         map.put("company_id", companyId);
         map.put("reversion", reversion);
+        map.put("draft", draft);
+        map.put("source", source);
+        map.put("lock_version", lockVersion);
         map.put("description", description);
         map.put("creator", creator);
         map.put("creator_id", creatorId);
@@ -543,8 +621,8 @@ public class FlowsObject extends JooqPojo implements Serializable {
         map.put("deleted_at", deletedAt);
         map.put("inputs", inputs == null ? null : inputs.toString());
         map.put("outputs", outputs == null ? null : outputs.toString());
-        map.put("deleted", deleted);
         map.put("variables", variables == null ? null : variables.toString());
+        map.put("status", status);
         return map;
     }
 

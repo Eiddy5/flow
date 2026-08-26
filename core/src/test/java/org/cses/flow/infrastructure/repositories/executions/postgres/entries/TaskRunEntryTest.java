@@ -41,7 +41,7 @@ final class TaskRunEntryTest {
 
         assertEquals(2, entry.getIteration());
         assertEquals(2, restored.iteration().orElseThrow());
-        assertEquals(taskRun.parentId(), restored.parentId());
+        assertEquals(taskRun.parentTaskRunId(), restored.parentTaskRunId());
         assertEquals(taskRun.inputs(), restored.inputs());
         assertEquals(taskRun.state(), restored.state());
     }

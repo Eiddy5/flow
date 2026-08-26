@@ -6,7 +6,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
@@ -250,10 +250,10 @@ class Uc09LoopOrchestrationTest {
     void s6InvalidLoopDraftsAreRejectedAndDeletedWithoutResources() {
         try (WorkflowUcFixture fixture = fixture()) {
             List<InvalidDefinition> definitions = invalidDefinitions();
-            List<FlowDraft> drafts = definitions.stream()
-                .map(definition -> fixture.flowService().saveDraft(
+            List<Flow> drafts = definitions.stream()
+                .map(definition -> fixture.flowService().save(
                     fixture.session(),
-                    definition.yaml()
+                    PublishFlowCommand.from(definition.yaml())
                 ))
                 .toList();
 
@@ -266,14 +266,14 @@ class Uc09LoopOrchestrationTest {
 
             for (int index = 0; index < definitions.size(); index++) {
                 InvalidDefinition definition = definitions.get(index);
-                FlowDraft draft = drafts.get(index);
+                Flow draft = drafts.get(index);
 
                 // S6 预期：每个无效循环定义在发布时都被明确拒绝。
                 RuntimeException failure = assertThrows(
                     RuntimeException.class,
-                    () -> fixture.flowService().deploy(
+                    () -> fixture.flowService().save(
                         fixture.session(),
-                        draft.flowKey()
+                        PublishFlowCommand.from(draft.key(), false)
                     )
                 );
                 assertTrue(
@@ -285,32 +285,33 @@ class Uc09LoopOrchestrationTest {
                 // S6 预期：拒绝后不产生正式版本或运行流程。
                 assertTrue(fixture.flowService().latestFlow(
                     fixture.session(),
-                    draft.flowKey()
+                    draft.key()
                 ).isEmpty());
                 assertTrue(fixture.executionService().executions(
                     fixture.session()
                 ).isEmpty());
             }
 
-            for (FlowDraft draft : drafts) {
-                FlowDraft deleted = fixture.flowService().deleteDraft(
+            for (Flow draft : drafts) {
+                Flow deleted = fixture.flowService().delete(
                     fixture.session(),
-                    draft.flowKey()
+                    draft.key(),
+                    true
                 );
-                assertTrue(deleted.isDeleted());
+                assertTrue(deleted.deleted());
                 assertTrue(fixture.flowService().draft(
                     fixture.session(),
-                    draft.flowKey()
+                    draft.key()
                 ).isEmpty());
             }
 
             // S6 场景结束：草稿已全部删除，没有遗留正式或运行资源。
             assertTrue(fixture.flowService().drafts(fixture.session())
                 .isEmpty());
-            for (FlowDraft draft : drafts) {
+            for (Flow draft : drafts) {
                 assertTrue(fixture.flowService().latestFlow(
                     fixture.session(),
-                    draft.flowKey()
+                    draft.key()
                 ).isEmpty());
             }
             assertTrue(fixture.executionService().executions(
@@ -344,7 +345,7 @@ class Uc09LoopOrchestrationTest {
                 .toList()
         );
         assertTrue(runs.stream().allMatch(run ->
-            run.parentId().orElseThrow().equals(loopRun.id())
+            run.parentTaskRunId().orElseThrow().equals(loopRun.id())
         ));
         assertTrue(runs.stream().allMatch(run ->
             run.state().is(State.Type.SUCCESS)
@@ -396,7 +397,7 @@ class Uc09LoopOrchestrationTest {
         );
         TaskRun failedRun = onlyRun(execution, failure);
         assertEquals(1, failedRun.iteration().orElseThrow());
-        assertEquals(loopRun.id(), failedRun.parentId().orElseThrow());
+        assertEquals(loopRun.id(), failedRun.parentTaskRunId().orElseThrow());
         assertEquals(State.Type.FAILED, failedRun.state().current());
         assertEquals("uc09-body-failure", failedRun.error().orElseThrow());
         assertEquals(State.Type.KILLED, loopRun.state().current());

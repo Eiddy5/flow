@@ -117,7 +117,7 @@ public final class ExecutorService {
                 workerTasks.add(WorkerTask.from(
                     context.execution().id(),
                     taskRun.id(),
-                    taskRun.parentId().orElse(null),
+                    taskRun.parentTaskRunId().orElse(null),
                     task,
                     taskRun.inputs(),
                     Map.of(
@@ -563,7 +563,7 @@ public final class ExecutorService {
         String loopRunId
     ) {
         return execution.taskRuns().stream()
-            .filter(taskRun -> taskRun.parentId()
+            .filter(taskRun -> taskRun.parentTaskRunId()
                 .map(loopRunId::equals)
                 .orElse(false))
             .filter(taskRun -> taskRun.iteration().isPresent())
@@ -862,14 +862,14 @@ public final class ExecutorService {
         IterationScope scope
     ) {
         TaskRun cursor = taskRun;
-        while (cursor.parentId().isPresent()) {
-            String parentId = cursor.parentId().orElseThrow();
-            if (parentId.equals(scope.loopRunId())) {
+        while (cursor.parentTaskRunId().isPresent()) {
+            String parentTaskRunId = cursor.parentTaskRunId().orElseThrow();
+            if (parentTaskRunId.equals(scope.loopRunId())) {
                 return cursor.iteration().isPresent()
                     && cursor.iteration().getAsInt() == scope.iteration();
             }
             Optional<TaskRun> parent = context.execution()
-                .findTaskRun(parentId);
+                .findTaskRun(parentTaskRunId);
             if (parent.isEmpty()) {
                 return false;
             }

@@ -9,6 +9,7 @@ import io.micronaut.http.annotation.Error;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.Put;
+import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.http.exceptions.HttpStatusException;
 import jakarta.inject.Inject;
 import org.cses.flow.controller.flow.FlowModels.DefinitionView;
@@ -20,12 +21,11 @@ import org.cses.flow.controller.flow.FlowModels.InputTypeView;
 import org.cses.flow.controller.flow.FlowModels.SessionView;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.serializers.FlowDefinitionSerializer;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.services.executions.ExecutionService;
-import org.cses.flow.core.services.flows.commands.SaveFlowDraftCommand;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.executor.commands.Create;
 import org.paas.session.Session;
@@ -41,12 +41,12 @@ import java.util.Map;
  * User-facing HTTP adapter for the authenticated Flow management surface.
  */
 @Controller("/api")
-public final class FlowController {
+public class FlowController {
 
-    private final FlowService flowService;
-    private final ExecutionService executionService;
-    private final YamlParser yamlParser;
-    private final FlowDefinitionSerializer flowDefinitionSerializer;
+    private FlowService flowService;
+    private ExecutionService executionService;
+    private YamlParser yamlParser;
+    private FlowDefinitionSerializer flowDefinitionSerializer;
 
     @Inject
     public FlowController(
@@ -87,9 +87,9 @@ public final class FlowController {
     @Post("/flows")
     public HttpResponse<DraftView> saveDraft(
             @UserSession Session<User> session,
-            @Body SaveFlowDraftCommand command
+            @Body PublishFlowCommand command
     ) {
-        FlowDraft draft = flowService.saveDraft(
+        Flow draft = flowService.save(
                 session,
                 requireCommand(command)
         );
@@ -99,10 +99,10 @@ public final class FlowController {
     @Post("/flows/preview")
     public DefinitionView preview(
             @UserSession Session<User> session,
-            @Body SaveFlowDraftCommand command
+            @Body PublishFlowCommand command
     ) {
         return new DefinitionView(
-                yamlParser.parse(requireCommand(command).raw())
+                yamlParser.parse(requireCommand(command).source())
         );
     }
 
@@ -118,15 +118,16 @@ public final class FlowController {
     public DraftView saveDraft(
             @UserSession Session<User> session,
             String flowKey,
-            @Body SaveFlowDraftCommand command
+            @Body PublishFlowCommand command
     ) {
-        SaveFlowDraftCommand checked = requireCommand(command);
-        FlowDraft draft = flowService.saveDraft(
+        PublishFlowCommand checked = requireCommand(command);
+        Flow draft = flowService.save(
                 session,
-                SaveFlowDraftCommand.from(
+                PublishFlowCommand.from(
                         flowKey,
                         checked.expectedLockVersion(),
-                        checked.raw()
+                        checked.source(),
+                        checked.draft()
                 )
         );
         return draftView(session, draft);
@@ -137,7 +138,10 @@ public final class FlowController {
             @UserSession Session<User> session,
             String flowKey
     ) {
-        Flow deployed = flowService.deploy(session, flowKey);
+        Flow deployed = flowService.save(
+                session,
+                PublishFlowCommand.from(flowKey, false)
+        );
         return DraftView.from(
                 requireDraft(session, flowKey),
                 deployed
@@ -180,25 +184,13 @@ public final class FlowController {
         );
     }
 
-    @Delete("/flows/{flowKey}/draft")
-    public HttpResponse<?> deleteDraft(
-            @UserSession Session<User> session,
-            String flowKey
-    ) {
-        flowService.deleteDraft(session, flowKey);
-        return HttpResponse.noContent();
-    }
-
     @Delete("/flows/{flowKey}")
     public HttpResponse<?> deleteFlow(
             @UserSession Session<User> session,
-            String flowKey
+            String flowKey,
+            @QueryValue(defaultValue = "true") Boolean draft
     ) {
-        if (flowService.latestFlow(session, flowKey).isPresent()) {
-            flowService.delete(session, flowKey);
-        } else {
-            flowService.deleteDraft(session, flowKey);
-        }
+        flowService.delete(session, flowKey, draft);
         return HttpResponse.noContent();
     }
 
@@ -289,16 +281,16 @@ public final class FlowController {
 
     private DraftView draftView(
             Session<User> session,
-            FlowDraft draft
+            Flow draft
     ) {
         Flow deployed = flowService.latestFlow(
                 session,
-                draft.flowKey()
+                draft.key()
         ).orElse(null);
         return DraftView.from(draft, deployed);
     }
 
-    private FlowDraft requireDraft(
+    private Flow requireDraft(
             Session<User> session,
             String flowKey
     ) {
@@ -318,8 +310,8 @@ public final class FlowController {
                 ));
     }
 
-    private static SaveFlowDraftCommand requireCommand(
-            SaveFlowDraftCommand command
+    private static PublishFlowCommand requireCommand(
+            PublishFlowCommand command
     ) {
         if (command == null) {
             throw new IllegalArgumentException(

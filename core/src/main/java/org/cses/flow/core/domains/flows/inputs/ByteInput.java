@@ -25,7 +25,7 @@ public final class ByteInput extends Input<Byte> {
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return DataType.BYTE;
     }
 

@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted（ExternalTask 能力映射已随 ADR 0016 清理；其余共享能力继续有效）
+Superseded by
+[`ADR 0067`](0067-inherit-business-identity-and-audit-state.md)。
 
 本决策补充 ADR 0002、ADR 0022 中已有的身份、审计、软删除和乐观锁语义，不改变
 各聚合的业务边界、持久化结构或用户可观察生命周期。
@@ -102,9 +103,9 @@ FlowDraft 与 Execution 使用该能力。Execution 仍遵守一个已持久化�
 
 ### ActorRef
 
-ActorRef 是共享的不可变值对象。`ActorRef.from(Session)` 以当前用户 ID 为首选身份，
-以 Session 中的用户或会话信息作受控补充，并保存可选显示名称。执行审计或删除前，
-拥有 `company` 的聚合必须校验 Session 公司与自身公司一致。
+ActorRef 是共享的不可变值对象。本决策原先允许 ActorRef 直接从 Session 创建；
+该转换入口已由 ADR 0067 收口到 `SessionUtil.user(Session)`。执行审计或删除前，拥有
+`company` 的聚合必须校验 Session 公司与自身公司一致。
 
 ### 当前能力映射
 

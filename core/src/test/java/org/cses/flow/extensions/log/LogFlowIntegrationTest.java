@@ -8,6 +8,7 @@ import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.executions.ExecutionService;
 import org.cses.flow.core.services.flows.FlowService;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -30,7 +31,9 @@ class LogFlowIntegrationTest {
             Session<User> session = fixture.sessionFor(
                 "log-company"
             );
-            var draft = flowService.saveDraft(session, """
+            var draft = flowService.save(
+                session,
+                PublishFlowCommand.from("""
                 key: log-integration-flow
                 tasks:
                   - key: prepare
@@ -39,6 +42,9 @@ class LogFlowIntegrationTest {
                       key: create-prepare-request
                       type: org.cses.flow.extensions.tasks.AutomaticTask
                     resume:
+                      - key: result
+                        type: STRING
+                    outputs:
                       - key: result
                         type: STRING
                   - key: write-log
@@ -50,8 +56,12 @@ class LogFlowIntegrationTest {
                     type: org.cses.flow.extensions.tasks.AutomaticTask
                     dependOn:
                       - write-log
-                """);
-            Flow flow = flowService.deploy(session, draft.flowKey());
+                """)
+            );
+            Flow flow = flowService.save(
+                session,
+                PublishFlowCommand.from(draft.key(), false)
+            );
 
             Execution started = fixture.startCreated(session, flow);
             var waiting = fixture.waitingForExecution(

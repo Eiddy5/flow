@@ -16,9 +16,9 @@ ADR 0028 增加新 Task 扩展按能力名称建立独立目录的约定；现�
 
 本次实现修订多态绑定的局部职责：`PluginDeserializer` 通过构造器接收
 `PluginRegistry`，注册中心解析具体类后由 Jackson 递归绑定；`PluginModule` 负责将
-它注册到 `Task.class`。`FlowDefinitionDeserializer` 不再解析插件类型或反射扫描
-插件字段。部署期 ID 复用通过 `PluginDeserializationContext` 作为 reader attribute
-传入，持久化恢复不携带该 attribute，直接绑定已保存身份。
+它注册到 `Task.class`。通用 `YamlParser` 不解析插件类型、不反射扫描插件字段，也不
+创建业务绑定上下文。YAML Mapper 注册 source 定义配置并生成首次 Task 身份；JSON
+Mapper 注册持久化配置并直接绑定已保存身份。调用方不传递 reader attribute。
 
 ## 背景
 
@@ -87,20 +87,20 @@ Jackson 先读取 `type`，再通过注册表选择具体类并执行严格字�
 
 - `core/serializers/JacksonMapper` 集中创建项目受控的 JSON/YAML ObjectMapper，
   注册 `PluginModule`，并统一开启未知字段、重复 YAML key 和尾随内容的严格拒绝。
-- `FlowDefinitionDeserializer` 先把 YAML 读取为树，校验 Flow 结构，并为部署读取
-  最新版本的 Task 身份；它通过 Jackson reader attribute 启动一次 Task 定义绑定，
-  不解析插件类型、不反射扫描具体插件字段。
+- `YamlParser` 负责严格 YAML 读取，可返回通用只读 Map，也可按调用方给出的目标类型
+  执行绑定。它不导入 Flow、Task 或插件绑定上下文；`PublishFlowHandler` 只调用
+  `parse(source, Flow.class)`，再补充 Flow 生命周期与原始 source 事实。
 - 每个 Task 的 `type` 必须与注册表中的 canonical class name 完全相同，区分大小写，
   不执行 trim、大小写归一化、别名解析或短类型回退。`AUTO`、`PAUSE`、
   `PARALLEL` 以及其大小写变体均为未知类型。
 - `PluginDeserializer` 作为 `Task.class` 的 Jackson 自定义反序列化器，通过构造器
   接收注册表，取得允许的具体 Task 类，再让当前 `DeserializationContext` 递归绑定
   该类的通用字段和插件专有字段。未知字段和非法值直接失败，不回退到通用 Task。
-- `FlowDefinitionDeserializer` 在部署绑定完成后调用 `ModelValidator` 校验 Task；
-  Task 的部署身份状态只通过 `PluginDeserializationContext` reader attribute 传递，
-  不引入额外的插件预处理器层。
-- `YamlParser` 仍提供严格 YAML 到深度只读 Map 的通用入口；Flow 部署使用
-  `FlowDefinitionDeserializer` 完成格式边界到完整领域对象的转换。
+- `PublishFlowHandler` 在绑定完成后调用 `ModelValidator` 校验 Task；Task 的首次身份
+  由已经注册到 YAML Mapper 的 source 插件反序列化器生成，不引入 reader attribute
+  或额外的插件预处理器层，也不下沉到 `YamlParser`。
+- `JacksonMapper` 只集中配置受控 Mapper 和提供通用对象转换；YAML 读取和错误定位
+  由 `YamlParser` 负责，两者均不解释具体 Flow 业务字段。
 
 ### 身份与父子关系
 

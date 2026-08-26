@@ -25,7 +25,7 @@ public final class CharacterInput extends Input<Character> {
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return DataType.CHARACTER;
     }
 

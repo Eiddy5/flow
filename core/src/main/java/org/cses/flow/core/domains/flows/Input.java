@@ -1,5 +1,6 @@
 package org.cses.flow.core.domains.flows;
 
+import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
@@ -16,6 +17,7 @@ import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.flows.inputs.LongInput;
 import org.cses.flow.core.domains.flows.inputs.ShortInput;
 import org.cses.flow.core.domains.flows.inputs.StringInput;
+import org.cses.flow.core.utils.RequiredUtil;
 import org.paas.json.SerializableObject;
 
 import java.util.Objects;
@@ -53,10 +55,13 @@ public abstract class Input<T> extends SerializableObject implements Data {
     private boolean required;
     private T defaultValue;
 
+    @JsonAnySetter
+    private void rejectUnknownField(String field, Object value) {
+        throw new IllegalArgumentException(
+            "Unsupported Input field: " + field
+        );
+    }
 
-    /**
-     * Completes validation after JSON no-args construction and setter binding.
-     */
     public final void validateDefinition() {
         key = requireText(key, "Input key");
         displayName = displayName == null
@@ -64,11 +69,6 @@ public abstract class Input<T> extends SerializableObject implements Data {
             : requireText(displayName, "Input displayName");
         validateSubtypeDefinition();
         validateDefaultValue();
-    }
-
-
-    public String key(){
-        return key;
     }
 
     /**
@@ -84,7 +84,7 @@ public abstract class Input<T> extends SerializableObject implements Data {
     public final Object normalized(Object value) {
         T normalized = value == null
             ? null
-            : (T) type().normalize(value);
+            : (T) getType().normalize(value);
         valid(normalized);
         return normalized;
     }
@@ -130,12 +130,20 @@ public abstract class Input<T> extends SerializableObject implements Data {
             && specificEquals(other);
     }
 
+    @Override
+    public final int hashCode() {
+        return Objects.hash(
+            getClass(),
+            key,
+            displayName,
+            required,
+            defaultValue,
+            specificHashCode()
+        );
+    }
+
     private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(
-                field + " must not be blank"
-            );
-        }
-        return value.trim();
+        return RequiredUtil.required(value, field + " must not be blank")
+            .trim();
     }
 }

@@ -25,7 +25,7 @@ public final class FloatInput extends Input<Float> {
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return DataType.FLOAT;
     }
 
@@ -34,7 +34,7 @@ public final class FloatInput extends Input<Float> {
         validateRequired(value);
         if (value != null && !Float.isFinite(value)) {
             throw new IllegalArgumentException(
-                "Input " + key() + " must be finite"
+                "Input " + getKey() + " must be finite"
             );
         }
     }

@@ -171,9 +171,8 @@ PostgreSQL Repository 的 `lockById` 使用 Execution 行的 `FOR UPDATE` 锁，
 并发控制。
 
 本决策没有实现远程 Worker 或 exactly-once。ADR 0051 让普通启动先由 Service 投递
-`Create`，再由 Handler 创建 Execution；可信 pending continuation 仍在同一
-PostgreSQL 事务中保存 Execution 与持久化 Dispatch Queue Command。运行提交边界由
-`ExecutorEventHandler` 保持。
+`Create`，再由 Handler 创建 Execution；ADR 0068 已删除可信 pending continuation，
+启动只保留一条完整 Command 链。运行提交边界由 `ExecutorEventHandler` 保持。
 
 ## 调用顺序
 

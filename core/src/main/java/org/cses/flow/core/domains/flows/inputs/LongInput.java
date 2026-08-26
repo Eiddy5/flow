@@ -25,7 +25,7 @@ public final class LongInput extends Input<Long> {
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return DataType.LONG;
     }
 

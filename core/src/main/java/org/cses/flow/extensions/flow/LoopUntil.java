@@ -132,13 +132,13 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
                     + taskKey
             ));
         Output output = source.outputs().stream()
-            .filter(candidate -> candidate.key().equals(outputKey))
+            .filter(candidate -> candidate.getKey().equals(outputKey))
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException(
                 "LOOP UNTIL condition references an undeclared output: "
                     + taskKey + "." + outputKey
             ));
-        if (output.type() != DataType.STRING) {
+        if (output.getType() != DataType.STRING) {
             throw new IllegalArgumentException(
                 "LOOP UNTIL condition output must be STRING: "
                     + taskKey + "." + outputKey

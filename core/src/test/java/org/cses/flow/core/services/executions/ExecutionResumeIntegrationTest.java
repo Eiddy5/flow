@@ -494,6 +494,9 @@ class ExecutionResumeIntegrationTest {
                     resume:
                       - key: decision
                         type: STRING
+                    outputs:
+                      - key: decision
+                        type: STRING
                   - key: explode
                     type: org.cses.flow.core.services.executions.ExecutionResumeIntegrationTest.ThrowingTask
                 """);

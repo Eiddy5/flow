@@ -3,6 +3,7 @@ package org.cses.flow.infrastructure.jooq;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import org.cses.flow.core.services.flows.FlowService;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -60,12 +61,7 @@ final class FlowDatabaseIntegrationTest {
             defaultPassword
         );
         assertFlowSchemaWasProvisioned(url, username, password);
-        removeTenantDraftIfSchemaExists(
-            url,
-            username,
-            password,
-            companyId
-        );
+        removeTenantDraft(url, username, password, companyId);
 
         try (ApplicationContext context = ApplicationContext.run(
             properties(
@@ -83,19 +79,19 @@ final class FlowDatabaseIntegrationTest {
             ));
 
             FlowService flowService = context.getBean(FlowService.class);
-            var draft = flowService.saveDraft(
+            var draft = flowService.save(
                 session(companyId),
-                """
+                PublishFlowCommand.from("""
                 key: database-integration
                 description: Flow manually provisioned datasource integration
                 tasks:
                   - key: start
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                """
+                """)
             );
             assertEquals(
                 draft.id(),
-                flowService.draft(session(companyId), draft.flowKey())
+                flowService.draft(session(companyId), draft.key())
                     .orElseThrow()
                     .id()
             );
@@ -190,7 +186,7 @@ final class FlowDatabaseIntegrationTest {
         }
     }
 
-    private static void removeTenantDraftIfSchemaExists(
+    private static void removeTenantDraft(
         String url,
         String username,
         String password,
@@ -201,9 +197,7 @@ final class FlowDatabaseIntegrationTest {
             username,
             password
         )) {
-            if (tableExists(connection, "flow_drafts")) {
-                removeTenantDraft(connection, companyId);
-            }
+            removeTenantDraft(connection, companyId);
         }
     }
 
@@ -236,7 +230,8 @@ final class FlowDatabaseIntegrationTest {
         String companyId
     ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-            "SELECT count(*) FROM flow_drafts WHERE company_id = ?"
+            "SELECT count(*) FROM flows "
+                + "WHERE company_id = ? AND draft"
         )) {
             statement.setString(1, companyId);
             try (ResultSet result = statement.executeQuery()) {
@@ -251,7 +246,7 @@ final class FlowDatabaseIntegrationTest {
         String companyId
     ) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-            "DELETE FROM flow_drafts WHERE company_id = ?"
+            "DELETE FROM flows WHERE company_id = ? AND draft"
         )) {
             statement.setString(1, companyId);
             statement.executeUpdate();

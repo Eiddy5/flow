@@ -59,7 +59,8 @@ final class ExecutorEventHandlerTest {
             1_785_312_000_000L
         );
         Execution execution = Execution.create(
-            "execution-company",
+            null,
+            session("execution-company"),
             flow.key(),
             flow.reversion(),
             Map.of()
@@ -94,7 +95,8 @@ final class ExecutorEventHandlerTest {
             1_785_312_000_000L
         );
         Execution execution = Execution.create(
-            flow.companyId(),
+            null,
+            session(flow.companyId()),
             flow.key(),
             flow.reversion(),
             Map.of()
@@ -165,7 +167,8 @@ final class ExecutorEventHandlerTest {
             1_785_312_000_000L
         );
         Execution execution = Execution.create(
-            flow.companyId(),
+            null,
+            session(flow.companyId()),
             flow.key(),
             flow.reversion(),
             Map.of()
@@ -225,7 +228,8 @@ final class ExecutorEventHandlerTest {
             1_785_312_000_000L
         );
         Execution execution = Execution.create(
-            flow.companyId(),
+            null,
+            session(flow.companyId()),
             flow.key(),
             flow.reversion(),
             Map.of()
@@ -244,14 +248,14 @@ final class ExecutorEventHandlerTest {
         );
 
         TaskRun pauseRun = waiting.taskRuns().stream()
-            .filter(taskRun -> taskRun.parentId().isEmpty())
+            .filter(taskRun -> taskRun.parentTaskRunId().isEmpty())
             .findFirst()
             .orElseThrow();
         TaskRun actionRun = waiting.taskRuns().stream()
-            .filter(taskRun -> taskRun.parentId().isPresent())
+            .filter(taskRun -> taskRun.parentTaskRunId().isPresent())
             .findFirst()
             .orElseThrow();
-        assertEquals(pauseRun.id(), actionRun.parentId().orElseThrow());
+        assertEquals(pauseRun.id(), actionRun.parentTaskRunId().orElseThrow());
         assertEquals(
             RunIdentity.from(actionRun.id(), pauseRun.id()),
             CAPTURED_RUN.get()
@@ -304,7 +308,10 @@ final class ExecutorEventHandlerTest {
         @Override
         public void save(DSLContext dsl, Execution execution) {
             executions.put(
-                ExecutionKey.from(execution.companyId(), execution.id()),
+                ExecutionKey.from(
+                    execution.companyId(),
+                    execution.id()
+                ),
                 execution.copy()
             );
         }

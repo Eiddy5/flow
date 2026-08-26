@@ -4,6 +4,9 @@
 
 Accepted
 
+领域方法的命名已由 ADR 0067 修订：`FlowDraft.id()` 返回稳定字符串实体 ID，
+`flowKey()` 返回业务 key；本 ADR 的唯一性与查询选择器保持不变。
+
 ## 背景
 
 FlowDraft 同时拥有数据库行标记 `id` 和 Flow 业务 `key`。历史调用路径曾把 `id`

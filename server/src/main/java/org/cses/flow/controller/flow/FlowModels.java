@@ -9,7 +9,6 @@ import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.flows.Input;
 
 import org.cses.flow.core.domains.flows.State;
@@ -28,7 +27,7 @@ import java.util.Map;
 /**
  * HTTP protocol models for the Flow management API.
  */
-public final class FlowModels {
+public class FlowModels {
 
     private FlowModels() {
     }
@@ -74,17 +73,17 @@ public final class FlowModels {
 
     @Getter
     @Setter
-    public static final class DraftView extends SerializableObject {
+    public static class DraftView extends SerializableObject {
 
-        private final String id;
-        private final String flowKey;
-        private final String raw;
-        private final long lockVersion;
-        private final long createdAt;
-        private final long updatedAt;
-        private final String createdBy;
-        private final String updatedBy;
-        private final FlowView deployedFlow;
+        private String id;
+        private String flowKey;
+        private String raw;
+        private long lockVersion;
+        private long createdAt;
+        private long updatedAt;
+        private String createdBy;
+        private String updatedBy;
+        private FlowView deployedFlow;
 
         private DraftView(
             String id,
@@ -109,13 +108,13 @@ public final class FlowModels {
         }
 
         public static DraftView from(
-            FlowDraft draft,
+            Flow draft,
             Flow deployedFlow
         ) {
             return new DraftView(
                 draft.id(),
-                draft.flowKey(),
-                draft.raw(),
+                draft.key(),
+                draft.source(),
                 draft.lockVersion(),
                 draft.createdAt(),
                 draft.updatedAt(),
@@ -461,8 +460,8 @@ public final class FlowModels {
                     defaultValue = character.toString();
                 }
                 return new DataView(
-                    input.key(),
-                    input.type().name(),
+                    input.getKey(),
+                    input.getType().name(),
                     input.getDisplayName(),
                     input.isRequired(),
                     defaultValue,
@@ -470,8 +469,8 @@ public final class FlowModels {
                 );
             }
             return new DataView(
-                data.key(),
-                data.type().name(),
+                data.getKey(),
+                data.getType().name(),
                 null,
                 null,
                 null,
@@ -721,7 +720,7 @@ public final class FlowModels {
 
         private final String id;
         private final String taskId;
-        private final String parentId;
+        private final String parentTaskRunId;
         private final Integer iteration;
         private final String state;
         private final Map<String, Object> inputs;
@@ -734,7 +733,7 @@ public final class FlowModels {
         private TaskRunView(
             String id,
             String taskId,
-            String parentId,
+            String parentTaskRunId,
             Integer iteration,
             String state,
             Map<String, Object> inputs,
@@ -746,7 +745,7 @@ public final class FlowModels {
         ) {
             this.id = id;
             this.taskId = taskId;
-            this.parentId = parentId;
+            this.parentTaskRunId = parentTaskRunId;
             this.iteration = iteration;
             this.state = state;
             this.inputs = immutableMap(inputs);
@@ -762,7 +761,7 @@ public final class FlowModels {
             return new TaskRunView(
                 taskRun.id(),
                 taskRun.taskId(),
-                taskRun.parentId().orElse(null),
+                taskRun.parentTaskRunId().orElse(null),
                 taskRun.iteration().isPresent()
                     ? taskRun.iteration().getAsInt()
                     : null,
@@ -785,7 +784,7 @@ public final class FlowModels {
         }
 
         public String getParentId() {
-            return parentId;
+            return parentTaskRunId;
         }
 
         public Integer getIteration() {

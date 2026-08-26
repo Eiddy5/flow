@@ -11,7 +11,7 @@
 
 - `core` 中的完整非 HTTP Flow 能力与 `server` 中的 HTTP、启动边界。
 - `gen` 的开发期数据库基线如何由人工执行，以及 JOOQ 生成代码如何进入 Core。
-- 从 FlowDraft 保存、Flow 部署到 Execution 执行、暂停、恢复、取消和结束的主流程。
+- 从 Flow 草稿状态保存、部署到 Execution 执行、暂停、恢复、取消和结束的主流程。
 
 ## 当前代码架构图
 
@@ -41,12 +41,12 @@ flowchart LR
             commandExecutor["CommandExecutor + HandlerRegistry"]
             commandHandlers["CommandHandlers"]
             queryHandlers["QueryHandlers"]
-            yamlParser["JacksonMapper / YamlParser / FlowDefinitionDeserializer"]
+            yamlParser["JacksonMapper / YamlParser / Flow 直接绑定"]
             pluginSchema["PluginSchemaGenerator"]
         end
 
         subgraph coreRuntime ["领域与运行时"]
-            domains["FlowDraft / Flow / Execution / TaskRun / State"]
+            domains["Flow / Execution / TaskRun / State"]
             repositoryPorts["Core Repository 端口"]
             queueContracts["DispatchQueue / QueueSubscription"]
             executor["DefaultExecutor + ExecutionCommandEventHandler + ExecutorEventHandler + ExecutorService"]
@@ -171,13 +171,13 @@ Interface、消费游标或保留清理仍未实现。
 ```mermaid
 flowchart TD
     saveStart(["用户保存或更新 Flow 草稿"])
-    saveService["FlowService.saveDraft"]
+    saveService["FlowService.save：draft=true/false"]
     saveTransaction["CommandExecutor 开启 JOOQ 写事务"]
-    saveDraft["SaveFlowDraftHandler 保存 FlowDraft 并校验乐观锁"]
+    saveDraft["PublishFlowHandler：draft=true 保存草稿并校验乐观锁"]
 
     deployStart(["用户部署 Flow"])
-    parseDefinition["DeployFlowHandler 加载草稿并解析 YAML"]
-    materializeFlow["FlowDefinitionDeserializer 解析 Flow；Task.class PluginDeserializer 按注册类递归绑定；Flow.deploy 形成精确 Reversion"]
+    parseDefinition["PublishFlowHandler：draft=false 加载 source 并完整解析 YAML"]
+    materializeFlow["YamlParser.parse(source, Flow.class)；PluginDeserializer 按注册类递归绑定；Flow.initialize 形成草稿或精确 Reversion"]
     persistFlow["保存 Flow 与 FlowTasks"]
 
     executeStart(["用户启动最新且未删除的 Flow"])
@@ -299,15 +299,19 @@ flowchart TD
 
 流程图强调当前实现中的关键事实：
 
-1. Flow 的业务身份是 `companyId + key + version`。Draft 的保存选择器是调用方提供的
-   `companyId + key`，同公司同 key 只有一个 Draft；保存时按该 key upsert，存在则修订，
-   不存在则创建。`FlowDraft.id` 和每个部署生成的 `Flow.id` 都只是技术行标记。修订
-   YAML 可以省略顶层 `key`，但如果提供必须与 Draft key 一致，历史版本不会复用技术 id。
-2. 普通启动由 `ExecutionService` 构造只含 `company`、`flowKey`、`flowVersion`、
-   `inputs` 的 `Create` 并写入 Executor Command Queue；Service 返回只代表队列受理。
-   `ExecutionCommandEventHandler` 在消费事务中按三字段加载精确 Flow，规范化 inputs、
-   创建 Execution 并原子投递 `ExecutorEvent`。可信 pending continuation 仍在同一
-   JOOQ 事务保存 Execution 和 Queue Event。
+1. 草稿和 Flow Reversion 都由 `Flow` 表达并保留原始 YAML `source`。
+   草稿以 `companyId + key` 选择，同公司同 key 只有一个 `draft=true` 对象；保存时
+   存在则修订，不存在则创建，只抽取公共字段而不物化 Task。正式业务版本由
+   `companyId + key + version` 精确选择，部署完整解析 Task 并创建同类型的
+   `draft=false` 快照。每个对象都有独立稳定的字符串 `id`，由 Domain 创建并由
+   PostgreSQL Adapter 原样保存，不存在 `recordId`。修订 YAML 可以省略顶层 `key`，
+   但如果提供必须与草稿 key 一致。
+2. 普通启动由 `ExecutionService` 选择当前 Flow、规范化 inputs，并构造包含稳定
+   `executionId`、`company`、`actorId`、`flowKey`、`flowVersion` 和 `inputs` 的
+   `Create` 写入 Executor Command Queue；Service 返回只代表队列受理。
+   `ExecutionCommandEventHandler` 在消费事务中按精确 Flow 引用加载定义，使用 Command
+   中的稳定 id 创建 Execution，并原子投递 `ExecutorEvent`。Execution 不再提供
+   pending 创建或继续启动入口。
 3. Execution 始终绑定启动时的精确 Flow Reversion，继续、恢复和取消时不会切换到
    新版本。
 4. Flow inputs 在首次启动前按精确 Reversion 规范化，持久化在

@@ -161,6 +161,7 @@ class TaskDataPersistenceMappingTest {
                 .displayName("Decision")
                 .required(true)
                 .build()))
+            .outputs(List.of(Output.create("decision", DataType.STRING)))
             .duration("P1M")
             .behavior(Pause.Behavior.WARN)
             .build();

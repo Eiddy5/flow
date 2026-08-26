@@ -28,7 +28,7 @@ class PauseTest {
     private final Context plugins = builtInContext();
 
     @Test
-    void ownsOnePauseTaskAndDerivesOutputsFromResumeInputs() {
+    void ownsIndependentResumeInputsAndOutputs() {
         Task action = automatic("action-id", "create-approval");
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
@@ -46,6 +46,9 @@ class PauseTest {
                     .required(false)
                     .build()
             ))
+            .outputs(List.of(
+                Output.create("approved", DataType.BOOLEAN)
+            ))
             .duration(" pt5m ")
             .behavior(Pause.Behavior.FAIL)
             .build());
@@ -57,8 +60,7 @@ class PauseTest {
         assertEquals(action, pause.findDescendant(action.id()).orElseThrow());
         assertEquals(
             List.of(
-                Output.create("decision", DataType.STRING),
-                Output.create("comment", DataType.STRING)
+                Output.create("approved", DataType.BOOLEAN)
             ),
             pause.outputs()
         );
@@ -113,6 +115,10 @@ class PauseTest {
                         "type", "STRING",
                         "required", true
                     )),
+                    "outputs", List.of(Map.of(
+                        "key", "approved",
+                        "type", "BOOLEAN"
+                    )),
                     "duration", " pt5m ",
                     "behavior", "FAIL"
                 ))
@@ -126,6 +132,10 @@ class PauseTest {
         assertInstanceOf(AutomaticTask.class, pause.pause());
         assertEquals("decision",
             pause.resume().getFirst().getDisplayName());
+        assertEquals(
+            List.of(Output.create("approved", DataType.BOOLEAN)),
+            pause.outputs()
+        );
         assertEquals("PT5M", pause.duration().orElseThrow());
         assertEquals(2, flow.allTasks().size());
         assertTrue(flow.findTask(pause.pause().id()).isPresent());

@@ -162,10 +162,8 @@ core/src/main/java/org/cses/flow/infrastructure/
     └── flows/
         └── postgres/
             ├── FlowPostgresRepository.java
-            ├── FlowDraftPostgresRepository.java
             └── entries/
                 ├── FlowEntry.java
-                ├── FlowDraftEntry.java
                 └── FlowTaskEntry.java
 ```
 
@@ -251,8 +249,8 @@ Entry 和专用 Codec 中的 JSON/JSONB 转换必须同时遵守
 `FlowTaskEntry` 插件 properties 例外只能调用集中 `JacksonMapper` 的公开转换
 方法，Entry 仍不得直接使用 Jackson `ObjectMapper` 或注册 Module。
 
-例如，`FlowDraftEntry.fromDomain(...)` 把完整 FlowDraft 状态转换为生成对象字段，
-`FlowDraftEntry.toDomain()` 再使用 `FlowDraft.rehydrate(...)` 恢复同一领域事实。转换
+例如，`FlowEntry.fromDomain(...)` 把完整 `Flow` 状态转换为生成对象字段，
+`FlowEntry.toDomain()` 再使用 `Flow.rehydrate(...)` 恢复同一领域事实。转换
 必须覆盖重建所需的全部字段，不能为了简化映射构造只有部分状态的领域对象。
 
 `toDomain` 必须使用领域对象已经确认的静态 `rehydrate(...)` 入口。持久化恢复
@@ -313,11 +311,14 @@ dsl.insertInto(EXECUTIONS)
 `set(TABLE.FIELD, value)`：
 
 ```java
-dsl.update(FLOW_DRAFTS)
-    .set(FLOW_DRAFTS.RAW, raw)
-    .set(FLOW_DRAFTS.UPDATED_AT, updatedAt)
-    .where(FLOW_DRAFTS.COMPANY_ID.eq(companyId))
-    .and(FLOW_DRAFTS.ID.eq(flowDraftId))
+dsl.update(FLOWS)
+    .set(FLOWS.SOURCE, source)
+    .set(FLOWS.UPDATED_AT, updatedAt)
+    .set(FLOWS.LOCK_VERSION, nextLockVersion)
+    .where(FLOWS.COMPANY_ID.eq(companyId))
+    .and(FLOWS.ID.eq(flowId))
+    .and(FLOWS.DRAFT.isTrue())
+    .and(FLOWS.LOCK_VERSION.eq(expectedLockVersion))
     .execute();
 ```
 

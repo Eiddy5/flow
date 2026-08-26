@@ -164,8 +164,9 @@ CREATED/RUNNING TaskRun 或下一候选工作时，Execution 才进入稳定 WAI
 
 一般领域对象仍不得自行读取系统时间。但 State 的职责就是在每次状态变化时记录
 真实发生时间，而且已经确认其快捷方法不接收时间参数，因此 `State.created()` 和
-`State.withState(...)` 是该规则的唯一显式例外：它们各自只读取一次
-`System.currentTimeMillis()`，并立即把值写入新 History。
+`State.withState(...)` 是该规则的唯一显式例外：它们各自只调用一次统一的
+`TimeUtil.now()`，并立即把值写入新 History。系统时钟的直接读取只允许保留在
+`TimeUtil` 内部。
 
 测试时间边界时使用调用前后区间断言，不要求注入时钟，也不要求相邻 History 的
 date 严格递增。

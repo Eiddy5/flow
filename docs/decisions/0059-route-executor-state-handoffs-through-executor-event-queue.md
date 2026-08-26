@@ -31,8 +31,8 @@ Optional<ExecutorContext> handle(T event);
   `ExecutorEventHandler<ExecutionCommand>`，是 Executor Module 外部
   `ExecutionCommand` 进入运行链路的唯一入口。
 - 它负责恢复最小 Session、按精确 Flow Reversion 校验 Command、规范化输入、创建或
-  锁定 Execution，并在同一事务中投递 `ExecutorEvent`；它不直接调用
-  `ExecutorService` 推进状态机。
+  锁定并更新 Execution，并在同一事务中投递 `ExecutorEvent`；它不创建
+  `ExecutorContext` 或调用 `ExecutorService` 推进调度周期。
 - `handlers.ExecutorEventHandler` 实现
   `ExecutorEventHandler<ExecutorEvent>`，是 Executor 内部状态循环的唯一处理器。
   它从 Queue 领取 Event，锁定并恢复 Execution 与精确 Flow，创建
@@ -42,13 +42,18 @@ Optional<ExecutorContext> handle(T event);
 ### `ExecutorEvent` 与 Queue
 
 - `ExecutorEvent` 是可持久化的内部交接消息，Queue 名为
-  `flow-executor-event`；当前类型包括 `PROCESS`、`RESUME` 和 `CANCEL`。
-- Event 只保存重新建立运行边界所需的租户、调用方和命令事实：
-  `executionId`、`company`、Actor/Session 元数据，以及 Resume 的目标 TaskRun
-  和规范化 outputs。它不保存 Flow、Execution、`ExecutorContext`、Repository、
-  `DSLContext` 或 Worker 对象。
+  `flow-executor-event`；其生命周期类型为 `CREATED`、`UPDATED` 和
+  `TERMINATED`。外部 `CREATE`、`RESUME`、`CANCEL` Command 在进入内部
+  Executor 后分别映射为创建、更新和终止生命周期事件。
+- Event 只保存重新建立运行边界所需的 Execution 租户身份和生命周期类型：
+  `executionId`、`companyId` 和 `eventType`。处理器先由 Execution 的
+  `flowKey + flowVersion` 反查精确 Flow reversion。Resume 的 TaskRun、outputs 和
+  Cancel 的终止意图先在 Command Handler 事务内作用于并持久化 Execution，
+  Event 本身不再复制这些命令数据。处理器根据已加载的 Flow creator 建立最小
+  Session，不持久化 Session、设备、网络或客户端版本快照。它不保存 Flow、
+  Execution、`ExecutorContext`、Repository、`DSLContext` 或 Worker 对象。
 - 一个 Event 的处理完成后，如果 Execution 仍可推进，内部 Handler 在当前事务中
-  投递 `event.nextProcess()`；下一轮必须重新从 Repository 锁定读取聚合并重新创建
+  投递 `event.nextUpdate()`；下一轮必须重新从 Repository 锁定读取聚合并重新创建
   Context。
 - `DefaultExecutor` 同时订阅 `ExecutionCommand` Queue 和 `ExecutorEvent` Queue，
   只负责订阅生命周期和把消息交给对应 Handler。
@@ -101,7 +106,7 @@ sequenceDiagram
     E->>W: dispatch WorkerTask
     W-->>E: WorkerTaskResult
     E->>E: apply result + save
-    E->>EQ: emit(next PROCESS Event) in same transaction
+    E->>EQ: emit(next UPDATED Event) in same transaction
 ```
 
 ## 不变量
@@ -110,8 +115,8 @@ sequenceDiagram
   它不能直接调用 Executor 状态机。
 - `EEH-002`：Executor 内部的状态周期只能由 `ExecutorEvent` Queue 交接；
   `ExecutorContext` 不进入消息 payload，也不跨 Queue 保存。
-- `EEH-003`：每个内部 Event 都按租户锁定同一个 Execution，并按其保存的精确
-  `flowId + flowReversion` 加载 Flow。
+- `EEH-003`：每个内部 Event 都按租户锁定同一个 Execution，并按 Execution 保存的
+  `flowKey + flowVersion` 加载精确 Flow。
 - `EEH-004`：后续周期 Event 必须在本轮 Execution 变更和 Worker 结果提交的同一事务
   中投递，避免已保存状态没有后续交接或交接没有对应状态。
 - `EEH-005`：`Execution.inputs` 是运行时 Flow inputs 的唯一权威来源；TaskRun 不得

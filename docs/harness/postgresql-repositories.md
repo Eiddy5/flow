@@ -9,29 +9,22 @@ Task id 复用，以及乐观锁冲突。
 
 ```mermaid
 erDiagram
-    FLOW_DRAFTS ||--o{ FLOWS : "company_id + draft.flow_key = flow.key"
-    FLOWS ||--o{ FLOW_TASKS : "company_id + key + version"
+    FLOWS ||--o{ FLOW_TASKS : "仅正式版本：company_id + key + version"
     FLOWS ||--o{ EXECUTIONS : "company_id + flow_key + flow_version"
     FLOW_TASKS o|--o{ FLOW_TASKS : "parent_id 形成任务树"
     EXECUTIONS ||--o{ TASK_RUNS : "execution_id 形成运行历史"
     FLOW_TASKS ||--o{ TASK_RUNS : "Execution 的版本范围内由 task_id 解析"
     TASK_RUNS o|--o{ TASK_RUNS : "parent_id 形成运行树"
 
-    FLOW_DRAFTS {
-        varchar company_id PK
-        varchar id PK
-        varchar flow_key UK
-        text raw
-        boolean deleted
-        bigint lock_version
-    }
-
     FLOWS {
         varchar company_id PK
-        varchar id PK "技术行 ID"
+        varchar id PK "领域 Entity ID"
         varchar key UK "稳定 Flow key"
-        bigint reversion PK
-        boolean deleted
+        bigint reversion "草稿为空"
+        boolean draft "默认 true"
+        text source "原始 YAML"
+        varchar status
+        bigint lock_version
         jsonb inputs
         jsonb outputs
     }
@@ -69,14 +62,18 @@ erDiagram
 ```
 
 图中的关系都是逻辑关系。数据库不创建外键，由复合身份、唯一约束、应用校验和
-同事务写入保证。Flow 的 `id` 只用于标识 `flows` 表中的技术行；Flow、Task 快照和
-Execution 的版本绑定统一使用 `(company_id, flow_key, flow_version)`。Flow/Task 的
+同事务写入保证。`flows` 同时保存草稿与正式版本：草稿满足
+`draft = true AND reversion IS NULL`，正式版本满足
+`draft = false AND reversion > 0`；两者都保存原始 YAML `source`。`flows.id` 是 Flow
+Domain 的稳定 Entity ID；Flow、Task 快照和 Execution 的版本绑定统一使用
+`(company_id, flow_key, flow_version)`。Flow/Task 的
 Input、Output 和 Plugin properties 没有独立身份或
 生命周期，作为不可变定义快照保存在 JSONB 中；Execution 与 TaskRun 的 inputs、
 outputs 保存运行事实，完整 State 以
-`{"current":"...","history":[...]}` 作为单一 JSONB 值对象持久化。按当前状态
-过滤时使用 `state ->> 'current'` 表达式索引，不存在独立 `status` 或
-`state_history` 字段。
+`{"current":"...","history":[...]}` 作为单一 JSONB 值对象持久化。Execution
+和 TaskRun 按当前运行状态过滤时使用 `state ->> 'current'` 表达式索引，不存在独立
+运行 `status` 或 `state_history` 字段；Flow 的 Audit Status 则以独立文本
+`status` 持久化。
 
 ## 准备数据库
 
@@ -95,6 +92,21 @@ psql "$FLOW_POSTGRES_PSQL_URL" \
 基线使用 `IF NOT EXISTS`，因此相同内容可以重复执行；它不会修正已经存在但定义
 不同的对象。基线发生变化后必须显式重建开发数据库，不执行 ALTER、回填或旧数据
 转换。应用不携带 Flyway，也不会在启动时创建、升级或清理 Schema。
+
+### 旧库动态迁移
+
+如果数据库仍同时存在旧版 `flows` 和 `flow_drafts`，使用
+[`flow-unify-migration.sql`](flow-unify-migration.sql) 将草稿的 `raw` YAML 合并到
+`flows.source`，并切换到 `draft=true/false` 的统一模型：
+
+```bash
+psql "$FLOW_POSTGRES_PSQL_URL" \
+  -f docs/harness/flow-unify-migration.sql
+```
+
+旧版已部署 `flows` 没有原始 YAML，执行迁移前必须先补齐对应的 `source`；脚本发现
+缺失或为空时会回滚。迁移完成后会删除 `flow_drafts`，该操作不可逆，执行前应完成
+备份并确认所有正式版本的来源数据已准备好。
 
 PostgreSQL 的所有时间点列使用 `timestamptz`，JOOQ 生成模型对应
 `OffsetDateTime`；项目自有 Java 类型仍使用 Epoch 毫秒 `long/Long`，只在 Entry

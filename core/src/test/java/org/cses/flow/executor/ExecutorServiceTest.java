@@ -16,6 +16,8 @@ import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.worker.WorkerTask;
 import org.cses.flow.worker.WorkerTaskResult;
 import org.junit.jupiter.api.Test;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.List;
 import java.util.Map;
@@ -164,7 +166,7 @@ final class ExecutorServiceTest {
         assertTrue(parentRun.state().is(State.Type.RUNNING));
         assertTrue(execution.taskRuns().subList(1, 3).stream()
             .allMatch(taskRun ->
-                taskRun.parentId().orElseThrow().equals(parentRun.id())
+                taskRun.parentTaskRunId().orElseThrow().equals(parentRun.id())
         ));
         assertTrue(execution.taskRuns().subList(1, 3).stream()
             .allMatch(taskRun ->
@@ -215,7 +217,7 @@ final class ExecutorServiceTest {
         Execution seed = execution(flow);
         Execution execution = Execution.create(
             seed.id(),
-            seed.companyId(),
+            session(seed.companyId()),
             seed.flowKey(),
             seed.flowVersion(),
             flow.normalizeInputs(Map.of("amount", 1200))
@@ -1196,7 +1198,8 @@ final class ExecutorServiceTest {
 
     private static Execution execution(Flow flow) {
         return Execution.create(
-            flow.companyId(),
+            null,
+            session(flow.companyId()),
             flow.key(),
             flow.reversion(),
             Map.of()
@@ -1220,22 +1223,38 @@ final class ExecutorServiceTest {
             "Executor User"
         );
         return Flow.rehydrate(
-            "executor-flow",
+            "invalid-capability-flow-id",
             "executor-company",
             "invalid-capability",
-            1,
+            false,
+            1L,
             "Invalid runtime capability fixture",
+            Map.of(),
             List.of(),
             List.of(),
             List.of(task),
-            false,
+            org.paas.session.RecordState.Open,
             actor,
             actor,
             null,
             1_785_312_000_000L,
             1_785_312_000_000L,
-            null
+            null,
+            "key: invalid-capability",
+            0
         );
+    }
+
+    private static Session<User> session(String companyId) {
+        User user = new User();
+        user.setId("executor-user");
+        user.setName("Executor User");
+        user.setCompanyId(companyId);
+
+        Session<User> session = new Session<>();
+        session.setCompanyId(companyId);
+        session.setUser(user);
+        return session;
     }
 
     @SuperBuilder

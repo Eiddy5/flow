@@ -1,6 +1,7 @@
 package org.cses.flow.core.domains.flows;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
@@ -9,6 +10,7 @@ import java.util.Locale;
 /**
  * Stable value type shared by Flow and Task data definitions.
  */
+@Getter
 public enum DataType {
 
     STRING(String.class),
@@ -74,10 +76,6 @@ public enum DataType {
         } catch (ArithmeticException | NumberFormatException exception) {
             throw invalidValue();
         }
-    }
-
-    public Class<?> getValueClass() {
-        return valueClass;
     }
 
     private BigInteger integer(Object value) {

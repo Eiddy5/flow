@@ -30,7 +30,7 @@ public final class CommandHandlerRegistry {
         for (CommandHandler<?, ?, ?, ?> handler : discoveredHandlers) {
             Objects.requireNonNull(handler, "discoveredHandlers contains null");
             Class<?> commandType = Objects.requireNonNull(
-                handler.commandType(),
+                handler.type(),
                 "handler commandType"
             );
             CommandHandler<?, ?, ?, ?> existing = registered.putIfAbsent(

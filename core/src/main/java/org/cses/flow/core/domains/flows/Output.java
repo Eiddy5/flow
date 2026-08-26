@@ -2,6 +2,7 @@ package org.cses.flow.core.domains.flows;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.cses.flow.core.utils.RequiredUtil;
 
 import java.util.Objects;
 
@@ -10,8 +11,11 @@ import java.util.Objects;
  */
 public final class Output implements Data {
 
-    private final String key;
-    private final DataType type;
+    String key;
+    DataType type;
+
+    public Output() {
+    }
 
     @JsonCreator
     private Output(
@@ -19,7 +23,7 @@ public final class Output implements Data {
         @JsonProperty("type") DataType type
     ) {
         this.key = requireText(key, "Output key");
-        this.type = Objects.requireNonNull(type, "Output type");
+        this.type = RequiredUtil.required(type, "Output type");
     }
 
     public static Output create(String key, DataType type) {
@@ -31,12 +35,12 @@ public final class Output implements Data {
     }
 
     @Override
-    public String key() {
+    public String getKey() {
         return key;
     }
 
     @Override
-    public DataType type() {
+    public DataType getType() {
         return type;
     }
 
@@ -57,14 +61,10 @@ public final class Output implements Data {
 
     @Override
     public boolean equals(Object value) {
-        if (this == value) {
-            return true;
-        }
-        if (!(value instanceof Output other)) {
-            return false;
-        }
-        return Objects.equals(key, other.key)
-            && Objects.equals(type, other.type);
+        return this == value
+            || value instanceof Output other
+            && key.equals(other.key)
+            && type.equals(other.type);
     }
 
     @Override
@@ -81,11 +81,7 @@ public final class Output implements Data {
     }
 
     private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(
-                field + " must not be blank"
-            );
-        }
-        return value.trim();
+        return RequiredUtil.required(value, field + " must not be blank")
+            .trim();
     }
 }

@@ -309,6 +309,8 @@ final class WorkerDispatcherTest {
         return Execution.rehydrate(
             id,
             "company-1",
+            ActorRef.create("worker-user", "Worker User"),
+            1_000L,
             "flow-1",
             1,
             inputs,

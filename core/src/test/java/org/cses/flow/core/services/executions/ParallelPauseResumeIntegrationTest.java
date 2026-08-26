@@ -36,8 +36,8 @@ class ParallelPauseResumeIntegrationTest {
             assertEquals(State.Type.PAUSED, fork.state().current());
             assertEquals(State.Type.PAUSED, backend.state().current());
             assertEquals(State.Type.PAUSED, frontend.state().current());
-            assertEquals(fork.id(), backend.parentId().orElseThrow());
-            assertEquals(fork.id(), frontend.parentId().orElseThrow());
+            assertEquals(fork.id(), backend.parentTaskRunId().orElseThrow());
+            assertEquals(fork.id(), frontend.parentTaskRunId().orElseThrow());
 
             fixture.restartServer();
             assertEquals(
@@ -409,12 +409,18 @@ class ParallelPauseResumeIntegrationTest {
                     resume:
                       - key: backendResult
                         type: STRING
+                    outputs:
+                      - key: backendResult
+                        type: STRING
                   - key: frontend-check
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-frontend-check
                       type: org.cses.flow.extensions.tasks.AutomaticTask
                     resume:
+                      - key: frontendResult
+                        type: STRING
+                    outputs:
                       - key: frontendResult
                         type: STRING
               - key: join-checks

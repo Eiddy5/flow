@@ -3,42 +3,50 @@ package org.cses.flow.core.serializers;
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.PropertyAccessor;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectReader;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.plugins.PluginModule;
 
-import java.io.IOException;
 import java.util.Map;
 
 /**
- * Central strict Jackson configuration for Flow definition serialization.
+ * Central strict Jackson configuration for JSON and YAML serialization.
  */
 @Singleton
-public final class JacksonMapper {
+public class JacksonMapper {
 
-    private static final TypeReference<Map<String, Object>> MAP_TYPE =
+    private static TypeReference<Map<String, Object>> MAP_TYPE =
         new TypeReference<>() {
         };
+    private static ObjectMapper YAML_MAPPER = JacksonMapper.configure(
+        new ObjectMapper(
+            YAMLFactory
+                .builder()
+                .configure(YAMLGenerator.Feature.MINIMIZE_QUOTES, true)
+                .configure(
+                    YAMLGenerator.Feature.WRITE_DOC_START_MARKER,
+                    false
+                )
+                .configure(YAMLGenerator.Feature.USE_NATIVE_TYPE_ID, false)
+                .configure(YAMLGenerator.Feature.SPLIT_LINES, false)
+                .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .build()
+        )
+    );
 
-    private final ObjectMapper jsonMapper;
-    private final ObjectMapper yamlMapper;
+    private ObjectMapper jsonMapper;
+    private ObjectMapper yamlMapper;
 
     public JacksonMapper(PluginModule pluginModule) {
         this.jsonMapper = configure(new ObjectMapper(), pluginModule);
-        YAMLFactory yamlFactory = new YAMLFactory();
-        yamlFactory.enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
-        this.yamlMapper = configure(
-            new ObjectMapper(yamlFactory),
-            pluginModule
-        );
+        this.yamlMapper = YAML_MAPPER.copy()
+            .registerModule(pluginModule.sourceDefinitions());
     }
 
     public <T> T convertValue(Object value, Class<T> type) {
@@ -47,28 +55,6 @@ public final class JacksonMapper {
 
     public Map<String, Object> toMap(Object value) {
         return jsonMapper.convertValue(value, MAP_TYPE);
-    }
-
-    public <T> T readTree(JsonNode value, Class<T> type) {
-        try {
-            return jsonMapper.readerFor(type).readValue(value);
-        } catch (IOException exception) {
-            throw new IllegalArgumentException(exception.getMessage(), exception);
-        }
-    }
-
-    public <T> T readTree(
-        JsonNode value,
-        Class<T> type,
-        Map<?, ?> attributes
-    ) {
-        try {
-            ObjectReader reader = jsonMapper.readerFor(type)
-                .withAttributes(attributes);
-            return reader.readValue(value);
-        } catch (IOException exception) {
-            throw new IllegalArgumentException(exception.getMessage(), exception);
-        }
     }
 
     public String writeYaml(Object value) {
@@ -80,14 +66,6 @@ public final class JacksonMapper {
                 exception
             );
         }
-    }
-
-    ObjectNode toObjectNode(Object value) {
-        return jsonMapper.valueToTree(value);
-    }
-
-    JsonNode toTree(Object value) {
-        return jsonMapper.valueToTree(value);
     }
 
     ObjectMapper jsonMapper() {
@@ -102,6 +80,10 @@ public final class JacksonMapper {
         ObjectMapper mapper,
         PluginModule pluginModule
     ) {
+        return configure(mapper).registerModule(pluginModule);
+    }
+
+    private static ObjectMapper configure(ObjectMapper mapper) {
         return mapper
             .setDefaultPropertyInclusion(JsonInclude.Include.NON_NULL)
             .setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.NONE)
@@ -118,7 +100,6 @@ public final class JacksonMapper {
                 JsonAutoDetect.Visibility.PUBLIC_ONLY
             )
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
-            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
-            .registerModule(pluginModule);
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     }
 }

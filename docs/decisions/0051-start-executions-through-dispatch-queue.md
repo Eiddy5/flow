@@ -4,6 +4,10 @@
 
 Accepted
 
+两阶段 pending Execution 启动条款由
+[ADR 0068](0068-remove-two-phase-execution-start.md) 取代；Execution 现在只通过一次
+`create` Command 完整受理。
+
 本 ADR 中 `Create.dsl()` 的兼容描述由 ADR 0066 修订；Create 现在不再声明事务方法，
 普通发布直接使用 Queue 自有事务。
 
@@ -54,21 +58,17 @@ Command 时还会继续复制同样的入口。
   `flow-executor-command`。
 - `ExecutionService.create(session, flowId)` 在调用线程读取最新、未删除 Flow，生成稳定
   Execution id，并用精确 `flowId + flowReversion` 构造 `Create` 后同步 `emit`。
-- 普通 `Create.dsl()` 返回 `null`，Queue 使用自有事务提交。Service 返回的
-  `CREATED` Execution 是受理回执和身份快照；返回不表示 Execution 已持久化、开始运行
-  或到达稳定状态。
-- `Create` payload 保存 execution id、company id、精确 Flow 引用、actor id/name、
-  请求 Session 元数据，以及 ADR 0052 定义的已规范化 Flow inputs；不保存 DSL。
-  消费者通过宿主 `SessionFactory` 创建具体
-  Session/User 类型，并优先重新加载用户资料。
+- Queue 使用自有事务提交普通 `Create`。Service 返回 `Create` Queue 受理回执；返回
+  不表示 Execution 已持久化、开始运行或到达稳定状态。
+- `Create` payload 保存 execution id、company id、actor id、精确 Flow 引用以及
+  ADR 0052 定义的已规范化 Flow inputs；不保存 DSL。消费者通过宿主
+  `SessionFactory` 恢复最小必要 Session/User。
 - `ExecutionService.resume(session, executionId, taskRunId, outputs)` 先按租户读取当前
   Execution，按其精确 Flow Reversion 校验并规范化 Resume inputs，再投递 `Resume`。
   `Resume` payload 只保存 company id、actor id、execution id、taskRun id 和规范化
   outputs，不复制 Flow、Session 设备信息或 DSL。
-- `createPending` 仍同步物化但不启动 Execution。`continueExecution` 锁定一个
-  `CREATED` Execution、按精确 Reversion 确认 Flow inputs 后，由 Service 在同一
-  `CommandExecutor` 事务完成 `Create`
-  投递；这条可信外部业务链路继续保持 Execution 行与 Queue 行原子提交。
+- `ExecutionService` 不提供 pending 创建、继续启动或公开的历史版本启动入口；
+  `CREATED` 只作为 Consumer 原子物化并交接首个 `ExecutorEvent` 时的内部初始状态。
 
 ### 路由与处理
 
@@ -118,7 +118,7 @@ sequenceDiagram
     S->>S: resolve exact Flow + create identity
     S->>Q: emit(Create)
     Q-->>S: accepted
-    S-->>S: return CREATED receipt
+    S-->>S: return Create receipt
     Q->>D: deliver ExecutionCommand
     D->>H: handle(command)
     H->>H: restore Session + route Create
@@ -157,8 +157,8 @@ sequenceDiagram
   Command 复制 Publisher/Consumer/Core Run Command 链路。
 - `ECMD-004`：启动和 Resume 返回只代表 Queue 受理；Execution 的持久化与运行是异步
   结果。
-- `ECMD-005`：可信 pending continuation 的 Execution 行和 `Create` Queue 行必须在同一
- 事务提交或回滚。
+- `ECMD-005`：公开启动只能投递一次完整 `Create`；不能持久化与启动 Command/Event
+  脱离的 pending Execution。
 - `ECMD-006`：重复 `Create` 不能改变 Execution 的 Flow 引用，也不能重复推进终态或
   暂停态 Execution。
 - `ECMD-007`：Queue payload 不保存 DSLContext；Session 恢复必须保留 tenant 与 actor

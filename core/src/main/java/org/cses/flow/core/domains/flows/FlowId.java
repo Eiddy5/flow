@@ -1,38 +1,41 @@
 package org.cses.flow.core.domains.flows;
 
-import org.cses.flow.core.domains.Identity;
-import org.cses.flow.core.utils.AssertUtil;
-import org.paas.common.util.StringUtil;
+import org.cses.flow.core.utils.RequiredUtil;
 
 /**
- * Exact business reference to one deployed Flow version.
+ * Business selector for one logical Flow or one exact deployed version.
  */
 public record FlowId(
-        String key,
-        Long version
-) implements Identity {
-
-    public static FlowId from(
-            String key,
-            Long version
-    ) {
-        return new FlowId(key, version);
-    }
+    String companyId,
+    String key,
+    Long version
+) {
 
     public FlowId {
-        AssertUtil.assertNotBlank(key, "flowId.key is required");
-        AssertUtil.assertNotNull(version, "flowId.version is required");
+        companyId = RequiredUtil.required(
+            companyId,
+            "FlowId companyId must not be blank"
+        ).trim();
+        key = RequiredUtil.required(
+            key,
+            "FlowId key must not be blank"
+        ).trim();
+        if (version != null && version < 1) {
+            throw new IllegalArgumentException(
+                "FlowId version must be positive"
+            );
+        }
     }
 
-
-    @Override
-    public void valid() {
-        AssertUtil.assertNotBlank(key, "flowId.key is required");
-        AssertUtil.assertNotNull(version, "flowId.version is required");
+    public static FlowId from(String companyId, String key) {
+        return new FlowId(companyId, key, null);
     }
 
-    @Override
-    public String identifier() {
-        return StringUtil.join(key, version);
+    public static FlowId from(
+        String companyId,
+        String key,
+        long version
+    ) {
+        return new FlowId(companyId, key, version);
     }
 }

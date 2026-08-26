@@ -1,5 +1,10 @@
 package org.cses.flow.executor.commands;
 
+import org.cses.flow.core.domains.ActorRef;
+import org.cses.flow.core.utils.SessionUtil;
+import org.paas.session.Session;
+import org.paas.session.User;
+
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -7,12 +12,14 @@ import java.util.Objects;
 /**
  * Requests creation and first drive of one exact Flow version.
  *
- * <p>The command deliberately has no Execution id. The consumer resolves the
- * Flow by {@code companyId + flowKey + flowVersion}, creates the Execution,
- * and publishes the first internal Executor event in the same transaction.</p>
+ * <p>The consumer resolves the exact Flow version, idempotently materializes
+ * the stable Execution identity, and publishes the first internal Executor
+ * event in the same transaction.</p>
  */
 public record Create(
         String companyId,
+        String executionId,
+        String actorId,
         String flowKey,
         long flowVersion,
         Map<String, Object> inputs
@@ -20,6 +27,8 @@ public record Create(
 
     public Create {
         companyId = requireText(companyId, "Company id");
+        executionId = requireText(executionId, "Execution id");
+        actorId = requireText(actorId, "Actor id");
         flowKey = requireText(flowKey, "Flow key");
         if (flowVersion < 1) {
             throw new IllegalArgumentException(
@@ -30,13 +39,36 @@ public record Create(
     }
 
     public static Create from(
+            Session<? extends User> session,
+            String executionId,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs
+    ) {
+        Objects.requireNonNull(session, "Session must not be null");
+        ActorRef actor = SessionUtil.user(session);
+        return from(
+                session.getCompanyId(),
+                executionId,
+                actor.id(),
+                flowKey,
+                flowVersion,
+                inputs
+        );
+    }
+
+    public static Create from(
             String companyId,
+            String executionId,
+            String actorId,
             String flowKey,
             long flowVersion,
             Map<String, ?> inputs
     ) {
         return new Create(
                 companyId,
+                executionId,
+                actorId,
                 flowKey,
                 flowVersion,
                 immutableInputs(inputs)
@@ -50,12 +82,14 @@ public record Create(
 
     @Override
     public String key() {
-        return companyId + ":" + flowKey + ":" + flowVersion;
+        return executionId;
     }
 
     @Override
     public void validate() {
         requireText(companyId, "Company id");
+        requireText(executionId, "Execution id");
+        requireText(actorId, "Actor id");
         requireText(flowKey, "Flow key");
         if (flowVersion < 1) {
             throw new IllegalArgumentException(
@@ -72,6 +106,14 @@ public record Create(
      */
     public String getCompanyId() {
         return companyId;
+    }
+
+    public String getExecutionId() {
+        return executionId;
+    }
+
+    public String getActorId() {
+        return actorId;
     }
 
     public String getFlowKey() {

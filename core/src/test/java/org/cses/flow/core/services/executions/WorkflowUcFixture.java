@@ -5,11 +5,12 @@ import io.micronaut.inject.qualifiers.Qualifiers;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.services.flows.FlowService;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
+import org.cses.flow.executor.commands.Create;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
@@ -150,8 +151,14 @@ public final class WorkflowUcFixture implements AutoCloseable {
     }
 
     public Flow deploy(String yaml) {
-        FlowDraft draft = flowService.saveDraft(session, yaml);
-        return flowService.deploy(session, draft.flowKey());
+        Flow draft = flowService.save(
+            session,
+            PublishFlowCommand.from(yaml)
+        );
+        return flowService.save(
+            session,
+            PublishFlowCommand.from(draft.key(), false)
+        );
     }
 
     /**
@@ -172,8 +179,7 @@ public final class WorkflowUcFixture implements AutoCloseable {
 
     /**
      * Publishes a Create command and waits only until its consumer has
-     * materialized the Execution. The Execution id is intentionally assigned
-     * by that consumer, not by the caller.
+     * materialized the accepted stable Execution identity.
      */
     public Execution startCreated(Flow flow) {
         return startCreated(session, flow);
@@ -183,36 +189,30 @@ public final class WorkflowUcFixture implements AutoCloseable {
         Session<User> startSession,
         Flow flow
     ) {
-        Set<String> existingIds = executionService.executions(startSession)
-            .stream()
-            .map(Execution::id)
-            .collect(java.util.stream.Collectors.toSet());
-        executionService.create(startSession, flow.key());
-        return awaitCreated(startSession, flow, existingIds);
+        Create accepted = executionService.create(startSession, flow.key());
+        return awaitCreated(
+            startSession,
+            accepted.getExecutionId()
+        );
     }
 
     private Execution awaitCreated(
         Session<User> querySession,
-        Flow flow,
-        Set<String> existingIds
+        String executionId
     ) {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
         while (System.nanoTime() < deadline) {
-            Optional<Execution> created = executionService.executions(
-                    querySession
-                ).stream()
-                .filter(execution -> !existingIds.contains(execution.id()))
-                .filter(execution -> execution.flowKey().equals(flow.key()))
-                .filter(execution -> execution.flowVersion() == flow.reversion())
-                .findFirst();
+            Optional<Execution> created = executionService.execution(
+                querySession,
+                executionId
+            );
             if (created.isPresent()) {
                 return created.orElseThrow();
             }
             awaitChangeSignal(deadline);
         }
         throw new IllegalStateException(
-            "Create command did not materialize an Execution for Flow: "
-                + flow.key() + "@" + flow.reversion()
+            "Create command did not materialize Execution: " + executionId
         );
     }
 
@@ -474,6 +474,9 @@ public final class WorkflowUcFixture implements AutoCloseable {
                   key: create-confirmation
                   type: org.cses.flow.extensions.tasks.AutomaticTask
                 resume:
+                  - key: decision
+                    type: STRING
+                outputs:
                   - key: decision
                     type: STRING
             %s

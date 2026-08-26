@@ -9,6 +9,9 @@ Accepted
 关于 Flow 业务身份、Draft key 和版本发布规则的其他内容继续有效。更早 ADR 中的
 `flowId + flowReversion` 表述保留为历史记录，不再作为当前持久化绑定模型。
 
+本 ADR 中“不建立 `FlowId` 包装值”的 Repository 表达已由 ADR 0070 修订：`FlowId`
+现在仅作为 Flow Repository 的业务选择器，不能作为 Flow 实体身份或跨对象引用。
+
 ## 背景
 
 Flow 的 `id` 在每次发布时重新生成，只能标识 `flows` 表中的一条技术行；稳定的
@@ -19,11 +22,11 @@ Execution 如果保存技术 `flow_id`，就会把 Flow 业务版本概念割裂
 
 ## 决策
 
-- 当前唯一的 Flow 版本引用为 `(company_id, flow_key, flow_version)`。代码中的
-  `FlowId` 值对象、Task 快照归属、Execution 归属和运行时恢复都必须使用这三个值；
-  `FlowId` 的名称不表示数据库技术行 id。
-- `flows.id` 保留为技术行 ID，供 `flows` 自身的行主键以及 Repository 内部定位同一
-  行的更新/删除使用；它不得出现在 Task 或 Execution 的 Flow 绑定中。
+- 当前唯一的 Flow 版本引用仍为 `(company_id, flow_key, flow_version)`。Task 快照归属、
+  Execution 归属和运行时恢复都由这三个真实字段定义；Repository 查询可使用 ADR 0070
+  规定的 `FlowId` 选择器。
+- `flows.id` 是 Flow 自身稳定的字符串实体 ID，进入 Flow Domain 和 HTTP View，但
+  不得进入 Task 或 Execution 的 Flow 版本绑定，也不能替代 key/version 查询。
 - `flow_tasks` 使用 `flow_key`、`flow_version` 替代 `flow_id`、`flow_reversion`，
   主键为 `(company_id, flow_key, flow_version, id)`，Task key 唯一约束为
   `(company_id, flow_key, flow_version, key)`。

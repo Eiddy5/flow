@@ -11,13 +11,12 @@ DataPilot 只承接后续新增、语义简单的单表 CRUD 与只读投影。
 
 继续保留 JOOQ 的链路包括：
 
-- `FlowDraft` 的独立聚合保存、读取与删除；
-- `Flow Reversion` 及其 `flow_tasks` 定义树；
+- `Flow` 草稿、正式版本及其 `flow_tasks` 定义树；
 - `Execution` 与 `task_runs` 的原子保存、恢复和乐观锁；
 - `queues` 的投递、竞争认领、事务内删除和崩溃恢复。
 
 这些链路包含聚合一致性、多表写入、显式租户条件、版本冲突或队列行锁语义。
-它们的现有入口分别见 [FlowDraftPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/postgres/FlowDraftPostgresRepository.java)、[FlowPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/postgres/FlowPostgresRepository.java)、[ExecutionPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/executions/postgres/ExecutionPostgresRepository.java) 与 [PostgresQueueStore.java](../../core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java)。
+它们的现有入口分别见 [FlowPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/postgres/FlowPostgresRepository.java)、[ExecutionPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/executions/postgres/ExecutionPostgresRepository.java) 与 [PostgresQueueStore.java](../../core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java)。
 对应基线表见 [flows.sql](../../gen/sql/flow/tables/flows.sql)、[flow_tasks.sql](../../gen/sql/flow/tables/flow_tasks.sql)、[executions.sql](../../gen/sql/flow/tables/executions.sql)、[task_runs.sql](../../gen/sql/flow/tables/task_runs.sql) 与 [queues.sql](../../gen/sql/flow/tables/queues.sql)。
 
 DataPilot 的候选场景必须同时满足：新能力、单表、简单 CRUD 或读投影、无队列认领、无复杂聚合保存。
@@ -74,7 +73,7 @@ DataPilot 通用 `DataSourceController` 会把所有此类 Bean 注入 `/dataPil
 3. 阻止 Flow service 默认进入通用 `/dataPilot` `serviceMap`，验证空 `serviceKey` 不会选中 Flow。
 4. 为适配入口统一要求真实 session 与同一 `flowDsl`，禁止隐式新建独立事务。
 5. 只选择一个新增简单单表作为试点，建立 DataPilot collection、Repository adapter 与 Core DTO 映射。
-6. 保持 FlowDraft、Flow Reversion、Execution、TaskRun 与 Queue 的 JOOQ 实现和表结构不变。
+6. 保持 Flow、Execution、TaskRun 与 Queue 的 JOOQ 实现和表结构不变。
 7. 试点验证通过后，再逐项评估其他新单表 CRUD/读投影，不做批量机械迁移。
 
 ## 必测清单

@@ -13,6 +13,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
 import org.paas.json.JsonObject;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import java.util.List;
 import java.util.Map;
@@ -32,6 +34,18 @@ class FlowMaterializationTest {
     private static final Context CONTEXT = builtInContext(
         new TestNotificationTask()
     );
+
+    private static Session<User> session() {
+        User user = new User();
+        user.setId(ACTOR.id());
+        user.setName(ACTOR.name().orElse(null));
+        user.setCompanyId("company-1");
+
+        Session<User> session = new Session<>();
+        session.setCompanyId("company-1");
+        session.setUser(user);
+        return session;
+    }
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -77,7 +91,7 @@ class FlowMaterializationTest {
         );
 
         assertEquals(1L, flow.reversion());
-        assertTrue(!flow.isDeleted());
+        assertTrue(!flow.deleted());
         assertEquals(
             List.of(input("request", "请求", true)),
             flow.inputs()
@@ -451,9 +465,9 @@ class FlowMaterializationTest {
             definition("first", "prepare"),
             null
         );
-        first.delete(ACTOR, DEPLOYED_AT + 10_000L);
+        first.delete(session(), first.createdAt() + 10_000L);
 
-        assertTrue(first.isDeleted());
+        assertTrue(first.deleted());
         assertEquals(1L, first.reversion());
         assertThrows(
             WorkflowException.class,

@@ -1,5 +1,6 @@
 package org.cses.flow.core.plugins;
 
+import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.extensions.flow.Pause;
@@ -11,6 +12,7 @@ import java.util.Map;
 
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -45,8 +47,38 @@ class PluginDeserializerTest {
         assertEquals("pause-id", pause.id());
         assertEquals("prepare", pause.pause().key());
         Input<?> input = pause.resume().getFirst();
-        assertEquals("decision", input.key());
+        assertEquals("decision", input.getKey());
         assertEquals("Decision", input.getDisplayName());
+    }
+
+    @Test
+    void appliesSourceIdentityRulesThroughTheRegisteredYamlModule() {
+        TaskPluginTestSupport.Context context = builtInContext();
+
+        Flow flow = context.yamlParser().parse(
+            """
+            key: source-context
+            tasks:
+              - key: task
+                type: %s
+            """.formatted(AutomaticTask.class.getCanonicalName()),
+            Flow.class
+        );
+
+        assertFalse(flow.tasks().getFirst().id().isBlank());
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> context.yamlParser().parse(
+                """
+                key: source-context
+                tasks:
+                  - id: caller-owned-id
+                    key: task
+                    type: %s
+                """.formatted(AutomaticTask.class.getCanonicalName()),
+                Flow.class
+            )
+        );
     }
 
     @Test
@@ -86,7 +118,7 @@ class PluginDeserializerTest {
         );
 
         input.validateDefinition();
-        assertEquals("retry-count", input.key());
+        assertEquals("retry-count", input.getKey());
         assertEquals("retry-count", input.getDisplayName());
         assertEquals(3, input.getDefaultValue());
     }

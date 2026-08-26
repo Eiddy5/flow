@@ -9,9 +9,9 @@ import org.cses.flow.queues.event.DispatchEvent;
  *
  * <p>Commands are durable data payloads and do not carry a caller
  * transaction. The command Queue therefore uses its own transaction for
- * ordinary command publishing. Command-specific identity is kept on the
- * concrete command because Create is intentionally only a Flow start
- * request, while Resume and Cancel target an existing Execution.</p>
+ * ordinary command publishing. Command-specific identity is kept on each
+ * concrete command: Create materializes its preassigned stable Execution id,
+ * while Resume and Cancel target an already materialized Execution.</p>
  */
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,

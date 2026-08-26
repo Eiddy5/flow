@@ -7,7 +7,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.FlowDraft;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
@@ -83,40 +83,41 @@ class Uc08DynamicLogFlowTest {
         LogCapture logs = LogCapture.start();
         try (logs;
              WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            FlowDraft draft = fixture.flowService().saveDraft(
+            Flow draft = fixture.flowService().save(
                 fixture.session(),
-                """
+                PublishFlowCommand.from("""
                 key: uc08-s2-flow
                 description: invalid log expression
                 tasks:
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
                     message: "结果：{{ outputs.result"
-                """
+                """)
             );
             long executionsBefore = fixture.executionCount();
 
             assertThrows(
                 IllegalArgumentException.class,
-                () -> fixture.flowService().deploy(
+                () -> fixture.flowService().save(
                     fixture.session(),
-                    draft.flowKey()
+                    PublishFlowCommand.from(draft.key(), false)
                 )
             );
 
             assertTrue(fixture.flowService().latestFlow(
                 fixture.session(),
-                draft.flowKey()
+                draft.key()
             ).isEmpty());
             assertEquals(executionsBefore, fixture.executionCount());
             assertTrue(logs.messages().isEmpty());
-            fixture.flowService().deleteDraft(
+            fixture.flowService().delete(
                 fixture.session(),
-                draft.flowKey()
+                draft.key(),
+                true
             );
             assertTrue(fixture.flowService().draft(
                 fixture.session(),
-                draft.flowKey()
+                draft.key()
             ).isEmpty());
         }
     }
@@ -176,7 +177,7 @@ class Uc08DynamicLogFlowTest {
         public RunResult run(RunContext context) {
             return switch (key()) {
                 case "prepare" -> RunResult.success(Map.of(
-                    outputs().getFirst().key(),
+                    outputs().getFirst().getKey(),
                     "ready"
                 ));
                 default -> RunResult.success(Map.of());

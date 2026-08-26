@@ -51,13 +51,16 @@
   修订。
 - [`ADR 0066`](0066-remove-transaction-state-from-queue-events.md)：从 Event Interface
   删除 `dsl()`，普通发布固定使用 Queue 自有事务，调用方事务只通过
-  `emitInTransaction(...)` 显式传入；ExecutionCommand 与 ExecutorEvent 均为纯 payload。
+  `emitInTransaction(...)` 显式传入；ExecutionCommand 与 ExecutorEvent 均为纯 payload，
+  ExecutorEvent 仅保留租户、Execution 身份和生命周期类型，Flow 由 Execution 反查。
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：
   `ExecutionService` 构造并投递 Executor `Create` Command，普通启动返回 Queue 受理
   回执；外部命令由 `ExecutionCommandEventHandler` 校验并原子投递内部
-  `ExecutorEvent`，由 `ExecutorEventHandler` 负责一个周期的提交。可信 pending
-  continuation 仍原子提交 Execution 与 Queue Command；Consumer 异常保留消息重试，
-  确定性 Task 异常落为 `FAILED`。
+  `ExecutorEvent`，由 `ExecutorEventHandler` 负责一个周期的提交；Consumer 异常保留
+  消息重试，确定性 Task 异常落为 `FAILED`。两阶段启动条款由 ADR 0068 取代。
+- [`ADR 0068`](0068-remove-two-phase-execution-start.md)：删除 `createPending` 与
+  `continueExecution`，Execution 只通过一次完整 `create` 受理；Service 在发布前确认
+  当前 Flow、inputs、稳定 id 和发起人，Consumer 原子物化 Execution 并交接首个事件。
 - [`ADR 0059`](0059-route-executor-state-handoffs-through-executor-event-queue.md)：
   保持泛型 `ExecutorEventHandler<T>` 契约不变；外部 Command 只进入
   `ExecutionCommandEventHandler`，内部状态交接统一使用 `ExecutorEvent` Queue，
@@ -80,20 +83,26 @@
 
 ## Flow 定义与生命周期
 
+- [`ADR 0069`](0069-unify-flow-draft-and-deployed-definition.md)：草稿与正式版本统一为
+  携带 `source` 的 `Flow` 聚合类型，以默认 `draft=true` 的布尔属性区分状态，
+  共用一个 Repository 和 `flows` 表；它取代独立 FlowDraft 聚合与表的方案。
 - [`ADR 0004`](0004-use-yaml-and-exact-flow-reference.md)：YAML 定义和精确 Flow
   引用。
 - [`ADR 0008`](0008-separate-flow-source-from-deployed-flow.md)：分离 FlowDraft 与
-  已部署 Flow。
+  已部署 Flow；已由 ADR 0069 取代。
 - [`ADR 0013`](0013-centralize-yaml-parsing-and-flow-materialization.md)：集中 YAML
   解析和 Flow 物化。
 - [`ADR 0014`](0014-complete-flow-source-and-reversion-migration.md)：完成来源与
-  Reversion 迁移。
+  Reversion 迁移；独立来源聚合条款已由 ADR 0069 取代。
 - [`ADR 0018`](0018-use-flow-lifecycle-flags.md)：定义生命周期事实。
-- [`ADR 0022`](0022-model-flow-draft-as-separate-aggregate.md)：FlowDraft 独立聚合
-  以及当前 `deleted` 模型；它修订 ADR 0018 中的草稿表达。
+- [`ADR 0022`](0022-model-flow-draft-as-separate-aggregate.md)：FlowDraft 独立聚合；
+  已由 ADR 0069 取代，独立 `deleted` 字段此前由 ADR 0067 取代。
 - [`ADR 0063`](0063-bind-flow-snapshots-by-key-and-version.md)：Flow 快照、Task 快照
   和 Execution 统一按 `company_id + flow_key + flow_version` 绑定；`flows.id` 仅
   保留为技术行 ID，Task 不拥有独立版本。
+- [`ADR 0070`](0070-use-flow-id-for-flow-repository-selectors.md)：Flow Repository 统一
+  使用 `FlowId(companyId, key, version)` 业务选择器；有 version 时精确查询正式版本，
+  无 version 时查询最新正式版本或唯一草稿，实体仍使用字符串 `Flow.id`。
 
 ## Data、Input 与 Output
 
@@ -159,9 +168,10 @@
 
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：Execution 启动采用
   持久化 Queue 的异步受理边界与至少一次消费协议。
-- [`ADR 0050`](0050-bind-durable-external-business-to-exact-executions.md)：外部业务先
-  持久承诺稳定 Execution 身份和精确 Flow Reversion，再由可靠 Operation 幂等物化；
-  普通新启动仍只绑定 Current Flow Reversion。
+- [`ADR 0050`](0050-bind-durable-external-business-to-exact-executions.md)：已被 ADR 0068
+  取代的外部业务两阶段精确物化方案。
+- [`ADR 0068`](0068-remove-two-phase-execution-start.md)：Execution 不再暴露 pending
+  物化与继续启动，普通启动只选择当前可用 Flow 并通过单个 `Create` Command 完成。
 - [`ADR 0002`](0002-workflow-core-runtime-class-design.md)：Execution 聚合、TaskRun
   真实历史和 Executor 状态机。
 - [`ADR 0006`](0006-single-execution-branch-routing-and-join.md)：单 Execution 分支、
@@ -227,9 +237,11 @@
 
 ## 通用实现决策
 
-- [`ADR 0041`](0041-extract-shared-domain-capabilities.md)：在 `core/domains` 根目录
-  提供 Identified、Auditable、Deletable、Lockable 与 ActorRef；能力接口同时覆盖
-  行为、查询和失败校验，Session 只作为可信调用上下文传入。
+- [`ADR 0041`](0041-extract-shared-domain-capabilities.md)：已被 ADR 0067 取代的
+  Identified、Auditable、Deletable 组合能力方案。
+- [`ADR 0067`](0067-inherit-business-identity-and-audit-state.md)：`BaseDomain` 使用
+  稳定字符串实体 ID，`Audited` 统一 Audit Status、更新和删除审计；业务 key、
+  version 和跨对象引用按真实字段表达，不建立 `*Id` 包装领域。
 - [`ADR 0049`](0049-remove-demo-and-memory-runtime-modes.md)：移除 Demo 与 Memory
   运行时模式，统一使用标准具名 `flow` PostgreSQL 数据源；它取代 ADR 0035。页面
   删除条款已由 [`ADR 0053`](0053-restore-flow-management-surface.md) 修订。
@@ -249,10 +261,12 @@
   Java record；事务资源、运行上下文、领域对象和持久化 Entry 保持各自的对象
   边界。
 - [`ADR 0062`](0062-use-company-flow-key-and-version-as-business-identity.md)：Flow
-  业务身份统一为 `companyId + key + version`；Draft 使用创建时提供的 key，技术 `id`
-  只标识数据库行，Executor Create 只携带 Flow 三字段和 inputs。
+  业务身份统一为 `companyId + key + version`；Draft 使用创建时提供的 key，
+  `flows.id` 是 Flow Domain 的稳定字符串实体 ID，但不参与 Execution 的版本绑定；
+  Executor Create 的当前字段由 ADR 0068 修订。
 - [`ADR 0064`](0064-enforce-flow-draft-identity-by-company-key.md)：FlowDraft 按
-  `(company_id, flow_key)` 全量唯一，业务读写统一使用 company + key，软删除不释放 key。
+  `(company_id, flow_key)` 全量唯一；独立聚合与表已由 ADR 0069 取代，草稿 key
+  唯一规则保留在统一 `flows` 表中。
 
 通用实施方法仍以 [`project-development.md`](../standards/project-development.md)
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。

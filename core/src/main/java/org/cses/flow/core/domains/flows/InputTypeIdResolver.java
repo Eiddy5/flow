@@ -14,62 +14,47 @@ import org.cses.flow.core.domains.flows.inputs.LongInput;
 import org.cses.flow.core.domains.flows.inputs.ShortInput;
 import org.cses.flow.core.domains.flows.inputs.StringInput;
 
-import java.io.IOException;
-import java.util.Map;
-
 /**
- * Resolves Input subtype names with the same trim-and-case rules as
- * {@link DataType#parse(String)}.
+ * Resolves Input subtype names through DataType, accepting trimmed and
+ * case-insensitive YAML values while retaining Jackson polymorphism.
  */
-public final class InputTypeIdResolver extends TypeIdResolverBase {
-
-    private static final Map<DataType, Class<? extends Input<?>>> INPUT_TYPES =
-        Map.of(
-            DataType.STRING, StringInput.class,
-            DataType.BOOLEAN, BooleanInput.class,
-            DataType.BYTE, ByteInput.class,
-            DataType.SHORT, ShortInput.class,
-            DataType.INTEGER, IntegerInput.class,
-            DataType.LONG, LongInput.class,
-            DataType.FLOAT, FloatInput.class,
-            DataType.DOUBLE, DoubleInput.class,
-            DataType.CHARACTER, CharacterInput.class
-        );
-
-    @Override
-    public String idFromValue(Object value) {
-        return idFromValueAndType(value, value.getClass());
-    }
-
-    @Override
-    public String idFromValueAndType(Object value, Class<?> suggestedType) {
-        if (value instanceof Input<?> input) {
-            return input.type().name();
-        }
-        return suggestedType.getSimpleName();
-    }
+public class InputTypeIdResolver extends TypeIdResolverBase {
 
     @Override
     public JavaType typeFromId(
         DatabindContext context,
         String id
-    ) throws IOException {
+    ) {
         DataType type = DataType.parse(id);
-        Class<? extends Input<?>> concreteType = INPUT_TYPES.get(type);
-        return context.constructType(concreteType);
+        return context.constructType(inputType(type));
     }
 
     @Override
-    public String getDescForKnownTypeIds() {
-        return INPUT_TYPES.keySet().stream()
-            .map(DataType::name)
-            .sorted()
-            .toList()
-            .toString();
+    public String idFromValue(Object value) {
+        return ((Input<?>) value).getType().name();
+    }
+
+    @Override
+    public String idFromValueAndType(Object value, Class<?> suggestedType) {
+        return idFromValue(value);
     }
 
     @Override
     public JsonTypeInfo.Id getMechanism() {
-        return JsonTypeInfo.Id.CUSTOM;
+        return JsonTypeInfo.Id.NAME;
+    }
+
+    private static Class<? extends Input<?>> inputType(DataType type) {
+        return switch (type) {
+            case STRING -> StringInput.class;
+            case BOOLEAN -> BooleanInput.class;
+            case BYTE -> ByteInput.class;
+            case SHORT -> ShortInput.class;
+            case INTEGER -> IntegerInput.class;
+            case LONG -> LongInput.class;
+            case FLOAT -> FloatInput.class;
+            case DOUBLE -> DoubleInput.class;
+            case CHARACTER -> CharacterInput.class;
+        };
     }
 }

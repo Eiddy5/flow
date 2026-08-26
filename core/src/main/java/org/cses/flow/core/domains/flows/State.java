@@ -1,5 +1,7 @@
 package org.cses.flow.core.domains.flows;
 
+import org.cses.flow.core.utils.TimeUtil;
+
 import org.cses.flow.core.exceptions.WorkflowException;
 
 import java.util.ArrayList;
@@ -13,7 +15,6 @@ public final class State {
 
     public enum Type {
         CREATED,
-
         RUNNING,
         PAUSED,
         RESTARTED,
@@ -223,7 +224,7 @@ public final class State {
         }
 
         private static History now(Type state) {
-            return new History(state, System.currentTimeMillis());
+            return new History(state, TimeUtil.now());
         }
 
         /**

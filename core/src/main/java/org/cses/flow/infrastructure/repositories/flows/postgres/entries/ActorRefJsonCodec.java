@@ -6,12 +6,12 @@ import org.paas.json.JsonObject;
 
 import java.util.Map;
 
-final class ActorRefJsonCodec {
+public final class ActorRefJsonCodec {
 
     private ActorRefJsonCodec() {
     }
 
-    static JSONB encode(ActorRef actor) {
+    public static JSONB encode(ActorRef actor) {
         if (actor == null) {
             return null;
         }
@@ -20,7 +20,7 @@ final class ActorRefJsonCodec {
         return JSONB.valueOf(value.toJson());
     }
 
-    static ActorRef decode(JSONB value, String field) {
+    public static ActorRef decode(JSONB value, String field) {
         if (value == null) {
             throw new IllegalStateException(
                 "Persisted " + field + " must not be null"
@@ -50,7 +50,7 @@ final class ActorRefJsonCodec {
         return ActorRef.rehydrate(actorId, (String) name);
     }
 
-    static ActorRef decodeOptional(JSONB value, String field) {
+    public static ActorRef decodeOptional(JSONB value, String field) {
         return value == null ? null : decode(value, field);
     }
 }

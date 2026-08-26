@@ -2,11 +2,11 @@
 
 ## 状态
 
-Superseded by
-[`ADR 0022`](0022-model-flow-draft-as-separate-aggregate.md)。
+Superseded by [`ADR 0022`](0022-model-flow-draft-as-separate-aggregate.md)
+and [`ADR 0067`](0067-inherit-business-identity-and-audit-state.md)。
 
-本 ADR 关于删除状态枚举、保留显式 `deleted` 和删除后不回退的结论继续有效；
-领域与 PostgreSQL 显式保存固定 `draft` 布尔值的结论已被 ADR 0022 取代。
+固定 `draft` 布尔值已由 ADR 0022 取代；独立 `deleted` 布尔值以及“Flow 定义域不得
+建立通用 status”的结论已由 ADR 0067 取代。删除后不回退到旧版本的业务语义继续有效。
 
 ## 背景
 

@@ -139,8 +139,6 @@ public final class ExecutionPostgresRepository
             ExecutionEntry entry = ExecutionEntry.fromDomain(
                 execution,
                 actor,
-                actor,
-                now,
                 now
             );
             dsl.insertInto(EXECUTIONS)
@@ -158,9 +156,7 @@ public final class ExecutionPostgresRepository
             }
             ExecutionEntry entry = ExecutionEntry.fromDomain(
                 execution,
-                stored.creator,
                 actor,
-                stored.createdAt,
                 now
             );
             int updated = dsl.update(EXECUTIONS)

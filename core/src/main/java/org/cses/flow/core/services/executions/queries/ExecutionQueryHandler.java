@@ -1,4 +1,4 @@
-package org.cses.flow.core.queries.executions;
+package org.cses.flow.core.services.executions.queries;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;

@@ -4,6 +4,7 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.flows.FlowService;
+import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.log.Log;
@@ -43,35 +44,35 @@ class FlowCoreWiringTest {
                 "wiring-company"
             );
 
-            var draft = service.saveDraft(
+            var draft = service.save(
                 session,
-                """
+                PublishFlowCommand.from("""
                 key: wiring-flow
                 description: Micronaut 装配验证
                 tasks:
                   - key: start
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                """
+                """)
             );
-            service.deploy(
+            service.save(
                 session,
-                draft.flowKey()
+                PublishFlowCommand.from(draft.key(), false)
             );
 
             var current = service.flow(
                 session,
-                draft.flowKey(),
+                draft.key(),
                 1L
             ).orElseThrow();
-            assertTrue(!current.isDeleted());
+            assertTrue(!current.deleted());
             assertEquals(1L, current.reversion());
             assertEquals(
                 AutomaticTask.class.getName(),
                 current.tasks().getFirst().getType()
             );
             assertEquals(
-                draft.raw(),
-                service.draft(session, draft.flowKey()).orElseThrow().raw()
+                draft.source(),
+                service.draft(session, draft.key()).orElseThrow().source()
             );
         }
     }

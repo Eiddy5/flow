@@ -2,8 +2,9 @@ package org.cses.flow.controller.flow;
 
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
-import org.paas.session.Session;
+import org.cses.flow.controller.flow.FlowModels.FlowView;
 import org.junit.jupiter.api.Test;
+import org.paas.session.Session;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -40,8 +41,12 @@ class FlowControllerTest {
             controllerRoot.resolve("flow/FlowModels.java")
         );
 
-        assertTrue(controller.contains("@Body SaveFlowDraftCommand command"));
+        assertTrue(controller.contains("@Body PublishFlowCommand command"));
         assertTrue(controller.contains("@Body Map<String, Object> body"));
+        assertTrue(controller.contains(
+            "@QueryValue(defaultValue = \"true\") Boolean draft"
+        ));
+        assertFalse(controller.contains("/flows/{flowKey}/draft"));
         assertFalse(controller.contains("SaveDraftRequest"));
         assertFalse(controller.contains("StartRequest"));
         assertFalse(controller.contains("ResumeRequest"));
@@ -68,6 +73,10 @@ class FlowControllerTest {
             Files.readString(resourceRoot.resolve("flow.js"))
                 .contains("/api/demo")
         );
+        assertTrue(
+            Files.readString(resourceRoot.resolve("flow.js"))
+                .contains("state.selectedExecutionId = receipt.executionId;")
+        );
     }
 
     @Test
@@ -83,6 +92,14 @@ class FlowControllerTest {
         assertEquals(
             "/flows/{flowKey}/reversions/{reversion}/definition",
             endpoint.getAnnotation(Get.class).value()
+        );
+    }
+
+    @Test
+    void exposesTheFlowStringEntityId() throws NoSuchMethodException {
+        assertEquals(
+            String.class,
+            FlowView.class.getMethod("getId").getReturnType()
         );
     }
 }

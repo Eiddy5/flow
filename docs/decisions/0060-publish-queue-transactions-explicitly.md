@@ -14,7 +14,8 @@ Accepted（保留 Event.dsl 兼容入口的条款由 ADR 0066 修订；显式事
 
 普通 Executor Command 在消费端才开始事务：`ExecutionCommandEventHandler` 收到
 Command 后开启 JOOQ 事务，物化 Execution 并投递内部 `ExecutorEvent`。只有可信的
-pending continuation 需要在生产端把 Execution 行和 Queue 行原子提交。
+调用方已有事务需要通过发布 Interface 显式复用该事务；Execution 启动本身不再存在
+pending continuation 特例。
 
 ## 备选方案
 
@@ -43,8 +44,6 @@ pending continuation 需要在生产端把 Execution 行和 Queue 行原子提�
   `Cancel` 实现不再持有或设置事务；普通命令发布使用 Queue 自有事务。
 - 显式事务发布只在调用方已经持有事务时使用，Queue 不负责提交或回滚该事务。
 - Queue Entry 只序列化 Event 业务数据，不序列化调用方事务。
-- `ExecutionService.continueExecution` 使用显式事务发布，保留 pending Execution 与
-  Create Queue 消息的原子提交语义。
 - `ExecutionCommandEventHandler` 和 `ExecutorEventHandler` 在已有处理事务内通过
   `ExecutorEvent.inTransaction(dsl)` 发布内部 Event，保持聚合写入和下一周期消息的
   原子性。
@@ -55,8 +54,8 @@ pending continuation 需要在生产端把 Execution 行和 Queue 行原子提�
 
 事务属于一次发布操作的基础设施元数据，不属于 Command 的业务事实。对 Command 使用
 `ExecutionCommand.dsl()` 的空默认值，可以保持命令对象纯粹、支持 record；同时保留
-Event 现有的同步事务语义，并通过 Queue 显式入口覆盖纯 payload 与 pending continuation
-的原子提交需求。
+Event 现有的同步事务语义，并通过 Queue 显式入口覆盖纯 payload 在调用方已有事务中的
+原子提交需求。
 
 ## 后果
 

@@ -1,7 +1,6 @@
 package org.cses.flow.core.domains;
 
-import org.paas.session.Session;
-import org.paas.session.User;
+import org.cses.flow.core.utils.RequiredUtil;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -22,26 +21,6 @@ public final class ActorRef {
 
     public static ActorRef create(String id, String name) {
         return new ActorRef(id, name);
-    }
-
-    public static ActorRef from(Session<? extends User> session) {
-        Objects.requireNonNull(session, "Session");
-        User user = session.getUser();
-        String actorId = firstText(
-            user == null ? null : user.getId(),
-            session.getUserId(),
-            session.getId()
-        );
-        if (actorId == null) {
-            throw new IllegalArgumentException(
-                "Session actor id must not be blank"
-            );
-        }
-        String actorName = firstText(
-            user == null ? null : user.getName(),
-            user == null ? null : session.getUserName()
-        );
-        return new ActorRef(actorId, actorName);
     }
 
     public static ActorRef rehydrate(String id, String name) {
@@ -73,20 +52,9 @@ public final class ActorRef {
         return Objects.hash(id, name);
     }
 
-    private static String firstText(String... values) {
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.trim();
-            }
-        }
-        return null;
-    }
-
     private static String requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " must not be blank");
-        }
-        return value.trim();
+        return RequiredUtil.required(value, field + " must not be blank")
+            .trim();
     }
 
     private static String normalizeOptionalText(String value) {
