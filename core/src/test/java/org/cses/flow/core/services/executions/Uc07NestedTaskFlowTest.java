@@ -25,7 +25,6 @@ class Uc07NestedTaskFlowTest {
                     )
                 )
             );
-            long lockVersion = draft.lockVersion();
             int executionCount = fixture.executionService().executions(
                 fixture.session()
             ).size();
@@ -46,7 +45,6 @@ class Uc07NestedTaskFlowTest {
                 draft.key()
             ).orElseThrow();
 
-            assertEquals(lockVersion, reloaded.lockVersion());
             assertEquals(draft.source(), reloaded.source());
             assertTrue(fixture.flowService().flow(
                 fixture.session(),

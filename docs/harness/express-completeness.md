@@ -45,7 +45,7 @@
   --tests org.cses.flow.extensions.flow.LoopUntilTest \
   --tests org.cses.flow.core.domains.flows.FlowMaterializationTest \
   --tests org.cses.flow.core.plugins.PluginSchemaGeneratorTest \
-  --tests org.cses.flow.infrastructure.repositories.flows.postgres.entries.TaskDataPersistenceMappingTest
+  --tests org.cses.flow.infrastructure.repositories.flows.entries.TaskDataPersistenceMappingTest
 ```
 
 完成实现后仍需运行 `./gradlew test`，避免表达式类型迁移破坏 Executor、Worker 或

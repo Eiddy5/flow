@@ -7,7 +7,6 @@ package org.flow.gen.flow.pojos;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serializable;
-import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 
 import org.flow.gen.flow.Tables;
@@ -32,15 +31,10 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
     public String parentId;
     public Integer iteration;
     public JSONB state;
-    public OffsetDateTime startAt;
-    public OffsetDateTime endAt;
     public JsonObject inputs;
     public JsonObject outputs;
     public String error;
     public Integer order;
-    public OffsetDateTime createdAt;
-    public OffsetDateTime updatedAt;
-    public OffsetDateTime deletedAt;
 
     public TaskRunsObject() {}
 
@@ -51,15 +45,10 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         this.parentId = value.parentId;
         this.iteration = value.iteration;
         this.state = value.state;
-        this.startAt = value.startAt;
-        this.endAt = value.endAt;
         this.inputs = value.inputs;
         this.outputs = value.outputs;
         this.error = value.error;
         this.order = value.order;
-        this.createdAt = value.createdAt;
-        this.updatedAt = value.updatedAt;
-        this.deletedAt = value.deletedAt;
     }
 
     public TaskRunsObject(
@@ -69,15 +58,10 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         String parentId,
         Integer iteration,
         JSONB state,
-        OffsetDateTime startAt,
-        OffsetDateTime endAt,
         JsonObject inputs,
         JsonObject outputs,
         String error,
-        Integer order,
-        OffsetDateTime createdAt,
-        OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt
+        Integer order
     ) {
         this.id = id;
         this.executionId = executionId;
@@ -85,15 +69,10 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         this.parentId = parentId;
         this.iteration = iteration;
         this.state = state;
-        this.startAt = startAt;
-        this.endAt = endAt;
         this.inputs = inputs;
         this.outputs = outputs;
         this.error = error;
         this.order = order;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.deletedAt = deletedAt;
     }
 
     /**
@@ -181,34 +160,6 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.task_runs.start_at</code>.
-     */
-    public OffsetDateTime getStartAt() {
-        return this.startAt;
-    }
-
-    /**
-     * Setter for <code>public.task_runs.start_at</code>.
-     */
-    public void setStartAt(OffsetDateTime startAt) {
-        this.startAt = startAt;
-    }
-
-    /**
-     * Getter for <code>public.task_runs.end_at</code>.
-     */
-    public OffsetDateTime getEndAt() {
-        return this.endAt;
-    }
-
-    /**
-     * Setter for <code>public.task_runs.end_at</code>.
-     */
-    public void setEndAt(OffsetDateTime endAt) {
-        this.endAt = endAt;
-    }
-
-    /**
      * Getter for <code>public.task_runs.inputs</code>.
      */
     public JsonObject getInputs() {
@@ -264,48 +215,6 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         this.order = order;
     }
 
-    /**
-     * Getter for <code>public.task_runs.created_at</code>.
-     */
-    public OffsetDateTime getCreatedAt() {
-        return this.createdAt;
-    }
-
-    /**
-     * Setter for <code>public.task_runs.created_at</code>.
-     */
-    public void setCreatedAt(OffsetDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    /**
-     * Getter for <code>public.task_runs.updated_at</code>.
-     */
-    public OffsetDateTime getUpdatedAt() {
-        return this.updatedAt;
-    }
-
-    /**
-     * Setter for <code>public.task_runs.updated_at</code>.
-     */
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
-    /**
-     * Getter for <code>public.task_runs.deleted_at</code>.
-     */
-    public OffsetDateTime getDeletedAt() {
-        return this.deletedAt;
-    }
-
-    /**
-     * Setter for <code>public.task_runs.deleted_at</code>.
-     */
-    public void setDeletedAt(OffsetDateTime deletedAt) {
-        this.deletedAt = deletedAt;
-    }
-
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -351,18 +260,6 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         }
         else if (!this.state.equals(other.state))
             return false;
-        if (this.startAt == null) {
-            if (other.startAt != null)
-                return false;
-        }
-        else if (!this.startAt.equals(other.startAt))
-            return false;
-        if (this.endAt == null) {
-            if (other.endAt != null)
-                return false;
-        }
-        else if (!this.endAt.equals(other.endAt))
-            return false;
         if (this.inputs == null) {
             if (other.inputs != null)
                 return false;
@@ -387,24 +284,6 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         }
         else if (!this.order.equals(other.order))
             return false;
-        if (this.createdAt == null) {
-            if (other.createdAt != null)
-                return false;
-        }
-        else if (!this.createdAt.equals(other.createdAt))
-            return false;
-        if (this.updatedAt == null) {
-            if (other.updatedAt != null)
-                return false;
-        }
-        else if (!this.updatedAt.equals(other.updatedAt))
-            return false;
-        if (this.deletedAt == null) {
-            if (other.deletedAt != null)
-                return false;
-        }
-        else if (!this.deletedAt.equals(other.deletedAt))
-            return false;
         return true;
     }
 
@@ -418,15 +297,10 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.parentId == null) ? 0 : this.parentId.hashCode());
         result = prime * result + ((this.iteration == null) ? 0 : this.iteration.hashCode());
         result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
-        result = prime * result + ((this.startAt == null) ? 0 : this.startAt.hashCode());
-        result = prime * result + ((this.endAt == null) ? 0 : this.endAt.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
         result = prime * result + ((this.error == null) ? 0 : this.error.hashCode());
         result = prime * result + ((this.order == null) ? 0 : this.order.hashCode());
-        result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
-        result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
-        result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
         return result;
     }
 
@@ -457,15 +331,10 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         map.put("parent_id", parentId);
         map.put("iteration", iteration);
         map.put("state", state);
-        map.put("start_at", startAt);
-        map.put("end_at", endAt);
         map.put("inputs", inputs == null ? null : inputs.toString());
         map.put("outputs", outputs == null ? null : outputs.toString());
         map.put("error", error);
         map.put("order", order);
-        map.put("created_at", createdAt);
-        map.put("updated_at", updatedAt);
-        map.put("deleted_at", deletedAt);
         return map;
     }
 

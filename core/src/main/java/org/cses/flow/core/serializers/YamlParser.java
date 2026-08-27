@@ -2,55 +2,51 @@ package org.cses.flow.core.serializers;
 
 import com.fasterxml.jackson.core.JsonLocation;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import jakarta.inject.Singleton;
+import com.fasterxml.jackson.databind.ObjectReader;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
- * Parses a YAML mapping without applying any business interpretation.
+ * Stateless utility for parsing YAML into caller-requested Java objects
+ * without applying business interpretation.
  */
-@Singleton
 public class YamlParser {
 
-    private ObjectMapper objectMapper;
+    private static final TypeReference<Map<String, Object>> MAP_TYPE_REFERENCE =
+        new TypeReference<>() {
+        };
 
-    public YamlParser(JacksonMapper jacksonMapper) {
-        this.objectMapper = jacksonMapper.yamlMapper();
+    private YamlParser() {
     }
 
-    public Map<String, Object> parse(String source) {
+    /**
+     * Parses a YAML mapping into a deeply read-only generic object graph.
+     */
+    public static Map<String, Object> parse(String source) {
+        ObjectMapper objectMapper = JacksonMapper.yamlMapper();
         return immutableStringMap(
-            objectMapper.convertValue(parseTree(source), Object.class),
+            read(source, objectMapper.readerFor(MAP_TYPE_REFERENCE)),
             "YAML root"
         );
     }
 
-    public <T> T parse(String source, Class<T> type) {
-        requireSource(source);
-        try {
-            return objectMapper
-                .readerFor(type)
-                .readValue(source);
-        } catch (JsonProcessingException exception) {
-            throw parseFailure(exception);
-        }
+    public static <T> T parse(String source, Class<T> type) {
+        Objects.requireNonNull(type, "target type");
+        ObjectMapper objectMapper = JacksonMapper.yamlMapper();
+        return read(source, objectMapper.readerFor(type));
     }
 
-    public ObjectNode parseTree(String source) {
+    private static <T> T read(String source, ObjectReader reader) {
         requireSource(source);
         try {
-            JsonNode parsed = objectMapper.readTree(source);
-            if (!(parsed instanceof ObjectNode object)) {
-                throw new IllegalArgumentException("YAML root must be a map");
-            }
-            return object;
+            return reader.readValue(source);
         } catch (JsonProcessingException exception) {
             throw parseFailure(exception);
         }

@@ -103,6 +103,9 @@
 - [`ADR 0070`](0070-use-flow-id-for-flow-repository-selectors.md)：Flow Repository 统一
   使用 `FlowId(companyId, key, version)` 业务选择器；有 version 时精确查询正式版本，
   无 version 时查询最新正式版本或唯一草稿，实体仍使用字符串 `Flow.id`。
+- [`ADR 0071`](0071-remove-lockable-from-domain.md)：暂不在 Flow 领域建模
+  `Lockable`、领域 `lockVersion` 或聚合乐观锁；数据库兼容列暂保留，Queue 消费行锁
+  仍属于 Queue Adapter 的基础设施机制。
 
 ## Data、Input 与 Output
 
@@ -226,6 +229,9 @@
   物理文件布局由 ADR 0048 修订。
 - [`ADR 0034`](0034-persist-state-as-one-jsonb-value.md)：使用单一 `state jsonb`
   保存完整 State，通过表达式索引查询 current，不保留冗余 status。
+- [`ADR 0072`](0072-domain-owns-audit-and-postgres-adapter-does-not-generate-it.md)：
+  审计事实由领域对象产生，PostgreSQL Adapter 只持久化领域字段，不读取 Session 或
+  生成当前时间、操作者和独立审计列；Queue 排序时间仍属于基础设施。
 - [`ADR 0009`](0009-persist-current-core-in-postgresql.md)：Core 聚合 PostgreSQL
   持久化。
 - [`ADR 0026`](0026-use-task-class-as-in-project-plugin.md)：`flow_tasks.type`、

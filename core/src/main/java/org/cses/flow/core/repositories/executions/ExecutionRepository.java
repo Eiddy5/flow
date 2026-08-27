@@ -17,15 +17,6 @@ public interface ExecutionRepository {
         String executionId
     );
 
-    /**
-     * Loads and locks one Execution aggregate for mutation.
-     */
-    Optional<Execution> lockById(
-        DSLContext dsl,
-        String companyId,
-        String executionId
-    );
-
     List<Execution> findAll(DSLContext dsl, String companyId);
 
     long count(DSLContext dsl, String companyId);

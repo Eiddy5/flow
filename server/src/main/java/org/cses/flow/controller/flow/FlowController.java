@@ -45,19 +45,16 @@ public class FlowController {
 
     private FlowService flowService;
     private ExecutionService executionService;
-    private YamlParser yamlParser;
     private FlowDefinitionSerializer flowDefinitionSerializer;
 
     @Inject
     public FlowController(
             FlowService flowService,
             ExecutionService executionService,
-            YamlParser yamlParser,
             FlowDefinitionSerializer flowDefinitionSerializer
     ) {
         this.flowService = flowService;
         this.executionService = executionService;
-        this.yamlParser = yamlParser;
         this.flowDefinitionSerializer = flowDefinitionSerializer;
     }
 
@@ -102,7 +99,7 @@ public class FlowController {
             @Body PublishFlowCommand command
     ) {
         return new DefinitionView(
-                yamlParser.parse(requireCommand(command).source())
+                YamlParser.parse(requireCommand(command).source())
         );
     }
 
@@ -125,7 +122,6 @@ public class FlowController {
                 session,
                 PublishFlowCommand.from(
                         flowKey,
-                        checked.expectedLockVersion(),
                         checked.source(),
                         checked.draft()
                 )

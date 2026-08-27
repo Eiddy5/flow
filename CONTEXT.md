@@ -107,7 +107,7 @@ _Avoid_: BranchTask, runnable orchestration, structural WorkerTask
 每次只服务一个 RunnableTask 调用的临时不可变上下文，提供当前 Session、命令
 DSLContext、本次实际 inputs，以及 `executionId()`、`taskRunId()` 和可选的
 `parentTaskRunId()` 调用期技术身份。`taskRunId` 标识当前 RunnableTask 的
-TaskRun，`parentTaskRunId` 只标识其直接父 TaskRun；两者都不暴露 TaskRun 聚合
+TaskRun，`parentId` 只标识其直接父 TaskRun；两者都不暴露 TaskRun 聚合
 或状态修改能力。variables 中的 Execution 也只是本次调用的运行时引用，
 Task 不得通过它推进状态。Run Context 不持久化，也不跨 Task 复用。
 _Avoid_: WorkerContext, Persisted Execution Context, TaskRun Snapshot, State Mutation Handle
@@ -223,7 +223,7 @@ _Avoid_: storage-specific public Queue name, Transactional Outbox, Retry Queue, 
 Execution 实际执行某个 Task 时产生的真实实例。Executor Scheduling Cycle 可以
 先在 nexts 中构造 CREATED TaskRun，但只有 `onNexts` 经 Execution 聚合接受后
 才成为真实历史。它通过 `taskId` 关联确定 Flow Reversion 中的 Task，通过
-`parentTaskRunId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。循环体
+`parentId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。循环体
 直接子 TaskRun 还以可空的正整数 iteration 表达所属轮次；同一 Task 可以因循环
 产生多个 TaskRun，其列表顺序表达真实运行顺序。
 _Avoid_: Activity, Task instance

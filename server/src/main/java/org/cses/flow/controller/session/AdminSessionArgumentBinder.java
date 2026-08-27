@@ -24,13 +24,13 @@ import java.util.Optional;
  * not wired yet. It must be disabled before exposing the server to real
  * users.</p>
  */
-//@Singleton
-//@Requires(
-//    property = "flow.management.admin-session.enabled",
-//    value = "true",
-//    defaultValue = "true"
-//)
-//@Replaces(SessionArgumentBinder.class)
+@Singleton
+@Requires(
+    property = "flow.management.admin-session.enabled",
+    value = "true",
+    defaultValue = "true"
+)
+@Replaces(SessionArgumentBinder.class)
 public final class AdminSessionArgumentBinder
     implements AnnotatedRequestArgumentBinder<
         UserSession,

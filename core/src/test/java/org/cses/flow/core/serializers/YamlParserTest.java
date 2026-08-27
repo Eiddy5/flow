@@ -16,13 +16,10 @@ import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 
 class YamlParserTest {
 
-    private YamlParser parser = new YamlParser(
-        builtInContext().jacksonMapper()
-    );
-
     @Test
     void parsesADeeplyImmutableMappingWithoutBusinessKnowledge() {
-        Map<String, Object> parsed = parser.parse(
+        builtInContext();
+        Map<String, Object> parsed = YamlParser.parse(
             """
             key: release-flow
             tasks:
@@ -48,7 +45,8 @@ class YamlParserTest {
 
     @Test
     void bindsFlowDirectlyThroughJacksonWithoutFlowSpecificParser() {
-        Flow flow = parser.parse(
+        builtInContext();
+        Flow flow = YamlParser.parse(
             """
             key: release-flow
             tasks:
@@ -68,9 +66,10 @@ class YamlParserTest {
 
     @Test
     void rejectsDuplicateKeysAndNonMappingDocuments() {
+        builtInContext();
         assertThrows(
             IllegalArgumentException.class,
-            () -> parser.parse(
+            () -> YamlParser.parse(
                 """
                 key: first
                 key: second
@@ -79,11 +78,11 @@ class YamlParserTest {
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> parser.parse("- first\n- second")
+            () -> YamlParser.parse("- first\n- second")
         );
         assertThrows(
             IllegalArgumentException.class,
-            () -> parser.parse(
+            () -> YamlParser.parse(
                 """
                 key: first
                 ---
@@ -97,7 +96,7 @@ class YamlParserTest {
     void reportsTheYamlLocationAndOriginalParserFailure() {
         IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class,
-            () -> parser.parse(
+            () -> YamlParser.parse(
                 """
                 key: first
                 key: second

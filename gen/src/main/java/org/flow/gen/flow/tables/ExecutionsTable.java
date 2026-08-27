@@ -4,7 +4,6 @@
 package org.flow.gen.flow.tables;
 
 
-import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -13,7 +12,6 @@ import org.flow.gen.flow.Indexes;
 import org.flow.gen.flow.Keys;
 import org.flow.gen.flow.Public;
 import org.flow.gen.flow.records.ExecutionsRecord;
-import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Index;
@@ -30,7 +28,6 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
-import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -92,29 +89,9 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, JSONB> CREATOR = createField(DSL.name("creator"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
-     * The column <code>public.executions.updater</code>.
-     */
-    public final TableField<ExecutionsRecord, JSONB> UPDATER = createField(DSL.name("updater"), SQLDataType.JSONB.nullable(false), this, "");
-
-    /**
-     * The column <code>public.executions.deleter</code>.
-     */
-    public final TableField<ExecutionsRecord, JSONB> DELETER = createField(DSL.name("deleter"), SQLDataType.JSONB, this, "");
-
-    /**
      * The column <code>public.executions.created_at</code>.
      */
-    public final TableField<ExecutionsRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
-
-    /**
-     * The column <code>public.executions.updated_at</code>.
-     */
-    public final TableField<ExecutionsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
-
-    /**
-     * The column <code>public.executions.deleted_at</code>.
-     */
-    public final TableField<ExecutionsRecord, OffsetDateTime> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
+    public final TableField<ExecutionsRecord, Long> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
      * The column <code>public.executions.inputs</code>.
@@ -168,20 +145,6 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     @Override
     public List<UniqueKey<ExecutionsRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.UQ_EXECUTIONS_FLOW, Keys.UQ_EXECUTIONS_ID);
-    }
-
-    @Override
-    public List<Check<ExecutionsRecord>> getChecks() {
-        return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_executions_creator"), "(((jsonb_typeof(creator) = 'object'::text) AND (creator ? 'id'::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_deleted"), "((((deleter IS NULL) AND (deleted_at IS NULL)) OR ((deleter IS NOT NULL) AND (deleted_at IS NOT NULL))))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_deleter"), "(((deleter IS NULL) OR ((jsonb_typeof(deleter) = 'object'::text) AND (deleter ? 'id'::text))))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_inputs"), "((jsonb_typeof(inputs) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_lock_version"), "((lock_version >= 0))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_state"), "(((jsonb_typeof(state) = 'object'::text) AND (state ? 'current'::text) AND (state ? 'history'::text) AND (jsonb_typeof((state -> 'current'::text)) = 'string'::text) AND ((state ->> 'current'::text) = ANY (ARRAY['CREATED'::text, 'RUNNING'::text, 'PAUSED'::text, 'RESTARTED'::text, 'SUCCESS'::text, 'WARNING'::text, 'FAILED'::text, 'KILLING'::text, 'KILLED'::text])) AND (jsonb_typeof((state -> 'history'::text)) = 'array'::text) AND (jsonb_array_length((state -> 'history'::text)) > 0) AND ((((state -> 'history'::text) -> 0) ->> 'state'::text) = 'CREATED'::text) AND ((((state -> 'history'::text) -> '-1'::integer) ->> 'state'::text) = (state ->> 'current'::text)) AND (jsonb_typeof((((state -> 'history'::text) -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof((((state -> 'history'::text) -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array((state -> 'history'::text), '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length((state -> 'history'::text))) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?((((((((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"PAUSED\") && @.\"state\" != \"RESTARTED\") && @.\"state\" != \"SUCCESS\") && @.\"state\" != \"WARNING\") && @.\"state\" != \"FAILED\") && @.\"state\" != \"KILLING\") && @.\"state\" != \"KILLED\")'::jsonpath)) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_updater"), "(((jsonb_typeof(updater) = 'object'::text) AND (updater ? 'id'::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_executions_version"), "((flow_version > 0))", true)
-        );
     }
 
     @Override

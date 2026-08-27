@@ -272,7 +272,7 @@ class NestedPauseResumeIntegrationTest {
             assertEquals(State.Type.PAUSED, securityApprove.state().current());
             assertEquals(
                 securityCheck.id(),
-                securityApprove.parentTaskRunId().orElseThrow()
+                securityApprove.parentId().orElseThrow()
             );
             assertEquals(
                 State.Type.PAUSED,
@@ -626,15 +626,15 @@ class NestedPauseResumeIntegrationTest {
 
             assertEquals(
                 prepare.id(),
-                backendReview.parentTaskRunId().orElseThrow()
+                backendReview.parentId().orElseThrow()
             );
             assertNotEquals(
                 backendBuild.id(),
-                backendReview.parentTaskRunId().orElseThrow()
+                backendReview.parentId().orElseThrow()
             );
             assertEquals(
                 frontendBuild.id(),
-                frontendReview.parentTaskRunId().orElseThrow()
+                frontendReview.parentId().orElseThrow()
             );
 
             fixture.restartServer();
@@ -824,7 +824,7 @@ class NestedPauseResumeIntegrationTest {
         Map<String, String> topology = new LinkedHashMap<>();
         execution.taskRuns().forEach(taskRun -> {
             String key = taskById(tasks, taskRun.taskId()).key();
-            String parentKey = taskRun.parentTaskRunId()
+            String parentKey = taskRun.parentId()
                 .map(parentRunId -> taskById(
                     tasks,
                     runsByTaskId.values().stream()
@@ -901,7 +901,6 @@ class NestedPauseResumeIntegrationTest {
         Execution actual
     ) {
         assertEquals(expected.state().current(), actual.state().current());
-        assertEquals(expected.lockVersion(), actual.lockVersion());
         assertEquals(expected.taskRuns().size(), actual.taskRuns().size());
         for (int index = 0; index < expected.taskRuns().size(); index++) {
             TaskRun expectedRun = expected.taskRuns().get(index);

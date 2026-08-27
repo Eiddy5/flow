@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.executions.postgres.entries;
+package org.cses.flow.infrastructure.repositories.executions.entries;
 
 import org.cses.flow.core.domains.flows.State;
 import org.jooq.JSONB;

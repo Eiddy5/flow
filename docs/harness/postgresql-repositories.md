@@ -20,11 +20,16 @@ erDiagram
         varchar company_id PK
         varchar id PK "领域 Entity ID"
         varchar key UK "稳定 Flow key"
-        bigint reversion "草稿为空"
+        bigint version "草稿为空"
         boolean draft "默认 true"
         text source "原始 YAML"
         varchar status
-        bigint lock_version
+        jsonb creator
+        jsonb updater
+        jsonb deleter
+        bigint created_at
+        bigint updated_at
+        bigint deleted_at
         jsonb inputs
         jsonb outputs
     }
@@ -48,6 +53,8 @@ erDiagram
         bigint flow_version
         jsonb state
         bigint lock_version
+        jsonb creator
+        bigint created_at
     }
 
     TASK_RUNS {
@@ -63,8 +70,8 @@ erDiagram
 
 图中的关系都是逻辑关系。数据库不创建外键，由复合身份、唯一约束、应用校验和
 同事务写入保证。`flows` 同时保存草稿与正式版本：草稿满足
-`draft = true AND reversion IS NULL`，正式版本满足
-`draft = false AND reversion > 0`；两者都保存原始 YAML `source`。`flows.id` 是 Flow
+`draft = true AND version IS NULL`，正式版本满足
+`draft = false AND version > 0`；两者都保存原始 YAML `source`。`flows.id` 是 Flow
 Domain 的稳定 Entity ID；Flow、Task 快照和 Execution 的版本绑定统一使用
 `(company_id, flow_key, flow_version)`。Flow/Task 的
 Input、Output 和 Plugin properties 没有独立身份或
@@ -108,9 +115,13 @@ psql "$FLOW_POSTGRES_PSQL_URL" \
 缺失或为空时会回滚。迁移完成后会删除 `flow_drafts`，该操作不可逆，执行前应完成
 备份并确认所有正式版本的来源数据已准备好。
 
-PostgreSQL 的所有时间点列使用 `timestamptz`，JOOQ 生成模型对应
-`OffsetDateTime`；项目自有 Java 类型仍使用 Epoch 毫秒 `long/Long`，只在 Entry
-或 Repository 边界双向转换。
+领域时间在 Java 中使用 Epoch 毫秒 `long/Long`，当前 Flow 基线中的领域时间列使用
+`bigint`，由 Entry 直接映射；Queue 的 `created_at` 是数据库消息顺序字段，可由
+Queue Adapter 使用数据库默认值生成。领域审计列不由数据库默认值或生成列补齐。
+
+Flow 的 creator/updater/deleter、状态和时间由 Flow 领域产生并由 `FlowEntry` 写入；
+Execution 只保留 `BaseDomain` 的 creator/created_at；TaskRun 不保存独立审计或
+start/end 时间列，状态历史完整保存在 `state` JSONB 中。
 
 测试只使用随机 companyId，不会清空或删除数据库中的其他租户数据。
 UC 测试默认保留本场景创建的 Flow、Execution 和 TaskRun 数据，便于在本地

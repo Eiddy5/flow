@@ -2,6 +2,7 @@ package org.cses.flow.core.domains.tasks;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import org.cses.flow.core.domains.Identified;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -20,7 +21,7 @@ import java.util.stream.Stream;
  */
 @SuperBuilder
 @NoArgsConstructor
-public abstract class Task implements TaskInterface {
+public abstract class Task implements TaskInterface, Identified {
 
     @NotBlank
     String id;

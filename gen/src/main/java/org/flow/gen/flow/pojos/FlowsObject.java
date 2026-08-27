@@ -7,7 +7,6 @@ package org.flow.gen.flow.pojos;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serializable;
-import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 
 import org.flow.gen.flow.Tables;
@@ -30,20 +29,16 @@ public class FlowsObject extends JooqPojo implements Serializable {
     public String id;
     public String key;
     public String companyId;
-    public Long reversion;
+    public Long version;
     public Boolean draft;
     public String source;
-    public Long lockVersion;
     public String description;
     public JSONB creator;
-    public String creatorId;
     public JSONB updater;
-    public String updaterId;
     public JSONB deleter;
-    public String deleterId;
-    public OffsetDateTime createdAt;
-    public OffsetDateTime updatedAt;
-    public OffsetDateTime deletedAt;
+    public Long createdAt;
+    public Long updatedAt;
+    public Long deletedAt;
     public JsonObjects inputs;
     public JsonObjects outputs;
     public JsonObject variables;
@@ -55,17 +50,13 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.id = value.id;
         this.key = value.key;
         this.companyId = value.companyId;
-        this.reversion = value.reversion;
+        this.version = value.version;
         this.draft = value.draft;
         this.source = value.source;
-        this.lockVersion = value.lockVersion;
         this.description = value.description;
         this.creator = value.creator;
-        this.creatorId = value.creatorId;
         this.updater = value.updater;
-        this.updaterId = value.updaterId;
         this.deleter = value.deleter;
-        this.deleterId = value.deleterId;
         this.createdAt = value.createdAt;
         this.updatedAt = value.updatedAt;
         this.deletedAt = value.deletedAt;
@@ -79,20 +70,16 @@ public class FlowsObject extends JooqPojo implements Serializable {
         String id,
         String key,
         String companyId,
-        Long reversion,
+        Long version,
         Boolean draft,
         String source,
-        Long lockVersion,
         String description,
         JSONB creator,
-        String creatorId,
         JSONB updater,
-        String updaterId,
         JSONB deleter,
-        String deleterId,
-        OffsetDateTime createdAt,
-        OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt,
+        Long createdAt,
+        Long updatedAt,
+        Long deletedAt,
         JsonObjects inputs,
         JsonObjects outputs,
         JsonObject variables,
@@ -101,17 +88,13 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.id = id;
         this.key = key;
         this.companyId = companyId;
-        this.reversion = reversion;
+        this.version = version;
         this.draft = draft;
         this.source = source;
-        this.lockVersion = lockVersion;
         this.description = description;
         this.creator = creator;
-        this.creatorId = creatorId;
         this.updater = updater;
-        this.updaterId = updaterId;
         this.deleter = deleter;
-        this.deleterId = deleterId;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
         this.deletedAt = deletedAt;
@@ -164,17 +147,17 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flows.reversion</code>.
+     * Getter for <code>public.flows.version</code>.
      */
-    public Long getReversion() {
-        return this.reversion;
+    public Long getVersion() {
+        return this.version;
     }
 
     /**
-     * Setter for <code>public.flows.reversion</code>.
+     * Setter for <code>public.flows.version</code>.
      */
-    public void setReversion(Long reversion) {
-        this.reversion = reversion;
+    public void setVersion(Long version) {
+        this.version = version;
     }
 
     /**
@@ -206,20 +189,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flows.lock_version</code>.
-     */
-    public Long getLockVersion() {
-        return this.lockVersion;
-    }
-
-    /**
-     * Setter for <code>public.flows.lock_version</code>.
-     */
-    public void setLockVersion(Long lockVersion) {
-        this.lockVersion = lockVersion;
-    }
-
-    /**
      * Getter for <code>public.flows.description</code>.
      */
     public String getDescription() {
@@ -248,20 +217,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flows.creator_id</code>.
-     */
-    public String getCreatorId() {
-        return this.creatorId;
-    }
-
-    /**
-     * Setter for <code>public.flows.creator_id</code>.
-     */
-    public void setCreatorId(String creatorId) {
-        this.creatorId = creatorId;
-    }
-
-    /**
      * Getter for <code>public.flows.updater</code>.
      */
     public JSONB getUpdater() {
@@ -273,20 +228,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setUpdater(JSONB updater) {
         this.updater = updater;
-    }
-
-    /**
-     * Getter for <code>public.flows.updater_id</code>.
-     */
-    public String getUpdaterId() {
-        return this.updaterId;
-    }
-
-    /**
-     * Setter for <code>public.flows.updater_id</code>.
-     */
-    public void setUpdaterId(String updaterId) {
-        this.updaterId = updaterId;
     }
 
     /**
@@ -304,58 +245,44 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flows.deleter_id</code>.
-     */
-    public String getDeleterId() {
-        return this.deleterId;
-    }
-
-    /**
-     * Setter for <code>public.flows.deleter_id</code>.
-     */
-    public void setDeleterId(String deleterId) {
-        this.deleterId = deleterId;
-    }
-
-    /**
      * Getter for <code>public.flows.created_at</code>.
      */
-    public OffsetDateTime getCreatedAt() {
+    public Long getCreatedAt() {
         return this.createdAt;
     }
 
     /**
      * Setter for <code>public.flows.created_at</code>.
      */
-    public void setCreatedAt(OffsetDateTime createdAt) {
+    public void setCreatedAt(Long createdAt) {
         this.createdAt = createdAt;
     }
 
     /**
      * Getter for <code>public.flows.updated_at</code>.
      */
-    public OffsetDateTime getUpdatedAt() {
+    public Long getUpdatedAt() {
         return this.updatedAt;
     }
 
     /**
      * Setter for <code>public.flows.updated_at</code>.
      */
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
+    public void setUpdatedAt(Long updatedAt) {
         this.updatedAt = updatedAt;
     }
 
     /**
      * Getter for <code>public.flows.deleted_at</code>.
      */
-    public OffsetDateTime getDeletedAt() {
+    public Long getDeletedAt() {
         return this.deletedAt;
     }
 
     /**
      * Setter for <code>public.flows.deleted_at</code>.
      */
-    public void setDeletedAt(OffsetDateTime deletedAt) {
+    public void setDeletedAt(Long deletedAt) {
         this.deletedAt = deletedAt;
     }
 
@@ -442,11 +369,11 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.companyId.equals(other.companyId))
             return false;
-        if (this.reversion == null) {
-            if (other.reversion != null)
+        if (this.version == null) {
+            if (other.version != null)
                 return false;
         }
-        else if (!this.reversion.equals(other.reversion))
+        else if (!this.version.equals(other.version))
             return false;
         if (this.draft == null) {
             if (other.draft != null)
@@ -460,12 +387,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.source.equals(other.source))
             return false;
-        if (this.lockVersion == null) {
-            if (other.lockVersion != null)
-                return false;
-        }
-        else if (!this.lockVersion.equals(other.lockVersion))
-            return false;
         if (this.description == null) {
             if (other.description != null)
                 return false;
@@ -478,35 +399,17 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.creator.equals(other.creator))
             return false;
-        if (this.creatorId == null) {
-            if (other.creatorId != null)
-                return false;
-        }
-        else if (!this.creatorId.equals(other.creatorId))
-            return false;
         if (this.updater == null) {
             if (other.updater != null)
                 return false;
         }
         else if (!this.updater.equals(other.updater))
             return false;
-        if (this.updaterId == null) {
-            if (other.updaterId != null)
-                return false;
-        }
-        else if (!this.updaterId.equals(other.updaterId))
-            return false;
         if (this.deleter == null) {
             if (other.deleter != null)
                 return false;
         }
         else if (!this.deleter.equals(other.deleter))
-            return false;
-        if (this.deleterId == null) {
-            if (other.deleterId != null)
-                return false;
-        }
-        else if (!this.deleterId.equals(other.deleterId))
             return false;
         if (this.createdAt == null) {
             if (other.createdAt != null)
@@ -560,17 +463,13 @@ public class FlowsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.id == null) ? 0 : this.id.hashCode());
         result = prime * result + ((this.key == null) ? 0 : this.key.hashCode());
         result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
-        result = prime * result + ((this.reversion == null) ? 0 : this.reversion.hashCode());
+        result = prime * result + ((this.version == null) ? 0 : this.version.hashCode());
         result = prime * result + ((this.draft == null) ? 0 : this.draft.hashCode());
         result = prime * result + ((this.source == null) ? 0 : this.source.hashCode());
-        result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
         result = prime * result + ((this.description == null) ? 0 : this.description.hashCode());
         result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
-        result = prime * result + ((this.creatorId == null) ? 0 : this.creatorId.hashCode());
         result = prime * result + ((this.updater == null) ? 0 : this.updater.hashCode());
-        result = prime * result + ((this.updaterId == null) ? 0 : this.updaterId.hashCode());
         result = prime * result + ((this.deleter == null) ? 0 : this.deleter.hashCode());
-        result = prime * result + ((this.deleterId == null) ? 0 : this.deleterId.hashCode());
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
         result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
@@ -605,17 +504,13 @@ public class FlowsObject extends JooqPojo implements Serializable {
         map.put("id", id);
         map.put("key", key);
         map.put("company_id", companyId);
-        map.put("reversion", reversion);
+        map.put("version", version);
         map.put("draft", draft);
         map.put("source", source);
-        map.put("lock_version", lockVersion);
         map.put("description", description);
         map.put("creator", creator);
-        map.put("creator_id", creatorId);
         map.put("updater", updater);
-        map.put("updater_id", updaterId);
         map.put("deleter", deleter);
-        map.put("deleter_id", deleterId);
         map.put("created_at", createdAt);
         map.put("updated_at", updatedAt);
         map.put("deleted_at", deletedAt);

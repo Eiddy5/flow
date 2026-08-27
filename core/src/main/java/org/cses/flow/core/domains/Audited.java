@@ -1,5 +1,7 @@
 package org.cses.flow.core.domains;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.RequiredUtil;
 import org.cses.flow.core.utils.SessionUtil;
@@ -12,17 +14,14 @@ import java.util.Optional;
 /**
  * Tenant-scoped domain base that owns current Audit Status and audit facts.
  */
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class Audited extends BaseDomain {
 
     RecordState status;
     ActorRef updater;
-    long updatedAt;
+    Long updatedAt;
     ActorRef deleter;
     Long deletedAt;
-
-    protected Audited() {
-        super();
-    }
 
     protected Audited(
         String id,

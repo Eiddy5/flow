@@ -37,7 +37,7 @@ inputs，RunContext 对常用值提供类型化便捷方法。
 采用方案三：
 
 - `RunContext` 只保存不可变 `variables`，不再保存独立的 `executionId`、`taskRunId`、
-  `parentTaskRunId` 或 `inputs` 字段。
+  `parentId` 或 `inputs` 字段。
 - `$flow.execution` 是系统保留键，值必须是当前 `Execution`；`executionId()` 从该
   值返回 `Execution.id()`。
 - `$flow.taskRunId` 是系统保留键，值是当前调用的精确 TaskRun id；

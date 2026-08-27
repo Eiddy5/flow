@@ -166,7 +166,7 @@ final class ExecutorServiceTest {
         assertTrue(parentRun.state().is(State.Type.RUNNING));
         assertTrue(execution.taskRuns().subList(1, 3).stream()
             .allMatch(taskRun ->
-                taskRun.parentTaskRunId().orElseThrow().equals(parentRun.id())
+                taskRun.parentId().orElseThrow().equals(parentRun.id())
         ));
         assertTrue(execution.taskRuns().subList(1, 3).stream()
             .allMatch(taskRun ->
@@ -1240,8 +1240,7 @@ final class ExecutorServiceTest {
             1_785_312_000_000L,
             1_785_312_000_000L,
             null,
-            "key: invalid-capability",
-            0
+            "key: invalid-capability"
         );
     }
 

@@ -1,8 +1,9 @@
 package org.cses.flow.core.domains.executions;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.BaseDomain;
-import org.cses.flow.core.domains.Lockable;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.RequiredUtil;
@@ -15,17 +16,14 @@ import java.util.*;
 /**
  * Aggregate root for one complete Flow start instance.
  */
-public final class Execution extends BaseDomain
-        implements Lockable<Execution> {
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Execution extends BaseDomain {
 
-    private final String flowKey;
-    private final long flowVersion;
-    private final List<TaskRun> taskRuns;
-    private final boolean persisted;
-    private State state;
-    private long lockVersion;
-    private boolean modified;
-    private final Map<String, Object> inputs;
+    String flowKey;
+    Long flowVersion;
+    List<TaskRun> taskRuns;
+    State state;
+    Map<String, Object> inputs;
 
     private Execution(
             String id,
@@ -43,7 +41,6 @@ public final class Execution extends BaseDomain
         this.taskRuns = new ArrayList<>();
         this.inputs = immutableMap(inputs);
         this.state = State.created();
-        this.persisted = false;
     }
 
     private Execution(
@@ -55,10 +52,7 @@ public final class Execution extends BaseDomain
             long flowVersion,
             Map<String, ?> inputs,
             State state,
-            long lockVersion,
-            List<TaskRun> taskRuns,
-            boolean persisted,
-            boolean modified
+            List<TaskRun> taskRuns
     ) {
         super(id, companyId, creator, createdAt);
         this.flowKey = requireText(flowKey, "Flow key");
@@ -66,20 +60,12 @@ public final class Execution extends BaseDomain
             throw new IllegalArgumentException("Flow version must be positive");
         }
         this.flowVersion = flowVersion;
-        if (lockVersion < 0) {
-            throw new IllegalArgumentException(
-                    "Execution lock version must not be negative"
-            );
-        }
         this.inputs = immutableMap(inputs);
         this.state = RequiredUtil.required(state, "Execution state");
-        this.lockVersion = lockVersion;
         this.taskRuns = new ArrayList<>();
         if (taskRuns != null) {
             taskRuns.stream().map(TaskRun::copy).forEach(this.taskRuns::add);
         }
-        this.persisted = persisted;
-        this.modified = modified;
         validateRehydratedState();
     }
 
@@ -111,7 +97,6 @@ public final class Execution extends BaseDomain
             long flowVersion,
             Map<String, ?> inputs,
             State state,
-            long lockVersion,
             List<TaskRun> taskRuns
     ) {
         return new Execution(
@@ -123,10 +108,7 @@ public final class Execution extends BaseDomain
                 flowVersion,
                 inputs,
                 state,
-                lockVersion,
-                taskRuns,
-                true,
-                false
+                taskRuns
         );
     }
 
@@ -147,17 +129,6 @@ public final class Execution extends BaseDomain
 
     public State state() {
         return state;
-    }
-
-    @Override
-    public long lockVersion() {
-        return lockVersion;
-    }
-
-    @Override
-    public Execution lock() {
-        lockVersion++;
-        return this;
     }
 
     public List<TaskRun> taskRuns() {
@@ -186,7 +157,7 @@ public final class Execution extends BaseDomain
      */
     public Optional<TaskRun> taskRunForOccurrence(String taskId, String parentTaskRunId, Integer iteration) {
         String normalizedTaskId = requireText(taskId, "Task id");
-        return taskRuns.stream().filter(taskRun -> taskRun.taskId().equals(normalizedTaskId)).filter(taskRun -> Objects.equals(taskRun.parentTaskRunId().orElse(null), parentTaskRunId)).filter(taskRun -> Objects.equals(taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null, iteration)).findFirst();
+        return taskRuns.stream().filter(taskRun -> taskRun.taskId().equals(normalizedTaskId)).filter(taskRun -> Objects.equals(taskRun.parentId().orElse(null), parentTaskRunId)).filter(taskRun -> Objects.equals(taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null, iteration)).findFirst();
     }
 
     public List<TaskRun> activeTaskRuns() {
@@ -211,7 +182,6 @@ public final class Execution extends BaseDomain
 
     public void start() {
         requireState(State.Type.CREATED);
-        markModified();
         state = state.running();
     }
 
@@ -224,7 +194,6 @@ public final class Execution extends BaseDomain
         if (accepted.isEmpty()) {
             throw new IllegalArgumentException("The first TaskRun batch must not be empty");
         }
-        markModified();
         state = state.running();
         taskRuns.addAll(accepted);
     }
@@ -247,7 +216,6 @@ public final class Execution extends BaseDomain
         if (accepted.isEmpty()) {
             return;
         }
-        markModified();
         taskRuns.addAll(accepted);
     }
 
@@ -271,7 +239,7 @@ public final class Execution extends BaseDomain
             if (!occurrences.add(TaskOccurrence.from(taskRun))) {
                 throw new WorkflowException("Execution already has this TaskRun occurrence: " + taskRun.taskId());
             }
-            taskRun.parentTaskRunId().ifPresent(parentTaskRunId -> {
+            taskRun.parentId().ifPresent(parentTaskRunId -> {
                 if (!taskRunIds.contains(parentTaskRunId)) {
                     throw new WorkflowException("Parent TaskRun does not exist: " + parentTaskRunId);
                 }
@@ -285,7 +253,6 @@ public final class Execution extends BaseDomain
     public void startTaskRun(String taskRunId) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
-        markModified();
         taskRun.start();
     }
 
@@ -293,7 +260,6 @@ public final class Execution extends BaseDomain
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
         requireTaskRunState(taskRun, State.Type.RUNNING);
-        markModified();
         taskRun.succeed(outputs);
     }
 
@@ -301,7 +267,6 @@ public final class Execution extends BaseDomain
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
         requireTaskRunState(taskRun, State.Type.RUNNING);
-        markModified();
         taskRun.warn(outputs);
     }
 
@@ -320,7 +285,6 @@ public final class Execution extends BaseDomain
         if (pausing.isEmpty()) {
             return;
         }
-        markModified();
         pausing.forEach(TaskRun::pause);
     }
 
@@ -328,26 +292,24 @@ public final class Execution extends BaseDomain
         requireState(State.Type.PAUSED);
         TaskRun taskRun = requireTaskRun(taskRunId);
         requireTaskRunState(taskRun, State.Type.PAUSED);
-        markModified();
         taskRun.resume(outputs);
         resumePausedAncestors(taskRun);
         state = state.restarted();
     }
 
     private void resumePausedAncestors(TaskRun taskRun) {
-        Optional<String> parentTaskRunId = taskRun.parentTaskRunId();
+        Optional<String> parentTaskRunId = taskRun.parentId();
         while (parentTaskRunId.isPresent()) {
             TaskRun parent = requireTaskRun(parentTaskRunId.orElseThrow());
             if (parent.state().is(State.Type.PAUSED)) {
                 parent.resume(parent.outputs());
             }
-            parentTaskRunId = parent.parentTaskRunId();
+            parentTaskRunId = parent.parentId();
         }
     }
 
     public Execution restart() {
         requireState(State.Type.RESTARTED);
-        markModified();
         state = state.running();
         return this;
     }
@@ -359,7 +321,6 @@ public final class Execution extends BaseDomain
         if (error == null || error.isBlank()) {
             throw new IllegalArgumentException("TaskRun error must not be blank");
         }
-        markModified();
         taskRun.fail(error);
         taskRuns.stream().filter(other -> other != taskRun).filter(TaskRun::isUnfinished).forEach(TaskRun::kill);
         state = state.failed();
@@ -372,7 +333,6 @@ public final class Execution extends BaseDomain
                     "Execution has unfinished TaskRun: " + id()
             );
         }
-        markModified();
         state = state.success();
     }
 
@@ -389,7 +349,6 @@ public final class Execution extends BaseDomain
                             + "TaskRun: " + id()
             );
         }
-        markModified();
         state = state.warning();
     }
 
@@ -401,13 +360,11 @@ public final class Execution extends BaseDomain
                             + id()
             );
         }
-        markModified();
         state = state.paused();
     }
 
     public void beginKilling() {
         requireUnfinished();
-        markModified();
         state = state.killing();
     }
 
@@ -416,7 +373,6 @@ public final class Execution extends BaseDomain
         if (unfinishedTaskRuns().isEmpty()) {
             return;
         }
-        markModified();
         taskRuns.stream().filter(TaskRun::isUnfinished).forEach(TaskRun::kill);
     }
 
@@ -427,7 +383,6 @@ public final class Execution extends BaseDomain
                     "Execution still has unfinished TaskRun: " + id()
             );
         }
-        markModified();
         state = state.killed();
     }
 
@@ -445,18 +400,8 @@ public final class Execution extends BaseDomain
                 flowVersion,
                 inputs,
                 state,
-                lockVersion,
-                taskRuns,
-                persisted,
-                modified
+                taskRuns
         );
-    }
-
-    private void markModified() {
-        if (persisted && !modified) {
-            lock();
-            modified = true;
-        }
     }
 
     private void validateRehydratedState() {
@@ -469,7 +414,7 @@ public final class Execution extends BaseDomain
             if (!occurrences.add(TaskOccurrence.from(taskRun))) {
                 throw new IllegalArgumentException("Execution has duplicate TaskRun occurrence: " + taskRun.taskId());
             }
-            taskRun.parentTaskRunId().ifPresent(parentTaskRunId -> {
+            taskRun.parentId().ifPresent(parentTaskRunId -> {
                 if (!ids.contains(parentTaskRunId)) {
                     throw new IllegalArgumentException("TaskRun parent must precede child in Execution: " + taskRun.id());
                 }
@@ -500,7 +445,7 @@ public final class Execution extends BaseDomain
         }
 
         private static TaskOccurrence from(TaskRun taskRun) {
-            return new TaskOccurrence(taskRun.taskId(), taskRun.parentTaskRunId().orElse(null), taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null);
+            return new TaskOccurrence(taskRun.taskId(), taskRun.parentId().orElse(null), taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null);
         }
 
         @Override

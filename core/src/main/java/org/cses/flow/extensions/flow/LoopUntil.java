@@ -34,14 +34,10 @@ import java.util.Map;
                     maxIterations: 3
                     tasks:
                       - key: check
-                        type: org.cses.flow.extensions.flow.Pause
-                        pause:
-                          key: request-status
-                          type: org.cses.flow.extensions.tasks.AutomaticTask
-                        resume:
+                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                        outputs:
                           - key: status
                             type: STRING
-                            required: true
                 """,
             full = true
         )

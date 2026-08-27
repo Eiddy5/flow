@@ -46,7 +46,9 @@ gen/sql/flow/
 
 1. 在空 PostgreSQL 数据库执行完整入口，并再次执行同一入口。
 2. 确认每个表文件只定义同名的一张表，最终表集合与文件集合完全一致。
-3. 确认没有 PostgreSQL 外键，所有 `*_at` 字段都是 `timestamptz`。
+3. 确认没有 PostgreSQL 外键，时间字段类型遵循对应领域与数据库决策；当前 Flow
+   基线的领域时间和 Queue 顺序时间使用 Epoch 毫秒 `bigint`，不由数据库生成领域
+   审计事实。
 4. 重建开发数据库，重新生成 JOOQ，并同步 Repository、Entry 和相关测试引用。
 
 统一验证命令：

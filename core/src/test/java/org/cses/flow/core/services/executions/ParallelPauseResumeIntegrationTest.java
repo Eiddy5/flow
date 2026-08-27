@@ -36,8 +36,8 @@ class ParallelPauseResumeIntegrationTest {
             assertEquals(State.Type.PAUSED, fork.state().current());
             assertEquals(State.Type.PAUSED, backend.state().current());
             assertEquals(State.Type.PAUSED, frontend.state().current());
-            assertEquals(fork.id(), backend.parentTaskRunId().orElseThrow());
-            assertEquals(fork.id(), frontend.parentTaskRunId().orElseThrow());
+            assertEquals(fork.id(), backend.parentId().orElseThrow());
+            assertEquals(fork.id(), frontend.parentId().orElseThrow());
 
             fixture.restartServer();
             assertEquals(

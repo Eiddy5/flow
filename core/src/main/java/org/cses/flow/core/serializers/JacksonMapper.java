@@ -21,10 +21,10 @@ import java.util.Map;
 @Singleton
 public class JacksonMapper {
 
-    private static TypeReference<Map<String, Object>> MAP_TYPE =
+    private static TypeReference<Map<String, Object>> MAP_TYPE_REFERENCE =
         new TypeReference<>() {
-        };
-    private static ObjectMapper YAML_MAPPER = JacksonMapper.configure(
+    };
+    private static ObjectMapper BASE_YAML_MAPPER = JacksonMapper.configure(
         new ObjectMapper(
             YAMLFactory
                 .builder()
@@ -39,13 +39,16 @@ public class JacksonMapper {
                 .build()
         )
     );
+    /**
+     * The source-definition mapper used by the static YamlParser entry point.
+     */
+    private static ObjectMapper YAML_MAPPER = BASE_YAML_MAPPER;
 
     private ObjectMapper jsonMapper;
-    private ObjectMapper yamlMapper;
 
     public JacksonMapper(PluginModule pluginModule) {
-        this.jsonMapper = configure(new ObjectMapper(), pluginModule);
-        this.yamlMapper = YAML_MAPPER.copy()
+        jsonMapper = configure(new ObjectMapper(), pluginModule);
+        YAML_MAPPER = BASE_YAML_MAPPER.copy()
             .registerModule(pluginModule.sourceDefinitions());
     }
 
@@ -54,12 +57,12 @@ public class JacksonMapper {
     }
 
     public Map<String, Object> toMap(Object value) {
-        return jsonMapper.convertValue(value, MAP_TYPE);
+        return jsonMapper.convertValue(value, MAP_TYPE_REFERENCE);
     }
 
     public String writeYaml(Object value) {
         try {
-            return yamlMapper.writeValueAsString(value);
+            return YAML_MAPPER.writeValueAsString(value);
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException(
                 "Value could not be serialized as YAML",
@@ -70,10 +73,6 @@ public class JacksonMapper {
 
     ObjectMapper jsonMapper() {
         return jsonMapper;
-    }
-
-    ObjectMapper yamlMapper() {
-        return yamlMapper;
     }
 
     private static ObjectMapper configure(
@@ -101,5 +100,9 @@ public class JacksonMapper {
             )
             .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    }
+
+    static ObjectMapper yamlMapper() {
+        return YAML_MAPPER;
     }
 }

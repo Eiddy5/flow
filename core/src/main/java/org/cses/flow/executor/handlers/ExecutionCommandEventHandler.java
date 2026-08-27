@@ -115,7 +115,7 @@ public class ExecutionCommandEventHandler implements
     }
 
     private void handleCancel(DSLContext dsl, Cancel command) {
-        Execution execution = executionRepository.lockById(
+        Execution execution = executionRepository.findById(
             dsl,
             command.getCompanyId(),
             command.getExecutionId()
@@ -212,7 +212,7 @@ public class ExecutionCommandEventHandler implements
     }
 
     private void handleResume(DSLContext dsl, Resume command) {
-        Execution execution = executionRepository.lockById(
+        Execution execution = executionRepository.findById(
             dsl,
             command.getCompanyId(),
             command.getExecutionId()

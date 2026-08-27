@@ -165,7 +165,7 @@ public class ExecutorEventHandler implements
             DSLContext dsl,
             ExecutorEvent event
     ) {
-        Execution execution = executionRepository.lockById(
+        Execution execution = executionRepository.findById(
                 dsl,
                 event.companyId(),
                 event.executionId()

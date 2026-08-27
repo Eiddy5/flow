@@ -1,5 +1,6 @@
 package org.cses.flow.core.domains.flows;
 
+import lombok.NoArgsConstructor;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.Audited;
 import org.paas.session.RecordState;
@@ -18,19 +19,17 @@ import java.util.Set;
 /**
  * Shared definition facts of an editable draft or deployed Flow version.
  */
+@NoArgsConstructor
 public abstract class AbstractFlow extends Audited {
 
     String key;
     Long version;
-    boolean draft = true;
-    String description = "";
+    Boolean draft = true;
+    String description;
     Map<String, Object> variables = Map.of();
     List<Input<?>> inputs = List.of();
     List<Output> outputs = List.of();
 
-    protected AbstractFlow() {
-        super();
-    }
 
     protected AbstractFlow(
         String id,

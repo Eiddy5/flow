@@ -315,7 +315,6 @@ final class WorkerDispatcherTest {
             1,
             inputs,
             State.created(),
-            0,
             List.of()
         );
     }

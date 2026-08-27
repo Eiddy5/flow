@@ -307,7 +307,7 @@
         const savedText = state.dirty
             ? "存在未保存修改"
             : current?.flowKey
-                ? `草稿版本 ${current.lockVersion}`
+                ? "草稿已保存"
                 : "尚未创建草稿";
         return `
             <header class="topbar">
@@ -415,7 +415,6 @@
                     </span>
                 </span>
                 <span class="draft-meta">
-                    <span>v${draft.lockVersion}</span>
                     <span>${escapeHtml(formatTime(draft.updatedAt))}</span>
                 </span>
             </button>
@@ -3089,7 +3088,6 @@
         state.current = {
             id: null,
             raw: "",
-            lockVersion: 0,
             createdAt: Date.now(),
             updatedAt: Date.now(),
             deployedFlow: null,
@@ -3137,9 +3135,6 @@
             raw: state.raw,
             draft: true,
         };
-        if (state.current.flowKey) {
-            body.expectedLockVersion = state.current.lockVersion;
-        }
         const saved = await api("/flows", {
             method: "POST",
             body,

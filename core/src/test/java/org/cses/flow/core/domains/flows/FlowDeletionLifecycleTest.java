@@ -40,12 +40,10 @@ class FlowDeletionLifecycleTest {
         long createdAt = draft.createdAt();
 
         assertFalse(draft.deleted());
-        assertEquals(0L, draft.lockVersion());
 
         draft.delete(SESSION, createdAt + 1_000L);
 
         assertTrue(draft.deleted());
-        assertEquals(1L, draft.lockVersion());
         assertEquals(ACTOR, draft.deleter().orElseThrow());
         assertEquals(
             createdAt + 1_000L,
@@ -121,8 +119,7 @@ class FlowDeletionLifecycleTest {
                 CREATED_AT,
                 CREATED_AT,
                 CREATED_AT,
-                "key: lifecycle-flow",
-                0
+                "key: lifecycle-flow"
             )
         );
         assertThrows(
@@ -145,8 +142,7 @@ class FlowDeletionLifecycleTest {
                 CREATED_AT,
                 CREATED_AT,
                 null,
-                "key: lifecycle-flow",
-                0
+                "key: lifecycle-flow"
             )
         );
 
@@ -207,8 +203,7 @@ class FlowDeletionLifecycleTest {
             flow.createdAt(),
             flow.updatedAt(),
             deletedAt,
-            flow.source(),
-            flow.lockVersion()
+            flow.source()
         );
     }
 

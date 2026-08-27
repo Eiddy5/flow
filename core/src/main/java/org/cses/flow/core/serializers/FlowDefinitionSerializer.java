@@ -24,8 +24,8 @@ public final class FlowDefinitionSerializer {
     @Inject
     public FlowDefinitionSerializer(JacksonMapper jacksonMapper) {
         this.jacksonMapper = Objects.requireNonNull(
-            jacksonMapper,
-            "jacksonMapper"
+                jacksonMapper,
+                "jacksonMapper"
         );
     }
 
@@ -40,29 +40,29 @@ public final class FlowDefinitionSerializer {
         definition.put("description", flow.description());
         definition.put("variables", definitionValue(flow.variables()));
         definition.put(
-            "inputs",
-            flow.inputs().stream()
-                .map(jacksonMapper::toMap)
-                .map(this::definitionValue)
-                .toList()
+                "inputs",
+                flow.inputs().stream()
+                        .map(jacksonMapper::toMap)
+                        .map(this::definitionValue)
+                        .toList()
         );
         definition.put(
-            "outputs",
-            flow.outputs().stream()
-                .map(jacksonMapper::toMap)
-                .map(this::definitionValue)
-                .toList()
+                "outputs",
+                flow.outputs().stream()
+                        .map(jacksonMapper::toMap)
+                        .map(this::definitionValue)
+                        .toList()
         );
         definition.put(
-            "tasks",
-            flow.tasks().stream().map(this::taskDefinition).toList()
+                "tasks",
+                flow.tasks().stream().map(this::taskDefinition).toList()
         );
         return Map.copyOf(definition);
     }
 
     private Map<String, Object> taskDefinition(Task task) {
         Map<String, Object> definition = new LinkedHashMap<>(
-            jacksonMapper.toMap(task)
+                jacksonMapper.toMap(task)
         );
         definition.remove("id");
         return definitionMap(definition, true);
@@ -81,8 +81,8 @@ public final class FlowDefinitionSerializer {
     }
 
     private Map<String, Object> definitionMap(
-        Map<?, ?> source,
-        boolean knownTask
+            Map<?, ?> source,
+            boolean knownTask
     ) {
         boolean task = knownTask || isTaskDefinition(source);
         Map<String, Object> result = new LinkedHashMap<>();
@@ -96,8 +96,8 @@ public final class FlowDefinitionSerializer {
 
     private static boolean isTaskDefinition(Map<?, ?> source) {
         return source.containsKey("key")
-            && source.containsKey("type")
-            && (source.containsKey("route")
+                && source.containsKey("type")
+                && (source.containsKey("route")
                 || source.containsKey("dependOn")
                 || source.containsKey("tasks"));
     }

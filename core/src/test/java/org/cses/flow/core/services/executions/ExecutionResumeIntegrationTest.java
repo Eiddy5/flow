@@ -183,7 +183,6 @@ class ExecutionResumeIntegrationTest {
             );
             assertEquals(started.id(), completed.id());
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertTrue(completed.lockVersion() > started.lockVersion());
             // 重复完成由 S4 独立覆盖。
             assertThrows(
                 WorkflowException.class,
@@ -247,7 +246,6 @@ class ExecutionResumeIntegrationTest {
                 pausedTaskRun.taskRunId()
             );
             assertEquals(State.Type.PAUSED, reloaded.state().current());
-            assertEquals(started.lockVersion(), reloaded.lockVersion());
             assertEquals(2, reloaded.taskRuns().size());
             assertEquals(
                 State.Type.PAUSED,
@@ -302,7 +300,6 @@ class ExecutionResumeIntegrationTest {
                 pausedTaskRun.taskRunId()
             );
             assertEquals(State.Type.SUCCESS, reloaded.state().current());
-            assertEquals(completed.lockVersion(), reloaded.lockVersion());
             assertEquals(3, reloaded.taskRuns().size());
             assertEquals(
                 completed.taskRuns().stream().map(TaskRun::taskId).toList(),

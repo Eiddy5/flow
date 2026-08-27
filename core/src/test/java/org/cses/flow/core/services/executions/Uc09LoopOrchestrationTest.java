@@ -345,7 +345,7 @@ class Uc09LoopOrchestrationTest {
                 .toList()
         );
         assertTrue(runs.stream().allMatch(run ->
-            run.parentTaskRunId().orElseThrow().equals(loopRun.id())
+            run.parentId().orElseThrow().equals(loopRun.id())
         ));
         assertTrue(runs.stream().allMatch(run ->
             run.state().is(State.Type.SUCCESS)
@@ -397,7 +397,7 @@ class Uc09LoopOrchestrationTest {
         );
         TaskRun failedRun = onlyRun(execution, failure);
         assertEquals(1, failedRun.iteration().orElseThrow());
-        assertEquals(loopRun.id(), failedRun.parentTaskRunId().orElseThrow());
+        assertEquals(loopRun.id(), failedRun.parentId().orElseThrow());
         assertEquals(State.Type.FAILED, failedRun.state().current());
         assertEquals("uc09-body-failure", failedRun.error().orElseThrow());
         assertEquals(State.Type.KILLED, loopRun.state().current());

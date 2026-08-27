@@ -134,15 +134,25 @@ final class PostgresQueueStore<T extends DispatchEvent> {
         DSLContext dsl,
         List<QueueMessageEntry> entries
     ) {
-        QueueMessageEntry first = entries.getFirst();
-        var insert = dsl
+        var values = dsl
             .insertInto(QUEUES)
-            .set(first.buildInsertMap());
-        for (int index = 1; index < entries.size(); index++) {
-            insert = insert.newRecord()
-                .set(entries.get(index).buildInsertMap());
+            .columns(
+                QUEUES.ID,
+                QUEUES.QUEUE_TYPE,
+                QUEUES.QUEUE_NAME,
+                QUEUES.EVENT_KEY,
+                QUEUES.PAYLOAD
+            );
+        for (QueueMessageEntry entry : entries) {
+            values.values(
+                entry.getId(),
+                entry.getQueueType(),
+                entry.getQueueName(),
+                entry.getEventKey(),
+                entry.getPayload()
+            );
         }
-        insert.execute();
+        values.execute();
     }
 
     private DeliveryAttempt deliverOne(

@@ -29,21 +29,17 @@ public class PublishFlowHandler implements CommandHandler<
         PublishFlowCommand
         > {
 
-    private FlowRepository repository;
-    private JacksonMapper jacksonMapper;
-    private YamlParser yamlParser;
-    private ModelValidator modelValidator;
+    FlowRepository repository;
+    JacksonMapper jacksonMapper;
+    ModelValidator modelValidator;
 
-    @Inject
     public PublishFlowHandler(
             FlowRepository repository,
             JacksonMapper jacksonMapper,
-            YamlParser yamlParser,
             ModelValidator modelValidator
     ) {
         this.repository = repository;
         this.jacksonMapper = jacksonMapper;
-        this.yamlParser = yamlParser;
         this.modelValidator = modelValidator;
     }
 
@@ -94,10 +90,6 @@ public class PublishFlowHandler implements CommandHandler<
             parsed.initialize(context.session(), true, null, source);
             draft = parsed;
         } else {
-            PublishFlowCommand command = context.command();
-            if (command.expectedLockVersion() != null) {
-                draft.requireLockVersion(command.expectedLockVersion());
-            }
             draft.revise(
                     parsed.description(),
                     parsed.variables(),
@@ -154,7 +146,7 @@ public class PublishFlowHandler implements CommandHandler<
 
     private Flow parse(String source, boolean draft) {
         try {
-            return yamlParser.parse(source, Flow.class);
+            return YamlParser.parse(source, Flow.class);
         } catch (IllegalArgumentException exception) {
             if (!draft) {
                 throw exception;
@@ -171,7 +163,7 @@ public class PublishFlowHandler implements CommandHandler<
         // bindable. Public Flow fields still go through the same Jackson
         // configuration and are validated before persistence.
         Map<String, Object> fields = new LinkedHashMap<>(
-                yamlParser.parse(source)
+                YamlParser.parse(source)
         );
         fields.remove("tasks");
         try {

@@ -248,14 +248,14 @@ final class ExecutorEventHandlerTest {
         );
 
         TaskRun pauseRun = waiting.taskRuns().stream()
-            .filter(taskRun -> taskRun.parentTaskRunId().isEmpty())
+            .filter(taskRun -> taskRun.parentId().isEmpty())
             .findFirst()
             .orElseThrow();
         TaskRun actionRun = waiting.taskRuns().stream()
-            .filter(taskRun -> taskRun.parentTaskRunId().isPresent())
+            .filter(taskRun -> taskRun.parentId().isPresent())
             .findFirst()
             .orElseThrow();
-        assertEquals(pauseRun.id(), actionRun.parentTaskRunId().orElseThrow());
+        assertEquals(pauseRun.id(), actionRun.parentId().orElseThrow());
         assertEquals(
             RunIdentity.from(actionRun.id(), pauseRun.id()),
             CAPTURED_RUN.get()
@@ -270,15 +270,6 @@ final class ExecutorEventHandlerTest {
 
         @Override
         public Optional<Execution> findById(
-            DSLContext dsl,
-            String companyId,
-            String executionId
-        ) {
-            return stored(companyId, executionId);
-        }
-
-        @Override
-        public Optional<Execution> lockById(
             DSLContext dsl,
             String companyId,
             String executionId

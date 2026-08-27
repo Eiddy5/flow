@@ -135,7 +135,7 @@ public final class TaskRun implements Identified {
         return taskId;
     }
 
-    public Optional<String> parentTaskRunId() {
+    public Optional<String> parentId() {
         return Optional.ofNullable(parentId);
     }
 

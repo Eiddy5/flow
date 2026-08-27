@@ -47,25 +47,21 @@ public class TaskPluginTestSupport {
         JacksonMapper mapper = new JacksonMapper(module);
         return Context.from(
             mapper,
-            new YamlParser(mapper),
             validator
         );
     }
 
     public record Context(
         JacksonMapper jacksonMapper,
-        YamlParser yamlParser,
         ModelValidator modelValidator
     ) {
 
         public static Context from(
             JacksonMapper jacksonMapper,
-            YamlParser yamlParser,
             ModelValidator modelValidator
         ) {
             return new Context(
                 jacksonMapper,
-                yamlParser,
                 modelValidator
             );
         }
@@ -93,7 +89,7 @@ public class TaskPluginTestSupport {
             Flow latest,
             Session<User> session
         ) {
-            Flow flow = yamlParser.parse(source, Flow.class);
+            Flow flow = YamlParser.parse(source, Flow.class);
             String fallback = flow.key() == null || flow.key().isBlank()
                 ? latest != null
                     ? latest.key()

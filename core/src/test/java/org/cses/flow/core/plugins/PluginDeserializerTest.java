@@ -5,6 +5,7 @@ import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.core.serializers.YamlParser;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -55,7 +56,7 @@ class PluginDeserializerTest {
     void appliesSourceIdentityRulesThroughTheRegisteredYamlModule() {
         TaskPluginTestSupport.Context context = builtInContext();
 
-        Flow flow = context.yamlParser().parse(
+        Flow flow = YamlParser.parse(
             """
             key: source-context
             tasks:
@@ -68,7 +69,7 @@ class PluginDeserializerTest {
         assertFalse(flow.tasks().getFirst().id().isBlank());
         assertThrows(
             IllegalArgumentException.class,
-            () -> context.yamlParser().parse(
+            () -> YamlParser.parse(
                 """
                 key: source-context
                 tasks:

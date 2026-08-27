@@ -303,7 +303,6 @@ final class ExecutionTest {
                 1,
                 Map.of(),
                 paused,
-                0,
                 List.of()
             )
         );

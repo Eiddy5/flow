@@ -16,8 +16,8 @@ public interface Identified {
     default void requireIdentifier(String candidate) {
         if (!identifiedBy(candidate)) {
             throw new WorkflowException(
-                "Domain identity mismatch: expected " + id()
-                    + " but was " + candidate
+                    "Domain identity mismatch: expected " + id()
+                            + " but was " + candidate
             );
         }
     }

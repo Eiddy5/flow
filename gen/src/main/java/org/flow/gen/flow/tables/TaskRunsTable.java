@@ -4,7 +4,6 @@
 package org.flow.gen.flow.tables;
 
 
-import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -13,7 +12,6 @@ import org.flow.gen.flow.Indexes;
 import org.flow.gen.flow.Keys;
 import org.flow.gen.flow.Public;
 import org.flow.gen.flow.records.TaskRunsRecord;
-import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Index;
@@ -30,7 +28,6 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
-import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -87,16 +84,6 @@ public class TaskRunsTable extends TableImpl<TaskRunsRecord> {
     public final TableField<TaskRunsRecord, JSONB> STATE = createField(DSL.name("state"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
-     * The column <code>public.task_runs.start_at</code>.
-     */
-    public final TableField<TaskRunsRecord, OffsetDateTime> START_AT = createField(DSL.name("start_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
-
-    /**
-     * The column <code>public.task_runs.end_at</code>.
-     */
-    public final TableField<TaskRunsRecord, OffsetDateTime> END_AT = createField(DSL.name("end_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
-
-    /**
      * The column <code>public.task_runs.inputs</code>.
      */
     public final TableField<TaskRunsRecord, JSONB> INPUTS = createField(DSL.name("inputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
@@ -115,21 +102,6 @@ public class TaskRunsTable extends TableImpl<TaskRunsRecord> {
      * The column <code>public.task_runs.order</code>.
      */
     public final TableField<TaskRunsRecord, Integer> ORDER = createField(DSL.name("order"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
-     * The column <code>public.task_runs.created_at</code>.
-     */
-    public final TableField<TaskRunsRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
-
-    /**
-     * The column <code>public.task_runs.updated_at</code>.
-     */
-    public final TableField<TaskRunsRecord, OffsetDateTime> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
-
-    /**
-     * The column <code>public.task_runs.deleted_at</code>.
-     */
-    public final TableField<TaskRunsRecord, OffsetDateTime> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6), this, "");
 
     private TaskRunsTable(Name alias, Table<TaskRunsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -178,20 +150,6 @@ public class TaskRunsTable extends TableImpl<TaskRunsRecord> {
     @Override
     public List<UniqueKey<TaskRunsRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.UQ_TASK_RUNS_EXECUTION_ID, Keys.UQ_TASK_RUNS_ORDER);
-    }
-
-    @Override
-    public List<Check<TaskRunsRecord>> getChecks() {
-        return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_task_runs_error"), "(((error IS NULL) OR (((state ->> 'current'::text) = 'FAILED'::text) AND (length(btrim(error)) > 0))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_inputs"), "((jsonb_typeof(inputs) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_iteration"), "(((iteration IS NULL) OR ((iteration > 0) AND (parent_id IS NOT NULL))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_order"), "((\"order\" >= 0))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_outputs"), "((jsonb_typeof(outputs) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_parent"), "(((parent_id IS NULL) OR ((parent_id)::text <> (id)::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_state"), "(((jsonb_typeof(state) = 'object'::text) AND (state ? 'current'::text) AND (state ? 'history'::text) AND (jsonb_typeof((state -> 'current'::text)) = 'string'::text) AND ((state ->> 'current'::text) = ANY (ARRAY['CREATED'::text, 'RUNNING'::text, 'PAUSED'::text, 'SUCCESS'::text, 'WARNING'::text, 'FAILED'::text, 'KILLED'::text])) AND (jsonb_typeof((state -> 'history'::text)) = 'array'::text) AND (jsonb_array_length((state -> 'history'::text)) > 0) AND ((((state -> 'history'::text) -> 0) ->> 'state'::text) = 'CREATED'::text) AND ((((state -> 'history'::text) -> '-1'::integer) ->> 'state'::text) = (state ->> 'current'::text)) AND (jsonb_typeof((((state -> 'history'::text) -> 0) -> 'date'::text)) = 'number'::text) AND (jsonb_typeof((((state -> 'history'::text) -> '-1'::integer) -> 'date'::text)) = 'number'::text) AND (jsonb_array_length(jsonb_path_query_array((state -> 'history'::text), '$[*]?(@.\"state\".type() == \"string\" && @.\"date\".type() == \"number\")'::jsonpath)) = jsonb_array_length((state -> 'history'::text))) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?((((((@.\"state\" != \"CREATED\" && @.\"state\" != \"RUNNING\") && @.\"state\" != \"PAUSED\") && @.\"state\" != \"SUCCESS\") && @.\"state\" != \"WARNING\") && @.\"state\" != \"FAILED\") && @.\"state\" != \"KILLED\")'::jsonpath)) AND (NOT jsonb_path_exists((state -> 'history'::text), '$[*]?(@.\"date\" < 0)'::jsonpath))))", true),
-            Internal.createCheck(this, DSL.name("ck_task_runs_time"), "(((start_at IS NULL) OR (end_at IS NULL) OR (end_at >= start_at)))", true)
-        );
     }
 
     @Override

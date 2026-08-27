@@ -51,7 +51,7 @@ Flow 与 FlowDraft 都需要同时保护租户内业务身份、创建审计、�
   持久化 Adapter 只原样保存和恢复。Execution 可沿用由可靠 Command 预先分配的稳定
   字符串 ID，以保证 Queue 重投时幂等物化。
 - 跨对象引用使用目标语义命名的字符串字段，例如 `executionId`、`taskId`、
-  `taskRunId` 与 `parentTaskRunId`。
+  `taskRunId` 与 `parentId`。
 
 ### 创建审计
 

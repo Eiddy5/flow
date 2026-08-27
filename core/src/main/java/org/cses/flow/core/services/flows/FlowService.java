@@ -1,6 +1,5 @@
 package org.cses.flow.core.services.flows;
 
-import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.services.CommandExecutor;
@@ -16,10 +15,9 @@ import java.util.Optional;
 @Singleton
 public class FlowService {
 
-    private CommandExecutor commandExecutor;
-    private FlowQueryHandler queryHandler;
+    CommandExecutor commandExecutor;
+    FlowQueryHandler queryHandler;
 
-    @Inject
     public FlowService(
             CommandExecutor commandExecutor,
             FlowQueryHandler queryHandler

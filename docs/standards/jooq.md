@@ -13,6 +13,20 @@
 - `fetch`、`fetchInto`、`fetchOne` 和 `fetchOneInto` 的选择与映射条件。
 - `buildInsertMap()`、字段级 `set(...)` 和 `buildUpdateMap()` 的使用场景。
 
+本次确认的硬性规则可以先归纳为：
+
+| 场景 | 统一写法 | 禁止写法 |
+| --- | --- | --- |
+| 完整表行单条读取 | `fetchOneInto(XxxEntry.class)` | `fetchOne()` 后再转 Entry |
+| 完整表行批量读取 | `fetchInto(XxxEntry.class)` | `fetch()` 后逐条转 Entry |
+| 标量/聚合读取 | `fetchOneInto(Type.class)` 或显式取值 | 为了映射对象强行构造 Entry |
+| 单条完整插入 | `.set(entry.buildInsertMap())` | 逐字段 `.set(...)` |
+| 单条完整更新 | `.set(entry.buildUpdateMap())` | 逐字段拼完整对象 |
+| 批量插入 | 一个 INSERT，多次 `.values(...)`，一次 `execute()` | 逐条 INSERT、`newRecord()`、`batchInsert` |
+
+读取完整表行时，JOOQ `Record` 不参与 `Entry` 映射；批量写入时可以使用 Entry 的
+`toRecord()` 作为一行 `VALUES`。这两个场景必须明确区分。
+
 ## 1. JOOQ 生成代码位置
 
 Flow 数据库对应的 JOOQ 生成代码统一位于：
@@ -160,17 +174,16 @@ org.flow.gen.flow.*
 core/src/main/java/org/cses/flow/infrastructure/
 └── repositories/
     └── flows/
-        └── postgres/
-            ├── FlowPostgresRepository.java
-            └── entries/
-                ├── FlowEntry.java
-                └── FlowTaskEntry.java
+        ├── FlowRepositoryImpl.java
+        └── entries/
+            ├── FlowEntry.java
+            └── FlowTaskEntry.java
 ```
 
 其他业务模块使用相同结构：
 
 ```text
-infrastructure/repositories/executions/postgres/entries/
+infrastructure/repositories/executions/entries/
 ```
 
 非 Repository 的数据库 Adapter 同样把 Entry 放在自身实现下，例如：
@@ -259,14 +272,32 @@ Entry 和专用 Codec 中的 JSON/JSONB 转换必须同时遵守
 契约。
 
 项目自有 Java 类型的时间点统一为 Unix timestamp 毫秒值 `long/Long`，完整规则
-见 [`project-development.md`](project-development.md)。PostgreSQL
-`timestamptz` 对应的 `OffsetDateTime` 只允许出现在生成代码和 Entry/数据库 Adapter
-转换边界；Entry 写入时使用 `Instant.ofEpochMilli(...)` 转换，重建时使用
-`toInstant().toEpochMilli()`，不得把日期时间对象返回给 Core。
+见 [`project-development.md`](project-development.md)。当前 Flow Schema 直接使用
+`bigint` 保存这些毫秒值；如果其他 PostgreSQL Schema 使用 `timestamptz`，对应的
+`OffsetDateTime` 只允许出现在生成代码和 Entry/数据库 Adapter 转换边界，不得返回
+给 Core。
 
 Entry 可以复用生成父类已有的 `toMap()`、`table()`、`buildInsertMap()` 和
 `buildUpdateMap()`，不得重复实现同名通用能力。只有生成能力无法满足已确认的
 数据库语义时才允许新增专用方法。
+
+### 领域审计字段归领域所有权
+
+创建人、创建时间、更新人、更新时间、删除人和删除时间等审计事实，必须先由领域
+对象产生并由 `XxxEntry.fromDomain(...)` 原样映射。PostgreSQL Adapter 只负责写入、
+读取和查询这些已经存在于领域对象中的字段，不得从 `DSLContext` 的配置上下文读取
+当前 Session，不得在数据库 Adapter 中调用当前时间或拼装操作者 JSON，也不得建立
+通用的 `PostgresAudit` 辅助类。
+
+表结构只保留领域确实拥有的审计字段。当前 Flow 的完整审计状态属于 Flow 领域，仍
+由 `FlowEntry` 持久化；Execution 只持久化 `BaseDomain` 提供的 `creator` 与
+`createdAt`；TaskRun 不拥有独立审计时间或操作者字段，因此 `task_runs` 不保留这类
+数据库字段。Queue 的 `created_at` 仅用于数据库消息投递顺序，属于 Queue Adapter 的
+技术字段，不是领域审计。
+
+数据库默认值、生成列或索引不得悄悄生成、复制或改变领域审计事实。若领域对象没有
+对应字段，数据库也不应为它新增审计列；需要数据库并发、行锁或排序的字段，仍可由
+具体数据库 Adapter 按基础设施协议处理。
 
 ## 7. 完整对象插入
 
@@ -300,6 +331,48 @@ dsl.insertInto(EXECUTIONS)
 
 字段级拼装容易遗漏新增字段、重复类型转换，并绕过生成对象已经提供的统一 Map
 构建能力。
+
+## 7.1 批量插入必须拼接 `VALUES`
+
+批量保存必须构造一条 INSERT，并通过多次 `.values(...)` 拼接所有行，最后只执行
+一次。完整 Entry 可以通过 `toRecord()` 作为一行值传入；需要保留数据库默认值的
+字段时，应在 `columns(...)` 中省略该字段，并显式拼出其余值。
+
+当前项目使用的 JOOQ 版本中，不能把 `buildInsertMap()` 直接作为一个参数传给
+`.values(...)`。这种调用会把 Map 当成单个值，最终导致“值数量与字段数量不一致”。
+批量完整行使用 `toRecord()`；需要省略默认值字段或只写入部分字段时，使用明确的
+`columns(...)` 和展开后的值参数。
+
+正确示例：
+
+```java
+InsertValuesStepN<TaskRunsRecord> values = dsl
+    .insertInto(TASK_RUNS)
+    .columns();
+for (TaskRunEntry entry : entries) {
+    values.values(entry.toRecord());
+}
+values.execute();
+```
+
+带数据库默认值的批量插入：
+
+```java
+var values = dsl
+    .insertInto(QUEUES)
+    .columns(QUEUES.ID, QUEUES.QUEUE_TYPE, QUEUES.QUEUE_NAME,
+        QUEUES.EVENT_KEY, QUEUES.PAYLOAD);
+for (QueueMessageEntry entry : entries) {
+    values.values(
+        entry.getId(), entry.getQueueType(), entry.getQueueName(),
+        entry.getEventKey(), entry.getPayload());
+}
+values.execute();
+```
+
+禁止在批量保存中逐条调用 `insertInto(...).execute()`、使用
+`newRecord().set(...)` 拼接，或使用 `batchInsert`/Record 批处理替代 `VALUES`。读取
+表行仍必须遵守第 10 节的 `fetchOneInto(...)`/`fetchInto(...)` 直映射规则。
 
 ## 8. 更新
 
@@ -396,25 +469,49 @@ dsl.insertInto(EXECUTIONS)
 返回多条记录时 JOOQ 会报错，因此查询条件必须有唯一键、主键或其他明确的单结果
 保证。可能合法返回多条记录时必须使用 `fetch`。
 
-不带 `Into` 的方法保留 JOOQ Record，Repository 可以在查询后执行自己的映射和
-组合逻辑，也可以使用接收映射函数的重载，把自定义转换集中在 Entry：
+完整表行映射到 Entry 时，必须直接使用 `fetchOneInto(XxxEntry.class)` 或
+`fetchInto(XxxEntry.class)`。不得先取得 JOOQ `Record`，再通过
+`XxxEntry.fromRecord(...)` 或 `Record.into(XxxRecord.class)` 转成 Entry。这样可以让
+查询结果的目标类型在 Repository 代码中明确表达，并避免为每张表重复维护 Record
+到 Entry 的字段拷贝。
 
 ```java
-ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
+ExecutionEntry entry = dsl.select()
+    .from(EXECUTIONS)
     .where(EXECUTIONS.COMPANY_ID.eq(companyId))
     .and(EXECUTIONS.ID.eq(executionId))
-    .fetchOne(ExecutionEntry::fromRecord);
+    .fetchOneInto(ExecutionEntry.class);
 
-List<TaskRunEntry> taskRuns = dsl.selectFrom(TASK_RUNS)
+List<TaskRunEntry> taskRuns = dsl.select()
+    .from(TASK_RUNS)
     .where(TASK_RUNS.EXECUTION_ID.eq(executionId))
-    .orderBy(TASK_RUNS.CREATED_AT)
-    .fetch(TaskRunEntry::fromRecord);
+    .fetchInto(TaskRunEntry.class);
 ```
 
-以下情况应使用不带 `Into` 的方法和显式转换：
+完整表行的字段类型转换由统一的 JOOQ `ConverterProvider` 和
+`RecordMapperProvider` 负责。Flow 使用生成扩展提供的 JSONB/JSON 与
+`JsonObject`/`JsonObjects` 转换，因此 Repository 不应在查询字段上追加
+`Field.convertFrom(...)`，也不应在 Entry 中维护一套查询专用字段数组。这样生产
+JOOQ 配置和直接 `fetchInto` 的语义保持一致；Entry 只负责领域对象与持久化对象的
+写入组装和读取后的领域重建。
+
+测试中如果绕过 Micronaut 直接用 JDBC 创建 `DSLContext`，也必须通过项目的 JOOQ
+扩展配置（例如 `FlowJooqTestConfiguration.configure(...)`）增强配置，不能使用裸的
+`DSL.using(connection, POSTGRES)` 代替生产 JOOQ 配置。否则 JSONB 到
+`JsonObject`/`JsonObjects` 的转换行为会与生产不一致。
+
+只有标量查询、聚合查询或确实需要自行组合的多表查询可以保留 JOOQ `Record`：
+
+```java
+long count = dsl.selectCount()
+    .from(EXECUTIONS)
+    .where(EXECUTIONS.COMPANY_ID.eq(companyId))
+    .fetchOne(0, long.class);
+```
+
+以下情况可以使用不带 `Into` 的方法和显式读取：
 
 - 查询包含多表 Join、聚合、计算字段或同名字段，需要自行决定组合语义。
-- 数据库类型与对象字段之间存在 JSON、枚举、时间等专用转换。
 - 查询结果需要组合成一个聚合，不能由单条记录直接表达。
 - 需要根据某个字段执行条件分支，或需要区分字段缺失与字段值为 `null`。
 
@@ -434,20 +531,22 @@ List<TaskRunEntry> taskRuns = dsl.selectFrom(TASK_RUNS)
 同表完整字段查询且 Entry 与生成对象字段一致时，可以直接映射：
 
 ```java
-ExecutionEntry entry = dsl.selectFrom(EXECUTIONS)
+ExecutionEntry entry = dsl.select()
+    .from(EXECUTIONS)
     .where(EXECUTIONS.COMPANY_ID.eq(companyId))
     .and(EXECUTIONS.ID.eq(executionId))
     .fetchOneInto(ExecutionEntry.class);
 ```
 
-如果查询字段名称、别名、类型或转换逻辑与 Entry 不完全对应，应改用
-`fetch(...)`、`fetchOne(...)` 或它们接收映射函数的重载，显式完成转换，不能依赖
-未验证的自动映射。
+如果查询字段名称、别名、类型或转换逻辑与 Entry 不完全对应，应在查询中使用明确
+的字段别名，或把它视为投影/聚合查询自行组装；不能为了绕过统一 JOOQ 类型映射，
+在 Entry 中增加查询专用字段数组和 `Field.convertFrom(...)`，也不能退回到
+`Record.into(...)` 或 `XxxEntry.fromRecord(...)`。
 
 ### 映射后重建领域对象
 
-无论使用自定义 Record 映射还是 `Into` 直接映射，Repository 都必须在返回前调用
-Entry 的领域转换方法：
+无论使用 `Into` 直接映射还是标量/聚合查询的自定义读取，Repository 都必须在返回
+前调用 Entry 的领域转换方法：
 
 ```java
 return entry == null
@@ -506,7 +605,12 @@ Entry 列表暴露给 Core 调用方。
 9. 查询方法是否根据结果基数正确选择了 `fetch` 或 `fetchOne`。
 10. 使用 `Into` 时，查询字段名称、别名、类型和目标对象可写属性是否对应。
 11. 是否正确处理 `null`、数据库默认值和生成字段。
-12. 查询、更新和删除是否包含租户、主键及并发条件。
-13. 是否复用了传入的 `DSLContext` 和已有事务。
-14. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。
-15. JSON/JSONB 转换是否遵守 `json.md` 并统一使用 PAAS JSON。
+12. 审计事实是否全部来自领域对象，Adapter 是否没有生成当前时间、操作者或删除
+    状态。
+13. 批量保存是否使用一条 INSERT、多次 `.values(...)` 和一次 `execute()`。
+14. 是否没有在批量保存中使用 `values(Map)`、`newRecord()`、`batchInsert` 或逐条
+    `execute()`。
+15. 查询、更新和删除是否包含租户、主键及并发条件。
+16. 是否复用了传入的 `DSLContext` 和已有事务。
+17. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。
+18. JSON/JSONB 转换是否遵守 `json.md` 并统一使用 PAAS JSON。

@@ -4,16 +4,10 @@ CREATE TABLE IF NOT EXISTS queues (
     queue_name    varchar(250) NOT NULL,
     event_key     text,
     payload       jsonb NOT NULL,
-    created_at    timestamptz NOT NULL DEFAULT now(),
+    created_at    bigint NOT NULL DEFAULT (extract(epoch FROM now()) * 1000)::bigint,
 
     CONSTRAINT pk_queues
-        PRIMARY KEY (id),
-    CONSTRAINT ck_queues_id
-        CHECK (length(btrim(id)) > 0),
-    CONSTRAINT ck_queues_type
-        CHECK (length(btrim(queue_type)) > 0),
-    CONSTRAINT ck_queues_payload
-        CHECK (jsonb_typeof(payload) = 'object')
+        PRIMARY KEY (id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_queues_pending

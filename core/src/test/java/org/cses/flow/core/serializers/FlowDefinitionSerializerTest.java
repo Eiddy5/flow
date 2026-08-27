@@ -29,9 +29,7 @@ final class FlowDefinitionSerializerTest {
         );
 
         String yaml = serializer.serialize(deployed);
-        Map<String, Object> definition = new YamlParser(
-            plugins.jacksonMapper()
-        ).parse(yaml);
+        Map<String, Object> definition = YamlParser.parse(yaml);
         List<?> tasks = (List<?>) definition.get("tasks");
         Map<?, ?> parallel = (Map<?, ?>) tasks.getFirst();
         List<?> branches = (List<?>) parallel.get("tasks");
@@ -61,7 +59,7 @@ final class FlowDefinitionSerializerTest {
         );
         assertEquals(
             definition,
-            new YamlParser(plugins.jacksonMapper()).parse(
+            YamlParser.parse(
                 serializer.serialize(reloaded)
             )
         );

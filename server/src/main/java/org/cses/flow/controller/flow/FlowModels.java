@@ -78,7 +78,6 @@ public class FlowModels {
         private String id;
         private String flowKey;
         private String raw;
-        private long lockVersion;
         private long createdAt;
         private long updatedAt;
         private String createdBy;
@@ -89,7 +88,6 @@ public class FlowModels {
             String id,
             String flowKey,
             String raw,
-            long lockVersion,
             long createdAt,
             long updatedAt,
             String createdBy,
@@ -99,7 +97,6 @@ public class FlowModels {
             this.id = id;
             this.flowKey = flowKey;
             this.raw = raw;
-            this.lockVersion = lockVersion;
             this.createdAt = createdAt;
             this.updatedAt = updatedAt;
             this.createdBy = createdBy;
@@ -115,7 +112,6 @@ public class FlowModels {
                 draft.id(),
                 draft.key(),
                 draft.source(),
-                draft.lockVersion(),
                 draft.createdAt(),
                 draft.updatedAt(),
                 actorName(draft.creator()),
@@ -134,10 +130,6 @@ public class FlowModels {
 
         public String getRaw() {
             return raw;
-        }
-
-        public long getLockVersion() {
-            return lockVersion;
         }
 
         public long getCreatedAt() {
@@ -631,7 +623,6 @@ public class FlowModels {
         private final String flowKey;
         private final long flowVersion;
         private final String state;
-        private final long lockVersion;
         private final long createdAt;
         private final long updatedAt;
         private final List<HistoryView> history;
@@ -642,7 +633,6 @@ public class FlowModels {
             String flowKey,
             long flowVersion,
             String state,
-            long lockVersion,
             long createdAt,
             long updatedAt,
             List<HistoryView> history,
@@ -652,7 +642,6 @@ public class FlowModels {
             this.flowKey = flowKey;
             this.flowVersion = flowVersion;
             this.state = state;
-            this.lockVersion = lockVersion;
             this.createdAt = createdAt;
             this.updatedAt = updatedAt;
             this.history = List.copyOf(history);
@@ -667,7 +656,6 @@ public class FlowModels {
                 execution.flowKey(),
                 execution.flowVersion(),
                 execution.state().current().name(),
-                execution.lockVersion(),
                 stateHistory.getFirst().date(),
                 stateHistory.getLast().date(),
                 stateHistory.stream().map(HistoryView::from).toList(),
@@ -691,10 +679,6 @@ public class FlowModels {
 
         public String getState() {
             return state;
-        }
-
-        public long getLockVersion() {
-            return lockVersion;
         }
 
         public long getCreatedAt() {
@@ -761,7 +745,7 @@ public class FlowModels {
             return new TaskRunView(
                 taskRun.id(),
                 taskRun.taskId(),
-                taskRun.parentTaskRunId().orElse(null),
+                taskRun.parentId().orElse(null),
                 taskRun.iteration().isPresent()
                     ? taskRun.iteration().getAsInt()
                     : null,

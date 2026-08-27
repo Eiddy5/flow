@@ -324,7 +324,6 @@ class ExecutionPauseLifecycleIntegrationTest {
                 )
             );
             Execution running = fixture.startAndAwait(flow);
-            long originalLockVersion = running.lockVersion();
 
             assertThrows(
                 WorkflowException.class,
@@ -344,14 +343,10 @@ class ExecutionPauseLifecycleIntegrationTest {
                 fixture.executionService().execution(
                     fixture.session(),
                     running.id()
-                ).orElseThrow();
+            ).orElseThrow();
             assertEquals(State.Type.PAUSED, afterRejectedCancel.state().current());
-            assertEquals(
-                originalLockVersion,
-                afterRejectedCancel.lockVersion()
-            );
 
-            Execution canceled = fixture.cancel(running.id());
+            fixture.cancel(running.id());
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().cancel(
@@ -363,9 +358,8 @@ class ExecutionPauseLifecycleIntegrationTest {
                 fixture.executionService().execution(
                     fixture.session(),
                     running.id()
-                ).orElseThrow();
+            ).orElseThrow();
             assertEquals(State.Type.KILLED, canceledReloaded.state().current());
-            assertEquals(canceled.lockVersion(), canceledReloaded.lockVersion());
 
             Flow automaticFlow = fixture.deploy("""
                 key: pause-lifecycle-completed
@@ -388,10 +382,6 @@ class ExecutionPauseLifecycleIntegrationTest {
                 ).orElseThrow();
 
             assertEquals(State.Type.SUCCESS, completedReloaded.state().current());
-            assertEquals(
-                completed.lockVersion(),
-                completedReloaded.lockVersion()
-            );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }

@@ -12,7 +12,6 @@ import org.flow.gen.flow.Indexes;
 import org.flow.gen.flow.Keys;
 import org.flow.gen.flow.Public;
 import org.flow.gen.flow.records.FlowTasksRecord;
-import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Index;
@@ -29,7 +28,6 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
-import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -167,22 +165,6 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
     @Override
     public List<UniqueKey<FlowTasksRecord>> getUniqueKeys() {
         return Arrays.asList(Keys.UQ_FLOW_TASKS_KEY);
-    }
-
-    @Override
-    public List<Check<FlowTasksRecord>> getChecks() {
-        return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_depend_on"), "((jsonb_typeof(depend_on) = 'array'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_inputs"), "((jsonb_typeof(inputs) = 'array'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_key"), "(((length(btrim((key)::text)) >= 1) AND (length(btrim((key)::text)) <= 128)))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_order"), "((\"order\" >= 0))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_outputs"), "((jsonb_typeof(outputs) = 'array'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_parent"), "(((parent_id IS NULL) OR ((parent_id)::text <> (id)::text)))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_properties"), "((jsonb_typeof(properties) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_route"), "((length(btrim(route)) > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_type"), "(((type <> ''::text) AND (type = btrim(type))))", true),
-            Internal.createCheck(this, DSL.name("ck_flow_tasks_version"), "((flow_version > 0))", true)
-        );
     }
 
     @Override

@@ -35,7 +35,6 @@ class FlowServiceTest {
 
         PublishFlowCommand defaultDraft = PublishFlowCommand.from(
             null,
-            null,
             "key: default-draft",
             null
         );
@@ -82,7 +81,6 @@ class FlowServiceTest {
                 )
             );
             assertEquals(first.id(), revised.id());
-            assertEquals(first.lockVersion() + 1, revised.lockVersion());
 
             Flow otherCompany = service.save(
                 companyTwo,

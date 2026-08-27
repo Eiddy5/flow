@@ -52,6 +52,8 @@ Flow 之间。
 - 新增扁平包 `org.cses.flow.core.serializers`，包内不再按业务建立子目录。
 - `YamlParser` 是唯一 YAML 语法入口；它使用 Jackson `ObjectMapper` 和
   `YAMLFactory`、拒绝重复键与尾随文档，并返回深度只读的字符串键映射。
+- `YamlParser` 是无状态静态类；它不参与 Bean 注入，静态方法直接取得
+  `JacksonMapper` 提供的 YAML Mapper。
 - `YamlParser` 不导入 Flow、Task、Command、Repository 或具体 Task 扩展类型，
   不校验 Flow 字段和 Task 类型。
 - `YamlParser` 返回的通用只读 `Map<String, Object>` 是唯一解析中间结果；它只在

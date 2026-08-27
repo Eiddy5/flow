@@ -44,7 +44,6 @@ class BuiltInPluginExamplesTest {
             BUILT_IN_PLUGINS
         );
         Context context = builtInContext();
-        YamlParser yamlParser = new YamlParser(context.jacksonMapper());
 
         List<PluginMetadata<Task>> metadata = registry.plugins().stream()
             .flatMap(group -> group.tasks().stream())
@@ -60,7 +59,7 @@ class BuiltInPluginExamplesTest {
             for (PluginExample example : plugin.examples()) {
                 assertEquals("yaml", example.lang());
                 for (String source : example.code()) {
-                    Map<String, Object> definition = yamlParser.parse(source);
+                    Map<String, Object> definition = YamlParser.parse(source);
                     assertCompleteFlowDefinition(definition, example);
                     Flow flow = context.deploy(
                         "plugin-example-company",

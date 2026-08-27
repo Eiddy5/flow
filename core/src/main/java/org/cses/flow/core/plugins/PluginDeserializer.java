@@ -16,19 +16,22 @@ import static java.util.Objects.requireNonNull;
 /**
  * Resolves a plugin's exact class before Jackson binds its fields.
  */
-public class PluginDeserializer<T extends Plugin>
-    extends JsonDeserializer<T> {
+public class PluginDeserializer<T extends Plugin> extends JsonDeserializer<T> {
+
+    private static final String TYPE = "type";
+
 
     private PluginRegistry registry;
     private boolean sourceDefinition;
+
 
     public PluginDeserializer(PluginRegistry registry) {
         this(registry, false);
     }
 
     PluginDeserializer(
-        PluginRegistry registry,
-        boolean sourceDefinition
+            PluginRegistry registry,
+            boolean sourceDefinition
     ) {
         this.registry = requireNonNull(registry, "Plugin registry");
         this.sourceDefinition = sourceDefinition;
@@ -37,23 +40,23 @@ public class PluginDeserializer<T extends Plugin>
     @Override
     @SuppressWarnings("unchecked")
     public T deserialize(
-        JsonParser parser,
-        DeserializationContext context
+            JsonParser parser,
+            DeserializationContext context
     ) throws IOException {
         JsonNode value = context.readTree(parser);
         if (!(value instanceof ObjectNode object)) {
             throw JsonMappingException.from(
-                parser,
-                "Plugin must be an object"
+                    parser,
+                    "Plugin must be an object"
             );
         }
-        JsonNode typeNode = object.get("type");
+        JsonNode typeNode = object.get(TYPE);
         if (typeNode == null || !typeNode.isTextual()
-            || typeNode.textValue().isBlank()) {
+                || typeNode.textValue().isBlank()) {
             throw context.weirdStringException(
-                typeNode == null ? null : typeNode.asText(),
-                Plugin.class,
-                "Plugin type must be non-blank text"
+                    typeNode == null ? null : typeNode.asText(),
+                    Plugin.class,
+                    "Plugin type must be non-blank text"
             );
         }
 
@@ -63,9 +66,9 @@ public class PluginDeserializer<T extends Plugin>
             concreteType = registry.resolve(type, Plugin.class);
         } catch (IllegalArgumentException exception) {
             throw context.invalidTypeIdException(
-                context.constructType(Plugin.class),
-                type,
-                exception.getMessage()
+                    context.constructType(Plugin.class),
+                    type,
+                    exception.getMessage()
             );
         }
 
@@ -76,11 +79,11 @@ public class PluginDeserializer<T extends Plugin>
     }
 
     private void prepareSourceTask(
-        ObjectNode definition,
-        Class<? extends Plugin> concreteType
+            ObjectNode definition,
+            Class<? extends Plugin> concreteType
     ) {
         if (!sourceDefinition
-            || !Task.class.isAssignableFrom(concreteType)) {
+                || !Task.class.isAssignableFrom(concreteType)) {
             return;
         }
 
@@ -94,7 +97,7 @@ public class PluginDeserializer<T extends Plugin>
             key = StringUtil.newId();
         } else if (!keyNode.isTextual() || keyNode.textValue().isBlank()) {
             throw new IllegalArgumentException(
-                "Task key must be non-blank text"
+                    "Task key must be non-blank text"
             );
         } else {
             key = keyNode.textValue().trim();
@@ -105,12 +108,12 @@ public class PluginDeserializer<T extends Plugin>
     }
 
     private static void rejectSystemField(
-        ObjectNode definition,
-        String field
+            ObjectNode definition,
+            String field
     ) {
         if (definition.has(field)) {
             throw new IllegalArgumentException(
-                "Task must not declare system field " + field
+                    "Task must not declare system field " + field
             );
         }
     }

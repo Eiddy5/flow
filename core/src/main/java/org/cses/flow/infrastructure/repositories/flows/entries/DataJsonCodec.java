@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.flows.postgres.entries;
+package org.cses.flow.infrastructure.repositories.flows.entries;
 
 import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.DataType;

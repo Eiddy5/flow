@@ -5,13 +5,15 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.infrastructure.repositories.executions.postgres.ExecutionPostgresRepository;
-import org.cses.flow.infrastructure.repositories.flows.postgres.FlowRepositoryImpl;
+import org.cses.flow.infrastructure.repositories.executions.ExecutionPostgresRepository;
+import org.cses.flow.infrastructure.repositories.flows.FlowRepositoryImpl;
+import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
 import org.cses.flow.extensions.flow.Pause;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -210,7 +212,6 @@ final class PostgresRepositoryIntegrationTest {
                         execution.id()
                 ).orElseThrow()
         );
-        assertEquals(0, restoredExecution.lockVersion());
         assertEquals(
                 Map.of("amount", 1200),
                 restoredExecution.inputs()
@@ -287,10 +288,21 @@ final class PostgresRepositoryIntegrationTest {
             executionRepository.save(dsl, staleFirst);
             return null;
         });
-        assertThrows(WorkflowException.class, () -> write(dsl -> {
+        write(dsl -> {
             executionRepository.save(dsl, staleSecond);
             return null;
-        }));
+        });
+        Execution restoredAfterStaleWrites = read(dsl ->
+                executionRepository.findById(
+                        dsl,
+                        companyId,
+                        execution.id()
+                ).orElseThrow()
+        );
+        assertEquals(
+                State.Type.KILLING,
+                restoredAfterStaleWrites.state().current()
+        );
 
     }
 
@@ -543,6 +555,39 @@ final class PostgresRepositoryIntegrationTest {
                         .and(tableName.in("flow_tasks", "executions"))
                         .and(columnName.in("flow_id", "flow_reversion"))
         ));
+        int executionAdapterAuditColumnCount = read(dsl -> dsl.fetchCount(
+                columns,
+                tableSchema.eq("public")
+                        .and(tableName.eq("executions"))
+                        .and(columnName.in(
+                                "updater",
+                                "deleter",
+                                "updated_at",
+                                "deleted_at"
+                        ))
+        ));
+        int taskRunNonDomainTimeColumnCount = read(dsl -> dsl.fetchCount(
+                columns,
+                tableSchema.eq("public")
+                        .and(tableName.eq("task_runs"))
+                        .and(columnName.in(
+                                "start_at",
+                                "end_at",
+                                "created_at",
+                                "updated_at",
+                                "deleted_at"
+                        ))
+        ));
+        int flowDerivedAuditColumnCount = read(dsl -> dsl.fetchCount(
+                columns,
+                tableSchema.eq("public")
+                        .and(tableName.eq("flows"))
+                        .and(columnName.in(
+                                "creator_id",
+                                "updater_id",
+                                "deleter_id"
+                        ))
+        ));
 
         assertEquals(1, draftColumnCount);
         assertEquals(1, auditStatusColumnCount);
@@ -551,6 +596,9 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(2, stateJsonbColumnCount);
         assertEquals(4, flowVersionBindingColumnCount);
         assertEquals(0, legacyFlowBindingColumnCount);
+        assertEquals(0, executionAdapterAuditColumnCount);
+        assertEquals(0, taskRunNonDomainTimeColumnCount);
+        assertEquals(0, flowDerivedAuditColumnCount);
         assertEquals(
                 "text",
                 read(dsl -> dsl.select(dataType)
@@ -732,7 +780,9 @@ final class PostgresRepositoryIntegrationTest {
                 password
         )) {
             connection.setAutoCommit(false);
-            DSLContext dsl = DSL.using(connection, SQLDialect.POSTGRES);
+            DSLContext dsl = FlowJooqTestConfiguration.configure(
+                    DSL.using(connection, SQLDialect.POSTGRES)
+            );
             dsl.configuration().data(Session.class, session());
             T result = operation.apply(dsl);
             if (write) {

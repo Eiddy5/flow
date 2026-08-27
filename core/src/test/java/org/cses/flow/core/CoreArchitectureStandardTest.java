@@ -482,6 +482,117 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
+    void postgresTableReadsMapDirectlyIntoEntries() throws IOException {
+        Path repositories = FLOW.resolve("infrastructure/repositories");
+        List<String> invalid = new ArrayList<>();
+        try (var paths = Files.walk(repositories)) {
+            paths.filter(path -> path.toString().endsWith(".java"))
+                .forEach(path -> {
+                    try {
+                        String source = Files.readString(path);
+                        if (source.contains("fromRecord(")
+                            || source.contains(".into(FlowsRecord.class)")
+                            || source.contains(
+                                ".into(FlowTasksRecord.class)"
+                            )
+                            || source.contains(
+                                ".into(ExecutionsRecord.class)"
+                            )
+                            || source.contains(
+                                ".into(TaskRunsRecord.class)"
+                            )) {
+                            invalid.add(path.toString());
+                        }
+                    } catch (IOException exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                });
+        }
+
+        String flows = Files.readString(FLOW.resolve(
+            "infrastructure/repositories/flows/FlowRepositoryImpl.java"
+        ));
+        String executions = Files.readString(FLOW.resolve(
+            "infrastructure/repositories/executions/"
+                + "ExecutionPostgresRepository.java"
+        ));
+        assertTrue(
+            invalid.isEmpty()
+                && flows.contains("fetchOneInto(FlowEntry.class)")
+                && flows.contains("fetchInto(FlowEntry.class)")
+                && flows.contains("fetchInto(FlowTaskEntry.class)")
+                && executions.contains(
+                    "fetchOneInto(ExecutionEntry.class)"
+                )
+                && executions.contains("fetchInto(TaskRunEntry.class)"),
+            () -> "PostgreSQL table reads must map directly into Entries: "
+                + invalid
+        );
+    }
+
+    @Test
+    void postgresBatchWritesBuildOneValuesInsert() throws IOException {
+        String flows = Files.readString(FLOW.resolve(
+            "infrastructure/repositories/flows/FlowRepositoryImpl.java"
+        ));
+        String executions = Files.readString(FLOW.resolve(
+            "infrastructure/repositories/executions/"
+                + "ExecutionPostgresRepository.java"
+        ));
+        String queue = Files.readString(FLOW.resolve(
+            "infrastructure/queues/PostgresQueueStore.java"
+        ));
+
+        assertTrue(
+            flows.contains("values(FlowTaskEntry.fromDomain(")
+                && flows.contains("values.execute()")
+                && !flows.contains("newRecord()")
+                && executions.contains(
+                    "values.values(TaskRunEntry.fromDomain("
+                )
+                && executions.contains("values.execute()")
+                && !executions.contains("newRecord()")
+                && queue.contains("values.values(")
+                && queue.contains("values.execute()")
+                && !queue.contains("newRecord()"),
+            "PostgreSQL batch writes must concatenate VALUES rows and execute once"
+        );
+    }
+
+    @Test
+    void postgresAdaptersDoNotGenerateDomainAuditFacts() throws IOException {
+        Path repositories = FLOW.resolve("infrastructure/repositories");
+        List<String> invalid = new ArrayList<>();
+        try (var paths = Files.walk(repositories)) {
+            paths.filter(path -> path.toString().endsWith(".java"))
+                .forEach(path -> {
+                    try {
+                        String source = Files.readString(path);
+                        if (source.contains("PostgresAudit")
+                            || source.contains(
+                                "configuration().data(Session.class)"
+                            )
+                            || source.contains("System.currentTimeMillis()")
+                            || source.contains("Instant.now()")
+                            || source.contains("OffsetDateTime.now()")) {
+                            invalid.add(path.toString());
+                        }
+                    } catch (IOException exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                });
+        }
+        assertTrue(
+            invalid.isEmpty()
+                && Files.notExists(repositories.resolve(
+                    "shared/postgres/PostgresAudit.java"
+                )),
+            () -> "PostgreSQL adapters must not generate audit facts: "
+                + invalid
+        );
+    }
+
+    @Test
     void taskCapabilitiesKeepOrchestrationOutOfWorkers() throws IOException {
         Path taskDomain = CORE.resolve("domains/tasks");
         Path runner = CORE.resolve("runner");
@@ -621,22 +732,27 @@ class CoreArchitectureStandardTest {
     void flowIsTheOnlyConcreteDefinitionAggregate() throws IOException {
         Path flows = CORE.resolve("domains/flows");
         Path flowPath = flows.resolve("Flow.java");
+        Path executionPath = CORE.resolve("domains/executions/Execution.java");
 
         assertTrue(Files.isRegularFile(flowPath));
+        assertTrue(Files.isRegularFile(executionPath));
         assertTrue(Files.notExists(flows.resolve("FlowWithDraft.java")));
 
         String flow = Files.readString(flowPath);
+        String execution = Files.readString(executionPath);
         assertTrue(
             flow.contains(
-                "public class Flow extends AbstractFlow "
-                    + "implements Lockable<Flow>"
+                "public class Flow extends AbstractFlow"
             )
+                && !flow.contains("Lockable")
                 && flow.contains("String source;")
-                && flow.contains("long lockVersion;")
+                && !flow.contains("lockVersion")
                 && flow.contains("public static Flow create(")
                 && flow.contains("public static Flow deploy(")
                 && flow.contains("public static Flow rehydrate(")
-                && flow.contains("public void initialize("),
+                && flow.contains("public void initialize(")
+                && !execution.contains("Lockable")
+                && !execution.contains("lockVersion"),
             "Flow must remain the only concrete draft and deployed "
                 + "definition aggregate"
         );
@@ -682,7 +798,7 @@ class CoreArchitectureStandardTest {
                 && state.contains("private final List<History> history;")
                 && state.contains("public Type current()")
                 && state.contains("public List<History> history()")
-                && execution.contains("private State state;")
+                && execution.contains("State state;")
                 && taskRun.contains("private State state;")
                 && workerResult.contains(
                     "public record WorkerTaskResult("
@@ -823,6 +939,11 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             source.contains("JacksonMapper")
+                && source.contains("public static Map<String, Object> parse")
+                && source.contains("public static <T> T parse")
+                && source.contains("JacksonMapper.yamlMapper()")
+                && source.contains("private YamlParser()")
+                && !source.contains("@Singleton")
                 && source.contains("parse(String source, Class<T> type)")
                 && !source.contains("YAMLFactory")
                 && !source.contains("PluginDeserializationContext")

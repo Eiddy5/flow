@@ -1,7 +1,8 @@
 package org.cses.flow.core.domains.flows;
 
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
 import org.cses.flow.core.domains.ActorRef;
-import org.cses.flow.core.domains.Lockable;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.TaskRoute;
@@ -20,15 +21,11 @@ import java.util.stream.Stream;
 /**
  * Concrete Flow aggregate for editable drafts and deployed versions.
  */
-public class Flow extends AbstractFlow implements Lockable<Flow> {
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Flow extends AbstractFlow {
 
     List<Task> tasks = List.of();
     String source;
-    long lockVersion;
-
-    public Flow() {
-        super();
-    }
 
     private Flow(
         String id,
@@ -77,8 +74,7 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
         long createdAt,
         long updatedAt,
         Long deletedAt,
-        String source,
-        long lockVersion
+        String source
     ) {
         super(
             id,
@@ -100,15 +96,8 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
         );
         this.tasks = immutableTasks(tasks);
         this.source = RequiredUtil.required(source, "Flow source");
-        if (lockVersion < 0) {
-            throw new IllegalArgumentException(
-                "Flow lockVersion must not be negative"
-            );
-        }
-        this.lockVersion = lockVersion;
         validateTasksForState();
     }
-
     public static Flow create(
         Session<? extends User> session,
         String key,
@@ -209,8 +198,7 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
         long createdAt,
         long updatedAt,
         Long deletedAt,
-        String source,
-        long lockVersion
+        String source
     ) {
         return new Flow(
             id,
@@ -230,8 +218,7 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
             createdAt,
             updatedAt,
             deletedAt,
-            source,
-            lockVersion
+            source
         );
     }
 
@@ -274,7 +261,6 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
         );
         tasks = boundTasks;
         source = RequiredUtil.required(rawSource, "Flow source");
-        lockVersion = 0;
         validateTasksForState();
     }
 
@@ -363,22 +349,6 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
         source = checkedSource;
     }
 
-    @Override
-    public long lockVersion() {
-        return lockVersion;
-    }
-
-    @Override
-    public Flow lock() {
-        lockVersion++;
-        return this;
-    }
-
-    @Override
-    protected void onAuditChanged() {
-        lock();
-    }
-
     /**
      * Returns a detached copy while preserving the complete Flow state.
      */
@@ -401,8 +371,7 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
             createdAt(),
             updatedAt(),
             deletedAt().orElse(null),
-            source,
-            lockVersion
+            source
         );
     }
 
@@ -473,7 +442,6 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
                 && Objects.equals(outputs(), other.outputs())
                 && Objects.equals(tasks, other.tasks)
                 && Objects.equals(source, other.source)
-                && lockVersion == other.lockVersion
                 && Objects.equals(status(), other.status())
                 && Objects.equals(creator(), other.creator())
                 && Objects.equals(updater(), other.updater())
@@ -495,7 +463,6 @@ public class Flow extends AbstractFlow implements Lockable<Flow> {
                 outputs(),
                 tasks,
                 source,
-                lockVersion,
                 status(),
                 creator(),
                 updater(),

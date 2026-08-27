@@ -4,7 +4,6 @@
 package org.flow.gen.flow.tables;
 
 
-import java.time.OffsetDateTime;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -13,7 +12,6 @@ import org.flow.gen.flow.Indexes;
 import org.flow.gen.flow.Keys;
 import org.flow.gen.flow.Public;
 import org.flow.gen.flow.records.QueuesRecord;
-import org.jooq.Check;
 import org.jooq.Condition;
 import org.jooq.Field;
 import org.jooq.Index;
@@ -30,7 +28,6 @@ import org.jooq.TableField;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
-import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -84,7 +81,7 @@ public class QueuesTable extends TableImpl<QueuesRecord> {
     /**
      * The column <code>public.queues.created_at</code>.
      */
-    public final TableField<QueuesRecord, OffsetDateTime> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.TIMESTAMPWITHTIMEZONE(6).nullable(false).defaultValue(DSL.field(DSL.raw("now()"), SQLDataType.TIMESTAMPWITHTIMEZONE)), this, "");
+    public final TableField<QueuesRecord, Long> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("((EXTRACT(epoch FROM now()) * (1000)::numeric))::bigint"), SQLDataType.BIGINT)), this, "");
 
     private QueuesTable(Name alias, Table<QueuesRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -128,15 +125,6 @@ public class QueuesTable extends TableImpl<QueuesRecord> {
     @Override
     public UniqueKey<QueuesRecord> getPrimaryKey() {
         return Keys.PK_QUEUES;
-    }
-
-    @Override
-    public List<Check<QueuesRecord>> getChecks() {
-        return Arrays.asList(
-            Internal.createCheck(this, DSL.name("ck_queues_id"), "((length(btrim((id)::text)) > 0))", true),
-            Internal.createCheck(this, DSL.name("ck_queues_payload"), "((jsonb_typeof(payload) = 'object'::text))", true),
-            Internal.createCheck(this, DSL.name("ck_queues_type"), "((length(btrim((queue_type)::text)) > 0))", true)
-        );
     }
 
     @Override

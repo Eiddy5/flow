@@ -38,8 +38,8 @@ final class DomainCapabilitiesTest {
         assertConstructionPaths(Flow.class);
         assertConstructionPaths(Execution.class);
 
-        assertEquals(2, BaseDomain.class.getDeclaredConstructors().length);
-        assertEquals(2, Audited.class.getDeclaredConstructors().length);
+        assertEquals(3, BaseDomain.class.getDeclaredConstructors().length);
+        assertEquals(3, Audited.class.getDeclaredConstructors().length);
     }
 
     @Test
@@ -50,11 +50,8 @@ final class DomainCapabilitiesTest {
         assertTrue(Identified.class.isAssignableFrom(TaskRun.class));
         assertTrue(BaseDomain.class.isAssignableFrom(Flow.class));
         assertTrue(Audited.class.isAssignableFrom(Flow.class));
-        assertTrue(Lockable.class.isAssignableFrom(Flow.class));
-        assertTrue(Lockable.class.isAssignableFrom(Execution.class));
 
         assertTrue(BaseDomain.class.isAssignableFrom(Execution.class));
-        assertFalse(Lockable.class.isAssignableFrom(TaskRun.class));
         assertFalse(Identified.class.isAssignableFrom(ActorRef.class));
         assertFalse(Identified.class.isAssignableFrom(Input.class));
         assertFalse(Identified.class.isAssignableFrom(Output.class));
@@ -68,7 +65,7 @@ final class DomainCapabilitiesTest {
     }
 
     @Test
-    void flowDraftClosesIdentityAuditDeletionAndLockCapabilities() {
+    void flowDraftClosesIdentityAuditDeletionCapabilities() {
         Session<User> creatorSession = session(
             "company-1",
             "creator-1",
@@ -98,7 +95,6 @@ final class DomainCapabilitiesTest {
 
         Identified identified = draft;
         Audited audited = draft;
-        Lockable<Flow> lockable = draft;
 
         assertEquals(draft.id(), identified.id());
         assertFalse(draft.id().isBlank());
@@ -117,13 +113,6 @@ final class DomainCapabilitiesTest {
         assertEquals(RecordState.Open, audited.status());
         assertTrue(audited.deleter().isEmpty());
         assertTrue(audited.deletedAt().isEmpty());
-        assertTrue(lockable.hasLockVersion(0));
-        lockable.requireLockVersion(0);
-        assertThrows(
-            WorkflowException.class,
-            () -> lockable.requireLockVersion(1)
-        );
-
         draft.revise(
             "revised",
             Map.of(),
@@ -136,9 +125,6 @@ final class DomainCapabilitiesTest {
 
         assertEquals(SessionUtil.user(editorSession), audited.updater());
         assertEquals(createdAt + 1_000L, audited.updatedAt());
-        assertTrue(lockable.hasLockVersion(1));
-        lockable.requireLockVersion(1);
-
         draft.delete(deleterSession, createdAt + 2_000L);
 
         assertTrue(audited.deleted());
@@ -152,7 +138,6 @@ final class DomainCapabilitiesTest {
         );
         assertEquals(SessionUtil.user(deleterSession), audited.updater());
         assertEquals(createdAt + 2_000L, audited.updatedAt());
-        assertTrue(lockable.hasLockVersion(2));
         assertThrows(
             WorkflowException.class,
             () -> draft.delete(
@@ -172,8 +157,6 @@ final class DomainCapabilitiesTest {
                 createdAt + 3_000L
             )
         );
-        lockable.lock();
-        assertEquals(3, lockable.lockVersion());
     }
 
     @Test
@@ -252,7 +235,6 @@ final class DomainCapabilitiesTest {
         assertFalse(draft.deleted());
         assertTrue(draft.deleter().isEmpty());
         assertTrue(draft.deletedAt().isEmpty());
-        assertEquals(0, draft.lockVersion());
     }
 
     private static Session<User> session(

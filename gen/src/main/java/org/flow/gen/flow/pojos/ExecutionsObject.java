@@ -7,7 +7,6 @@ package org.flow.gen.flow.pojos;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serializable;
-import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 
 import org.flow.gen.flow.Tables;
@@ -33,11 +32,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public JSONB state;
     public Long lockVersion;
     public JSONB creator;
-    public JSONB updater;
-    public JSONB deleter;
-    public OffsetDateTime createdAt;
-    public OffsetDateTime updatedAt;
-    public OffsetDateTime deletedAt;
+    public Long createdAt;
     public JsonObject inputs;
 
     public ExecutionsObject() {}
@@ -50,11 +45,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.state = value.state;
         this.lockVersion = value.lockVersion;
         this.creator = value.creator;
-        this.updater = value.updater;
-        this.deleter = value.deleter;
         this.createdAt = value.createdAt;
-        this.updatedAt = value.updatedAt;
-        this.deletedAt = value.deletedAt;
         this.inputs = value.inputs;
     }
 
@@ -66,11 +57,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         JSONB state,
         Long lockVersion,
         JSONB creator,
-        JSONB updater,
-        JSONB deleter,
-        OffsetDateTime createdAt,
-        OffsetDateTime updatedAt,
-        OffsetDateTime deletedAt,
+        Long createdAt,
         JsonObject inputs
     ) {
         this.id = id;
@@ -80,11 +67,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.state = state;
         this.lockVersion = lockVersion;
         this.creator = creator;
-        this.updater = updater;
-        this.deleter = deleter;
         this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.deletedAt = deletedAt;
         this.inputs = inputs;
     }
 
@@ -187,73 +170,17 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.executions.updater</code>.
-     */
-    public JSONB getUpdater() {
-        return this.updater;
-    }
-
-    /**
-     * Setter for <code>public.executions.updater</code>.
-     */
-    public void setUpdater(JSONB updater) {
-        this.updater = updater;
-    }
-
-    /**
-     * Getter for <code>public.executions.deleter</code>.
-     */
-    public JSONB getDeleter() {
-        return this.deleter;
-    }
-
-    /**
-     * Setter for <code>public.executions.deleter</code>.
-     */
-    public void setDeleter(JSONB deleter) {
-        this.deleter = deleter;
-    }
-
-    /**
      * Getter for <code>public.executions.created_at</code>.
      */
-    public OffsetDateTime getCreatedAt() {
+    public Long getCreatedAt() {
         return this.createdAt;
     }
 
     /**
      * Setter for <code>public.executions.created_at</code>.
      */
-    public void setCreatedAt(OffsetDateTime createdAt) {
+    public void setCreatedAt(Long createdAt) {
         this.createdAt = createdAt;
-    }
-
-    /**
-     * Getter for <code>public.executions.updated_at</code>.
-     */
-    public OffsetDateTime getUpdatedAt() {
-        return this.updatedAt;
-    }
-
-    /**
-     * Setter for <code>public.executions.updated_at</code>.
-     */
-    public void setUpdatedAt(OffsetDateTime updatedAt) {
-        this.updatedAt = updatedAt;
-    }
-
-    /**
-     * Getter for <code>public.executions.deleted_at</code>.
-     */
-    public OffsetDateTime getDeletedAt() {
-        return this.deletedAt;
-    }
-
-    /**
-     * Setter for <code>public.executions.deleted_at</code>.
-     */
-    public void setDeletedAt(OffsetDateTime deletedAt) {
-        this.deletedAt = deletedAt;
     }
 
     /**
@@ -321,35 +248,11 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.creator.equals(other.creator))
             return false;
-        if (this.updater == null) {
-            if (other.updater != null)
-                return false;
-        }
-        else if (!this.updater.equals(other.updater))
-            return false;
-        if (this.deleter == null) {
-            if (other.deleter != null)
-                return false;
-        }
-        else if (!this.deleter.equals(other.deleter))
-            return false;
         if (this.createdAt == null) {
             if (other.createdAt != null)
                 return false;
         }
         else if (!this.createdAt.equals(other.createdAt))
-            return false;
-        if (this.updatedAt == null) {
-            if (other.updatedAt != null)
-                return false;
-        }
-        else if (!this.updatedAt.equals(other.updatedAt))
-            return false;
-        if (this.deletedAt == null) {
-            if (other.deletedAt != null)
-                return false;
-        }
-        else if (!this.deletedAt.equals(other.deletedAt))
             return false;
         if (this.inputs == null) {
             if (other.inputs != null)
@@ -371,11 +274,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
         result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
         result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
-        result = prime * result + ((this.updater == null) ? 0 : this.updater.hashCode());
-        result = prime * result + ((this.deleter == null) ? 0 : this.deleter.hashCode());
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
-        result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
-        result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         return result;
     }
@@ -408,11 +307,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         map.put("state", state);
         map.put("lock_version", lockVersion);
         map.put("creator", creator);
-        map.put("updater", updater);
-        map.put("deleter", deleter);
         map.put("created_at", createdAt);
-        map.put("updated_at", updatedAt);
-        map.put("deleted_at", deletedAt);
         map.put("inputs", inputs == null ? null : inputs.toString());
         return map;
     }

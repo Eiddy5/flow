@@ -31,21 +31,21 @@ public final class NamedJooqFactory {
     @EachBean(DataSource.class)
     @Prototype
     public JOOQ jooq(
-        @Parameter String name,
-        DataSource source,
-        BeanContext beanContext
+            @Parameter String name,
+            DataSource source,
+            BeanContext beanContext
     ) {
         Configuration configuration = beanContext.getBean(
-            Configuration.class,
-            Qualifiers.byName(name)
+                Configuration.class,
+                Qualifiers.byName(name)
         );
         if (source.getClass().equals(HikariUrlDataSource.class)) {
             return new JOOQ(configuration, source);
         }
         try {
             return new JOOQ(
-                configuration,
-                source.unwrap(HikariUrlDataSource.class)
+                    configuration,
+                    source.unwrap(HikariUrlDataSource.class)
             );
         } catch (SQLException exception) {
             throw new RuntimeException(exception);

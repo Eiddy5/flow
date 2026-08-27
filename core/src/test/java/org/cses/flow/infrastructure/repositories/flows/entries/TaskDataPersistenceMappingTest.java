@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.flows.postgres.entries;
+package org.cses.flow.infrastructure.repositories.flows.entries;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.core.domains.expressions.Express;

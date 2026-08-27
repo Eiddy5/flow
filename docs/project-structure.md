@@ -221,7 +221,8 @@ core/
 
 `serializers` 是 Core 技术目录中的明确例外，保持扁平。`JacksonMapper` 只负责
 集中创建和配置受控的 JSON/YAML Mapper，并提供通用对象转换；
-`YamlParser` 只负责严格 YAML 树、只读 Map 和通用目标类型解析。它不导入或创建
+`YamlParser` 是无状态静态类，只通过静态方法直接使用 `JacksonMapper` 提供的 YAML
+Mapper，负责严格 YAML 树、只读 Map 和通用目标类型解析。它不导入或创建
 Flow、Task 等业务类型。`PluginModule` 在 Mapper 创建时注册
 `PluginDeserializer`；YAML Mapper 使用其 source 定义配置，自动拒绝 Task 系统字段
 并生成首次身份，JSON Mapper 则按原值恢复持久化身份。`PublishFlowHandler` 只调用

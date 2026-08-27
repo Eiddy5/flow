@@ -3,6 +3,7 @@ package org.cses.flow.infrastructure.jooq;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.cses.flow.executor.commands.ExecutionCommand;
+import org.cses.flow.executor.ExecutorEvent;
 import org.x9.jooq.JOOQ;
 import org.x9.jooq.intf.JooqRunnable;
 import org.x9.jooq.intf.JooqRunnableResult;
@@ -97,8 +98,9 @@ public final class PostgresJooqTestAdapter extends JOOQ {
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
             dsl.deleteFrom(QUEUES)
-                .where(QUEUES.QUEUE_NAME.eq(
-                    ExecutionCommand.QUEUE_NAME
+                .where(QUEUES.QUEUE_NAME.in(
+                    ExecutionCommand.QUEUE_NAME,
+                    ExecutorEvent.QUEUE_NAME
                 ))
                 .and(DSL.field(
                     "{0} ->> 'companyId'",
@@ -137,8 +139,9 @@ public final class PostgresJooqTestAdapter extends JOOQ {
         )) {
             connection.setAutoCommit(false);
             try {
+                var plainDsl = DSL.using(connection, SQLDialect.POSTGRES);
                 T result = runnable.run(
-                    DSL.using(connection, SQLDialect.POSTGRES)
+                    FlowJooqTestConfiguration.configure(plainDsl)
                 );
                 if (commit) {
                     connection.commit();
