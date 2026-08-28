@@ -36,6 +36,7 @@ docs/uc/
     UC-07 用户处理包含多阶段 Pause 的 Flow.md
     UC-08 用户在流程中输出动态日志.md
     UC-09 用户定义并运行循环流程.md
+    UC-10 用户处理包含嵌套编排的审批 Flow.md
 ```
 
 新领域由 UC Agent 创建，同时建立领域 `README.md` 并维护领域边界、UC 清单、
