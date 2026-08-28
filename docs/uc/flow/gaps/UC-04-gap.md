@@ -62,5 +62,4 @@ ExternalTask 已完成后如果恢复 Execution 或后续 Worker 失败，调用
   以及 UC-02 S7 竞争测试。
 - UC Agent：保留原子性和竞争场景。
 - 开发角色：已实现跨聚合事务与并发协议。
-- Test Agent：已执行成功、异常和竞争场景，复验结果见
-  [UC-04-2026-07-27-1948.md](../../../test-reports/flow/UC-04-2026-07-27-1948.md)。
+- Test Agent：已执行成功、异常和竞争场景。

@@ -3,18 +3,19 @@
 ## 目的
 
 本验证矩阵用于确认 Condition 按
-[`Condition 开发方案`](../decisions/Condition%20开发方案.md) 和
-[`ADR 0074`](../decisions/0074-separate-condition-and-structural-task-capabilities.md)
+[`ADR 0074`](../decisions/0074-separate-condition-and-structural-task-capabilities.md) 和
+[`ADR 0076`](../decisions/0076-build-one-run-variable-tree-for-runtime-expressions.md)
 形成唯一的受限布尔条件能力，并确认 Route 与 Loop Until 在各自的数据可见范围内复用
 同一个解析和求值模型。Condition 不是脚本引擎，也不负责 DAG 或分支选择策略。
 
 ## 完成标准
 
 - Condition 只能形成完整的比较节点或逻辑节点，创建后不可变且不保存运行时状态。
-- 只有完整 `{{ scope.path }}` 才形成引用；未包裹值形成常量，裸点分文本不能隐式读取
+- 只有完整 `{{ path.to.value }}` 才形成引用；未包裹值形成常量，裸点分文本不能隐式读取
   Condition Context，右侧引用必须被拒绝。
 - 字符串解析、规范化、错误位置、优先级、短路和基础 typed comparison 全部受测试保护。
-- Route 只能读取 Flow variables、Execution inputs 和同一串行作用域的前序 outputs。
+- Route 从统一 RunVariables 树读取 `vars`、`inputs`、运行元数据和 Execution 中全部
+  已完成 Task 的 `outputs`；Condition parser 不用固定 scope 或串行范围限制安全路径。
 - Loop Until 只读取当前已收敛轮次的循环体 outputs，并保留最大轮数保护。
 - Route 使用 `route` 原始字符串，正式发布或实际匹配时才形成 Condition；数据库保存
   与恢复不在当前验收范围。
@@ -26,12 +27,13 @@
 | 层次 | 必须覆盖的场景 | 主要测试 |
 | --- | --- | --- |
 | 领域结构 | 比较/逻辑形态互斥、显式引用/常量左右角色、Operand 不保存派生 kind、不可变字段与集合、值语义、无技术身份和运行状态 | `ConditionStructureTest`、`CoreArchitectureStandardTest` |
-| 解析与规范化 | variables/inputs/outputs 的 `{{ scope.path }}` 显式引用，多段安全路径，裸 String/Boolean/Number 常量，需消歧义的带引号 String，六种比较、AND 优先于 OR、括号、同 Logical 扁平化、稳定 source | `ConditionParsingTest` |
-| 安全拒绝 | 空文本、左侧裸路径、单等号、未知引用根、非法路径、未闭合括号、未知转义、右侧引用、方法、数组、算术、尾随文本及长度/深度/节点上限 | `ConditionParsingTest` |
+| 解析与规范化 | 任意安全根的 `{{ path.to.value }}` 显式引用、多段安全路径，裸 String/Boolean/Number 常量，需消歧义的带引号 String，六种比较、AND 优先于 OR、括号、同 Logical 扁平化、稳定 source | `ConditionParsingTest` |
+| 安全拒绝 | 空文本、左侧裸路径、单等号、非法路径、未闭合括号、未知转义、右侧引用、方法、数组、算术、尾随文本及长度/深度/节点上限；未知根允许解析并在缺值时返回 false | `ConditionParsingTest`、`ConditionTest` |
 | 求值 | 嵌套 Map、大小写、Boolean、Character、跨 Java Number 表现比较、缺值和类型不兼容为 false、AND/OR 顺序短路、并发读取隔离 | `ConditionTest` |
 | 定义协议 | Condition 字符串序列化；Route `route` 原文绑定；YAML 物化和插件 Schema 使用 `flow-condition` | `ConditionSerializationTest`、`RouteTest`、`FlowMaterializationTest`、`PluginSchemaGeneratorTest` |
-| Route | 草稿保留尚未完成的 `route`；正式发布按需解析并校验声明、类型和串行可见范围；不匹配不创建 TaskRun | `RouteTest`、`ConditionalRouteResumeIntegrationTest`、`Uc06ConditionalRouteTest`、`ExecutorServiceTest` |
+| Route | 草稿保留尚未完成的 `route`；正式发布按需解析并校验声明与类型；运行时先创建 Route TaskRun，再计算条件；不匹配时完成 Route TaskRun 且不创建子 TaskRun | `RouteTest`、`ConditionalRouteResumeIntegrationTest`、`Uc06ConditionalRouteTest`、`ExecutorServiceTest` |
 | Loop Until | 循环体输出声明与类型校验；至少一轮；只用当前轮输出；满足、继续和达到上限失败 | `LoopUntilTest`、`Uc09LoopOrchestrationTest` |
+| 变量对接 | RunVariables 九个规范顶层字段、Task key 输出分组、直接 parent、最近到最远 parents、深度不可变，以及 Condition/TemplateExpression 共用完整变量树 | `RunVariablesTest`、`RunContextTest`、`ExecutorServiceTest` |
 | 持久化 | 当前阶段不设计或验收 Route 的数据库保存与恢复协议 | 后续单独补充 |
 | 完整回归 | Task/Branch/Pause/Sequence/Parallel、Executor、Worker、API 和其他模块无回归 | `:core:test`、根项目 `test` |
 

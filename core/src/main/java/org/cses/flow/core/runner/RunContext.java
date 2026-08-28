@@ -1,12 +1,9 @@
 package org.cses.flow.core.runner;
 
-import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
+import org.cses.flow.core.domains.expressions.VariablePath;
 import org.cses.flow.core.domains.tasks.RunnableTask;
-import org.paas.session.Session;
-import org.paas.session.User;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -14,243 +11,199 @@ import java.util.Optional;
 /**
  * Immutable invocation context for one {@link RunnableTask}.
  *
- * <p>The variables map carries invocation-scoped runtime values. The Executor
- * places the current {@link Execution}, exact TaskRun identity, the
- * Execution-owned Flow inputs, TaskRun-specific inputs and immutable Flow-level
- * variables in reserved entries before the context crosses into a
- * RunnableTask.</p>
+ * <p>All invocation facts are read from the canonical variable tree built by
+ * {@link RunVariables}. The context does not duplicate runtime identity or
+ * retain a Session.</p>
  */
-public final class RunContext {
+public class RunContext {
 
-    /** Reserved variable containing the current Flow execution aggregate. */
-    public static final String EXECUTION_VARIABLE = "$flow.execution";
+    private Map<String, Object> variables;
 
-    /** Reserved variable containing the exact current TaskRun id. */
-    public static final String TASK_RUN_ID_VARIABLE = "$flow.taskRunId";
-
-    /** Reserved variable containing the current TaskRun's optional parent. */
-    public static final String PARENT_TASK_RUN_ID_VARIABLE =
-        "$flow.parentTaskRunId";
-
-    /** Reserved variable containing the confirmed inputs of the Flow. */
-    public static final String INPUTS_VARIABLE = "$flow.inputs";
-
-    /** Reserved variable containing inputs assembled for this TaskRun. */
-    public static final String TASK_INPUTS_VARIABLE = "$flow.taskInputs";
-
-    /** Reserved variable containing the deployed Flow-level variables. */
-    public static final String FLOW_VARIABLES_VARIABLE = "$flow.variables";
-
-    private final Session<? extends User> session;
-    private final Map<String, Object> variables;
-
-    private RunContext(
-        Session<? extends User> session,
-        Map<String, ?> variables
-    ) {
-        this.session = Objects.requireNonNull(session, "session");
-        this.variables = immutableVariables(variables);
+    @lombok.Builder(builderClassName = "Builder")
+    private RunContext(Map<String, ?> variables) {
+        this.variables = RunVariables.immutableCopy(
+                Objects.requireNonNull(variables, "Run variables")
+        );
     }
 
-    public static RunContext create(
-        Session<? extends User> session,
-        Map<String, ?> variables
-    ) {
-        return new RunContext(session, variables);
-    }
-
-    public Session<? extends User> session() {
-        return session;
-    }
-
-    /**
-     * Returns the immutable invocation variables.
-     *
-     * <p>The map itself is immutable. Values such as {@link Execution} are
-     * runtime objects and must not be used by a Task to mutate Flow state.</p>
-     */
     public Map<String, Object> variables() {
         return variables;
     }
 
-    /**
-     * Returns the Flow execution that owns this RunnableTask invocation.
-     */
-    public String executionId() {
-        Object value = variables.get(EXECUTION_VARIABLE);
-        if (!(value instanceof Execution execution)) {
-            throw new IllegalStateException(
-                "RunContext variables must contain an Execution under "
-                    + EXECUTION_VARIABLE
-            );
-        }
-        return execution.id();
-    }
-
-    /**
-     * Returns the exact TaskRun id for this RunnableTask invocation.
-     */
-    public String taskRunId() {
-        Object value = variables.get(TASK_RUN_ID_VARIABLE);
-        if (!(value instanceof String taskRunId) || taskRunId.isBlank()) {
-            throw new IllegalStateException(
-                "RunContext variables must contain a TaskRun id under "
-                    + TASK_RUN_ID_VARIABLE
-            );
-        }
-        return taskRunId;
-    }
-
-    /**
-     * Returns the immediate parent TaskRun id for a nested invocation.
-     * Top-level RunnableTasks have no parent.
-     */
     public Optional<String> parentTaskRunId() {
-        Object value = variables.get(PARENT_TASK_RUN_ID_VARIABLE);
-        if (value == null) {
-            return Optional.empty();
-        }
-        if (!(value instanceof String parentTaskRunId)
-            || parentTaskRunId.isBlank()) {
-            throw new IllegalStateException(
-                "RunContext variable " + PARENT_TASK_RUN_ID_VARIABLE
-                    + " must contain a non-blank TaskRun id"
-            );
-        }
-        return Optional.of(parentTaskRunId);
+        return VariablePath.parse("parent.taskRun.id")
+                .resolve(variables)
+                .map(value -> requiredString("parent.taskRun.id", value));
     }
 
-    /**
-     * Returns the confirmed runtime inputs owned by the Execution.
-     */
     public Map<String, Object> inputs() {
-        return mapVariable(INPUTS_VARIABLE);
+        return requiredMap("inputs");
     }
 
-    /**
-     * Returns the inputs assembled for this TaskRun, such as visible
-     * preceding outputs and loop metadata.
-     */
     public Map<String, Object> taskInputs() {
-        return mapVariable(TASK_INPUTS_VARIABLE);
+        return requiredMap("taskRun.inputs");
     }
 
-    private Map<String, Object> mapVariable(String variable) {
-        Object value = variables.get(variable);
-        if (value == null) {
-            return Map.of();
-        }
-        if (!(value instanceof Map<?, ?>)) {
-            throw new IllegalStateException(
-                "RunContext variable " + variable
-                    + " must contain a Map"
-            );
-        }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> inputs = (Map<String, Object>) value;
-        return inputs;
-    }
-
-    /**
-     * Returns the immutable variables declared by the exact deployed Flow.
-     */
     public Map<String, Object> flowVariables() {
-        Object value = variables.get(FLOW_VARIABLES_VARIABLE);
-        if (value == null) {
-            return Map.of();
-        }
-        if (!(value instanceof Map<?, ?>)) {
-            throw new IllegalStateException(
-                "RunContext variable " + FLOW_VARIABLES_VARIABLE
-                    + " must contain a Map"
-            );
-        }
-        @SuppressWarnings("unchecked")
-        Map<String, Object> flowVariables =
-            (Map<String, Object>) value;
-        return flowVariables;
+        return requiredMap("vars");
     }
 
-    /**
-     * Renders a Task definition template against this invocation's inputs.
-     */
     public String render(TemplateExpression expression) {
         return Objects.requireNonNull(expression, "expression")
-            .render(taskInputs());
+                .render(variables);
     }
 
-    private static Map<String, Object> immutableVariables(
-        Map<String, ?> source
+    private String requiredString(String path) {
+        Object value = VariablePath.parse(path).resolve(variables)
+                .orElseThrow(() -> new IllegalStateException(
+                        "RunContext variable path is missing: " + path
+                ));
+        return requiredString(path, value);
+    }
+
+    private String requiredString(String path, Object value) {
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw new IllegalStateException(
+                    "RunContext variable path must contain text: " + path
+            );
+        }
+        return text;
+    }
+
+    private Map<String, Object> requiredMap(String path) {
+        Object value = VariablePath.parse(path).resolve(variables)
+                .orElseThrow(() -> new IllegalStateException(
+                        "RunContext variable path is missing: " + path
+                ));
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new IllegalStateException(
+                    "RunContext variable path must contain a Map: " + path
+            );
+        }
+        @SuppressWarnings("unchecked")
+        Map<String, Object> values = (Map<String, Object>) map;
+        return values;
+    }
+
+    public TaskRunInfo taskRunInfo() {
+        return TaskRunInfo.from(
+                requiredString("execution.id"),
+                requiredString("taskRun.id"),
+                requiredString("task.id"),
+                requiredString("task.key"),
+                requiredMap("taskRun.outputs")
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    public FlowInfo flowInfo() {
+        Object value = variables.get("flow");
+        if (value == null) {
+            return FlowInfo.empty();
+        }
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new IllegalStateException(
+                    "RunContext variable path must contain a Map: flow"
+            );
+        }
+        return FlowInfo.from((Map<String, Object>) map);
+    }
+
+    public record TaskRunInfo(
+            String executionId,
+            String id,
+            String taskId,
+            String taskKey,
+            Map<String, Object> outputs
     ) {
-        if (source == null || source.isEmpty()) {
-            return Map.of();
+
+        public TaskRunInfo {
+            executionId = requireInfoText(executionId, "Execution id");
+            id = requireInfoText(id, "TaskRun id");
+            taskId = requireInfoText(taskId, "Task id");
+            taskKey = requireInfoText(taskKey, "Task key");
+            outputs = RunVariables.immutableCopy(
+                    Objects.requireNonNull(outputs, "TaskRun outputs")
+            );
         }
-        Map<String, Object> copy = new LinkedHashMap<>();
-        source.forEach((key, value) -> {
-            String normalizedKey = Objects.requireNonNull(
-                key,
-                "RunContext variable key"
+
+        public static TaskRunInfo from(
+                String executionId,
+                String id,
+                String taskId,
+                String taskKey,
+                Map<String, Object> outputs
+        ) {
+            return new TaskRunInfo(
+                    executionId,
+                    id,
+                    taskId,
+                    taskKey,
+                    outputs
             );
-            Object normalizedValue = Objects.requireNonNull(
-                value,
-                () -> "RunContext variable must not be null: " + key
-            );
-            if (INPUTS_VARIABLE.equals(normalizedKey)
-                || TASK_INPUTS_VARIABLE.equals(normalizedKey)) {
-                copy.put(normalizedKey, immutableInputs(normalizedValue));
-            } else if (FLOW_VARIABLES_VARIABLE.equals(normalizedKey)) {
-                copy.put(
-                    normalizedKey,
-                    immutableFlowVariables(normalizedValue)
+        }
+
+        private static String requireInfoText(
+                String value,
+                String field
+        ) {
+            if (value == null || value.isBlank()) {
+                throw new IllegalArgumentException(
+                        field + " must not be blank"
                 );
-            } else {
-                copy.put(normalizedKey, normalizedValue);
             }
-        });
-        return Map.copyOf(copy);
+            return value.trim();
+        }
     }
 
-    private static Map<String, Object> immutableInputs(Object value) {
-        if (!(value instanceof Map<?, ?> source)) {
-            throw new IllegalArgumentException(
-                "RunContext variable " + INPUTS_VARIABLE
-                    + " must contain a Map"
-            );
-        }
-        Map<String, Object> copy = new LinkedHashMap<>();
-        source.forEach((key, input) -> {
-            if (!(key instanceof String stringKey)) {
-                throw new IllegalArgumentException(
-                    "RunContext input keys must be strings"
-                );
-            }
-            copy.put(
-                stringKey,
-                Objects.requireNonNull(
-                    input,
-                    () -> "RunContext input must not be null: " + stringKey
-                )
-            );
-        });
-        return Map.copyOf(copy);
-    }
+    public record FlowInfo(
+            String id,
+            String key,
+            String companyId,
+            Long version
+    ) {
 
-    private static Map<String, Object> immutableFlowVariables(Object value) {
-        if (!(value instanceof Map<?, ?> source)) {
-            throw new IllegalArgumentException(
-                "RunContext variable " + FLOW_VARIABLES_VARIABLE
-                    + " must contain a Map"
+        public static FlowInfo from(Map<String, Object> flowInfoMap) {
+            Objects.requireNonNull(flowInfoMap, "Flow info");
+            return new FlowInfo(
+                    optionalString(flowInfoMap, "id"),
+                    optionalString(flowInfoMap, "key"),
+                    optionalString(flowInfoMap, "companyId"),
+                    optionalLong(flowInfoMap, "version")
             );
         }
-        Map<String, Object> copy = new LinkedHashMap<>();
-        source.forEach((key, variable) -> {
-            if (!(key instanceof String stringKey)) {
-                throw new IllegalArgumentException(
-                    "RunContext Flow variable keys must be strings"
-                );
+
+        public static FlowInfo empty() {
+            return new FlowInfo(null, null, null, null);
+        }
+
+        private static String optionalString(
+                Map<String, Object> source,
+                String key
+        ) {
+            Object value = source.get(key);
+            if (value == null || value instanceof String) {
+                return (String) value;
             }
-            copy.put(stringKey, variable);
-        });
-        return java.util.Collections.unmodifiableMap(copy);
+            throw new IllegalStateException(
+                    "RunContext flow variable must contain text: " + key
+            );
+        }
+
+        private static Long optionalLong(
+                Map<String, Object> source,
+                String key
+        ) {
+            Object value = source.get(key);
+            if (value == null) {
+                return null;
+            }
+            if (value instanceof Number number) {
+                return number.longValue();
+            }
+            throw new IllegalStateException(
+                    "RunContext flow variable must contain a Long: " + key
+            );
+        }
     }
 }

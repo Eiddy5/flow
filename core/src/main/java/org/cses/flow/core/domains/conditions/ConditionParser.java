@@ -7,9 +7,9 @@ import java.util.List;
 /**
  * Package-private recursive-descent parser for Condition definitions.
  */
-final class ConditionParser {
+class ConditionParser {
 
-    private final String source;
+    private String source;
     private int position;
     private int nodes;
 
@@ -112,10 +112,6 @@ final class ConditionParser {
             );
         }
         skipWhitespace();
-        String root = parseIdentifier("Condition reference root");
-        if (!consumeRaw(".")) {
-            throw error("Condition reference must contain a root and path");
-        }
         List<String> path = new ArrayList<>();
         path.add(parseIdentifier("Condition reference path"));
         while (consumeRaw(".")) {
@@ -125,13 +121,7 @@ final class ConditionParser {
         if (!consumeRaw("}}")) {
             throw error("Condition reference must end with '}}'");
         }
-        OperandScope scope;
-        try {
-            scope = OperandScope.parse(root);
-        } catch (IllegalArgumentException exception) {
-            throw error(exception.getMessage());
-        }
-        return Operand.reference(scope, path);
+        return Operand.reference(path);
     }
 
     private Comparison comparisonOperator() {

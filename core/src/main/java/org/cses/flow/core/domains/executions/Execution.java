@@ -16,7 +16,7 @@ import java.util.*;
 /**
  * Aggregate root for one complete Flow start instance.
  */
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Execution extends BaseDomain {
 
     String flowKey;

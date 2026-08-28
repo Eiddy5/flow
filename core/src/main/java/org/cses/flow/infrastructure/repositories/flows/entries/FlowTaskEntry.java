@@ -4,7 +4,6 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.infrastructure.repositories.flows.codec.DataJsonCodec;
 import org.cses.flow.infrastructure.repositories.flows.codec.TaskPropertiesCodec;
 import org.flow.gen.flow.pojos.FlowTasksObject;
-import org.paas.json.JsonObjects;
 
 import java.util.List;
 
@@ -16,22 +15,21 @@ public class FlowTaskEntry extends FlowTasksObject {
         long flowVersion,
         Task task,
         String parentId,
-        int order
+        int position
     ) {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.companyId = companyId;
         entry.id = task.id();
+        entry.key = task.key();
+        entry.displayName = task.displayName();
         entry.type = task.getType();
-        entry.route = "DIRECT";
-        entry.inputs = DataJsonCodec.encode(task.inputs());
-        entry.outputs = DataJsonCodec.encode(task.outputs());
-        entry.properties = TaskPropertiesCodec.encode(task);
         entry.flowKey = flowKey;
         entry.flowVersion = flowVersion;
         entry.parentId = parentId;
-        entry.order = order;
-        entry.key = task.key();
-        entry.dependOn = JsonObjects.Create();
+        entry.position = position;
+        entry.inputs = DataJsonCodec.encodeJsonb(task.inputs());
+        entry.outputs = DataJsonCodec.encodeJsonb(task.outputs());
+        entry.properties = TaskPropertiesCodec.encodeJsonb(task);
         return entry;
     }
 

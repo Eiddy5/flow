@@ -12,8 +12,7 @@ import java.util.LinkedHashMap;
 import org.flow.gen.flow.Tables;
 import org.flow.gen.flow.records.FlowTasksRecord;
 import org.flow.gen.flow.tables.FlowTasksTable;
-import org.paas.json.JsonObject;
-import org.paas.json.JsonObjects;
+import org.jooq.JSONB;
 import org.x9.jooq.common.JooqPojo;
 
 
@@ -26,65 +25,61 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
     public static final long serialVersionUID = 1L;
 
     public String companyId;
-    public String id;
-    public String type;
-    public String route;
-    public JsonObjects inputs;
-    public JsonObjects outputs;
-    public JsonObject properties;
     public String flowKey;
     public Long flowVersion;
-    public String parentId;
-    public Integer order;
+    public String id;
     public String key;
-    public JsonObjects dependOn;
+    public String displayName;
+    public String type;
+    public String parentId;
+    public Integer position;
+    public JSONB inputs;
+    public JSONB outputs;
+    public JSONB properties;
 
     public FlowTasksObject() {}
 
     public FlowTasksObject(FlowTasksObject value) {
         this.companyId = value.companyId;
+        this.flowKey = value.flowKey;
+        this.flowVersion = value.flowVersion;
         this.id = value.id;
+        this.key = value.key;
+        this.displayName = value.displayName;
         this.type = value.type;
-        this.route = value.route;
+        this.parentId = value.parentId;
+        this.position = value.position;
         this.inputs = value.inputs;
         this.outputs = value.outputs;
         this.properties = value.properties;
-        this.flowKey = value.flowKey;
-        this.flowVersion = value.flowVersion;
-        this.parentId = value.parentId;
-        this.order = value.order;
-        this.key = value.key;
-        this.dependOn = value.dependOn;
     }
 
     public FlowTasksObject(
         String companyId,
-        String id,
-        String type,
-        String route,
-        JsonObjects inputs,
-        JsonObjects outputs,
-        JsonObject properties,
         String flowKey,
         Long flowVersion,
-        String parentId,
-        Integer order,
+        String id,
         String key,
-        JsonObjects dependOn
+        String displayName,
+        String type,
+        String parentId,
+        Integer position,
+        JSONB inputs,
+        JSONB outputs,
+        JSONB properties
     ) {
         this.companyId = companyId;
+        this.flowKey = flowKey;
+        this.flowVersion = flowVersion;
         this.id = id;
+        this.key = key;
+        this.displayName = displayName;
         this.type = type;
-        this.route = route;
+        this.parentId = parentId;
+        this.position = position;
         this.inputs = inputs;
         this.outputs = outputs;
         this.properties = properties;
-        this.flowKey = flowKey;
-        this.flowVersion = flowVersion;
-        this.parentId = parentId;
-        this.order = order;
-        this.key = key;
-        this.dependOn = dependOn;
     }
 
     /**
@@ -99,90 +94,6 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
      */
     public void setCompanyId(String companyId) {
         this.companyId = companyId;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.id</code>.
-     */
-    public String getId() {
-        return this.id;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.id</code>.
-     */
-    public void setId(String id) {
-        this.id = id;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.type</code>.
-     */
-    public String getType() {
-        return this.type;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.type</code>.
-     */
-    public void setType(String type) {
-        this.type = type;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.route</code>.
-     */
-    public String getRoute() {
-        return this.route;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.route</code>.
-     */
-    public void setRoute(String route) {
-        this.route = route;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.inputs</code>.
-     */
-    public JsonObjects getInputs() {
-        return this.inputs;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.inputs</code>.
-     */
-    public void setInputs(JsonObjects inputs) {
-        this.inputs = inputs;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.outputs</code>.
-     */
-    public JsonObjects getOutputs() {
-        return this.outputs;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.outputs</code>.
-     */
-    public void setOutputs(JsonObjects outputs) {
-        this.outputs = outputs;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.properties</code>.
-     */
-    public JsonObject getProperties() {
-        return this.properties;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.properties</code>.
-     */
-    public void setProperties(JsonObject properties) {
-        this.properties = properties;
     }
 
     /**
@@ -214,31 +125,17 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flow_tasks.parent_id</code>.
+     * Getter for <code>public.flow_tasks.id</code>.
      */
-    public String getParentId() {
-        return this.parentId;
+    public String getId() {
+        return this.id;
     }
 
     /**
-     * Setter for <code>public.flow_tasks.parent_id</code>.
+     * Setter for <code>public.flow_tasks.id</code>.
      */
-    public void setParentId(String parentId) {
-        this.parentId = parentId;
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.order</code>.
-     */
-    public Integer getOrder() {
-        return this.order;
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.order</code>.
-     */
-    public void setOrder(Integer order) {
-        this.order = order;
+    public void setId(String id) {
+        this.id = id;
     }
 
     /**
@@ -256,17 +153,101 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.flow_tasks.depend_on</code>.
+     * Getter for <code>public.flow_tasks.display_name</code>.
      */
-    public JsonObjects getDependOn() {
-        return this.dependOn;
+    public String getDisplayName() {
+        return this.displayName;
     }
 
     /**
-     * Setter for <code>public.flow_tasks.depend_on</code>.
+     * Setter for <code>public.flow_tasks.display_name</code>.
      */
-    public void setDependOn(JsonObjects dependOn) {
-        this.dependOn = dependOn;
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.type</code>.
+     */
+    public String getType() {
+        return this.type;
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.type</code>.
+     */
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.parent_id</code>.
+     */
+    public String getParentId() {
+        return this.parentId;
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.parent_id</code>.
+     */
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.position</code>.
+     */
+    public Integer getPosition() {
+        return this.position;
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.position</code>.
+     */
+    public void setPosition(Integer position) {
+        this.position = position;
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.inputs</code>.
+     */
+    public JSONB getInputs() {
+        return this.inputs;
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.inputs</code>.
+     */
+    public void setInputs(JSONB inputs) {
+        this.inputs = inputs;
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.outputs</code>.
+     */
+    public JSONB getOutputs() {
+        return this.outputs;
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.outputs</code>.
+     */
+    public void setOutputs(JSONB outputs) {
+        this.outputs = outputs;
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.properties</code>.
+     */
+    public JSONB getProperties() {
+        return this.properties;
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.properties</code>.
+     */
+    public void setProperties(JSONB properties) {
+        this.properties = properties;
     }
 
     @Override
@@ -284,11 +265,35 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         }
         else if (!this.companyId.equals(other.companyId))
             return false;
+        if (this.flowKey == null) {
+            if (other.flowKey != null)
+                return false;
+        }
+        else if (!this.flowKey.equals(other.flowKey))
+            return false;
+        if (this.flowVersion == null) {
+            if (other.flowVersion != null)
+                return false;
+        }
+        else if (!this.flowVersion.equals(other.flowVersion))
+            return false;
         if (this.id == null) {
             if (other.id != null)
                 return false;
         }
         else if (!this.id.equals(other.id))
+            return false;
+        if (this.key == null) {
+            if (other.key != null)
+                return false;
+        }
+        else if (!this.key.equals(other.key))
+            return false;
+        if (this.displayName == null) {
+            if (other.displayName != null)
+                return false;
+        }
+        else if (!this.displayName.equals(other.displayName))
             return false;
         if (this.type == null) {
             if (other.type != null)
@@ -296,11 +301,17 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         }
         else if (!this.type.equals(other.type))
             return false;
-        if (this.route == null) {
-            if (other.route != null)
+        if (this.parentId == null) {
+            if (other.parentId != null)
                 return false;
         }
-        else if (!this.route.equals(other.route))
+        else if (!this.parentId.equals(other.parentId))
+            return false;
+        if (this.position == null) {
+            if (other.position != null)
+                return false;
+        }
+        else if (!this.position.equals(other.position))
             return false;
         if (this.inputs == null) {
             if (other.inputs != null)
@@ -320,42 +331,6 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         }
         else if (!this.properties.equals(other.properties))
             return false;
-        if (this.flowKey == null) {
-            if (other.flowKey != null)
-                return false;
-        }
-        else if (!this.flowKey.equals(other.flowKey))
-            return false;
-        if (this.flowVersion == null) {
-            if (other.flowVersion != null)
-                return false;
-        }
-        else if (!this.flowVersion.equals(other.flowVersion))
-            return false;
-        if (this.parentId == null) {
-            if (other.parentId != null)
-                return false;
-        }
-        else if (!this.parentId.equals(other.parentId))
-            return false;
-        if (this.order == null) {
-            if (other.order != null)
-                return false;
-        }
-        else if (!this.order.equals(other.order))
-            return false;
-        if (this.key == null) {
-            if (other.key != null)
-                return false;
-        }
-        else if (!this.key.equals(other.key))
-            return false;
-        if (this.dependOn == null) {
-            if (other.dependOn != null)
-                return false;
-        }
-        else if (!this.dependOn.equals(other.dependOn))
-            return false;
         return true;
     }
 
@@ -364,18 +339,17 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
+        result = prime * result + ((this.flowKey == null) ? 0 : this.flowKey.hashCode());
+        result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
         result = prime * result + ((this.id == null) ? 0 : this.id.hashCode());
+        result = prime * result + ((this.key == null) ? 0 : this.key.hashCode());
+        result = prime * result + ((this.displayName == null) ? 0 : this.displayName.hashCode());
         result = prime * result + ((this.type == null) ? 0 : this.type.hashCode());
-        result = prime * result + ((this.route == null) ? 0 : this.route.hashCode());
+        result = prime * result + ((this.parentId == null) ? 0 : this.parentId.hashCode());
+        result = prime * result + ((this.position == null) ? 0 : this.position.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
         result = prime * result + ((this.properties == null) ? 0 : this.properties.hashCode());
-        result = prime * result + ((this.flowKey == null) ? 0 : this.flowKey.hashCode());
-        result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
-        result = prime * result + ((this.parentId == null) ? 0 : this.parentId.hashCode());
-        result = prime * result + ((this.order == null) ? 0 : this.order.hashCode());
-        result = prime * result + ((this.key == null) ? 0 : this.key.hashCode());
-        result = prime * result + ((this.dependOn == null) ? 0 : this.dependOn.hashCode());
         return result;
     }
 
@@ -401,18 +375,17 @@ public class FlowTasksObject extends JooqPojo implements Serializable {
     public LinkedHashMap<String, Object> toMap() {
         LinkedHashMap<String, Object> map = new java.util.LinkedHashMap<>();
         map.put("company_id", companyId);
-        map.put("id", id);
-        map.put("type", type);
-        map.put("route", route);
-        map.put("inputs", inputs == null ? null : inputs.toString());
-        map.put("outputs", outputs == null ? null : outputs.toString());
-        map.put("properties", properties == null ? null : properties.toString());
         map.put("flow_key", flowKey);
         map.put("flow_version", flowVersion);
-        map.put("parent_id", parentId);
-        map.put("order", order);
+        map.put("id", id);
         map.put("key", key);
-        map.put("depend_on", dependOn == null ? null : dependOn.toString());
+        map.put("display_name", displayName);
+        map.put("type", type);
+        map.put("parent_id", parentId);
+        map.put("position", position);
+        map.put("inputs", inputs);
+        map.put("outputs", outputs);
+        map.put("properties", properties);
         return map;
     }
 

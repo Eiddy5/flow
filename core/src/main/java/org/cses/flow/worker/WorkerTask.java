@@ -1,23 +1,18 @@
 package org.cses.flow.worker;
 
-import org.cses.flow.core.runner.RunContext;
-import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.expressions.VariablePath;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
 /**
  * Immutable Executor-to-Worker envelope for one RunnableTask invocation.
- *
- * <p>The variables map contains additional runtime values plus the reserved
- * {@link RunContext#INPUTS_VARIABLE} entry populated from the Execution and
- * {@link RunContext#TASK_INPUTS_VARIABLE} populated from the TaskRun.
- * {@link WorkerDispatcher} injects the envelope's exact taskRunId and optional
- * parent TaskRun id into invocation-only {@link RunContext} entries.</p>
  */
 public record WorkerTask(
     String executionId,
@@ -31,30 +26,13 @@ public record WorkerTask(
         String executionId,
         String taskRunId,
         Task task,
-        Map<String, ?> inputs
+        Map<String, ?> variables
     ) {
-        return new WorkerTask(
+        return from(
             executionId,
             taskRunId,
             null,
             task,
-            inputs,
-            Map.of()
-        );
-    }
-
-    public static WorkerTask from(
-        String executionId,
-        String taskRunId,
-        Task task,
-        Map<String, ?> inputs,
-        Map<String, ?> variables
-    ) {
-        return new WorkerTask(
-            executionId,
-            taskRunId,
-            task,
-            inputs,
             variables
         );
     }
@@ -64,16 +42,14 @@ public record WorkerTask(
         String taskRunId,
         String parentTaskRunId,
         Task task,
-        Map<String, ?> inputs,
         Map<String, ?> variables
     ) {
         return new WorkerTask(
             executionId,
             taskRunId,
-            parentTaskRunId,
-            task,
-            inputs,
-            variables
+            optionalText(parentTaskRunId),
+            requireRunnableTask(task),
+            immutableVariables(variables)
         );
     }
 
@@ -93,42 +69,6 @@ public record WorkerTask(
         );
     }
 
-    public WorkerTask(
-        String executionId,
-        String taskRunId,
-        Task task,
-        Map<String, Object> inputs
-    ) {
-        this(executionId, taskRunId, null, task, inputs, Map.of());
-    }
-
-    public WorkerTask(
-        String executionId,
-        String taskRunId,
-        Task task,
-        Map<String, ?> inputs,
-        Map<String, ?> variables
-    ) {
-        this(executionId, taskRunId, null, task, inputs, variables);
-    }
-
-    public WorkerTask(
-        String executionId,
-        String taskRunId,
-        String parentTaskRunId,
-        Task task,
-        Map<String, ?> inputs,
-        Map<String, ?> variables
-    ) {
-        this(
-            executionId,
-            taskRunId,
-            optionalText(parentTaskRunId),
-            requireRunnableTask(task),
-            immutableVariables(inputs, variables)
-        );
-    }
-
     public WorkerTask {
         executionId = requireText(executionId, "Execution id");
         taskRunId = requireText(taskRunId, "TaskRun id");
@@ -140,18 +80,23 @@ public record WorkerTask(
             runnableTask,
             "Runnable task"
         );
-        variables = Map.copyOf(Objects.requireNonNull(
-            variables,
-            "Worker variables"
-        ));
-        validateExecutionVariable(executionId, variables);
+        variables = immutableVariables(variables);
+        requireIdentity(variables, "execution.id", executionId);
+        requireIdentity(variables, "taskRun.id", taskRunId);
+        validateParentIdentity(parentTaskRunId, variables);
     }
 
     public Map<String, Object> taskInputs() {
+        Object value = VariablePath.parse("taskRun.inputs")
+            .resolve(variables)
+            .orElse(Map.of());
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new IllegalStateException(
+                "Worker variables taskRun.inputs must contain a Map"
+            );
+        }
         @SuppressWarnings("unchecked")
-        Map<String, Object> inputs = (Map<String, Object>) variables.get(
-            RunContext.TASK_INPUTS_VARIABLE
-        );
+        Map<String, Object> inputs = (Map<String, Object>) map;
         return inputs;
     }
 
@@ -167,62 +112,61 @@ public record WorkerTask(
     }
 
     private static Map<String, Object> immutableVariables(
-        Map<String, ?> inputs,
-        Map<String, ?> variables
+        Map<String, ?> source
     ) {
-        Map<String, Object> runtimeVariables = new LinkedHashMap<>();
-        if (variables != null) {
-            variables.forEach((key, value) -> {
-                if (RunContext.INPUTS_VARIABLE.equals(key)
-                    || RunContext.TASK_INPUTS_VARIABLE.equals(key)
-                    || RunContext.TASK_RUN_ID_VARIABLE.equals(key)
-                    || RunContext.PARENT_TASK_RUN_ID_VARIABLE.equals(key)) {
-                    throw new IllegalArgumentException(
-                        "Worker variables must not contain reserved variable: "
-                            + key
-                    );
-                }
-                runtimeVariables.put(
-                    Objects.requireNonNull(key, "Worker variable key"),
-                    Objects.requireNonNull(
-                        value,
-                        () -> "Worker variable must not be null: " + key
-                    )
-                );
-            });
-        }
-        Object executionValue = runtimeVariables.get(
-            RunContext.EXECUTION_VARIABLE
-        );
-        Map<String, Object> executionInputs = executionValue instanceof Execution
-            ? ((Execution) executionValue).inputs()
-            : Map.of();
-        runtimeVariables.put(RunContext.INPUTS_VARIABLE, executionInputs);
-        runtimeVariables.put(
-            RunContext.TASK_INPUTS_VARIABLE,
-            inputs == null ? Map.of() : Map.copyOf(inputs)
-        );
-        return Map.copyOf(runtimeVariables);
+        Objects.requireNonNull(source, "Worker variables");
+        Map<String, Object> copy = new LinkedHashMap<>();
+        source.forEach((key, value) -> copy.put(
+            Objects.requireNonNull(key, "Worker variable key"),
+            immutableValue(value)
+        ));
+        return Collections.unmodifiableMap(copy);
     }
 
-    private static void validateExecutionVariable(
-        String executionId,
-        Map<String, Object> variables
-    ) {
-        Object value = variables.get(RunContext.EXECUTION_VARIABLE);
-        if (value == null) {
-            return;
+    private static Object immutableValue(Object value) {
+        if (value instanceof Map<?, ?> nested) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            nested.forEach((key, nestedValue) -> copy.put(
+                String.valueOf(key),
+                immutableValue(nestedValue)
+            ));
+            return Collections.unmodifiableMap(copy);
         }
-        if (!(value instanceof Execution execution)) {
+        if (value instanceof List<?> list) {
+            return list.stream()
+                .map(WorkerTask::immutableValue)
+                .toList();
+        }
+        return value;
+    }
+
+    private static void requireIdentity(
+        Map<String, Object> variables,
+        String path,
+        String expected
+    ) {
+        Object value = VariablePath.parse(path).resolve(variables)
+            .orElseThrow(() -> new IllegalArgumentException(
+                "Worker variables must contain " + path
+            ));
+        if (!expected.equals(value)) {
             throw new IllegalArgumentException(
-                "Worker variable " + RunContext.EXECUTION_VARIABLE
-                    + " must contain an Execution"
+                "Worker identity does not match variables: "
+                    + value + " != " + expected
             );
         }
-        if (!executionId.equals(execution.id())) {
+    }
+
+    private static void validateParentIdentity(
+        Optional<String> expected,
+        Map<String, Object> variables
+    ) {
+        Optional<String> actual = VariablePath.parse("parent.taskRun.id")
+            .resolve(variables)
+            .map(String::valueOf);
+        if (!expected.equals(actual)) {
             throw new IllegalArgumentException(
-                "Worker Execution id does not match envelope: "
-                    + execution.id() + " != " + executionId
+                "Worker parent identity does not match variables"
             );
         }
     }

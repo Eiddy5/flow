@@ -59,36 +59,6 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
     public final TableField<FlowTasksRecord, String> COMPANY_ID = createField(DSL.name("company_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
 
     /**
-     * The column <code>public.flow_tasks.id</code>.
-     */
-    public final TableField<FlowTasksRecord, String> ID = createField(DSL.name("id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
-
-    /**
-     * The column <code>public.flow_tasks.type</code>.
-     */
-    public final TableField<FlowTasksRecord, String> TYPE = createField(DSL.name("type"), SQLDataType.CLOB.nullable(false), this, "");
-
-    /**
-     * The column <code>public.flow_tasks.route</code>.
-     */
-    public final TableField<FlowTasksRecord, String> ROUTE = createField(DSL.name("route"), SQLDataType.CLOB.nullable(false).defaultValue(DSL.field(DSL.raw("'DIRECT'::text"), SQLDataType.CLOB)), this, "");
-
-    /**
-     * The column <code>public.flow_tasks.inputs</code>.
-     */
-    public final TableField<FlowTasksRecord, JSONB> INPUTS = createField(DSL.name("inputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
-     * The column <code>public.flow_tasks.outputs</code>.
-     */
-    public final TableField<FlowTasksRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
-     * The column <code>public.flow_tasks.properties</code>.
-     */
-    public final TableField<FlowTasksRecord, JSONB> PROPERTIES = createField(DSL.name("properties"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
      * The column <code>public.flow_tasks.flow_key</code>.
      */
     public final TableField<FlowTasksRecord, String> FLOW_KEY = createField(DSL.name("flow_key"), SQLDataType.VARCHAR(128).nullable(false), this, "");
@@ -99,14 +69,9 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
     public final TableField<FlowTasksRecord, Long> FLOW_VERSION = createField(DSL.name("flow_version"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
-     * The column <code>public.flow_tasks.parent_id</code>.
+     * The column <code>public.flow_tasks.id</code>.
      */
-    public final TableField<FlowTasksRecord, String> PARENT_ID = createField(DSL.name("parent_id"), SQLDataType.VARCHAR(64), this, "");
-
-    /**
-     * The column <code>public.flow_tasks.order</code>.
-     */
-    public final TableField<FlowTasksRecord, Integer> ORDER = createField(DSL.name("order"), SQLDataType.INTEGER.nullable(false), this, "");
+    public final TableField<FlowTasksRecord, String> ID = createField(DSL.name("id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
 
     /**
      * The column <code>public.flow_tasks.key</code>.
@@ -114,9 +79,39 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
     public final TableField<FlowTasksRecord, String> KEY = createField(DSL.name("key"), SQLDataType.VARCHAR(128).nullable(false), this, "");
 
     /**
-     * The column <code>public.flow_tasks.depend_on</code>.
+     * The column <code>public.flow_tasks.display_name</code>.
      */
-    public final TableField<FlowTasksRecord, JSONB> DEPEND_ON = createField(DSL.name("depend_on"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
+    public final TableField<FlowTasksRecord, String> DISPLAY_NAME = createField(DSL.name("display_name"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flow_tasks.type</code>.
+     */
+    public final TableField<FlowTasksRecord, String> TYPE = createField(DSL.name("type"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flow_tasks.parent_id</code>.
+     */
+    public final TableField<FlowTasksRecord, String> PARENT_ID = createField(DSL.name("parent_id"), SQLDataType.VARCHAR(64), this, "");
+
+    /**
+     * The column <code>public.flow_tasks.position</code>.
+     */
+    public final TableField<FlowTasksRecord, Integer> POSITION = createField(DSL.name("position"), SQLDataType.INTEGER.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flow_tasks.inputs</code>.
+     */
+    public final TableField<FlowTasksRecord, JSONB> INPUTS = createField(DSL.name("inputs"), SQLDataType.JSONB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flow_tasks.outputs</code>.
+     */
+    public final TableField<FlowTasksRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flow_tasks.properties</code>.
+     */
+    public final TableField<FlowTasksRecord, JSONB> PROPERTIES = createField(DSL.name("properties"), SQLDataType.JSONB.nullable(false), this, "");
 
     private FlowTasksTable(Name alias, Table<FlowTasksRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -154,7 +149,7 @@ public class FlowTasksTable extends TableImpl<FlowTasksRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_FLOW_TASKS_TREE, Indexes.IDX_FLOW_TASKS_TYPE);
+        return Arrays.asList(Indexes.IDX_FLOW_TASKS_TREE);
     }
 
     @Override

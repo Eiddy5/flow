@@ -2,6 +2,7 @@ package org.cses.flow.core.domains.tasks;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -16,11 +17,11 @@ import java.util.stream.Stream;
 /**
  * Base domain object for a bound Task plugin definition.
  *
- * <p>Jackson and Micronaut may populate fields through the public no-args
+ * <p>Jackson and Micronaut may populate fields through the protected no-args
  * constructor. No mutation methods are exposed after binding.</p>
  */
 @SuperBuilder
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public abstract class Task implements TaskInterface {
 
     @NotBlank

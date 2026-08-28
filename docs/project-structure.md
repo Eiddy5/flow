@@ -19,7 +19,7 @@
 
 ```text
 flow/
-├── .codex/            # 项目级 Codex 配置和可复用 Skill
+├── .codex/            # 项目级 Codex Agent、配置和可复用 Skill
 ├── AGENTS.md          # AI Agent 的仓库级工作入口和必读顺序
 ├── README.md          # 项目对外简介
 ├── build.gradle       # 根项目构建配置
@@ -29,7 +29,7 @@ flow/
 ├── gen/               # Flow 数据库脚本及 JOOQ 代码生成模块
 ├── core/              # 完整的非 HTTP Flow 能力与生产适配器
 ├── server/            # HTTP 服务、启动入口、资源与会话绑定
-└── docs/              # 项目规范、决策、UC、Agent 和验证记忆
+└── docs/              # 项目规范、决策、UC 和验证记忆
 ```
 
 ### `.codex/`
@@ -38,6 +38,19 @@ flow/
 
 ```text
 .codex/
+├── agents/
+│   ├── README.md              # 项目 Agent 索引与目录约定
+│   ├── uc.toml                # Codex 直接加载的 UC Agent 入口
+│   ├── uc/                    # UC Agent 的角色契约和专题规则
+│   │   ├── README.md
+│   │   ├── scenario-design.md
+│   │   └── generation.md
+│   ├── test.toml              # Codex 直接加载的 Test Agent 入口
+│   └── test/                  # Test Agent 的角色契约和专题规则
+│       ├── README.md
+│       ├── test-design.md
+│       ├── execution.md
+│       └── reporting.md
 └── skills/
     └── <skill-name>/
         ├── SKILL.md           # Skill 触发条件和执行流程
@@ -46,9 +59,13 @@ flow/
         └── scripts/           # Skill 使用的确定性校验或自动化脚本
 ```
 
-项目级 Skill 应封装稳定、可重复的项目工作流，并引用 `docs/` 中的权威规范，不在
-Skill 内复制第二套项目规则。`references/` 和 `scripts/` 只在工作流确实需要时
-创建；通用个人 Skill 不放入本目录。
+`agents/` 保存 Codex 能够直接委派的项目级 Custom Agent。Codex 入口是该目录顶层的
+独立 `<name>.toml`；同名目录保存 Agent 的 `README.md` 角色契约和按任务分支读取的
+专题规则。TOML 只负责身份、使用时机和文档路由，具体行为在同名目录中维护。
+
+项目级 Skill 封装稳定、可重复的项目工作流，并引用 `docs/` 中的权威规范。
+`references/` 和 `scripts/` 只在工作流确实需要时创建；通用个人 Skill 不放入本
+目录。
 
 ### `buildSrc/`
 
@@ -110,11 +127,10 @@ CSES 的 ApplicationContext；模块边界见
 docs/
 ├── architecture.md      # 当前代码架构与核心流程图
 ├── project-structure.md # 本目录地图
-├── agents/              # 项目专用 AI Agent 的职责和边界
 ├── decisions/           # 已确认架构决策及其原因
 ├── harness/             # 可复用的运行、调试和验证方法
 ├── standards/           # 开发和测试规范
-├── test-reports/        # Test Agent 生成的历史测试报告
+├── test-reports/        # Test Agent 生成且按上限滚动保留的测试报告
 └── uc/                  # 基于已确认用户需求整理的真实用户场景
 ```
 
@@ -199,6 +215,7 @@ core/
 ├── plugins/        # Plugin 契约、发现注册、元信息与 Jackson 多态绑定
 ├── queries/        # 只读查询处理
 ├── repositories/   # 核心定义的持久化端口
+├── runner/         # 运行变量投影与一次 RunnableTask 调用上下文
 ├── serializers/    # 严格 Jackson/YAML、Flow 物化与定义 Schema
 ├── services/       # 对 Controller 和其他调用方公开的业务入口
 └── validations/    # 领域模型的统一主动校验入口
@@ -215,6 +232,7 @@ core/
 | `plugins` | 提供 Plugin 契约、`@Plugin`、Micronaut 编译期发现、按真实 Java 包分组的两级只读目录、精确类注册和 Jackson 多态绑定 | 具体 Task、RunnableTask 执行逻辑、OrchestrationTask 编排逻辑、页面布局元数据 |
 | `queries` | 执行只读查询并维护查询边界 | 写状态和推进 Execution |
 | `repositories` | 定义 Core 所需的持久化接口 | DataPilot/JOOQ Record 等具体技术实现 |
+| `runner` | 由 RunVariables Builder 投影统一表达式变量树，并提供只保存该树的 RunContext | Session、领域聚合、Worker/Executor 状态推进 |
 | `serializers` | 集中配置严格 Jackson/YAML，解析通用 YAML，把 Flow 定义物化为完整领域对象，并按同一契约生成插件定义 Schema；目录保持扁平 | Controller 协议、执行调度、持久化 SQL |
 | `services` | 提供稳定、少量的公开业务入口 | 具体 HTTP 或数据库代码 |
 | `validations` | 对框架绑定或项目代码直接创建的模型执行统一主动校验 | YAML 语法解析、Flow 树身份生成 |
@@ -266,8 +284,8 @@ core/
 | --- | --- |
 | `flows` | 统一的 `Flow` 定义、原始 YAML `source`、`draft` 状态、审计删除事实、发布、升级和版本读取 |
 | `executions` | 使用统一 State 的 Execution 创建、推进、恢复、取消和 TaskRun 历史 |
-| `conditions` | Condition 递归树、`{{ scope.path }}` 显式引用、typed constant 比较和一次只读求值；`Condition.parser(source)` 是领域入口，包内 `ConditionParser` 承担解析实现；Route 从 `route` 按需形成 Condition，Loop Until 直接持有 Condition，两者分别提供可见上下文 |
-| `expressions` | TemplateExpression 模板值的受限解析和渲染；由需要渲染运行输入的 Task 复用，不承担 boolean 条件 |
+| `conditions` | Condition 递归树、`{{ path.to.value }}` 完整 Map 路径引用、typed constant 比较和一次只读求值；`Condition.parser(source)` 是领域入口，包内 `ConditionParser` 承担解析实现；Route 从 `route` 按需形成 Condition，Loop Until 直接持有 Condition，两者通过 RunVariables 提供可见上下文 |
+| `expressions` | VariablePath 的安全 Map-only 路径语义和 TemplateExpression 的受限解析、渲染；由 Condition 与需要渲染运行值的 Task 复用，不执行脚本或方法 |
 | `plugins` | 按真实 Java 包分组的全局只读插件、Task 元信息和具体定义 Schema 查询 |
 | `tasks` | Task 抽象定义、RunnableTask/OrchestrationTask 能力及其直接调用契约 |
 | `shared` | 被多个业务模块稳定复用的核心协议，不作为兜底目录 |
@@ -375,16 +393,16 @@ worker/
 └── WorkerTaskResult.java
 ```
 
-`RunnableTask`、`OrchestrationTask` 及 Runnable 的直接调用契约 `RunContext`、
-`RunResult` 归属于 `core/domains/tasks`；它们离开 Task 定义没有独立意义。
-Worker 只消费这些能力：接收包装 RunnableTask 的不可变 `WorkerTask`，为一次
-调用创建包含 Session 和只读 `variables` 的 `RunContext`，其中保留键
-`$flow.execution` 保存当前 `Execution`，`$flow.taskRunId` 和可选的
-`$flow.parentTaskRunId` 保存当前/直接父 TaskRun 的调用期技术身份，`$flow.inputs`
-保存 Execution.inputs 中的 Flow 级输入，`$flow.taskInputs` 保存当前 TaskRun 的业务
-输入；`RunContext` 通过 `executionId()`、`taskRunId()`、`parentTaskRunId()`、
-`inputs()` 和 `taskInputs()` 提供类型化便捷访问，再直接调用具体 Task 的
-`run(RunContext)`，返回使用统一 `State.Type targetState` 的
+`RunnableTask`、`OrchestrationTask` 和 `RunResult` 归属于 `core/domains/tasks`；
+Runnable 的直接调用上下文 `RunContext` 以及变量投影 `RunVariables` 归属于
+`core/runner`。Worker 只消费这些能力：接收包装 RunnableTask 和规范变量树的不可变
+`WorkerTask`，为一次调用通过 Builder 创建只保存 `variables` 的 `RunContext`。
+RunVariables 统一提供 `flow`、`inputs`、按 Task 业务 key 分组的 `outputs`、`vars`、
+`task`、`taskRun`、`execution`、`parent` 和最近到最远的 `parents`；其中 parent 为
+最近的直接父级。`RunContext` 不保存 Session 或独立 executionId/taskRunId/parentTaskRunId，
+而是通过 `taskRunInfo()`、`flowInfo()`、`parentTaskRunId()`、`inputs()`、
+`taskInputs()` 和 `flowVariables()` 从变量树派生只读视图与便捷值，再直接调用具体
+Task 的 `run(RunContext)`，返回使用统一 `State.Type targetState` 的
 `WorkerTaskResult`。结果只允许 COMPLETED 或 TERMINATED；PAUSED 只由 Executor
 处理明确的 Pause OrchestrationTask 时产生。Worker 不发现或选择
 WorkerTaskHandler，也不能推进或修改 Execution、TaskRun 状态、决定下一项 Task 或
@@ -436,8 +454,10 @@ Parallel 的直接子任务由 Executor 组成同一批次。Parallel TaskRun �
 
 `Branch` 是所有结构型 Task 的抽象基类并独占有序 `tasks`。`Sequence` 只显式建立
 串行作用域；`Route` 只保存 `route` 原始字符串，正式发布校验或运行匹配时才
-解析为 Condition。Condition 成立时进入 Route 的 Branch 子树，不成立时不创建
-Route TaskRun。Route、Sequence 与 Parallel 均位于 `extensions/flow`。
+解析为 Condition。Executor 必须先创建并启动 Route 自身的 TaskRun，再用该运行事实
+构建变量并计算 Condition；成立时进入 Route 的 Branch 子树，不成立时直接完成
+Route TaskRun 且不创建子 TaskRun。Route、Sequence 与 Parallel 均位于
+`extensions/flow`。
 
 当前 `Loop` 与 `LoopUntil` 同样属于 Flow Core 自带的 OrchestrationTask：Loop 按
 固定正整数次数串行重复子 Task，LoopUntil 在每轮收敛后检查受限条件并受最大轮数
@@ -591,7 +611,8 @@ executor
   -> worker 的结果协议
 
 worker
-  -> core/domains/tasks 的 RunnableTask、RunContext、RunResult
+  -> core/domains/tasks 的 RunnableTask、RunResult
+  -> core/runner 的 RunContext 与 RunVariables 变量协议
   -> core 的 Task 定义与统一 State 词汇
 
 extensions
@@ -651,6 +672,7 @@ queues/event
 | 领域对象或状态 | `core/src/main/java/org/cses/flow/core/domains/<业务模块>/` |
 | Condition 条件值对象 | `core/src/main/java/org/cses/flow/core/domains/conditions/` |
 | TemplateExpression 模板值对象 | `core/src/main/java/org/cses/flow/core/domains/expressions/` |
+| RunVariables 运行变量投影与 RunContext 调用上下文 | `core/src/main/java/org/cses/flow/core/runner/` |
 | 查询处理 | `core/src/main/java/org/cses/flow/core/queries/<业务模块>/` |
 | 持久化接口 | `core/src/main/java/org/cses/flow/core/repositories/<业务模块>/` |
 | YAML、严格 Jackson、Flow 定义物化与插件定义 Schema | `core/src/main/java/org/cses/flow/core/serializers/`，保持扁平 |
@@ -689,7 +711,8 @@ queues/event
 | 架构决策 | `docs/decisions/` |
 | UC 场景 | `docs/uc/<领域>/` |
 | UC 测试报告 | `docs/test-reports/<领域>/` |
-| Agent 职责 | `docs/agents/` |
+| Codex 项目级 Agent 入口 | `.codex/agents/<name>.toml` |
+| Agent 角色契约与专题规则 | `.codex/agents/<name>/` |
 | 可复用运行手册 | `docs/harness/` |
 
 新增类前还必须执行“先搜索、优先复用”的检查。无法从本表确定目录，或者新增内容会
@@ -702,8 +725,8 @@ AI Agent 接到开发、测试、审查或文档任务后：
 
 1. 先用本文确定目标模块、公开入口和允许修改的目录。
 2. 再读取 `docs/standards/development.md`。
-3. 根据任务读取对应 `docs/agents/`、`docs/standards/`、`docs/decisions/` 和
-   `docs/uc/`。
+3. 根据任务读取对应 `.codex/agents/<name>/`、`docs/standards/`、
+   `docs/decisions/` 和 `docs/uc/`。
 4. 修改后检查新增文件是否位于本文规定的目录，并检查测试包是否镜像生产包。
 
 如果实际目录与本文不一致，应先判断是尚未完成的迁移、空目录，还是架构边界已经

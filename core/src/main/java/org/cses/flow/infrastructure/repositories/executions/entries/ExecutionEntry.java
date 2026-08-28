@@ -20,7 +20,9 @@ public class ExecutionEntry extends ExecutionsObject {
         entry.inputs = ExecutionInputsJsonCodec.encode(execution.inputs());
         entry.state = StateJsonCodec.encode(execution.state());
         entry.creator = ActorRefJsonCodec.encode(execution.creator());
+        entry.updater = ActorRefJsonCodec.encode(execution.creator());
         entry.createdAt = execution.createdAt();
+        entry.updatedAt = execution.createdAt();
         return entry;
     }
 

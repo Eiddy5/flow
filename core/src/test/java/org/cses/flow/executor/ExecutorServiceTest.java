@@ -254,7 +254,7 @@ final class ExecutorServiceTest {
                     Map.of(
                         "key", "production-route",
                         "type", org.cses.flow.extensions.flow.Route.class.getName(),
-                        "route", "{{ variables.environment }} == prod",
+                        "route", "{{ vars.environment }} == prod",
                         "tasks", List.of(Map.of(
                             "key", "production",
                             "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
@@ -263,7 +263,7 @@ final class ExecutorServiceTest {
                     Map.of(
                         "key", "staging-route",
                         "type", org.cses.flow.extensions.flow.Route.class.getName(),
-                        "route", "{{ variables.environment }} == staging",
+                        "route", "{{ vars.environment }} == staging",
                         "tasks", List.of(Map.of(
                             "key", "staging",
                             "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
@@ -285,9 +285,36 @@ final class ExecutorServiceTest {
         );
         assertEquals(
             flow.variables(),
-            context.workerTasks().getFirst().variables().get(
-                RunContext.FLOW_VARIABLES_VARIABLE
-            )
+            context.workerTasks().getFirst().variables().get("vars")
+        );
+    }
+
+    @Test
+    void routeReadsTaskAndExecutionMetadataFromRunVariables() {
+        Flow flow = deploy(Map.of(
+            "key", "runtime-metadata-route",
+            "tasks", List.of(Map.of(
+                "key", "metadata-route",
+                "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                "route", "{{ task.key }} == metadata-route "
+                    + "&& {{ taskRun.state }} == RUNNING "
+                    + "&& {{ execution.flowKey }} == runtime-metadata-route",
+                "tasks", List.of(Map.of(
+                    "key", "selected",
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                ))
+            ))
+        ));
+        Execution execution = execution(flow);
+        ExecutorContext context = new ExecutorContext(flow, execution);
+
+        processUntilBoundary(context);
+
+        assertEquals(
+            List.of("selected"),
+            context.workerTasks().stream()
+                .map(workerTask -> task(workerTask, execution, flow).key())
+                .toList()
         );
     }
 
@@ -318,7 +345,7 @@ final class ExecutorServiceTest {
                         "key", "approved-route",
                         "type", org.cses.flow.extensions.flow.Route.class.getName(),
                         "route", "({{ outputs.prepare.decision }} == approved "
-                            + "&& {{ variables.environment }} == prod) "
+                            + "&& {{ vars.environment }} == prod) "
                             + "|| {{ inputs.override }} == true",
                         "tasks", List.of(Map.of(
                             "key", "approved",
@@ -363,14 +390,14 @@ final class ExecutorServiceTest {
     }
 
     @Test
-    void unmatchedRouteSettlesWithoutCreatingItsTaskRun() {
+    void unmatchedRouteCompletesItsTaskRunWithoutCreatingChildren() {
         Flow flow = deploy(Map.of(
             "key", "unmatched-route",
             "variables", Map.of("environment", "staging"),
             "tasks", List.of(Map.of(
                 "key", "route",
                 "type", org.cses.flow.extensions.flow.Route.class.getName(),
-                "route", "{{ variables.environment }} == prod",
+                "route", "{{ vars.environment }} == prod",
                 "tasks", List.of(Map.of(
                     "key", "never",
                     "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
@@ -383,7 +410,17 @@ final class ExecutorServiceTest {
         processUntilBoundary(context);
 
         assertTrue(execution.state().is(State.Type.SUCCESS));
-        assertTrue(execution.taskRuns().isEmpty());
+        assertEquals(1, execution.taskRuns().size());
+        TaskRun routeRun = execution.taskRuns().getFirst();
+        assertEquals(
+            "route",
+            flow.findTask(routeRun.taskId()).orElseThrow().key()
+        );
+        assertTrue(routeRun.state().is(State.Type.SUCCESS));
+        assertTrue(execution.taskRuns().stream()
+            .map(TaskRun::taskId)
+            .map(taskId -> flow.findTask(taskId).orElseThrow().key())
+            .noneMatch("never"::equals));
     }
 
     @Test
@@ -818,7 +855,11 @@ final class ExecutorServiceTest {
 
         processUntilBoundary(context);
         WorkerTask workerTask = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, workerTask);
+        workerTask = executorService.dispatch(context, workerTask);
+        assertEquals(
+            "RUNNING",
+            ((Map<?, ?>) workerTask.variables().get("taskRun")).get("state")
+        );
         executorService.applyResult(
             context,
             WorkerTaskResult.warning(workerTask, Map.of())

@@ -2,105 +2,81 @@ package org.cses.flow.core.runner;
 
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.junit.jupiter.api.Test;
-import org.paas.session.Session;
-import org.paas.session.User;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class RunContextTest {
+class RunContextTest {
 
     @Test
-    void exposesTheExactTaskRunIdFromItsReservedVariable() {
+    void derivesRuntimeInfoFromTheVariableTree() {
         RunContext context = context(Map.of(
-            RunContext.TASK_RUN_ID_VARIABLE,
-            "task-run-1"
+            "parent",
+            Map.of("taskRun", Map.of("id", "parent-run-1"))
         ));
 
-        assertEquals("task-run-1", context.taskRunId());
-    }
-
-    @Test
-    void rejectsMissingOrInvalidTaskRunIdentityVariables() {
-        assertThrows(
-            IllegalStateException.class,
-            () -> context(Map.of()).taskRunId()
+        RunContext.TaskRunInfo taskRunInfo = context.taskRunInfo();
+        assertEquals("execution-1", taskRunInfo.executionId());
+        assertEquals("task-run-1", taskRunInfo.id());
+        assertEquals("task-1", taskRunInfo.taskId());
+        assertEquals("task", taskRunInfo.taskKey());
+        assertEquals(Map.of(), taskRunInfo.outputs());
+        assertEquals(
+            RunContext.FlowInfo.from(Map.of(
+                "id", "flow-1",
+                "key", "flow",
+                "companyId", "company-1",
+                "version", 1L
+            )),
+            context.flowInfo()
         );
-        assertThrows(
-            IllegalStateException.class,
-            () -> context(Map.of(
-                RunContext.TASK_RUN_ID_VARIABLE,
-                1
-            )).taskRunId()
-        );
-        assertThrows(
-            IllegalStateException.class,
-            () -> context(Map.of(
-                RunContext.TASK_RUN_ID_VARIABLE,
-                " "
-            )).taskRunId()
-        );
-    }
-
-    @Test
-    void exposesAnOptionalParentTaskRunIdentity() {
-        assertTrue(context(Map.of()).parentTaskRunId().isEmpty());
         assertEquals(
             "parent-run-1",
-            context(Map.of(
-                RunContext.PARENT_TASK_RUN_ID_VARIABLE,
-                "parent-run-1"
-            )).parentTaskRunId().orElseThrow()
+            context.parentTaskRunId().orElseThrow()
         );
-        assertThrows(
-            IllegalStateException.class,
-            () -> context(Map.of(
-                RunContext.PARENT_TASK_RUN_ID_VARIABLE,
-                1
-            )).parentTaskRunId()
-        );
-        assertThrows(
-            IllegalStateException.class,
-            () -> context(Map.of(
-                RunContext.PARENT_TASK_RUN_ID_VARIABLE,
-                " "
-            )).parentTaskRunId()
-        );
+        assertTrue(context(Map.of()).parentTaskRunId().isEmpty());
     }
 
     @Test
-    void exposesImmutableFlowLevelVariables() {
-        RunContext context = context(Map.of(
-            RunContext.FLOW_VARIABLES_VARIABLE,
-            Map.of("environment", "prod")
+    void rejectsMissingOrInvalidRuntimeIdentityPaths() {
+        RunContext missing = RunContext.builder()
+            .variables(Map.of())
+            .build();
+        assertThrows(IllegalStateException.class, missing::taskRunInfo);
+        assertEquals(RunContext.FlowInfo.empty(), missing.flowInfo());
+
+        RunContext invalid = context(Map.of(
+            "taskRun",
+            Map.of(
+                "id", 1,
+                "inputs", Map.of(),
+                "outputs", Map.of()
+            )
         ));
-
-        assertEquals(
-            Map.of("environment", "prod"),
-            context.flowVariables()
-        );
-        assertThrows(
-            UnsupportedOperationException.class,
-            () -> context.flowVariables().put("environment", "staging")
-        );
+        assertThrows(IllegalStateException.class, invalid::taskRunInfo);
     }
 
     @Test
-    void separatesExecutionInputsFromTaskRunInputs() {
+    void exposesImmutableInputsTaskInputsAndFlowVariables() {
         RunContext context = context(Map.of(
-            RunContext.INPUTS_VARIABLE,
-            Map.of("amount", 1200),
-            RunContext.TASK_INPUTS_VARIABLE,
-            Map.of("outputs", Map.of("approved", true))
+            "inputs", Map.of("amount", 1200),
+            "vars", Map.of("environment", "prod"),
+            "taskRun", Map.of(
+                "id", "task-run-1",
+                "inputs", Map.of("iteration", 2)
+            )
         ));
 
         assertEquals(Map.of("amount", 1200), context.inputs());
+        assertEquals(Map.of("iteration", 2), context.taskInputs());
         assertEquals(
-            Map.of("outputs", Map.of("approved", true)),
-            context.taskInputs()
+            Map.of("environment", "prod"),
+            context.flowVariables()
         );
         assertThrows(
             UnsupportedOperationException.class,
@@ -108,35 +84,89 @@ final class RunContextTest {
         );
         assertThrows(
             UnsupportedOperationException.class,
-            () -> context.taskInputs().put("new", true)
+            () -> context.taskInputs().put("iteration", 3)
         );
     }
 
     @Test
-    void rendersExpressionsFromTheCurrentTaskRunInputs() {
+    void rendersExpressionsAgainstTheCompleteVariableTree() {
         RunContext context = context(Map.of(
-            RunContext.INPUTS_VARIABLE,
-            Map.of("orderId", "order-1"),
-            RunContext.TASK_INPUTS_VARIABLE,
-            Map.of(
-                "outputs",
-                Map.of("prepare", Map.of("result", "ready"))
+            "inputs", Map.of("orderId", "order-1"),
+            "outputs", Map.of(
+                "prepare",
+                Map.of("result", "ready")
+            ),
+            "vars", Map.of("environment", "prod"),
+            "task", Map.of("key", "notify", "type", "log"),
+            "execution", Map.of(
+                "id", "execution-1",
+                "outputs", Map.of("summary", "done")
+            ),
+            "parent", Map.of(
+                "task", Map.of("key", "sequence"),
+                "taskRun", Map.of("id", "parent-run-1")
             )
         ));
 
         assertEquals(
-            "处理结果：ready（ready）",
+            "order-1/ready/prod/notify/task-run-1/execution-1/done/sequence",
             context.render(TemplateExpression.parse(
-                "处理结果：{{ outputs.prepare.result }}（"
-                    + "{{ outputs.prepare.result }}）"
+                "{{ inputs.orderId }}/{{ outputs.prepare.result }}/"
+                    + "{{ vars.environment }}/{{ task.key }}/"
+                    + "{{ taskRun.id }}/{{ execution.id }}/"
+                    + "{{ execution.outputs.summary }}/{{ parent.task.key }}"
             ))
         );
     }
 
-    private static RunContext context(Map<String, ?> variables) {
-        return RunContext.create(
-            new Session<User>(),
-            variables
+    @Test
+    void storesOnlyTheCanonicalVariablesSnapshot() {
+        assertEquals(
+            List.of("variables"),
+            java.util.Arrays.stream(RunContext.class.getDeclaredFields())
+                .filter(field -> !java.lang.reflect.Modifier.isStatic(
+                    field.getModifiers()
+                ))
+                .map(java.lang.reflect.Field::getName)
+                .toList()
         );
+        assertFalse(java.util.Arrays.stream(RunContext.class.getMethods())
+            .anyMatch(method -> method.getName().equals("session")));
+    }
+
+    private static RunContext context(Map<String, ?> overrides) {
+        Map<String, Object> variables = new java.util.LinkedHashMap<>();
+        variables.put("inputs", Map.of());
+        variables.put("outputs", Map.of());
+        variables.put("vars", Map.of());
+        variables.put("flow", Map.of(
+            "id", "flow-1",
+            "key", "flow",
+            "companyId", "company-1",
+            "version", 1L
+        ));
+        variables.put("task", Map.of(
+            "id", "task-1",
+            "key", "task",
+            "type", "test"
+        ));
+        variables.put("taskRun", Map.of(
+            "id",
+            "task-run-1",
+            "inputs",
+            Map.of(),
+            "outputs",
+            Map.of()
+        ));
+        variables.put("execution", Map.of(
+            "id",
+            "execution-1",
+            "outputs",
+            Map.of()
+        ));
+        variables.put("parent", Map.of());
+        variables.put("parents", List.of());
+        variables.putAll(overrides);
+        return RunContext.builder().variables(variables).build();
     }
 }

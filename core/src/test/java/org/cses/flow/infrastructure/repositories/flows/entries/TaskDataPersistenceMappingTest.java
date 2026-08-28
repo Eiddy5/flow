@@ -17,6 +17,7 @@ import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.infrastructure.repositories.flows.codec.DataJsonCodec;
+import org.jooq.JSONB;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
@@ -63,7 +64,7 @@ class TaskDataPersistenceMappingTest {
 
         assertEquals(
             "处理结果：{{ outputs.prepare.result }}",
-            entry.properties.asMap().get("message")
+            properties(entry).asMap().get("message")
         );
         Log restored = assertInstanceOf(
             Log.class,
@@ -90,7 +91,7 @@ class TaskDataPersistenceMappingTest {
             0
         );
 
-        assertEquals(4, entry.properties.asMap().get("concurrent"));
+        assertEquals(4, properties(entry).asMap().get("concurrent"));
         Parallel restored = assertInstanceOf(
             Parallel.class,
             entry.to(List.of())
@@ -116,7 +117,7 @@ class TaskDataPersistenceMappingTest {
             0
         );
 
-        assertEquals("operations", entry.properties.getString("channel"));
+        assertEquals("operations", properties(entry).getString("channel"));
         TestNotificationTask restored = assertInstanceOf(
             TestNotificationTask.class,
             entry.to(List.of())
@@ -154,7 +155,7 @@ class TaskDataPersistenceMappingTest {
 
         assertEquals(
             "{{ outputs.check.status }} == DONE",
-            entry.properties.asMap().get("condition")
+            properties(entry).asMap().get("condition")
         );
         LoopUntil restored = assertInstanceOf(
             LoopUntil.class,
@@ -194,8 +195,8 @@ class TaskDataPersistenceMappingTest {
             0
         );
 
-        assertTrue(entry.properties.asMap().containsKey("pause"));
-        assertEquals("P1M", entry.properties.asMap().get("duration"));
+        assertTrue(properties(entry).asMap().containsKey("pause"));
+        assertEquals("P1M", properties(entry).asMap().get("duration"));
         Pause restored = assertInstanceOf(
             Pause.class,
             entry.to(List.of())
@@ -247,8 +248,8 @@ class TaskDataPersistenceMappingTest {
         assertEquals(2, input.getDefaultValue());
         assertEquals(1, input.getMin());
         assertEquals(5, input.getMax());
-        assertEquals(List.of(), entry.dependOn.asStrings());
-        assertEquals("DIRECT", entry.route);
+        assertEquals(0, entry.position);
+        assertEquals("approval", entry.displayName);
     }
 
     @Test
@@ -256,14 +257,13 @@ class TaskDataPersistenceMappingTest {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.id = "task-id";
         entry.key = "automatic";
+        entry.displayName = "automatic";
         entry.type = AutomaticTask.class.getName();
-        entry.route = "DIRECT";
-        entry.inputs = JsonObjects.FromList(List.of(Map.of(
+        entry.inputs = JSONB.valueOf(JsonObjects.FromList(List.of(Map.of(
             "key", "request",
             "type", "STRING"
-        )));
-        entry.outputs = JsonObjects.Create();
-        entry.dependOn = JsonObjects.Create();
+        ))).toJson());
+        entry.outputs = JSONB.valueOf(JsonObjects.Create().toJson());
 
         Input<?> restored = entry.to(List.of()).inputs().getFirst();
         assertEquals("request", restored.getDisplayName());
@@ -275,11 +275,10 @@ class TaskDataPersistenceMappingTest {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.id = "task-id";
         entry.key = "approval";
+        entry.displayName = "approval";
         entry.type = AutomaticTask.class.getName();
-        entry.route = "DIRECT";
-        entry.inputs = JsonObjects.FromList(List.of("legacy"));
-        entry.outputs = JsonObjects.Create();
-        entry.dependOn = JsonObjects.Create();
+        entry.inputs = JSONB.valueOf(JsonObjects.FromList(List.of("legacy")).toJson());
+        entry.outputs = JSONB.valueOf(JsonObjects.Create().toJson());
 
         assertThrows(
             RuntimeException.class,
@@ -319,5 +318,9 @@ class TaskDataPersistenceMappingTest {
                 "Flow.inputs"
             )
         );
+    }
+
+    private static JsonObject properties(FlowTaskEntry entry) {
+        return JsonObject.Parse(entry.properties.data());
     }
 }

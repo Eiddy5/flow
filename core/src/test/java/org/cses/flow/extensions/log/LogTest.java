@@ -10,8 +10,6 @@ import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.plugins.TaskPluginTestSupport;
 import org.cses.flow.core.runner.RunContext;
 import org.junit.jupiter.api.Test;
-import org.paas.session.Session;
-import org.paas.session.User;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
@@ -137,11 +135,8 @@ class LogTest {
         );
     }
 
-    private static RunContext context(Map<String, ?> inputs) {
-        return RunContext.create(
-            new Session<User>(),
-            Map.of(RunContext.TASK_INPUTS_VARIABLE, inputs)
-        );
+    private static RunContext context(Map<String, ?> variables) {
+        return RunContext.builder().variables(variables).build();
     }
 
     private static final class LogCapture implements AutoCloseable {

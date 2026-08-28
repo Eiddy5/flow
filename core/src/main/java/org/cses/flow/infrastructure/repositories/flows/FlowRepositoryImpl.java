@@ -10,6 +10,7 @@ import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowEntry;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowTaskEntry;
 import org.flow.gen.flow.records.FlowTasksRecord;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.InsertValuesStepN;
 import org.jooq.exception.DataAccessException;
@@ -172,6 +173,7 @@ public class FlowRepositoryImpl implements FlowRepository {
             Flow flow,
             FlowEntry entry
     ) {
+        ensureLogicalIdentityIsAvailable(dsl, entry);
         insert(dsl, entry);
         if (flow.deployed()) {
             writeTasks(dsl, flow);
@@ -182,6 +184,39 @@ public class FlowRepositoryImpl implements FlowRepository {
         dsl.insertInto(FLOWS)
                 .set(entry.buildInsertMap())
                 .execute();
+    }
+
+    private void ensureLogicalIdentityIsAvailable(
+            DSLContext dsl,
+            FlowEntry entry
+    ) {
+        Condition identity = FLOWS.COMPANY_ID.eq(entry.companyId)
+                .and(FLOWS.KEY.eq(entry.key));
+        if (Boolean.TRUE.equals(entry.draft)) {
+            identity = identity.and(FLOWS.DRAFT.eq(true));
+        } else {
+            if (entry.version == null) {
+                throw new WorkflowException(
+                        "Deployed Flow version must not be null"
+                );
+            }
+            identity = identity
+                    .and(FLOWS.DRAFT.eq(false))
+                    .and(FLOWS.VERSION.eq(entry.version));
+        }
+        if (dsl.selectOne()
+                .from(FLOWS)
+                .where(identity)
+                .fetchOptional()
+                .isPresent()) {
+            String logicalId = Boolean.TRUE.equals(entry.draft)
+                    ? entry.companyId + ":" + entry.key
+                    : entry.companyId + ":" + entry.key + ":"
+                        + entry.version;
+            throw new WorkflowException(
+                    "Flow logical identity already exists: " + logicalId
+            );
+        }
     }
 
     private List<Task> readTasks(
@@ -195,7 +230,7 @@ public class FlowRepositoryImpl implements FlowRepository {
                 .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
                 .and(FLOW_TASKS.FLOW_KEY.eq(flowKey))
                 .and(FLOW_TASKS.FLOW_VERSION.eq(flowVersion))
-                .orderBy(FLOW_TASKS.ORDER.asc())
+                .orderBy(FLOW_TASKS.POSITION.asc())
                 .fetchInto(FlowTaskEntry.class);
         Set<String> restored = new HashSet<>();
         List<Task> tasks = readTasks(entries, null, restored);
@@ -215,7 +250,7 @@ public class FlowRepositoryImpl implements FlowRepository {
     ) {
         return entries.stream()
                 .filter(entry -> Objects.equals(entry.parentId, parentId))
-                .sorted(Comparator.comparingInt(entry -> entry.order))
+                .sorted(Comparator.comparingInt(entry -> entry.position))
                 .map(entry -> {
                     if (!restored.add(entry.id)) {
                         throw new IllegalStateException(

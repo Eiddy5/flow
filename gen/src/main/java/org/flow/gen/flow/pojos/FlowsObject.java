@@ -13,8 +13,6 @@ import org.flow.gen.flow.Tables;
 import org.flow.gen.flow.records.FlowsRecord;
 import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.JSONB;
-import org.paas.json.JsonObject;
-import org.paas.json.JsonObjects;
 import org.x9.jooq.common.JooqPojo;
 
 
@@ -26,82 +24,96 @@ public class FlowsObject extends JooqPojo implements Serializable {
 
     public static final long serialVersionUID = 1L;
 
+    public String companyId;
     public String id;
     public String key;
-    public String companyId;
     public Long version;
     public Boolean draft;
     public String source;
     public String description;
-    public JSONB creator;
-    public JSONB updater;
-    public JSONB deleter;
-    public Long createdAt;
-    public Long updatedAt;
-    public Long deletedAt;
-    public JsonObjects inputs;
-    public JsonObjects outputs;
-    public JsonObject variables;
+    public JSONB variables;
+    public JSONB inputs;
+    public JSONB outputs;
     public String status;
+    public JSONB creator;
+    public Long createdAt;
+    public JSONB updater;
+    public Long updatedAt;
+    public JSONB deleter;
+    public Long deletedAt;
 
     public FlowsObject() {}
 
     public FlowsObject(FlowsObject value) {
+        this.companyId = value.companyId;
         this.id = value.id;
         this.key = value.key;
-        this.companyId = value.companyId;
         this.version = value.version;
         this.draft = value.draft;
         this.source = value.source;
         this.description = value.description;
-        this.creator = value.creator;
-        this.updater = value.updater;
-        this.deleter = value.deleter;
-        this.createdAt = value.createdAt;
-        this.updatedAt = value.updatedAt;
-        this.deletedAt = value.deletedAt;
+        this.variables = value.variables;
         this.inputs = value.inputs;
         this.outputs = value.outputs;
-        this.variables = value.variables;
         this.status = value.status;
+        this.creator = value.creator;
+        this.createdAt = value.createdAt;
+        this.updater = value.updater;
+        this.updatedAt = value.updatedAt;
+        this.deleter = value.deleter;
+        this.deletedAt = value.deletedAt;
     }
 
     public FlowsObject(
+        String companyId,
         String id,
         String key,
-        String companyId,
         Long version,
         Boolean draft,
         String source,
         String description,
+        JSONB variables,
+        JSONB inputs,
+        JSONB outputs,
+        String status,
         JSONB creator,
-        JSONB updater,
-        JSONB deleter,
         Long createdAt,
+        JSONB updater,
         Long updatedAt,
-        Long deletedAt,
-        JsonObjects inputs,
-        JsonObjects outputs,
-        JsonObject variables,
-        String status
+        JSONB deleter,
+        Long deletedAt
     ) {
+        this.companyId = companyId;
         this.id = id;
         this.key = key;
-        this.companyId = companyId;
         this.version = version;
         this.draft = draft;
         this.source = source;
         this.description = description;
-        this.creator = creator;
-        this.updater = updater;
-        this.deleter = deleter;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-        this.deletedAt = deletedAt;
+        this.variables = variables;
         this.inputs = inputs;
         this.outputs = outputs;
-        this.variables = variables;
         this.status = status;
+        this.creator = creator;
+        this.createdAt = createdAt;
+        this.updater = updater;
+        this.updatedAt = updatedAt;
+        this.deleter = deleter;
+        this.deletedAt = deletedAt;
+    }
+
+    /**
+     * Getter for <code>public.flows.company_id</code>.
+     */
+    public String getCompanyId() {
+        return this.companyId;
+    }
+
+    /**
+     * Setter for <code>public.flows.company_id</code>.
+     */
+    public void setCompanyId(String companyId) {
+        this.companyId = companyId;
     }
 
     /**
@@ -130,20 +142,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setKey(String key) {
         this.key = key;
-    }
-
-    /**
-     * Getter for <code>public.flows.company_id</code>.
-     */
-    public String getCompanyId() {
-        return this.companyId;
-    }
-
-    /**
-     * Setter for <code>public.flows.company_id</code>.
-     */
-    public void setCompanyId(String companyId) {
-        this.companyId = companyId;
     }
 
     /**
@@ -203,6 +201,62 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
+     * Getter for <code>public.flows.variables</code>.
+     */
+    public JSONB getVariables() {
+        return this.variables;
+    }
+
+    /**
+     * Setter for <code>public.flows.variables</code>.
+     */
+    public void setVariables(JSONB variables) {
+        this.variables = variables;
+    }
+
+    /**
+     * Getter for <code>public.flows.inputs</code>.
+     */
+    public JSONB getInputs() {
+        return this.inputs;
+    }
+
+    /**
+     * Setter for <code>public.flows.inputs</code>.
+     */
+    public void setInputs(JSONB inputs) {
+        this.inputs = inputs;
+    }
+
+    /**
+     * Getter for <code>public.flows.outputs</code>.
+     */
+    public JSONB getOutputs() {
+        return this.outputs;
+    }
+
+    /**
+     * Setter for <code>public.flows.outputs</code>.
+     */
+    public void setOutputs(JSONB outputs) {
+        this.outputs = outputs;
+    }
+
+    /**
+     * Getter for <code>public.flows.status</code>.
+     */
+    public String getStatus() {
+        return this.status;
+    }
+
+    /**
+     * Setter for <code>public.flows.status</code>.
+     */
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    /**
      * Getter for <code>public.flows.creator</code>.
      */
     public JSONB getCreator() {
@@ -214,34 +268,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setCreator(JSONB creator) {
         this.creator = creator;
-    }
-
-    /**
-     * Getter for <code>public.flows.updater</code>.
-     */
-    public JSONB getUpdater() {
-        return this.updater;
-    }
-
-    /**
-     * Setter for <code>public.flows.updater</code>.
-     */
-    public void setUpdater(JSONB updater) {
-        this.updater = updater;
-    }
-
-    /**
-     * Getter for <code>public.flows.deleter</code>.
-     */
-    public JSONB getDeleter() {
-        return this.deleter;
-    }
-
-    /**
-     * Setter for <code>public.flows.deleter</code>.
-     */
-    public void setDeleter(JSONB deleter) {
-        this.deleter = deleter;
     }
 
     /**
@@ -259,6 +285,20 @@ public class FlowsObject extends JooqPojo implements Serializable {
     }
 
     /**
+     * Getter for <code>public.flows.updater</code>.
+     */
+    public JSONB getUpdater() {
+        return this.updater;
+    }
+
+    /**
+     * Setter for <code>public.flows.updater</code>.
+     */
+    public void setUpdater(JSONB updater) {
+        this.updater = updater;
+    }
+
+    /**
      * Getter for <code>public.flows.updated_at</code>.
      */
     public Long getUpdatedAt() {
@@ -270,6 +310,20 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setUpdatedAt(Long updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    /**
+     * Getter for <code>public.flows.deleter</code>.
+     */
+    public JSONB getDeleter() {
+        return this.deleter;
+    }
+
+    /**
+     * Setter for <code>public.flows.deleter</code>.
+     */
+    public void setDeleter(JSONB deleter) {
+        this.deleter = deleter;
     }
 
     /**
@@ -286,62 +340,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.deletedAt = deletedAt;
     }
 
-    /**
-     * Getter for <code>public.flows.inputs</code>.
-     */
-    public JsonObjects getInputs() {
-        return this.inputs;
-    }
-
-    /**
-     * Setter for <code>public.flows.inputs</code>.
-     */
-    public void setInputs(JsonObjects inputs) {
-        this.inputs = inputs;
-    }
-
-    /**
-     * Getter for <code>public.flows.outputs</code>.
-     */
-    public JsonObjects getOutputs() {
-        return this.outputs;
-    }
-
-    /**
-     * Setter for <code>public.flows.outputs</code>.
-     */
-    public void setOutputs(JsonObjects outputs) {
-        this.outputs = outputs;
-    }
-
-    /**
-     * Getter for <code>public.flows.variables</code>.
-     */
-    public JsonObject getVariables() {
-        return this.variables;
-    }
-
-    /**
-     * Setter for <code>public.flows.variables</code>.
-     */
-    public void setVariables(JsonObject variables) {
-        this.variables = variables;
-    }
-
-    /**
-     * Getter for <code>public.flows.status</code>.
-     */
-    public String getStatus() {
-        return this.status;
-    }
-
-    /**
-     * Setter for <code>public.flows.status</code>.
-     */
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -351,6 +349,12 @@ public class FlowsObject extends JooqPojo implements Serializable {
         if (getClass() != obj.getClass())
             return false;
         final FlowsObject other = (FlowsObject) obj;
+        if (this.companyId == null) {
+            if (other.companyId != null)
+                return false;
+        }
+        else if (!this.companyId.equals(other.companyId))
+            return false;
         if (this.id == null) {
             if (other.id != null)
                 return false;
@@ -362,12 +366,6 @@ public class FlowsObject extends JooqPojo implements Serializable {
                 return false;
         }
         else if (!this.key.equals(other.key))
-            return false;
-        if (this.companyId == null) {
-            if (other.companyId != null)
-                return false;
-        }
-        else if (!this.companyId.equals(other.companyId))
             return false;
         if (this.version == null) {
             if (other.version != null)
@@ -393,41 +391,11 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.description.equals(other.description))
             return false;
-        if (this.creator == null) {
-            if (other.creator != null)
+        if (this.variables == null) {
+            if (other.variables != null)
                 return false;
         }
-        else if (!this.creator.equals(other.creator))
-            return false;
-        if (this.updater == null) {
-            if (other.updater != null)
-                return false;
-        }
-        else if (!this.updater.equals(other.updater))
-            return false;
-        if (this.deleter == null) {
-            if (other.deleter != null)
-                return false;
-        }
-        else if (!this.deleter.equals(other.deleter))
-            return false;
-        if (this.createdAt == null) {
-            if (other.createdAt != null)
-                return false;
-        }
-        else if (!this.createdAt.equals(other.createdAt))
-            return false;
-        if (this.updatedAt == null) {
-            if (other.updatedAt != null)
-                return false;
-        }
-        else if (!this.updatedAt.equals(other.updatedAt))
-            return false;
-        if (this.deletedAt == null) {
-            if (other.deletedAt != null)
-                return false;
-        }
-        else if (!this.deletedAt.equals(other.deletedAt))
+        else if (!this.variables.equals(other.variables))
             return false;
         if (this.inputs == null) {
             if (other.inputs != null)
@@ -441,17 +409,47 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.outputs.equals(other.outputs))
             return false;
-        if (this.variables == null) {
-            if (other.variables != null)
-                return false;
-        }
-        else if (!this.variables.equals(other.variables))
-            return false;
         if (this.status == null) {
             if (other.status != null)
                 return false;
         }
         else if (!this.status.equals(other.status))
+            return false;
+        if (this.creator == null) {
+            if (other.creator != null)
+                return false;
+        }
+        else if (!this.creator.equals(other.creator))
+            return false;
+        if (this.createdAt == null) {
+            if (other.createdAt != null)
+                return false;
+        }
+        else if (!this.createdAt.equals(other.createdAt))
+            return false;
+        if (this.updater == null) {
+            if (other.updater != null)
+                return false;
+        }
+        else if (!this.updater.equals(other.updater))
+            return false;
+        if (this.updatedAt == null) {
+            if (other.updatedAt != null)
+                return false;
+        }
+        else if (!this.updatedAt.equals(other.updatedAt))
+            return false;
+        if (this.deleter == null) {
+            if (other.deleter != null)
+                return false;
+        }
+        else if (!this.deleter.equals(other.deleter))
+            return false;
+        if (this.deletedAt == null) {
+            if (other.deletedAt != null)
+                return false;
+        }
+        else if (!this.deletedAt.equals(other.deletedAt))
             return false;
         return true;
     }
@@ -460,23 +458,23 @@ public class FlowsObject extends JooqPojo implements Serializable {
     public int hashCode() {
         final int prime = 31;
         int result = 1;
+        result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
         result = prime * result + ((this.id == null) ? 0 : this.id.hashCode());
         result = prime * result + ((this.key == null) ? 0 : this.key.hashCode());
-        result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
         result = prime * result + ((this.version == null) ? 0 : this.version.hashCode());
         result = prime * result + ((this.draft == null) ? 0 : this.draft.hashCode());
         result = prime * result + ((this.source == null) ? 0 : this.source.hashCode());
         result = prime * result + ((this.description == null) ? 0 : this.description.hashCode());
-        result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
-        result = prime * result + ((this.updater == null) ? 0 : this.updater.hashCode());
-        result = prime * result + ((this.deleter == null) ? 0 : this.deleter.hashCode());
-        result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
-        result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
-        result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
+        result = prime * result + ((this.variables == null) ? 0 : this.variables.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
-        result = prime * result + ((this.variables == null) ? 0 : this.variables.hashCode());
         result = prime * result + ((this.status == null) ? 0 : this.status.hashCode());
+        result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
+        result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
+        result = prime * result + ((this.updater == null) ? 0 : this.updater.hashCode());
+        result = prime * result + ((this.updatedAt == null) ? 0 : this.updatedAt.hashCode());
+        result = prime * result + ((this.deleter == null) ? 0 : this.deleter.hashCode());
+        result = prime * result + ((this.deletedAt == null) ? 0 : this.deletedAt.hashCode());
         return result;
     }
 
@@ -501,23 +499,23 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public LinkedHashMap<String, Object> toMap() {
         LinkedHashMap<String, Object> map = new java.util.LinkedHashMap<>();
+        map.put("company_id", companyId);
         map.put("id", id);
         map.put("key", key);
-        map.put("company_id", companyId);
         map.put("version", version);
         map.put("draft", draft);
         map.put("source", source);
         map.put("description", description);
-        map.put("creator", creator);
-        map.put("updater", updater);
-        map.put("deleter", deleter);
-        map.put("created_at", createdAt);
-        map.put("updated_at", updatedAt);
-        map.put("deleted_at", deletedAt);
-        map.put("inputs", inputs == null ? null : inputs.toString());
-        map.put("outputs", outputs == null ? null : outputs.toString());
-        map.put("variables", variables == null ? null : variables.toString());
+        map.put("variables", variables);
+        map.put("inputs", inputs);
+        map.put("outputs", outputs);
         map.put("status", status);
+        map.put("creator", creator);
+        map.put("created_at", createdAt);
+        map.put("updater", updater);
+        map.put("updated_at", updatedAt);
+        map.put("deleter", deleter);
+        map.put("deleted_at", deletedAt);
         return map;
     }
 

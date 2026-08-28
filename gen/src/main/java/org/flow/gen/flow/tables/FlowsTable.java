@@ -4,17 +4,13 @@
 package org.flow.gen.flow.tables;
 
 
-import java.util.Arrays;
 import java.util.Collection;
-import java.util.List;
 
-import org.flow.gen.flow.Indexes;
 import org.flow.gen.flow.Keys;
 import org.flow.gen.flow.Public;
 import org.flow.gen.flow.records.FlowsRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
-import org.jooq.Index;
 import org.jooq.JSONB;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
@@ -54,6 +50,11 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     }
 
     /**
+     * The column <code>public.flows.company_id</code>.
+     */
+    public final TableField<FlowsRecord, String> COMPANY_ID = createField(DSL.name("company_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+
+    /**
      * The column <code>public.flows.id</code>.
      */
     public final TableField<FlowsRecord, String> ID = createField(DSL.name("id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
@@ -64,11 +65,6 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, String> KEY = createField(DSL.name("key"), SQLDataType.VARCHAR(128).nullable(false), this, "");
 
     /**
-     * The column <code>public.flows.company_id</code>.
-     */
-    public final TableField<FlowsRecord, String> COMPANY_ID = createField(DSL.name("company_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
-
-    /**
      * The column <code>public.flows.version</code>.
      */
     public final TableField<FlowsRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT, this, "");
@@ -76,7 +72,7 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     /**
      * The column <code>public.flows.draft</code>.
      */
-    public final TableField<FlowsRecord, Boolean> DRAFT = createField(DSL.name("draft"), SQLDataType.BOOLEAN.nullable(false).defaultValue(DSL.field(DSL.raw("true"), SQLDataType.BOOLEAN)), this, "");
+    public final TableField<FlowsRecord, Boolean> DRAFT = createField(DSL.name("draft"), SQLDataType.BOOLEAN.nullable(false), this, "");
 
     /**
      * The column <code>public.flows.source</code>.
@@ -86,7 +82,27 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     /**
      * The column <code>public.flows.description</code>.
      */
-    public final TableField<FlowsRecord, String> DESCRIPTION = createField(DSL.name("description"), SQLDataType.CLOB.nullable(false).defaultValue(DSL.field(DSL.raw("''::text"), SQLDataType.CLOB)), this, "");
+    public final TableField<FlowsRecord, String> DESCRIPTION = createField(DSL.name("description"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flows.variables</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> VARIABLES = createField(DSL.name("variables"), SQLDataType.JSONB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flows.inputs</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> INPUTS = createField(DSL.name("inputs"), SQLDataType.JSONB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flows.outputs</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flows.status</code>.
+     */
+    public final TableField<FlowsRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(64).nullable(false), this, "");
 
     /**
      * The column <code>public.flows.creator</code>.
@@ -94,19 +110,14 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, JSONB> CREATOR = createField(DSL.name("creator"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
-     * The column <code>public.flows.updater</code>.
-     */
-    public final TableField<FlowsRecord, JSONB> UPDATER = createField(DSL.name("updater"), SQLDataType.JSONB.nullable(false), this, "");
-
-    /**
-     * The column <code>public.flows.deleter</code>.
-     */
-    public final TableField<FlowsRecord, JSONB> DELETER = createField(DSL.name("deleter"), SQLDataType.JSONB, this, "");
-
-    /**
      * The column <code>public.flows.created_at</code>.
      */
     public final TableField<FlowsRecord, Long> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.BIGINT.nullable(false), this, "");
+
+    /**
+     * The column <code>public.flows.updater</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> UPDATER = createField(DSL.name("updater"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
      * The column <code>public.flows.updated_at</code>.
@@ -114,29 +125,14 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, Long> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
+     * The column <code>public.flows.deleter</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> DELETER = createField(DSL.name("deleter"), SQLDataType.JSONB, this, "");
+
+    /**
      * The column <code>public.flows.deleted_at</code>.
      */
     public final TableField<FlowsRecord, Long> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.BIGINT, this, "");
-
-    /**
-     * The column <code>public.flows.inputs</code>.
-     */
-    public final TableField<FlowsRecord, JSONB> INPUTS = createField(DSL.name("inputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
-     * The column <code>public.flows.outputs</code>.
-     */
-    public final TableField<FlowsRecord, JSONB> OUTPUTS = createField(DSL.name("outputs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
-     * The column <code>public.flows.variables</code>.
-     */
-    public final TableField<FlowsRecord, JSONB> VARIABLES = createField(DSL.name("variables"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
-
-    /**
-     * The column <code>public.flows.status</code>.
-     */
-    public final TableField<FlowsRecord, String> STATUS = createField(DSL.name("status"), SQLDataType.VARCHAR(32).nullable(false).defaultValue(DSL.field(DSL.raw("'Open'::character varying"), SQLDataType.VARCHAR)), this, "");
 
     private FlowsTable(Name alias, Table<FlowsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);
@@ -170,11 +166,6 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
-    }
-
-    @Override
-    public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_FLOWS_EDITABLE_DRAFTS, Indexes.IDX_FLOWS_LATEST_DEPLOYED, Indexes.UQ_FLOWS_DEPLOYED_KEY_REVERSION, Indexes.UQ_FLOWS_DRAFT_KEY);
     }
 
     @Override

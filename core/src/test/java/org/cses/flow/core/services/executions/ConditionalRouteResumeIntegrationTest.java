@@ -71,7 +71,7 @@ class ConditionalRouteResumeIntegrationTest {
     }
 
     @Test
-    void unmatchedOutputCompletesWithoutCandidateRuns() {
+    void unmatchedOutputCompletesRouteRunsWithoutChildRuns() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             RouteScenario scenario = start(
                 fixture,
@@ -85,7 +85,17 @@ class ConditionalRouteResumeIntegrationTest {
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertEquals(2, completed.taskRuns().size());
+            assertEquals(4, completed.taskRuns().size());
+            assertEquals(
+                State.Type.SUCCESS,
+                run(completed, task(scenario.flow(), "route-decision"))
+                    .state().current()
+            );
+            assertEquals(
+                State.Type.SUCCESS,
+                run(completed, task(scenario.flow(), "reject-decision"))
+                    .state().current()
+            );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }

@@ -18,7 +18,7 @@ class ConditionParsingTest {
         );
 
         assertEquals(
-            Operand.reference(OperandScope.INPUTS, List.of("username")),
+            Operand.reference(List.of("inputs", "username")),
             text.left().orElseThrow()
         );
         assertEquals(
@@ -69,26 +69,27 @@ class ConditionParsingTest {
     }
 
     @Test
-    void parsesThreeReferenceRootsAndSafeMultiSegmentPaths() {
+    void parsesCompleteSafePathsWithoutRestrictingTheRoot() {
         Condition condition = Condition.parser("""
-            {{ variables.release-channel }} == stable
+            {{ vars.release-channel }} == stable
             && {{ inputs.request_id }} != ""
             && {{ outputs.check-1.result_code }} == 200
+            && {{ execution.id }} == execution-1
             """);
 
         assertEquals(
             List.of(
                 Operand.reference(
-                    OperandScope.VARIABLES,
-                    List.of("release-channel")
+                    List.of("vars", "release-channel")
                 ),
                 Operand.reference(
-                    OperandScope.INPUTS,
-                    List.of("request_id")
+                    List.of("inputs", "request_id")
                 ),
                 Operand.reference(
-                    OperandScope.OUTPUTS,
-                    List.of("check-1", "result_code")
+                    List.of("outputs", "check-1", "result_code")
+                ),
+                Operand.reference(
+                    List.of("execution", "id")
                 )
             ),
             condition.references()
@@ -146,7 +147,7 @@ class ConditionParsingTest {
 
         for (String value : values) {
             Condition condition = Condition.compare(
-                Operand.reference(OperandScope.INPUTS, List.of("value")),
+                Operand.reference(List.of("inputs", "value")),
                 BasicComparison.EQUALS,
                 Operand.constant(value)
             );
@@ -207,7 +208,7 @@ class ConditionParsingTest {
         assertEquals(
             List.of("a", "b", "c"),
             condition.conditions().stream()
-                .map(child -> child.left().orElseThrow().path().getFirst())
+                .map(child -> child.left().orElseThrow().path().getLast())
                 .toList()
         );
     }
@@ -233,7 +234,6 @@ class ConditionParsingTest {
             "",
             "{{ outputs.status }} = DONE",
             "outputs.status == DONE",
-            "{{ unknown.status }} == DONE",
             "{{ outputs.1status }} == DONE",
             "{{ outputs.a\u0661 }} == 1",
             "({{ outputs.status }} == DONE",

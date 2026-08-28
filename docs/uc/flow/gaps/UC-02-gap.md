@@ -58,5 +58,4 @@
   `Uc02ExecutionLifecycleTest#s7CompleteAndCancelRaceCommitsOneConsistentTerminalState`。
 - UC Agent：保留竞争场景和一致性要求。
 - 开发角色：已实现跨聚合内存事务与竞争协议。
-- Test Agent：已执行 S7 并记录最终三个领域对象的一致状态，复验结果见
-  [UC-02-2026-07-27-1948.md](../../../test-reports/flow/UC-02-2026-07-27-1948.md)。
+- Test Agent：已执行 S7 并记录最终三个领域对象的一致状态。

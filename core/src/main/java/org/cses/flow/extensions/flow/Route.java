@@ -26,10 +26,10 @@ public class Route extends Branch implements OrchestrationTask {
     @NotBlank
     @Schema(
         title = "路由表达式",
-        description = "条件成立时进入当前分支；仅 {{ scope.path }} 表示引用，"
+        description = "条件成立时进入当前分支；仅 {{ path.to.value }} 表示引用，"
             + "其他操作数为常量",
         format = "flow-condition",
-        example = "{{ variables.level }} == A"
+        example = "{{ vars.level }} == A"
     )
     String route;
 

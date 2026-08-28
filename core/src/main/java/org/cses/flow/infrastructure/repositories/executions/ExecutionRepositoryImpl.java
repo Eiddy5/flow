@@ -9,10 +9,16 @@ import org.cses.flow.infrastructure.repositories.executions.entries.ExecutionEnt
 import org.cses.flow.infrastructure.repositories.executions.entries.TaskRunEntry;
 import org.flow.gen.flow.records.TaskRunsRecord;
 import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.InsertValuesStepN;
+import org.jooq.JSONB;
+import org.jooq.exception.DataAccessException;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
@@ -41,21 +47,50 @@ public final class ExecutionRepositoryImpl
         DSLContext dsl,
         String companyId
     ) {
-        return dsl.select(EXECUTIONS.ID)
+        List<ExecutionEntry> entries = dsl.select()
             .from(EXECUTIONS)
             .where(EXECUTIONS.COMPANY_ID.eq(companyId))
             .orderBy(
                 EXECUTIONS.CREATED_AT.asc(),
                 EXECUTIONS.ID.asc()
             )
-            .fetch(EXECUTIONS.ID)
-            .stream()
-            .map(executionId -> findById(
-                dsl,
-                companyId,
-                executionId
-            ).orElseThrow())
+            .fetchInto(ExecutionEntry.class);
+        Map<String, List<TaskRun>> taskRunsByExecutionId = readTaskRuns(
+            dsl,
+            entries.stream().map(entry -> entry.id).toList()
+        );
+        return entries.stream()
+            .map(entry -> entry.to(taskRunsByExecutionId.getOrDefault(
+                entry.id,
+                List.of()
+            )))
             .toList();
+    }
+
+    private Map<String, List<TaskRun>> readTaskRuns(
+        DSLContext dsl,
+        List<String> executionIds
+    ) {
+        if (executionIds.isEmpty()) {
+            return Map.of();
+        }
+        return dsl.select()
+            .from(TASK_RUNS)
+            .where(TASK_RUNS.EXECUTION_ID.in(executionIds))
+            .orderBy(
+                TASK_RUNS.EXECUTION_ID.asc(),
+                TASK_RUNS.ORDER.asc()
+            )
+            .fetchInto(TaskRunEntry.class)
+            .stream()
+            .collect(Collectors.groupingBy(
+                entry -> entry.executionId,
+                LinkedHashMap::new,
+                Collectors.mapping(
+                    TaskRunEntry::to,
+                    Collectors.toList()
+                )
+            ));
     }
 
     @Override
@@ -68,19 +103,23 @@ public final class ExecutionRepositoryImpl
 
     @Override
     public void save(DSLContext dsl, Execution execution) {
-        ExecutionEntry stored = dsl.select()
-            .from(EXECUTIONS)
-            .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
-            .and(EXECUTIONS.ID.eq(execution.id()))
-            .fetchOneInto(ExecutionEntry.class);
+        try {
+            ExecutionEntry stored = dsl.select()
+                .from(EXECUTIONS)
+                .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
+                .and(EXECUTIONS.ID.eq(execution.id()))
+                .fetchOneInto(ExecutionEntry.class);
 
-        if (stored == null) {
-            insert(dsl, execution);
-        } else {
-            update(dsl, execution);
+            if (stored == null) {
+                insert(dsl, execution);
+            } else {
+                update(dsl, execution);
+            }
+
+            replace(dsl, execution);
+        } catch (DataAccessException exception) {
+            throw persistenceConflict(execution, exception);
         }
-
-        replace(dsl, execution);
     }
 
     private Optional<Execution> restore(
@@ -155,9 +194,21 @@ public final class ExecutionRepositoryImpl
         if (taskRuns.isEmpty()) {
             return;
         }
+        Field<?>[] taskRunColumns = {
+            TASK_RUNS.ID,
+            TASK_RUNS.EXECUTION_ID,
+            TASK_RUNS.TASK_ID,
+            TASK_RUNS.PARENT_ID,
+            TASK_RUNS.ITERATION,
+            TASK_RUNS.STATE,
+            TASK_RUNS.INPUTS,
+            TASK_RUNS.OUTPUTS,
+            TASK_RUNS.ERROR,
+            TASK_RUNS.ORDER
+        };
         InsertValuesStepN<TaskRunsRecord> values = dsl
             .insertInto(TASK_RUNS)
-            .columns();
+            .columns(taskRunColumns);
         writeTaskRuns(values, execution.id(), taskRuns);
         values.execute();
     }
@@ -168,12 +219,39 @@ public final class ExecutionRepositoryImpl
         List<TaskRun> taskRuns
     ) {
         for (int index = 0; index < taskRuns.size(); index++) {
-            values.values(TaskRunEntry.from(
+            TaskRunEntry entry = TaskRunEntry.from(
                 executionId,
                 taskRuns.get(index),
                 index
-            ).toRecord());
+            );
+            values.values(
+                entry.id,
+                entry.executionId,
+                entry.taskId,
+                entry.parentId,
+                entry.iteration,
+                entry.state,
+                jsonb(entry.inputs),
+                jsonb(entry.outputs),
+                entry.error,
+                entry.order
+            );
         }
+    }
+
+    private static JSONB jsonb(org.paas.json.JsonObject value) {
+        return value == null ? null : JSONB.valueOf(value.toJson());
+    }
+
+    private static WorkflowException persistenceConflict(
+        Execution execution,
+        DataAccessException exception
+    ) {
+        return new WorkflowException(
+            "Execution persistence conflict for "
+                + execution.companyId() + ":" + execution.id(),
+            exception
+        );
     }
 
 }

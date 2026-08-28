@@ -63,5 +63,4 @@ ExecutorEventHandler 会在 Worker 调用前中间保存 Execution。若 Worker 
   `Uc03AutomaticTaskFlowTest#s4UnhandledWorkerFailureRollsBackCreatedExecution`。
 - UC Agent：已移除过期的 String 引用比较缺口，只保留有当前代码证据的事务缺口。
 - 开发角色：已实现内存模式事务一致性策略。
-- Test Agent：已执行 S3～S6；本轮范围为内存 Adapter，复验结果见
-  [UC-03-2026-07-27-1948.md](../../../test-reports/flow/UC-03-2026-07-27-1948.md)。
+- Test Agent：已执行 S3～S6；本轮范围为内存 Adapter。

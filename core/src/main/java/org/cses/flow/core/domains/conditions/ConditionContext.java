@@ -1,76 +1,54 @@
 package org.cses.flow.core.domains.conditions;
 
 import java.util.Collections;
-import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
-public final class ConditionContext {
+/**
+ * Immutable variable snapshot for one Condition evaluation.
+ */
+public class ConditionContext {
 
-    private final Map<String, Object> variables;
-    private final Map<String, Object> inputs;
-    private final Map<String, Object> outputs;
+    private Map<String, Object> variables;
 
-    private ConditionContext(
-        Map<String, ?> variables,
-        Map<String, ?> inputs,
-        Map<String, ?> outputs
-    ) {
+    private ConditionContext(Map<String, ?> variables) {
         this.variables = immutableMap(variables);
-        this.inputs = immutableMap(inputs);
-        this.outputs = immutableMap(outputs);
     }
 
-    public static ConditionContext create(
-        Map<String, ?> variables,
-        Map<String, ?> inputs,
-        Map<String, ?> outputs
-    ) {
-        return new ConditionContext(variables, inputs, outputs);
+    public static ConditionContext from(Map<String, ?> variables) {
+        return new ConditionContext(variables);
     }
 
     Optional<Object> resolve(Operand operand) {
         if (operand == null || !operand.isReference()) {
             return Optional.empty();
         }
-        Object current = switch (operand.scope()) {
-            case VARIABLES -> variables;
-            case INPUTS -> inputs;
-            case OUTPUTS -> outputs;
-        };
-        List<String> path = operand.path();
-        for (String segment : path) {
-            if (!(current instanceof Map<?, ?> values)
-                || !values.containsKey(segment)) {
-                return Optional.empty();
-            }
-            current = values.get(segment);
-            if (current == null) {
-                return Optional.empty();
-            }
-        }
-        return Optional.of(current);
+        return operand.resolve(variables);
     }
 
     private static Map<String, Object> immutableMap(Map<String, ?> source) {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }
-        java.util.LinkedHashMap<String, Object> copy =
-            new java.util.LinkedHashMap<>();
+        Map<String, Object> copy = new LinkedHashMap<>();
         source.forEach((key, value) -> copy.put(key, immutableValue(value)));
         return Collections.unmodifiableMap(copy);
     }
 
     private static Object immutableValue(Object value) {
         if (value instanceof Map<?, ?> nested) {
-            java.util.LinkedHashMap<String, Object> copy =
-                new java.util.LinkedHashMap<>();
+            Map<String, Object> copy = new LinkedHashMap<>();
             nested.forEach((key, nestedValue) -> copy.put(
                 String.valueOf(key),
                 immutableValue(nestedValue)
             ));
             return Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof java.util.List<?> list) {
+            return list.stream()
+                .map(ConditionContext::immutableValue)
+                .toList();
         }
         return value;
     }

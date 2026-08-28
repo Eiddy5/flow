@@ -9,7 +9,7 @@ import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.runner.RunContext;
+import org.cses.flow.core.runner.RunVariables;
 import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
@@ -117,22 +117,30 @@ public final class ExecutorService {
         for (TaskRun taskRun : context.nexts()) {
             Task task = requireTask(context, taskRun);
             if (task instanceof RunnableTask) {
-                workerTasks.add(WorkerTask.from(
-                    context.execution().id(),
-                    taskRun.id(),
-                    taskRun.parentId().orElse(null),
-                    task,
-                    taskRun.inputs(),
-                    Map.of(
-                        RunContext.EXECUTION_VARIABLE,
-                        context.execution(),
-                        RunContext.FLOW_VARIABLES_VARIABLE,
-                        context.flowVariables()
-                    )
-                ));
+                workerTasks.add(workerTask(context, taskRun, task));
             }
         }
         context.stageWorkerTasks(workerTasks);
+    }
+
+    private static WorkerTask workerTask(
+        ExecutorContext context,
+        TaskRun taskRun,
+        Task task
+    ) {
+        Map<String, Object> variables = RunVariables.builder()
+            .flow(context.flow())
+            .execution(context.execution())
+            .task(task)
+            .taskRun(taskRun)
+            .build();
+        return WorkerTask.from(
+            context.execution().id(),
+            taskRun.id(),
+            taskRun.parentId().orElse(null),
+            task,
+            variables
+        );
     }
 
     private static void handleOrchestrationTasks(ExecutorContext context) {
@@ -149,10 +157,18 @@ public final class ExecutorService {
         context.takeOrchestrationCompletions();
     }
 
-    public void dispatch(ExecutorContext context, WorkerTask workerTask) {
+    public WorkerTask dispatch(
+        ExecutorContext context,
+        WorkerTask workerTask
+    ) {
         requireExecution(context, workerTask.executionId());
         context.execution().startTaskRun(workerTask.taskRunId());
         context.captureState();
+        TaskRun runningTaskRun = context.execution().requireTaskRun(
+            workerTask.taskRunId()
+        );
+        Task task = requireTask(context, runningTaskRun);
+        return workerTask(context, runningTaskRun, task);
     }
 
     private static void handleOrchestration(ExecutorContext context, TaskRun plannedTaskRun) {
@@ -167,6 +183,15 @@ public final class ExecutorService {
 
         Execution execution = context.execution();
         execution.startTaskRun(taskRun.id());
+        if (task instanceof Route route
+            && !matchesRouteCondition(context, route, taskRun)) {
+            execution.succeedTaskRun(
+                taskRun.id(),
+                task.validateOutputs(Map.of())
+            );
+            context.captureState();
+            return;
+        }
         boolean pausesTaskRun = orchestrationTask.pausesTaskRun();
         boolean holdsScope = orchestrationTask.holdsTaskRunUntilChildrenSettle();
         if (pausesTaskRun && holdsScope) {
@@ -208,6 +233,7 @@ public final class ExecutorService {
                     context,
                     task,
                     orchestrationTask,
+                    taskRun,
                     iteration,
                     iterationOutputs(
                         context,
@@ -390,9 +416,6 @@ public final class ExecutorService {
         Integer iteration,
         IterationScope iterationScope
     ) {
-        if (!matchesCondition(context, task, flowingContext)) {
-            return SearchResult.settledResult();
-        }
         Optional<TaskRun> taskRun = context.execution().taskRunForOccurrence(
             task.id(),
             parentTaskRunId,
@@ -417,7 +440,8 @@ public final class ExecutorService {
                 iterationScope
             );
             case PAUSED -> SearchResult.unsettled();
-            case SUCCESS, WARNING -> iteratesChildren(task)
+            case SUCCESS, WARNING -> task instanceof Route
+                || iteratesChildren(task)
                 ? SearchResult.settledResult()
                 : searchChildren(context, task, existing, iterationScope);
             case FAILED, KILLED -> SearchResult.unsettled();
@@ -505,6 +529,7 @@ public final class ExecutorService {
             context,
             task,
             orchestrationTask,
+            loopRun,
             iteration,
             iterationOutputs(context, task, scope)
         );
@@ -569,15 +594,20 @@ public final class ExecutorService {
         ExecutorContext context,
         Task task,
         OrchestrationTask orchestrationTask,
+        TaskRun taskRun,
         int completedIterations,
         Map<String, Map<String, Object>> iterationOutputs
     ) {
         if (task instanceof LoopUntil loopUntil) {
+            Map<String, Object> variables = RunVariables.builder()
+                .flow(context.flow())
+                .execution(context.execution())
+                .task(task)
+                .taskRun(taskRun)
+                .build();
             return loopUntil.decideAfterIteration(
                 completedIterations,
-                iterationOutputs,
-                context.execution().inputs(),
-                context.flowVariables()
+                ConditionContext.from(variables)
             );
         }
         return orchestrationTask.decideAfterIteration(
@@ -720,19 +750,18 @@ public final class ExecutorService {
         return Map.copyOf(copied);
     }
 
-    private static boolean matchesCondition(
+    private static boolean matchesRouteCondition(
         ExecutorContext context,
-        Task task,
-        Map<String, ?> visibleOutputs
+        Route route,
+        TaskRun taskRun
     ) {
-        if (!(task instanceof Route route)) {
-            return true;
-        }
-        return route.matches(ConditionContext.create(
-            context.flowVariables(),
-            context.execution().inputs(),
-            visibleOutputs
-        ));
+        Map<String, Object> variables = RunVariables.builder()
+            .flow(context.flow())
+            .execution(context.execution())
+            .task(route)
+            .taskRun(taskRun)
+            .build();
+        return route.matches(ConditionContext.from(variables));
     }
 
     private static void appendCompletedOutput(

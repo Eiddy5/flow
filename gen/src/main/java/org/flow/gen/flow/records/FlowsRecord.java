@@ -9,8 +9,6 @@ import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
-import org.paas.json.JsonObject;
-import org.paas.json.JsonObjects;
 
 
 /**
@@ -22,44 +20,44 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Setter for <code>public.flows.id</code>.
-     */
-    public void setId(String value) {
-        set(0, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.id</code>.
-     */
-    public String getId() {
-        return (String) get(0);
-    }
-
-    /**
-     * Setter for <code>public.flows.key</code>.
-     */
-    public void setKey(String value) {
-        set(1, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.key</code>.
-     */
-    public String getKey() {
-        return (String) get(1);
-    }
-
-    /**
      * Setter for <code>public.flows.company_id</code>.
      */
     public void setCompanyId(String value) {
-        set(2, value);
+        set(0, value);
     }
 
     /**
      * Getter for <code>public.flows.company_id</code>.
      */
     public String getCompanyId() {
+        return (String) get(0);
+    }
+
+    /**
+     * Setter for <code>public.flows.id</code>.
+     */
+    public void setId(String value) {
+        set(1, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.id</code>.
+     */
+    public String getId() {
+        return (String) get(1);
+    }
+
+    /**
+     * Setter for <code>public.flows.key</code>.
+     */
+    public void setKey(String value) {
+        set(2, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.key</code>.
+     */
+    public String getKey() {
         return (String) get(2);
     }
 
@@ -120,143 +118,143 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     }
 
     /**
-     * Setter for <code>public.flows.creator</code>.
+     * Setter for <code>public.flows.variables</code>.
      */
-    public void setCreator(JSONB value) {
+    public void setVariables(JSONB value) {
         set(7, value);
     }
 
     /**
-     * Getter for <code>public.flows.creator</code>.
+     * Getter for <code>public.flows.variables</code>.
      */
-    public JSONB getCreator() {
+    public JSONB getVariables() {
         return (JSONB) get(7);
     }
 
     /**
-     * Setter for <code>public.flows.updater</code>.
+     * Setter for <code>public.flows.inputs</code>.
      */
-    public void setUpdater(JSONB value) {
+    public void setInputs(JSONB value) {
         set(8, value);
     }
 
     /**
-     * Getter for <code>public.flows.updater</code>.
+     * Getter for <code>public.flows.inputs</code>.
      */
-    public JSONB getUpdater() {
+    public JSONB getInputs() {
         return (JSONB) get(8);
     }
 
     /**
-     * Setter for <code>public.flows.deleter</code>.
+     * Setter for <code>public.flows.outputs</code>.
      */
-    public void setDeleter(JSONB value) {
+    public void setOutputs(JSONB value) {
         set(9, value);
     }
 
     /**
-     * Getter for <code>public.flows.deleter</code>.
+     * Getter for <code>public.flows.outputs</code>.
      */
-    public JSONB getDeleter() {
+    public JSONB getOutputs() {
         return (JSONB) get(9);
-    }
-
-    /**
-     * Setter for <code>public.flows.created_at</code>.
-     */
-    public void setCreatedAt(Long value) {
-        set(10, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.created_at</code>.
-     */
-    public Long getCreatedAt() {
-        return (Long) get(10);
-    }
-
-    /**
-     * Setter for <code>public.flows.updated_at</code>.
-     */
-    public void setUpdatedAt(Long value) {
-        set(11, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.updated_at</code>.
-     */
-    public Long getUpdatedAt() {
-        return (Long) get(11);
-    }
-
-    /**
-     * Setter for <code>public.flows.deleted_at</code>.
-     */
-    public void setDeletedAt(Long value) {
-        set(12, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.deleted_at</code>.
-     */
-    public Long getDeletedAt() {
-        return (Long) get(12);
-    }
-
-    /**
-     * Setter for <code>public.flows.inputs</code>.[[before= ][]]
-     */
-    public void setInputs(JsonObjects value) {
-        set(13, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.inputs</code>.[[before= ][]]
-     */
-    public JsonObjects getInputs() {
-        return (JsonObjects) get(13);
-    }
-
-    /**
-     * Setter for <code>public.flows.outputs</code>.[[before= ][]]
-     */
-    public void setOutputs(JsonObjects value) {
-        set(14, value);
-    }
-
-    /**
-     * Getter for <code>public.flows.outputs</code>.[[before= ][]]
-     */
-    public JsonObjects getOutputs() {
-        return (JsonObjects) get(14);
-    }
-
-    /**
-     * Setter for <code>public.flows.variables</code>.[[before= ][]]
-     */
-    public void setVariables(JsonObject value) {
-        set(15, value == null ? null : value.toString());
-    }
-
-    /**
-     * Getter for <code>public.flows.variables</code>.[[before= ][]]
-     */
-    public JsonObject getVariables() {
-        return JsonObject.Parse((String) get(15));
     }
 
     /**
      * Setter for <code>public.flows.status</code>.
      */
     public void setStatus(String value) {
-        set(16, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.flows.status</code>.
      */
     public String getStatus() {
-        return (String) get(16);
+        return (String) get(10);
+    }
+
+    /**
+     * Setter for <code>public.flows.creator</code>.
+     */
+    public void setCreator(JSONB value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.creator</code>.
+     */
+    public JSONB getCreator() {
+        return (JSONB) get(11);
+    }
+
+    /**
+     * Setter for <code>public.flows.created_at</code>.
+     */
+    public void setCreatedAt(Long value) {
+        set(12, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.created_at</code>.
+     */
+    public Long getCreatedAt() {
+        return (Long) get(12);
+    }
+
+    /**
+     * Setter for <code>public.flows.updater</code>.
+     */
+    public void setUpdater(JSONB value) {
+        set(13, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.updater</code>.
+     */
+    public JSONB getUpdater() {
+        return (JSONB) get(13);
+    }
+
+    /**
+     * Setter for <code>public.flows.updated_at</code>.
+     */
+    public void setUpdatedAt(Long value) {
+        set(14, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.updated_at</code>.
+     */
+    public Long getUpdatedAt() {
+        return (Long) get(14);
+    }
+
+    /**
+     * Setter for <code>public.flows.deleter</code>.
+     */
+    public void setDeleter(JSONB value) {
+        set(15, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.deleter</code>.
+     */
+    public JSONB getDeleter() {
+        return (JSONB) get(15);
+    }
+
+    /**
+     * Setter for <code>public.flows.deleted_at</code>.
+     */
+    public void setDeletedAt(Long value) {
+        set(16, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.deleted_at</code>.
+     */
+    public Long getDeletedAt() {
+        return (Long) get(16);
     }
 
     // -------------------------------------------------------------------------
@@ -282,26 +280,26 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     /**
      * Create a detached, initialised FlowsRecord
      */
-    public FlowsRecord(String id, String key, String companyId, Long version, Boolean draft, String source, String description, JSONB creator, JSONB updater, JSONB deleter, Long createdAt, Long updatedAt, Long deletedAt, JsonObjects inputs, JsonObjects outputs, JsonObject variables, String status) {
+    public FlowsRecord(String companyId, String id, String key, Long version, Boolean draft, String source, String description, JSONB variables, JSONB inputs, JSONB outputs, String status, JSONB creator, Long createdAt, JSONB updater, Long updatedAt, JSONB deleter, Long deletedAt) {
         super(FlowsTable.FLOWS);
 
+        setCompanyId(companyId);
         setId(id);
         setKey(key);
-        setCompanyId(companyId);
         setVersion(version);
         setDraft(draft);
         setSource(source);
         setDescription(description);
-        setCreator(creator);
-        setUpdater(updater);
-        setDeleter(deleter);
-        setCreatedAt(createdAt);
-        setUpdatedAt(updatedAt);
-        setDeletedAt(deletedAt);
+        setVariables(variables);
         setInputs(inputs);
         setOutputs(outputs);
-        setVariables(variables);
         setStatus(status);
+        setCreator(creator);
+        setCreatedAt(createdAt);
+        setUpdater(updater);
+        setUpdatedAt(updatedAt);
+        setDeleter(deleter);
+        setDeletedAt(deletedAt);
     }
 
 
@@ -313,45 +311,45 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         super(FlowsTable.FLOWS);
 
         if (value != null) {
+            setCompanyId(value.companyId);
             setId(value.id);
             setKey(value.key);
-            setCompanyId(value.companyId);
             setVersion(value.version);
             setDraft(value.draft);
             setSource(value.source);
             setDescription(value.description);
-            setCreator(value.creator);
-            setUpdater(value.updater);
-            setDeleter(value.deleter);
-            setCreatedAt(value.createdAt);
-            setUpdatedAt(value.updatedAt);
-            setDeletedAt(value.deletedAt);
+            setVariables(value.variables);
             setInputs(value.inputs);
             setOutputs(value.outputs);
-            setVariables(value.variables);
             setStatus(value.status);
+            setCreator(value.creator);
+            setCreatedAt(value.createdAt);
+            setUpdater(value.updater);
+            setUpdatedAt(value.updatedAt);
+            setDeleter(value.deleter);
+            setDeletedAt(value.deletedAt);
         }
     }
 
     public FlowsObject asObject() {
         FlowsObject object = new FlowsObject();
+        object.companyId = getCompanyId();
         object.id = getId();
         object.key = getKey();
-        object.companyId = getCompanyId();
         object.version = getVersion();
         object.draft = getDraft();
         object.source = getSource();
         object.description = getDescription();
-        object.creator = getCreator();
-        object.updater = getUpdater();
-        object.deleter = getDeleter();
-        object.createdAt = getCreatedAt();
-        object.updatedAt = getUpdatedAt();
-        object.deletedAt = getDeletedAt();
+        object.variables = getVariables();
         object.inputs = getInputs();
         object.outputs = getOutputs();
-        object.variables = getVariables();
         object.status = getStatus();
+        object.creator = getCreator();
+        object.createdAt = getCreatedAt();
+        object.updater = getUpdater();
+        object.updatedAt = getUpdatedAt();
+        object.deleter = getDeleter();
+        object.deletedAt = getDeletedAt();
         return object;
     }
 
@@ -362,23 +360,23 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
      */
     public FlowsObject toPojo() {
         FlowsObject pojo = new FlowsObject();
+        pojo.companyId = getCompanyId();
         pojo.id = getId();
         pojo.key = getKey();
-        pojo.companyId = getCompanyId();
         pojo.version = getVersion();
         pojo.draft = getDraft();
         pojo.source = getSource();
         pojo.description = getDescription();
-        pojo.creator = getCreator();
-        pojo.updater = getUpdater();
-        pojo.deleter = getDeleter();
-        pojo.createdAt = getCreatedAt();
-        pojo.updatedAt = getUpdatedAt();
-        pojo.deletedAt = getDeletedAt();
+        pojo.variables = getVariables();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
-        pojo.variables = getVariables();
         pojo.status = getStatus();
+        pojo.creator = getCreator();
+        pojo.createdAt = getCreatedAt();
+        pojo.updater = getUpdater();
+        pojo.updatedAt = getUpdatedAt();
+        pojo.deleter = getDeleter();
+        pojo.deletedAt = getDeletedAt();
         return pojo;
     }
 }

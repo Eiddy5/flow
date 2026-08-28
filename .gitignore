@@ -14,6 +14,8 @@ out/
 .classpath
 .factorypath
 .codex/*
+!.codex/agents/
+!.codex/agents/**
 !.codex/skills/
 .codex/skills/*
 !.codex/skills/design-postgres-schema/

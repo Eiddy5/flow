@@ -91,59 +91,101 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     }
 
     /**
-     * Setter for <code>public.executions.lock_version</code>.
-     */
-    public void setLockVersion(Long value) {
-        set(5, value);
-    }
-
-    /**
-     * Getter for <code>public.executions.lock_version</code>.
-     */
-    public Long getLockVersion() {
-        return (Long) get(5);
-    }
-
-    /**
      * Setter for <code>public.executions.creator</code>.
      */
     public void setCreator(JSONB value) {
-        set(6, value);
+        set(5, value);
     }
 
     /**
      * Getter for <code>public.executions.creator</code>.
      */
     public JSONB getCreator() {
+        return (JSONB) get(5);
+    }
+
+    /**
+     * Setter for <code>public.executions.updater</code>.
+     */
+    public void setUpdater(JSONB value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.updater</code>.
+     */
+    public JSONB getUpdater() {
         return (JSONB) get(6);
+    }
+
+    /**
+     * Setter for <code>public.executions.deleter</code>.
+     */
+    public void setDeleter(JSONB value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.deleter</code>.
+     */
+    public JSONB getDeleter() {
+        return (JSONB) get(7);
     }
 
     /**
      * Setter for <code>public.executions.created_at</code>.
      */
     public void setCreatedAt(Long value) {
-        set(7, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.executions.created_at</code>.
      */
     public Long getCreatedAt() {
-        return (Long) get(7);
+        return (Long) get(8);
+    }
+
+    /**
+     * Setter for <code>public.executions.updated_at</code>.
+     */
+    public void setUpdatedAt(Long value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.updated_at</code>.
+     */
+    public Long getUpdatedAt() {
+        return (Long) get(9);
+    }
+
+    /**
+     * Setter for <code>public.executions.deleted_at</code>.
+     */
+    public void setDeletedAt(Long value) {
+        set(10, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.deleted_at</code>.
+     */
+    public Long getDeletedAt() {
+        return (Long) get(10);
     }
 
     /**
      * Setter for <code>public.executions.inputs</code>.[[before= ][]]
      */
     public void setInputs(JsonObject value) {
-        set(8, value == null ? null : value.toString());
+        set(11, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.executions.inputs</code>.[[before= ][]]
      */
     public JsonObject getInputs() {
-        return JsonObject.Parse((String) get(8));
+        return JsonObject.Parse((String) get(11));
     }
 
     // -------------------------------------------------------------------------
@@ -169,7 +211,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, JSONB state, Long lockVersion, JSONB creator, Long createdAt, JsonObject inputs) {
+    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, JSONB state, JSONB creator, JSONB updater, JSONB deleter, Long createdAt, Long updatedAt, Long deletedAt, JsonObject inputs) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
@@ -177,9 +219,12 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         setFlowKey(flowKey);
         setFlowVersion(flowVersion);
         setState(state);
-        setLockVersion(lockVersion);
         setCreator(creator);
+        setUpdater(updater);
+        setDeleter(deleter);
         setCreatedAt(createdAt);
+        setUpdatedAt(updatedAt);
+        setDeletedAt(deletedAt);
         setInputs(inputs);
     }
 
@@ -197,9 +242,12 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setFlowKey(value.flowKey);
             setFlowVersion(value.flowVersion);
             setState(value.state);
-            setLockVersion(value.lockVersion);
             setCreator(value.creator);
+            setUpdater(value.updater);
+            setDeleter(value.deleter);
             setCreatedAt(value.createdAt);
+            setUpdatedAt(value.updatedAt);
+            setDeletedAt(value.deletedAt);
             setInputs(value.inputs);
         }
     }
@@ -211,9 +259,12 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.flowKey = getFlowKey();
         object.flowVersion = getFlowVersion();
         object.state = getState();
-        object.lockVersion = getLockVersion();
         object.creator = getCreator();
+        object.updater = getUpdater();
+        object.deleter = getDeleter();
         object.createdAt = getCreatedAt();
+        object.updatedAt = getUpdatedAt();
+        object.deletedAt = getDeletedAt();
         object.inputs = getInputs();
         return object;
     }
@@ -230,9 +281,12 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.flowKey = getFlowKey();
         pojo.flowVersion = getFlowVersion();
         pojo.state = getState();
-        pojo.lockVersion = getLockVersion();
         pojo.creator = getCreator();
+        pojo.updater = getUpdater();
+        pojo.deleter = getDeleter();
         pojo.createdAt = getCreatedAt();
+        pojo.updatedAt = getUpdatedAt();
+        pojo.deletedAt = getDeletedAt();
         pojo.inputs = getInputs();
         return pojo;
     }

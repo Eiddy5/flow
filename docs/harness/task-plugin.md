@@ -188,10 +188,12 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
 
 - YAML 只能选择启动时已注册的项目内类，不能触发任意 `Class.forName`。
 - Task 不直接推进 Execution 或 TaskRun 状态。RunnableTask 通过 `RunContext` 运行；
-  `variables` 的保留键 `$flow.execution` 和 `$flow.inputs` 分别携带当前 Execution
-  与实际输入，Task 应通过 `executionId()` 和 `inputs()` 读取它们，不得修改 Execution
-  或直接访问 Flow 的 Execution/TaskRun Repository。宿主业务能力应通过明确的扩展接口
-  接入，不通过通用容器查找。OrchestrationTask 只声明 Executor 识别的编排特征。
+  `variables` 是 RunVariables 构建的深度不可变规范树，包含 `inputs`、`outputs`、
+  `vars`、`task`、`taskRun`、`execution`、`parent` 和 `parents`。Task 可通过
+  `taskRunInfo()`、`flowInfo()`、`inputs()` 等只读视图或便捷方法读取，不能获得或
+  修改 Execution/TaskRun 聚合，也不能直接访问其 Repository。RunContext 不提供
+  Session、数据库或通用容器；宿主业务能力应通过明确扩展接口接入。
+  OrchestrationTask 只声明 Executor 识别的编排特征。
 - 抽象 Task 不保存 `tasks` 或 `parentId`。结构型 `Branch` 通过 `tasks` 保存递归
   children；Pause 的 `pause` 是类型专有包含关系。所有包含关系都通过
   `Task.definitionChildren()` 暴露。Repository 写入定义树时派生 `parent_id`，读取后

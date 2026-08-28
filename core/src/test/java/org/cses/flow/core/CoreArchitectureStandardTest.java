@@ -235,6 +235,9 @@ class CoreArchitectureStandardTest {
                 && Files.isRegularFile(runner.resolve(
                     "RunContext.java"
                 ))
+                && Files.isRegularFile(runner.resolve(
+                    "RunVariables.java"
+                ))
                 && Files.isRegularFile(taskDomain.resolve(
                     "RunResult.java"
                 )),
@@ -646,9 +649,8 @@ class CoreArchitectureStandardTest {
             flows.contains("values(FlowTaskEntry.from(")
                 && flows.contains("values.execute()")
                 && !flows.contains("newRecord()")
-                && executions.contains(
-                    "values.values(TaskRunEntry.from("
-                )
+                && executions.contains("TaskRunEntry entry = TaskRunEntry.from(")
+                && executions.contains("values.values(")
                 && executions.contains("values.execute()")
                 && !executions.contains("newRecord()")
                 && queue.contains("values.values(")
@@ -700,6 +702,9 @@ class CoreArchitectureStandardTest {
         Path extensionWorkers = FLOW.resolve("extensions/workers");
         String runContext = Files.readString(runner.resolve(
             "RunContext.java"
+        ));
+        String runVariables = Files.readString(runner.resolve(
+            "RunVariables.java"
         ));
         String dispatcher = Files.readString(worker.resolve(
             "WorkerDispatcher.java"
@@ -756,27 +761,76 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             runContext.contains(
-                    "private final Map<String, Object> variables;"
+                    "private Map<String, Object> variables;"
                 )
-                && runContext.contains("EXECUTION_VARIABLE")
-                && runContext.contains("TASK_RUN_ID_VARIABLE")
-                && runContext.contains("INPUTS_VARIABLE")
-                && runContext.contains("public String taskRunId()")
-                && !runContext.contains("private final WorkerTask")
-                && !runContext.contains("private final TaskRun")
-                && !runContext.contains("private final Execution")
-                && !runContext.contains("private final String taskRunId")
+                && runContext.contains(
+                    "@lombok.Builder(builderClassName = \"Builder\")"
+                )
+                && runContext.contains("public TaskRunInfo taskRunInfo()")
+                && runContext.contains("public FlowInfo flowInfo()")
+                && !runContext.contains("public String executionId()")
+                && !runContext.contains("public String taskRunId()")
+                && runContext.contains("requiredString(\"execution.id\")")
+                && runContext.contains("requiredString(\"taskRun.id\")")
+                && runContext.contains("requiredMap(\"taskRun.inputs\")")
+                && !runContext.contains("private WorkerTask")
+                && !runContext.contains("private TaskRun")
+                && !runContext.contains("private Execution")
+                && !runContext.contains("private String executionId")
+                && !runContext.contains("private String taskRunId")
+                && !runContext.contains("private String parentTaskRunId")
+                && !runContext.contains("org.paas.session.Session")
                 && !runContext.contains("BeanContext")
                 && !runContext.contains("getBean(")
                 && !runContext.contains("DSLContext")
                 && !runContext.contains("dsl()")
+                && runVariables.contains("public static Builder builder()")
+                && runVariables.contains("private Flow flow;")
+                && runVariables.contains("private Execution execution;")
+                && runVariables.contains("private Task task;")
+                && runVariables.contains("private TaskRun taskRun;")
+                && !runVariables.contains(
+                    "public Builder parentTaskRunId("
+                )
+                && !runVariables.contains("public Builder inputs(")
+                && !runVariables.contains("public Builder outputs(")
+                && !runVariables.contains("public Builder flowVariables(")
+                && !runVariables.contains("public Builder executionOutputs(")
+                && runVariables.contains(
+                    "ImmutableMap.Builder<String, Object> builder"
+                )
+                && runVariables.contains(
+                    "builder.put(\"flow\", RunVariables.of(flow))"
+                )
+                && runVariables.contains(
+                    "Optional.ofNullable(flow.versionOrNull())"
+                )
+                && runVariables.contains(
+                    "of(final Task task)"
+                )
+                && runVariables.contains(
+                    "of(final TaskRun taskRun)"
+                )
+                && runVariables.contains(
+                    "of(final Execution execution)"
+                )
+                && runVariables.contains("\"flow\"")
+                && runVariables.contains("\"inputs\"")
+                && runVariables.contains("\"outputs\"")
+                && runVariables.contains("\"vars\"")
+                && runVariables.contains("\"taskRun\"")
+                && runVariables.contains("\"execution\"")
+                && runVariables.contains("\"parent\"")
+                && runVariables.contains("builder.put(\"parents\", parents)")
                 && !dispatcher.contains("BeanContext")
                 && !dispatcher.contains("DSLContext")
+                && !dispatcher.contains("Session")
+                && dispatcher.contains("RunContext.builder()")
                 && dispatcher.contains(
-                    "RunContext.TASK_RUN_ID_VARIABLE"
-                )
-                && dispatcher.contains("workerTask.taskRunId()"),
-            "RunContext must remain scoped to one RunnableTask invocation"
+                    ".variables(workerTask.variables())"
+                ),
+            "RunVariables must own projection while RunContext only exposes "
+                + "one RunnableTask invocation snapshot"
         );
         assertTrue(
             dispatcher.contains("workerTask.runnableTask().run(context)")

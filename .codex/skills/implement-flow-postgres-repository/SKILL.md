@@ -21,7 +21,7 @@ Entry 都是基础设施表示，不能反向定义领域模型。
 6. `docs/harness/postgresql-repositories.md`。
 
 编写或运行 UC 测试前，再读取 `docs/standards/uc-testing.md` 和
-`docs/agents/test.md`。编辑前检查 `git status`，保留无关修改。
+`.codex/agents/test/README.md`。编辑前检查 `git status`，保留无关修改。
 
 ## 工作流程
 

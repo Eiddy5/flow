@@ -222,11 +222,10 @@ public class ExecutorEventHandler implements
         }
 
         for (WorkerTask workerTask : workerTasks) {
-            executorService.dispatch(context, workerTask);
+            workerTask = executorService.dispatch(context, workerTask);
             executionUpdated |= persistIfUpdated(dsl, context);
 
             WorkerTaskResult result = dispatchWorkerTask(
-                    session,
                     workerTask,
                     event.eventType() != ExecutorEvent.EventType.TERMINATED
             );
@@ -299,13 +298,12 @@ public class ExecutorEventHandler implements
             }
 
             for (WorkerTask workerTask : workerTasks) {
-                executorService.dispatch(context, workerTask);
+                workerTask = executorService.dispatch(context, workerTask);
                 if (context.takeExecutionUpdated()) {
                     persist(dsl, context);
                 }
 
                 WorkerTaskResult result = dispatchWorkerTask(
-                        session,
                         workerTask,
                         captureUnexpectedTaskFailure
                 );
@@ -321,17 +319,15 @@ public class ExecutorEventHandler implements
         }
     }
 
-    private <S extends Session<U>, U extends User> WorkerTaskResult
-    dispatchWorkerTask(
-            S session,
+    private WorkerTaskResult dispatchWorkerTask(
             WorkerTask workerTask,
             boolean captureUnexpectedTaskFailure
     ) {
         if (!captureUnexpectedTaskFailure) {
-            return workerDispatcher.dispatch(session, workerTask);
+            return workerDispatcher.dispatch(workerTask);
         }
         try {
-            return workerDispatcher.dispatch(session, workerTask);
+            return workerDispatcher.dispatch(workerTask);
         } catch (RuntimeException exception) {
             return WorkerTaskResult.failed(
                     workerTask,

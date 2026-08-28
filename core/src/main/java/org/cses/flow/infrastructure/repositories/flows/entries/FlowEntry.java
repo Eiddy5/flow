@@ -34,9 +34,9 @@ public class FlowEntry extends FlowsObject {
         entry.updatedAt = flow.updatedAt();
         entry.deletedAt = flow.deletedAt()
             .orElse(null);
-        entry.inputs = DataJsonCodec.encode(flow.inputs());
-        entry.outputs = DataJsonCodec.encode(flow.outputs());
-        entry.variables = FlowVariablesJsonCodec.encode(flow.variables());
+        entry.inputs = DataJsonCodec.encodeJsonb(flow.inputs());
+        entry.outputs = DataJsonCodec.encodeJsonb(flow.outputs());
+        entry.variables = FlowVariablesJsonCodec.encodeJsonb(flow.variables());
         return entry;
     }
 

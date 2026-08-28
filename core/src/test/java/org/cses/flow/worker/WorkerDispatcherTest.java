@@ -4,20 +4,17 @@ import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.ActorRef;
-import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
-import org.paas.session.Session;
-import org.paas.session.User;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,16 +25,15 @@ import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class WorkerDispatcherTest {
+class WorkerDispatcherTest {
 
     private static final Context PLUGINS = builtInContext(
         new TestNotificationTask()
     );
-    private final WorkerDispatcher dispatcher = new WorkerDispatcher();
+    private WorkerDispatcher dispatcher = new WorkerDispatcher();
 
     @Test
     void directlyInvokesTheRunnableTask() {
@@ -45,17 +41,15 @@ final class WorkerDispatcherTest {
             .id("task-1")
             .key("automatic")
             .build();
-        WorkerTask workerTask = WorkerTask.from(
+        WorkerTask workerTask = workerTask(
             "execution-1",
             "task-run-1",
+            null,
             task,
             Map.of("payload", "value")
         );
 
-        WorkerTaskResult result = dispatcher.dispatch(
-            new Session<User>(),
-            workerTask
-        );
+        WorkerTaskResult result = dispatcher.dispatch(workerTask);
 
         assertEquals(State.Type.SUCCESS, result.targetState());
         assertEquals(Map.of(), result.outputs());
@@ -70,15 +64,13 @@ final class WorkerDispatcherTest {
 
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,
-            () -> dispatcher.dispatch(
-                new Session<User>(),
-                WorkerTask.from(
-                    "execution-1",
-                    "task-run-1",
-                    task,
-                    Map.of()
-                )
-            )
+            () -> dispatcher.dispatch(workerTask(
+                "execution-1",
+                "task-run-1",
+                null,
+                task,
+                Map.of()
+            ))
         );
 
         assertEquals("unexpected-task-failure", exception.getMessage());
@@ -101,7 +93,13 @@ final class WorkerDispatcherTest {
                 "execution-1",
                 "task-run-1",
                 task,
-                Map.of()
+                variables(
+                    "execution-1",
+                    "task-run-1",
+                    null,
+                    task,
+                    Map.of()
+                )
             )
         );
     }
@@ -133,15 +131,13 @@ final class WorkerDispatcherTest {
             flow.tasks().getFirst()
         );
 
-        WorkerTaskResult result = dispatcher.dispatch(
-            new Session<User>(),
-            WorkerTask.from(
-                "execution-1",
-                "task-run-1",
-                task,
-                Map.of()
-            )
-        );
+        WorkerTaskResult result = dispatcher.dispatch(workerTask(
+            "execution-1",
+            "task-run-1",
+            null,
+            task,
+            Map.of()
+        ));
 
         assertEquals(
             Map.of("channel", "operations"),
@@ -157,77 +153,65 @@ final class WorkerDispatcherTest {
             .build();
         Map<String, Object> sourceInputs = new LinkedHashMap<>();
         sourceInputs.put("payload", "original");
-        Execution execution = execution(
-            "execution-1",
-            Map.of("amount", 1200)
-        );
-        WorkerTask firstWorkerTask = WorkerTask.from(
+        WorkerTask firstWorkerTask = workerTask(
             "execution-1",
             "task-run-1",
             "parent-run-1",
             task,
-            sourceInputs,
-            Map.of(RunContext.EXECUTION_VARIABLE, execution)
+            sourceInputs
         );
-        WorkerTask secondWorkerTask = WorkerTask.from(
+        WorkerTask secondWorkerTask = workerTask(
             "execution-1",
             "task-run-2",
+            null,
             task,
-            sourceInputs,
-            Map.of(RunContext.EXECUTION_VARIABLE, execution)
+            sourceInputs
         );
         sourceInputs.put("payload", "changed");
-        Session<User> session = new Session<>();
 
-        WorkerTaskResult first = dispatcher.dispatch(
-            session,
-            firstWorkerTask
-        );
-        dispatcher.dispatch(session, secondWorkerTask);
+        WorkerTaskResult first = dispatcher.dispatch(firstWorkerTask);
+        dispatcher.dispatch(secondWorkerTask);
 
-        assertEquals(
-            Map.of("payload", "original"),
-            first.outputs()
-        );
+        assertEquals(Map.of("payload", "original"), first.outputs());
         assertEquals(2, task.contexts.size());
         assertNotSame(task.contexts.get(0), task.contexts.get(1));
-        assertSame(session, task.contexts.getFirst().session());
-        assertEquals("execution-1", task.contexts.getFirst().executionId());
-        assertEquals("task-run-1", task.contexts.getFirst().taskRunId());
-        assertEquals("task-run-2", task.contexts.get(1).taskRunId());
+        assertEquals(
+            "execution-1",
+            task.contexts.getFirst().taskRunInfo().executionId()
+        );
+        assertEquals(
+            "task-run-1",
+            task.contexts.getFirst().taskRunInfo().id()
+        );
+        assertEquals("task-run-2", task.contexts.get(1).taskRunInfo().id());
+        assertEquals(
+            "task-1",
+            task.contexts.getFirst().taskRunInfo().taskId()
+        );
+        assertEquals(
+            "record-context",
+            task.contexts.getFirst().taskRunInfo().taskKey()
+        );
         assertEquals(
             "parent-run-1",
             task.contexts.getFirst().parentTaskRunId().orElseThrow()
         );
         assertTrue(task.contexts.get(1).parentTaskRunId().isEmpty());
-        assertSame(
-            execution,
-            task.contexts.getFirst().variables().get(
-                RunContext.EXECUTION_VARIABLE
-            )
+        assertEquals(
+            "execution-1",
+            map(task.contexts.getFirst().variables(), "execution").get("id")
         );
         assertEquals(
             "task-run-1",
-            task.contexts.getFirst().variables().get(
-                RunContext.TASK_RUN_ID_VARIABLE
-            )
+            map(task.contexts.getFirst().variables(), "taskRun").get("id")
         );
         assertEquals(
             Map.of("payload", "original"),
-            task.contexts.getFirst().variables().get(
-                RunContext.TASK_INPUTS_VARIABLE
-            )
-        );
-        assertEquals(
-            Map.of("amount", 1200),
-            task.contexts.getFirst().inputs()
+            task.contexts.getFirst().taskInputs()
         );
         assertThrows(
             UnsupportedOperationException.class,
-            () -> task.contexts.getFirst().variables().put(
-                "custom",
-                "value"
-            )
+            () -> task.contexts.getFirst().variables().put("custom", "value")
         );
         assertThrows(
             UnsupportedOperationException.class,
@@ -239,11 +223,30 @@ final class WorkerDispatcherTest {
     }
 
     @Test
-    void rejectsCallerProvidedTaskRunIdentityVariable() {
+    void rejectsVariableIdentitiesThatDoNotMatchTheEnvelope() {
         AutomaticTask task = AutomaticTask.builder()
             .id("task-1")
             .key("automatic")
             .build();
+
+        IllegalArgumentException taskRunFailure = assertThrows(
+            IllegalArgumentException.class,
+            () -> WorkerTask.from(
+                "execution-1",
+                "task-run-1",
+                task,
+                variables(
+                    "execution-1",
+                    "spoofed-task-run",
+                    null,
+                    task,
+                    Map.of()
+                )
+            )
+        );
+        assertTrue(taskRunFailure.getMessage().contains(
+            "spoofed-task-run != task-run-1"
+        ));
 
         assertThrows(
             IllegalArgumentException.class,
@@ -251,38 +254,23 @@ final class WorkerDispatcherTest {
                 "execution-1",
                 "task-run-1",
                 task,
-                Map.of(),
-                Map.of(
-                    RunContext.TASK_RUN_ID_VARIABLE,
-                    "spoofed-task-run"
-                )
-            )
-        );
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> WorkerTask.from(
-                "execution-1",
-                "task-run-1",
-                task,
-                Map.of(),
-                Map.of(
-                    RunContext.PARENT_TASK_RUN_ID_VARIABLE,
-                    "spoofed-parent-run"
+                variables(
+                    "execution-1",
+                    "task-run-1",
+                    "spoofed-parent-run",
+                    task,
+                    Map.of()
                 )
             )
         );
     }
 
     @Test
-    void rejectsAnExecutionVariableThatDoesNotMatchTheEnvelope() {
+    void rejectsAnExecutionIdentityThatDoesNotMatchTheEnvelope() {
         AutomaticTask task = AutomaticTask.builder()
             .id("task-1")
             .key("automatic")
             .build();
-        Execution execution = execution(
-            "execution-2",
-            Map.of("amount", 1200)
-        );
 
         IllegalArgumentException failure = assertThrows(
             IllegalArgumentException.class,
@@ -290,20 +278,101 @@ final class WorkerDispatcherTest {
                 "execution-1",
                 "task-run-1",
                 task,
-                Map.of(),
-                Map.of(RunContext.EXECUTION_VARIABLE, execution)
+                variables(
+                    "execution-2",
+                    "task-run-1",
+                    null,
+                    task,
+                    Map.of()
+                )
             )
         );
 
         assertEquals(
-            "Worker Execution id does not match envelope: execution-2 != execution-1",
+            "Worker identity does not match variables: "
+                + "execution-2 != execution-1",
             failure.getMessage()
         );
     }
 
+    private static WorkerTask workerTask(
+        String executionId,
+        String taskRunId,
+        String parentTaskRunId,
+        Task task,
+        Map<String, ?> taskInputs
+    ) {
+        Map<String, Object> variables = variables(
+            executionId,
+            taskRunId,
+            parentTaskRunId,
+            task,
+            taskInputs
+        );
+        return parentTaskRunId == null
+            ? WorkerTask.from(executionId, taskRunId, task, variables)
+            : WorkerTask.from(
+                executionId,
+                taskRunId,
+                parentTaskRunId,
+                task,
+                variables
+            );
+    }
+
+    private static Map<String, Object> variables(
+        String executionId,
+        String taskRunId,
+        String parentTaskRunId,
+        Task task,
+        Map<String, ?> taskInputs
+    ) {
+        Map<String, Object> parent = parentTaskRunId == null
+            ? Map.of()
+            : Map.of(
+                "task",
+                Map.of("key", "parent", "type", "test"),
+                "taskRun",
+                Map.of(
+                    "id",
+                    parentTaskRunId,
+                    "inputs",
+                    Map.of(),
+                    "outputs",
+                    Map.of()
+                )
+            );
+        return Map.of(
+            "inputs", Map.of("amount", 1200),
+            "outputs", Map.of(),
+            "vars", Map.of(),
+            "task", Map.of(
+                "id", task.id(),
+                "key", task.key(),
+                "type", task.getType()
+            ),
+            "taskRun", Map.of(
+                "id", taskRunId,
+                "inputs", taskInputs,
+                "outputs", Map.of()
+            ),
+            "execution", Map.of("id", executionId, "outputs", Map.of()),
+            "parent", parent,
+            "parents", parent.isEmpty() ? List.of() : List.of(parent)
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(
+        Map<String, ?> source,
+        String key
+    ) {
+        return (Map<String, Object>) source.get(key);
+    }
+
     @SuperBuilder
     @NoArgsConstructor
-    private static final class ContextRecordingTask
+    private static class ContextRecordingTask
         extends Task implements RunnableTask {
 
         @Builder.Default
@@ -321,29 +390,12 @@ final class WorkerDispatcherTest {
 
     @SuperBuilder
     @NoArgsConstructor
-    private static final class FailingTask
+    private static class FailingTask
         extends Task implements RunnableTask {
 
         @Override
         public RunResult run(RunContext context) {
             throw new IllegalStateException("unexpected-task-failure");
         }
-    }
-
-    private static Execution execution(
-        String id,
-        Map<String, ?> inputs
-    ) {
-        return Execution.rehydrate(
-            id,
-            "company-1",
-            ActorRef.create("worker-user", "Worker User"),
-            1_000L,
-            "flow-1",
-            1,
-            inputs,
-            State.created(),
-            List.of()
-        );
     }
 }

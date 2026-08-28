@@ -128,8 +128,8 @@ public final class CreateCsesTask extends Task implements RunnableTask {
 
     @Override
     public RunResult run(RunContext context) {
-        // Host-owned Task code may use context.executionId() to associate
-        // its business operation with the current Flow execution.
+        // Host-owned Task code may use context.taskRunInfo().executionId()
+        // to associate its operation with the current Flow execution.
         return RunResult.success(Map.of());
     }
 }

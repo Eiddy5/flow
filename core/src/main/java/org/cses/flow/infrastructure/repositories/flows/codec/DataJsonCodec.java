@@ -4,6 +4,7 @@ import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.jooq.JSONB;
 import org.paas.json.JsonObject;
 import org.paas.json.JsonObjects;
 
@@ -21,6 +22,10 @@ public class DataJsonCodec {
         return JsonObjects.FromList(
             values.stream().map(DataJsonCodec::jsonValue).toList()
         );
+    }
+
+    public static JSONB encodeJsonb(List<? extends Data> values) {
+        return JSONB.valueOf(encode(values).toJson());
     }
 
     public static List<Input<?>> decodeInputs(
@@ -70,6 +75,15 @@ public class DataJsonCodec {
         return List.copyOf(inputs);
     }
 
+    public static List<Input<?>> decodeInputs(
+        JSONB values,
+        String field
+    ) {
+        return values == null
+            ? List.of()
+            : decodeInputs(JsonObjects.Parse(values.data()), field);
+    }
+
     public static List<Output> decodeOutputs(
         JsonObjects values,
         String field
@@ -83,6 +97,15 @@ public class DataJsonCodec {
                 DataType.parse(requiredText(value, "type", field))
             ))
             .toList();
+    }
+
+    public static List<Output> decodeOutputs(
+        JSONB values,
+        String field
+    ) {
+        return values == null
+            ? List.of()
+            : decodeOutputs(JsonObjects.Parse(values.data()), field);
     }
 
     private static Object jsonValue(Data data) {

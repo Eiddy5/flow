@@ -187,12 +187,13 @@ flowchart TD
     consumeStart["DefaultExecutor 路由到 ExecutionCommandEventHandler；按 Flow 三字段加载 Flow、创建 Execution、投递 ExecutorEvent"]
     drive["ExecutorEventHandler 领取一个 ExecutorEvent 周期"]
     handle["ExecutorService.handle 状态推进循环"]
-    plan["按串行可见输出、Route 的 route 按需形成的 Condition、Branch 结构和 Parallel 作用域规划下一批 TaskRun"]
+    plan["按 Branch 结构和 Parallel 作用域规划下一批 TaskRun；Route 自身也先进入计划"]
     hasNext{"存在下一批 TaskRun？"}
     capability{"Task 运行能力？"}
 
     orchestrationDispatch["ExecutorService 直接启动 OrchestrationTask"]
     orchestrationKind{"编排特征？"}
+    routeCondition["Route 使用已创建且 RUNNING 的当前 TaskRun 构建变量并计算 Condition；不匹配则完成自身且不进入子树"]
     parallelScope["Parallel TaskRun 保持 RUNNING；释放可运行直接分支"]
     pauseAction["Pause TaskRun 保持 RUNNING；无条件执行 pause Task 完整子树"]
     pausePersist["pause 子树收敛后，持久化 Pause TaskRun 与 Execution 的稳定暂停点"]
@@ -245,6 +246,8 @@ flowchart TD
     hasNext -->|"是"| capability
     capability -->|"OrchestrationTask"| orchestrationDispatch
     orchestrationDispatch --> orchestrationKind
+    orchestrationKind -->|"Route"| routeCondition
+    routeCondition --> handle
     orchestrationKind -->|"Parallel 作用域"| parallelScope
     parallelScope --> handle
     orchestrationKind -->|"Pause"| pauseAction
@@ -290,7 +293,7 @@ flowchart TD
     classDef failure fill:#FFE3DE,stroke:#C7503E,color:#4A1812
 
     class saveStart,deployStart,executeStart,acceptedEnd,resumeStart,resumeAccepted,cancelStart startEnd
-    class saveService,saveTransaction,saveDraft,parseDefinition,materializeFlow,persistFlow,createExecution,enqueueStart,consumeStart,drive,handle,plan,orchestrationDispatch,parallelScope,completeScope,pauseAction,pausePersist,runnableDispatch,workerRun,applyOutputs,resumeAdmission,enqueueResume,resumeConsume,resumeTask,cancelCommand,cancelConsume,cancelExecution,runningStable action
+    class saveService,saveTransaction,saveDraft,parseDefinition,materializeFlow,persistFlow,createExecution,enqueueStart,consumeStart,drive,handle,plan,orchestrationDispatch,routeCondition,parallelScope,completeScope,pauseAction,pausePersist,runnableDispatch,workerRun,applyOutputs,resumeAdmission,enqueueResume,resumeConsume,resumeTask,cancelCommand,cancelConsume,cancelExecution,runningStable action
     class hasNext,capability,orchestrationKind,workerResult,settled,scopeSettled,pausedLeaves decision
     class pausePersist waiting
     class completeExecution,completedEnd success
@@ -318,10 +321,19 @@ flowchart TD
    `Execution.inputs`；`ExecutorContext` 从 Execution 读取，TaskRun 不再保存
    `flowInputs` 快照。恢复后的 Route 不需要宿主重复提交字段值。
 5. Flow Reversion 的 `variables` 是流程级只读 `Map<String, Object>`，持久化在
-   `flows.variables`，Route 可通过 `variables.<key>` 读取，RunnableTask 通过
-   RunContext 的 `$flow.variables` 读取；它不复制到 TaskRun。
+   `flows.variables`，且不复制到 TaskRun。`RunVariables` Builder 把它投影到
+   `vars`，并把 Flow 元数据、Execution inputs、按 Task 业务 key 分组的全部已完成
+   outputs、当前 task/taskRun、execution、直接 parent 和最近到最远的 parents 一起
+   组成规范变量树。Builder 只接收 Flow、Execution、Task 与 TaskRun 四个领域事实，
+   不接收已投影 Map 或独立父 ID。Route、Loop Until、模板和 RunnableTask 共用该树及
+   安全的完整 Map 路径语义。`build()` 在 Execution 分支中统一解析 execution、inputs、
+   已完成 TaskRun outputs 和父链；Flow variables 仍由精确 Flow Reversion 提供，当前
+   Task/TaskRun 不能在并行场景中通过“最后一次运行”猜测。Route 先创建并启动自己的
+   TaskRun，再计算 Condition。
 6. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
-   同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。
+   同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。RunContext 通过 Builder 创建且
+   只保存规范 variables，不保存 Session 或重复运行身份；常用身份通过
+   `taskRunInfo()`、`flowInfo()` 等只读视图从变量路径派生。
 7. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
    TaskRun 是唯一持久化等待事实。合法 Resume 在 Service 侧预校验并规范化后写入
    `ExecutionCommand` Queue，Command Handler 再次校验并投递 `ExecutorEvent`，内部
@@ -346,6 +358,8 @@ flowchart TD
 - [`core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java)
 - [`core/src/main/java/org/cses/flow/executor/ExecutorEvent.java`](../core/src/main/java/org/cses/flow/executor/ExecutorEvent.java)
 - [`core/src/main/java/org/cses/flow/executor/ExecutorService.java`](../core/src/main/java/org/cses/flow/executor/ExecutorService.java)
+- [`core/src/main/java/org/cses/flow/core/runner/RunVariables.java`](../core/src/main/java/org/cses/flow/core/runner/RunVariables.java)
+- [`core/src/main/java/org/cses/flow/core/runner/RunContext.java`](../core/src/main/java/org/cses/flow/core/runner/RunContext.java)
 - [`core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java`](../core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java)
 - [`core/src/main/java/org/cses/flow/infrastructure/jooq/`](../core/src/main/java/org/cses/flow/infrastructure/jooq/)
 - [`core/src/main/java/org/cses/flow/infrastructure/repositories/`](../core/src/main/java/org/cses/flow/infrastructure/repositories/)

@@ -105,59 +105,129 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
     }
 
     /**
+     * Setter for <code>public.task_runs.start_at</code>.
+     */
+    public void setStartAt(Long value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.start_at</code>.
+     */
+    public Long getStartAt() {
+        return (Long) get(6);
+    }
+
+    /**
+     * Setter for <code>public.task_runs.end_at</code>.
+     */
+    public void setEndAt(Long value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.end_at</code>.
+     */
+    public Long getEndAt() {
+        return (Long) get(7);
+    }
+
+    /**
      * Setter for <code>public.task_runs.inputs</code>.[[before= ][]]
      */
     public void setInputs(JsonObject value) {
-        set(6, value == null ? null : value.toString());
+        set(8, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.task_runs.inputs</code>.[[before= ][]]
      */
     public JsonObject getInputs() {
-        return JsonObject.Parse((String) get(6));
+        return JsonObject.Parse((String) get(8));
     }
 
     /**
      * Setter for <code>public.task_runs.outputs</code>.[[before= ][]]
      */
     public void setOutputs(JsonObject value) {
-        set(7, value == null ? null : value.toString());
+        set(9, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.task_runs.outputs</code>.[[before= ][]]
      */
     public JsonObject getOutputs() {
-        return JsonObject.Parse((String) get(7));
+        return JsonObject.Parse((String) get(9));
     }
 
     /**
      * Setter for <code>public.task_runs.error</code>.
      */
     public void setError(String value) {
-        set(8, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.task_runs.error</code>.
      */
     public String getError() {
-        return (String) get(8);
+        return (String) get(10);
     }
 
     /**
      * Setter for <code>public.task_runs.order</code>.
      */
     public void setOrder(Integer value) {
-        set(9, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.task_runs.order</code>.
      */
     public Integer getOrder() {
-        return (Integer) get(9);
+        return (Integer) get(11);
+    }
+
+    /**
+     * Setter for <code>public.task_runs.created_at</code>.
+     */
+    public void setCreatedAt(Long value) {
+        set(12, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.created_at</code>.
+     */
+    public Long getCreatedAt() {
+        return (Long) get(12);
+    }
+
+    /**
+     * Setter for <code>public.task_runs.updated_at</code>.
+     */
+    public void setUpdatedAt(Long value) {
+        set(13, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.updated_at</code>.
+     */
+    public Long getUpdatedAt() {
+        return (Long) get(13);
+    }
+
+    /**
+     * Setter for <code>public.task_runs.deleted_at</code>.
+     */
+    public void setDeletedAt(Long value) {
+        set(14, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.deleted_at</code>.
+     */
+    public Long getDeletedAt() {
+        return (Long) get(14);
     }
 
     // -------------------------------------------------------------------------
@@ -183,7 +253,7 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
     /**
      * Create a detached, initialised TaskRunsRecord
      */
-    public TaskRunsRecord(String id, String executionId, String taskId, String parentId, Integer iteration, JSONB state, JsonObject inputs, JsonObject outputs, String error, Integer order) {
+    public TaskRunsRecord(String id, String executionId, String taskId, String parentId, Integer iteration, JSONB state, Long startAt, Long endAt, JsonObject inputs, JsonObject outputs, String error, Integer order, Long createdAt, Long updatedAt, Long deletedAt) {
         super(TaskRunsTable.TASK_RUNS);
 
         setId(id);
@@ -192,10 +262,15 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         setParentId(parentId);
         setIteration(iteration);
         setState(state);
+        setStartAt(startAt);
+        setEndAt(endAt);
         setInputs(inputs);
         setOutputs(outputs);
         setError(error);
         setOrder(order);
+        setCreatedAt(createdAt);
+        setUpdatedAt(updatedAt);
+        setDeletedAt(deletedAt);
     }
 
 
@@ -213,10 +288,15 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
             setParentId(value.parentId);
             setIteration(value.iteration);
             setState(value.state);
+            setStartAt(value.startAt);
+            setEndAt(value.endAt);
             setInputs(value.inputs);
             setOutputs(value.outputs);
             setError(value.error);
             setOrder(value.order);
+            setCreatedAt(value.createdAt);
+            setUpdatedAt(value.updatedAt);
+            setDeletedAt(value.deletedAt);
         }
     }
 
@@ -228,10 +308,15 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         object.parentId = getParentId();
         object.iteration = getIteration();
         object.state = getState();
+        object.startAt = getStartAt();
+        object.endAt = getEndAt();
         object.inputs = getInputs();
         object.outputs = getOutputs();
         object.error = getError();
         object.order = getOrder();
+        object.createdAt = getCreatedAt();
+        object.updatedAt = getUpdatedAt();
+        object.deletedAt = getDeletedAt();
         return object;
     }
 
@@ -248,10 +333,15 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         pojo.parentId = getParentId();
         pojo.iteration = getIteration();
         pojo.state = getState();
+        pojo.startAt = getStartAt();
+        pojo.endAt = getEndAt();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
         pojo.error = getError();
         pojo.order = getOrder();
+        pojo.createdAt = getCreatedAt();
+        pojo.updatedAt = getUpdatedAt();
+        pojo.deletedAt = getDeletedAt();
         return pojo;
     }
 }

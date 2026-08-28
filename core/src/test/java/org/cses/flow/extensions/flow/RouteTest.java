@@ -32,15 +32,13 @@ class RouteTest {
             .route("{{ inputs.level }} == A")
             .build();
 
-        assertTrue(route.matches(ConditionContext.create(
-            Map.of(),
-            Map.of("level", "A"),
-            Map.of()
-        )));
-        assertFalse(route.matches(ConditionContext.create(
-            Map.of(),
-            Map.of("level", "B"),
-            Map.of()
-        )));
+        assertTrue(route.matches(ConditionContext.from(Map.of(
+            "inputs",
+            Map.of("level", "A")
+        ))));
+        assertFalse(route.matches(ConditionContext.from(Map.of(
+            "inputs",
+            Map.of("level", "B")
+        ))));
     }
 }

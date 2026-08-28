@@ -6,10 +6,9 @@ package org.flow.gen.flow.records;
 
 import org.flow.gen.flow.pojos.FlowTasksObject;
 import org.flow.gen.flow.tables.FlowTasksTable;
+import org.jooq.JSONB;
 import org.jooq.Record4;
 import org.jooq.impl.UpdatableRecordImpl;
-import org.paas.json.JsonObject;
-import org.paas.json.JsonObjects;
 
 
 /**
@@ -35,171 +34,157 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
     }
 
     /**
-     * Setter for <code>public.flow_tasks.id</code>.
-     */
-    public void setId(String value) {
-        set(1, value);
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.id</code>.
-     */
-    public String getId() {
-        return (String) get(1);
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.type</code>.
-     */
-    public void setType(String value) {
-        set(2, value);
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.type</code>.
-     */
-    public String getType() {
-        return (String) get(2);
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.route</code>.
-     */
-    public void setRoute(String value) {
-        set(3, value);
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.route</code>.
-     */
-    public String getRoute() {
-        return (String) get(3);
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.inputs</code>.[[before= ][]]
-     */
-    public void setInputs(JsonObjects value) {
-        set(4, value);
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.inputs</code>.[[before= ][]]
-     */
-    public JsonObjects getInputs() {
-        return (JsonObjects) get(4);
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.outputs</code>.[[before= ][]]
-     */
-    public void setOutputs(JsonObjects value) {
-        set(5, value);
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.outputs</code>.[[before= ][]]
-     */
-    public JsonObjects getOutputs() {
-        return (JsonObjects) get(5);
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.properties</code>.[[before= ][]]
-     */
-    public void setProperties(JsonObject value) {
-        set(6, value == null ? null : value.toString());
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.properties</code>.[[before= ][]]
-     */
-    public JsonObject getProperties() {
-        return JsonObject.Parse((String) get(6));
-    }
-
-    /**
      * Setter for <code>public.flow_tasks.flow_key</code>.
      */
     public void setFlowKey(String value) {
-        set(7, value);
+        set(1, value);
     }
 
     /**
      * Getter for <code>public.flow_tasks.flow_key</code>.
      */
     public String getFlowKey() {
-        return (String) get(7);
+        return (String) get(1);
     }
 
     /**
      * Setter for <code>public.flow_tasks.flow_version</code>.
      */
     public void setFlowVersion(Long value) {
-        set(8, value);
+        set(2, value);
     }
 
     /**
      * Getter for <code>public.flow_tasks.flow_version</code>.
      */
     public Long getFlowVersion() {
-        return (Long) get(8);
+        return (Long) get(2);
     }
 
     /**
-     * Setter for <code>public.flow_tasks.parent_id</code>.
+     * Setter for <code>public.flow_tasks.id</code>.
      */
-    public void setParentId(String value) {
-        set(9, value);
+    public void setId(String value) {
+        set(3, value);
     }
 
     /**
-     * Getter for <code>public.flow_tasks.parent_id</code>.
+     * Getter for <code>public.flow_tasks.id</code>.
      */
-    public String getParentId() {
-        return (String) get(9);
-    }
-
-    /**
-     * Setter for <code>public.flow_tasks.order</code>.
-     */
-    public void setOrder(Integer value) {
-        set(10, value);
-    }
-
-    /**
-     * Getter for <code>public.flow_tasks.order</code>.
-     */
-    public Integer getOrder() {
-        return (Integer) get(10);
+    public String getId() {
+        return (String) get(3);
     }
 
     /**
      * Setter for <code>public.flow_tasks.key</code>.
      */
     public void setKey(String value) {
-        set(11, value);
+        set(4, value);
     }
 
     /**
      * Getter for <code>public.flow_tasks.key</code>.
      */
     public String getKey() {
-        return (String) get(11);
+        return (String) get(4);
     }
 
     /**
-     * Setter for <code>public.flow_tasks.depend_on</code>.[[before= ][]]
+     * Setter for <code>public.flow_tasks.display_name</code>.
      */
-    public void setDependOn(JsonObjects value) {
-        set(12, value);
+    public void setDisplayName(String value) {
+        set(5, value);
     }
 
     /**
-     * Getter for <code>public.flow_tasks.depend_on</code>.[[before= ][]]
+     * Getter for <code>public.flow_tasks.display_name</code>.
      */
-    public JsonObjects getDependOn() {
-        return (JsonObjects) get(12);
+    public String getDisplayName() {
+        return (String) get(5);
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.type</code>.
+     */
+    public void setType(String value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.type</code>.
+     */
+    public String getType() {
+        return (String) get(6);
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.parent_id</code>.
+     */
+    public void setParentId(String value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.parent_id</code>.
+     */
+    public String getParentId() {
+        return (String) get(7);
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.position</code>.
+     */
+    public void setPosition(Integer value) {
+        set(8, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.position</code>.
+     */
+    public Integer getPosition() {
+        return (Integer) get(8);
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.inputs</code>.
+     */
+    public void setInputs(JSONB value) {
+        set(9, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.inputs</code>.
+     */
+    public JSONB getInputs() {
+        return (JSONB) get(9);
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.outputs</code>.
+     */
+    public void setOutputs(JSONB value) {
+        set(10, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.outputs</code>.
+     */
+    public JSONB getOutputs() {
+        return (JSONB) get(10);
+    }
+
+    /**
+     * Setter for <code>public.flow_tasks.properties</code>.
+     */
+    public void setProperties(JSONB value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.flow_tasks.properties</code>.
+     */
+    public JSONB getProperties() {
+        return (JSONB) get(11);
     }
 
     // -------------------------------------------------------------------------
@@ -225,22 +210,21 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
     /**
      * Create a detached, initialised FlowTasksRecord
      */
-    public FlowTasksRecord(String companyId, String id, String type, String route, JsonObjects inputs, JsonObjects outputs, JsonObject properties, String flowKey, Long flowVersion, String parentId, Integer order, String key, JsonObjects dependOn) {
+    public FlowTasksRecord(String companyId, String flowKey, Long flowVersion, String id, String key, String displayName, String type, String parentId, Integer position, JSONB inputs, JSONB outputs, JSONB properties) {
         super(FlowTasksTable.FLOW_TASKS);
 
         setCompanyId(companyId);
+        setFlowKey(flowKey);
+        setFlowVersion(flowVersion);
         setId(id);
+        setKey(key);
+        setDisplayName(displayName);
         setType(type);
-        setRoute(route);
+        setParentId(parentId);
+        setPosition(position);
         setInputs(inputs);
         setOutputs(outputs);
         setProperties(properties);
-        setFlowKey(flowKey);
-        setFlowVersion(flowVersion);
-        setParentId(parentId);
-        setOrder(order);
-        setKey(key);
-        setDependOn(dependOn);
     }
 
 
@@ -253,36 +237,34 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
 
         if (value != null) {
             setCompanyId(value.companyId);
+            setFlowKey(value.flowKey);
+            setFlowVersion(value.flowVersion);
             setId(value.id);
+            setKey(value.key);
+            setDisplayName(value.displayName);
             setType(value.type);
-            setRoute(value.route);
+            setParentId(value.parentId);
+            setPosition(value.position);
             setInputs(value.inputs);
             setOutputs(value.outputs);
             setProperties(value.properties);
-            setFlowKey(value.flowKey);
-            setFlowVersion(value.flowVersion);
-            setParentId(value.parentId);
-            setOrder(value.order);
-            setKey(value.key);
-            setDependOn(value.dependOn);
         }
     }
 
     public FlowTasksObject asObject() {
         FlowTasksObject object = new FlowTasksObject();
         object.companyId = getCompanyId();
+        object.flowKey = getFlowKey();
+        object.flowVersion = getFlowVersion();
         object.id = getId();
+        object.key = getKey();
+        object.displayName = getDisplayName();
         object.type = getType();
-        object.route = getRoute();
+        object.parentId = getParentId();
+        object.position = getPosition();
         object.inputs = getInputs();
         object.outputs = getOutputs();
         object.properties = getProperties();
-        object.flowKey = getFlowKey();
-        object.flowVersion = getFlowVersion();
-        object.parentId = getParentId();
-        object.order = getOrder();
-        object.key = getKey();
-        object.dependOn = getDependOn();
         return object;
     }
 
@@ -294,18 +276,17 @@ public class FlowTasksRecord extends UpdatableRecordImpl<FlowTasksRecord> {
     public FlowTasksObject toPojo() {
         FlowTasksObject pojo = new FlowTasksObject();
         pojo.companyId = getCompanyId();
+        pojo.flowKey = getFlowKey();
+        pojo.flowVersion = getFlowVersion();
         pojo.id = getId();
+        pojo.key = getKey();
+        pojo.displayName = getDisplayName();
         pojo.type = getType();
-        pojo.route = getRoute();
+        pojo.parentId = getParentId();
+        pojo.position = getPosition();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
         pojo.properties = getProperties();
-        pojo.flowKey = getFlowKey();
-        pojo.flowVersion = getFlowVersion();
-        pojo.parentId = getParentId();
-        pojo.order = getOrder();
-        pojo.key = getKey();
-        pojo.dependOn = getDependOn();
         return pojo;
     }
 }

@@ -731,11 +731,15 @@ class NestedPauseResumeIntegrationTest {
                     "route-approval",
                     "approved",
                     "approved-finish",
+                    "rejected",
                     "serial-finish"
                 ),
                 taskKeys(completed, flow)
             );
-            assertNoRun(completed, tasks.get("rejected"));
+            assertEquals(
+                State.Type.SUCCESS,
+                run(completed, tasks.get("rejected")).state().current()
+            );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }

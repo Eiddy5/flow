@@ -4,6 +4,7 @@ import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.serializers.JacksonMapper;
+import org.jooq.JSONB;
 import org.paas.json.JsonObject;
 
 import java.util.LinkedHashMap;
@@ -17,9 +18,9 @@ public class TaskPropertiesCodec {
         "id",
         "type",
         "key",
+        "displayName",
         "inputs",
         "outputs",
-        "route",
         "dependOn",
         "tasks"
     );
@@ -33,6 +34,10 @@ public class TaskPropertiesCodec {
         );
         CORE_FIELDS.forEach(serialized::remove);
         return JsonObject.FromMap(Map.copyOf(serialized));
+    }
+
+    public static JSONB encodeJsonb(Task task) {
+        return JSONB.valueOf(encode(task).toJson());
     }
 
     public static Task decode(
@@ -59,6 +64,26 @@ public class TaskPropertiesCodec {
         return JacksonMapper.convertPersistenceValue(
             definition,
             Task.class
+        );
+    }
+
+    public static Task decode(
+        JSONB value,
+        String id,
+        String type,
+        String key,
+        List<Input<?>> inputs,
+        List<Output> outputs,
+        List<Task> children
+    ) {
+        return decode(
+            value == null ? null : JsonObject.Parse(value.data()),
+            id,
+            type,
+            key,
+            inputs,
+            outputs,
+            children
         );
     }
 }

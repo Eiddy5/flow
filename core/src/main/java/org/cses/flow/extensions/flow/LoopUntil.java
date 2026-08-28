@@ -8,7 +8,6 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.conditions.ConditionContext;
 import org.cses.flow.core.domains.conditions.Operand;
-import org.cses.flow.core.domains.conditions.OperandScope;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -16,6 +15,7 @@ import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.validations.ModelInvariant;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -52,7 +52,7 @@ public class LoopUntil extends Branch implements OrchestrationTask, ModelInvaria
     @NotNull
     @Schema(
         title = "结束条件",
-        description = "当前轮次输出满足时结束；仅 {{ scope.path }} 表示引用，"
+        description = "当前轮次输出满足时结束；仅 {{ path.to.value }} 表示引用，"
             + "其他操作数为常量",
         implementation = String.class,
         format = "flow-condition",
@@ -93,25 +93,21 @@ public class LoopUntil extends Branch implements OrchestrationTask, ModelInvaria
         int completedIterations,
         Map<String, Map<String, Object>> iterationOutputs
     ) {
+        Map<String, Object> variables = new LinkedHashMap<>();
+        variables.put("inputs", Map.of());
+        variables.put("outputs", iterationOutputs);
+        variables.put("vars", Map.of());
         return decideAfterIteration(
             completedIterations,
-            iterationOutputs,
-            Map.of(),
-            Map.of()
+            ConditionContext.from(variables)
         );
     }
 
     public IterationDecision decideAfterIteration(
         int completedIterations,
-        Map<String, Map<String, Object>> iterationOutputs,
-        Map<String, ?> flowInputs,
-        Map<String, ?> flowVariables
+        ConditionContext context
     ) {
-        if (condition != null && condition.matches(ConditionContext.create(
-            flowVariables,
-            flowInputs,
-            iterationOutputs
-        ))) {
+        if (condition != null && condition.matches(context)) {
             return IterationDecision.SUCCESS;
         }
         return completedIterations < maxIterations()
@@ -134,18 +130,18 @@ public class LoopUntil extends Branch implements OrchestrationTask, ModelInvaria
             );
         }
         condition.references().stream()
-            .filter(reference -> reference.scope() == OperandScope.OUTPUTS)
+            .filter(reference -> referencesRoot(reference, "outputs"))
             .forEach(this::verifyOutputReference);
     }
 
     private void verifyOutputReference(Operand reference) {
-        if (reference.path().size() != 2) {
+        if (reference.path().size() != 3) {
             throw new IllegalArgumentException(
                 "Unsupported LOOP UNTIL output reference: " + reference
             );
         }
-        String taskKey = reference.path().get(0);
-        String outputKey = reference.path().get(1);
+        String taskKey = reference.path().get(1);
+        String outputKey = reference.path().get(2);
         Task source = allDescendants().stream()
             .filter(task -> task.key().equals(taskKey))
             .findFirst()
@@ -179,5 +175,13 @@ public class LoopUntil extends Branch implements OrchestrationTask, ModelInvaria
                 "LOOP UNTIL requires at least one child Task"
             );
         }
+    }
+
+    private static boolean referencesRoot(
+        Operand reference,
+        String root
+    ) {
+        return !reference.path().isEmpty()
+            && reference.path().getFirst().equals(root);
     }
 }

@@ -18,8 +18,7 @@ class ConditionStructureTest {
     @Test
     void onlyAllowsCompleteComparisonOrLogicalShapes() {
         Operand reference = Operand.reference(
-            OperandScope.INPUTS,
-            List.of("value")
+            List.of("inputs", "value")
         );
         Operand constant = Operand.constant(1);
 
@@ -52,18 +51,22 @@ class ConditionStructureTest {
         assertThrows(
             IllegalArgumentException.class,
             () -> Operand.reference(
-                OperandScope.INPUTS,
-                List.of("invalid.path")
+                List.of("inputs", "invalid.path")
             )
         );
     }
 
     @Test
     void protectsAllCollectionsFromCallerMutation() {
-        List<String> path = new ArrayList<>(List.of("task", "value"));
-        Operand reference = Operand.reference(OperandScope.OUTPUTS, path);
+        List<String> path = new ArrayList<>(
+            List.of("outputs", "task", "value")
+        );
+        Operand reference = Operand.reference(path);
         path.add("changed");
-        assertEquals(List.of("task", "value"), reference.path());
+        assertEquals(
+            List.of("outputs", "task", "value"),
+            reference.path()
+        );
         assertThrows(
             UnsupportedOperationException.class,
             () -> reference.path().add("changed")
@@ -90,8 +93,7 @@ class ConditionStructureTest {
     @Test
     void programmaticFactoriesEnforceTreeSafetyLimits() {
         Operand reference = Operand.reference(
-            OperandScope.INPUTS,
-            List.of("a")
+            List.of("inputs", "a")
         );
         Comparison compactComparison = new Comparison() {
             @Override
@@ -157,8 +159,7 @@ class ConditionStructureTest {
     @Test
     void reportsComparisonCompatibilityAgainstDeclaredDataTypes() {
         Operand amount = Operand.reference(
-            OperandScope.INPUTS,
-            List.of("amount")
+            List.of("inputs", "amount")
         );
         Condition numeric = Condition.parser("{{ inputs.amount }} >= 1");
         Condition character = Condition.parser("{{ inputs.grade }} == A");
@@ -204,7 +205,7 @@ class ConditionStructureTest {
             .filter(field -> !Modifier.isStatic(field.getModifiers()))
             .map(java.lang.reflect.Field::getName)
             .collect(java.util.stream.Collectors.toSet());
-        assertEquals(Set.of("scope", "path", "value"), operandFields);
+        assertEquals(Set.of("path", "value"), operandFields);
         assertTrue(java.util.Arrays.stream(Operand.class.getMethods())
             .noneMatch(method -> method.getName().equals("kind")));
         assertTrue(java.util.Arrays.stream(Condition.class.getMethods())
@@ -215,16 +216,15 @@ class ConditionStructureTest {
                 "taskRun"
             ).contains(method.getName())));
         assertTrue(Modifier.isFinal(Condition.class.getModifiers()));
-        assertTrue(Modifier.isFinal(Operand.class.getModifiers()));
-        assertTrue(Modifier.isFinal(ConditionContext.class.getModifiers()));
-        for (Class<?> type : List.of(
-            Condition.class,
-            Operand.class,
-            ConditionContext.class
-        )) {
+        assertFalse(Modifier.isFinal(Operand.class.getModifiers()));
+        assertFalse(Modifier.isFinal(ConditionContext.class.getModifiers()));
+        assertTrue(java.util.Arrays.stream(Condition.class.getDeclaredFields())
+            .filter(field -> !Modifier.isStatic(field.getModifiers()))
+            .allMatch(field -> Modifier.isFinal(field.getModifiers())));
+        for (Class<?> type : List.of(Operand.class, ConditionContext.class)) {
             assertTrue(java.util.Arrays.stream(type.getDeclaredFields())
                 .filter(field -> !Modifier.isStatic(field.getModifiers()))
-                .allMatch(field -> Modifier.isFinal(field.getModifiers())));
+                .noneMatch(field -> Modifier.isFinal(field.getModifiers())));
         }
     }
 }

@@ -17,34 +17,32 @@ class ConditionTest {
     @Test
     void matchesAReferencedVariableAgainstAStringConstant() {
         Condition condition = Condition.parser(
-            "{{ variables.level }} == A"
+            "{{ vars.level }} == A"
         );
 
-        assertTrue(condition.matches(ConditionContext.create(
-            Map.of("level", "A"),
-            Map.of(),
-            Map.of()
+        assertTrue(condition.matches(context(
+            Map.of("vars", Map.of("level", "A"))
         )));
     }
 
     @Test
     void readsAllScopesAndNestedMapPaths() {
         Condition condition = Condition.parser("""
-            {{ variables.environment }} == prod
+            {{ vars.environment }} == prod
             && {{ inputs.approved }} == true
             && {{ outputs.check.amount }} >= 100.50
             """);
 
-        assertTrue(condition.matches(ConditionContext.create(
-            Map.of("environment", "prod"),
-            Map.of("approved", true),
-            Map.of("check", Map.of("amount", 101L))
-        )));
-        assertFalse(condition.matches(ConditionContext.create(
-            Map.of("environment", "prod"),
-            Map.of("approved", true),
-            Map.of("check", Map.of("amount", 100.49D))
-        )));
+        assertTrue(condition.matches(context(Map.of(
+            "vars", Map.of("environment", "prod"),
+            "inputs", Map.of("approved", true),
+            "outputs", Map.of("check", Map.of("amount", 101L))
+        ))));
+        assertFalse(condition.matches(context(Map.of(
+            "vars", Map.of("environment", "prod"),
+            "inputs", Map.of("approved", true),
+            "outputs", Map.of("check", Map.of("amount", 100.49D))
+        ))));
     }
 
     @Test
@@ -65,21 +63,30 @@ class ConditionTest {
     void returnsFalseForMissingOrIncompatibleRuntimeValues() {
         assertFalse(matches("{{ inputs.value }} != A", Map.of()));
         assertFalse(Condition.parser("{{ inputs.value }} == A").matches(
-            ConditionContext.create(Map.of(), null, Map.of())
+            ConditionContext.from(Map.of())
         ));
         assertFalse(matches("{{ inputs.value }} == 1", Map.of("value", "1")));
         assertFalse(matches("{{ inputs.value }} > 1", Map.of("value", true)));
         assertFalse(Condition.parser("{{ outputs.task.value }} == 1").matches(
-            ConditionContext.create(
-                Map.of(),
-                Map.of(),
-                Map.of("task", "not-a-map")
-            )
+            context(Map.of("outputs", Map.of("task", "not-a-map")))
         ));
 
         Map<String, Object> inputsWithNull = new java.util.LinkedHashMap<>();
         inputsWithNull.put("value", null);
         assertFalse(matches("{{ inputs.value }} != A", inputsWithNull));
+    }
+
+    @Test
+    void resolvesAnySafeRootAndTreatsAnAbsentRootAsMissing() {
+        Condition condition = Condition.parser(
+            "{{ futureRuntime.status }} == READY"
+        );
+
+        assertTrue(condition.matches(context(Map.of(
+            "futureRuntime",
+            Map.of("status", "READY")
+        ))));
+        assertFalse(condition.matches(context(Map.of())));
     }
 
     @Test
@@ -106,20 +113,18 @@ class ConditionTest {
             }
         };
         Condition trueCondition = Condition.compare(
-            Operand.reference(OperandScope.INPUTS, List.of("value")),
+            Operand.reference(List.of("inputs", "value")),
             recordingComparison,
             Operand.constant(true)
         );
         Condition falseCondition = Condition.compare(
-            Operand.reference(OperandScope.INPUTS, List.of("value")),
+            Operand.reference(List.of("inputs", "value")),
             recordingComparison,
             Operand.constant(false)
         );
-        ConditionContext context = ConditionContext.create(
-            Map.of(),
-            Map.of("value", true),
-            Map.of()
-        );
+        ConditionContext context = context(Map.of(
+            "inputs", Map.of("value", true)
+        ));
 
         assertFalse(Condition.combine(
             Logical.AND,
@@ -141,11 +146,9 @@ class ConditionTest {
 
         long matches = IntStream.range(0, 200)
             .parallel()
-            .mapToObj(index -> condition.matches(ConditionContext.create(
-                Map.of(),
-                Map.of("value", index % 2),
-                Map.of()
-            )))
+            .mapToObj(index -> condition.matches(context(Map.of(
+                "inputs", Map.of("value", index % 2)
+            ))))
             .filter(Boolean::booleanValue)
             .count();
 
@@ -158,11 +161,7 @@ class ConditionTest {
         nested.put("status", "READY");
         Map<String, Object> outputs = new java.util.LinkedHashMap<>();
         outputs.put("check", nested);
-        ConditionContext context = ConditionContext.create(
-            Map.of(),
-            Map.of(),
-            outputs
-        );
+        ConditionContext context = context(Map.of("outputs", outputs));
         Condition condition = Condition.parser(
             "{{ outputs.check.status }} == READY"
         );
@@ -177,10 +176,13 @@ class ConditionTest {
         String source,
         Map<String, ?> inputs
     ) {
-        return Condition.parser(source).matches(ConditionContext.create(
-            Map.of(),
-            inputs,
-            Map.of()
-        ));
+        return Condition.parser(source).matches(context(Map.of(
+            "inputs",
+            inputs
+        )));
+    }
+
+    private static ConditionContext context(Map<String, ?> variables) {
+        return ConditionContext.from(variables);
     }
 }

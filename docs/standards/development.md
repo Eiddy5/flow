@@ -308,4 +308,5 @@ Handler、工具类或领域对象。
 - 涉及 Command、Handler、Session 或写事务时阅读
   [`command-executor.md`](command-executor.md)。
 - 涉及 JOOQ、Entry 或持久化映射时阅读 [`jooq.md`](jooq.md)。
-- 涉及 UC 测试时阅读 [`uc-testing.md`](uc-testing.md) 和对应 Agent 文档。
+- 涉及 UC 测试时阅读 [`uc-testing.md`](uc-testing.md) 和
+  [`.codex/agents/test/README.md`](../../.codex/agents/test/README.md)。

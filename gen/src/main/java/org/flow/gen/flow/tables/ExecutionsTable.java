@@ -79,19 +79,34 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, JSONB> STATE = createField(DSL.name("state"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
-     * The column <code>public.executions.lock_version</code>.
-     */
-    public final TableField<ExecutionsRecord, Long> LOCK_VERSION = createField(DSL.name("lock_version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
-
-    /**
      * The column <code>public.executions.creator</code>.
      */
     public final TableField<ExecutionsRecord, JSONB> CREATOR = createField(DSL.name("creator"), SQLDataType.JSONB.nullable(false), this, "");
 
     /**
+     * The column <code>public.executions.updater</code>.
+     */
+    public final TableField<ExecutionsRecord, JSONB> UPDATER = createField(DSL.name("updater"), SQLDataType.JSONB.nullable(false), this, "");
+
+    /**
+     * The column <code>public.executions.deleter</code>.
+     */
+    public final TableField<ExecutionsRecord, JSONB> DELETER = createField(DSL.name("deleter"), SQLDataType.JSONB, this, "");
+
+    /**
      * The column <code>public.executions.created_at</code>.
      */
-    public final TableField<ExecutionsRecord, Long> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<ExecutionsRecord, Long> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("((EXTRACT(epoch FROM now()) * (1000)::numeric))::bigint"), SQLDataType.BIGINT)), this, "");
+
+    /**
+     * The column <code>public.executions.updated_at</code>.
+     */
+    public final TableField<ExecutionsRecord, Long> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("((EXTRACT(epoch FROM now()) * (1000)::numeric))::bigint"), SQLDataType.BIGINT)), this, "");
+
+    /**
+     * The column <code>public.executions.deleted_at</code>.
+     */
+    public final TableField<ExecutionsRecord, Long> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.BIGINT, this, "");
 
     /**
      * The column <code>public.executions.inputs</code>.

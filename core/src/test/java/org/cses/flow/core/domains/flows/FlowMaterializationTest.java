@@ -203,7 +203,7 @@ class FlowMaterializationTest {
             route.route()
         );
         assertEquals(
-            List.of("prepare", "decision"),
+            List.of("outputs", "prepare", "decision"),
             route.condition().references().getFirst().path()
         );
         LoopUntil loop = assertInstanceOf(
@@ -211,7 +211,7 @@ class FlowMaterializationTest {
             flow.tasks().getLast()
         );
         assertEquals(
-            List.of("check", "status"),
+            List.of("outputs", "check", "status"),
             loop.condition().references().getFirst().path()
         );
     }
@@ -229,7 +229,7 @@ class FlowMaterializationTest {
                 "tasks", List.of(Map.of(
                     "key", "production-route",
                     "type", Route.class.getName(),
-                    "route", "{{ variables.environment }} == prod",
+                    "route", "{{ vars.environment }} == prod",
                     "tasks", List.of(Map.of(
                         "key", "production-only",
                         "type", AutomaticTask.class.getName()
@@ -246,7 +246,34 @@ class FlowMaterializationTest {
         assertEquals(
             "environment",
             assertInstanceOf(Route.class, flow.tasks().getFirst())
-                .condition().references().getFirst().path().getFirst()
+                .condition().references().getFirst().path().getLast()
+        );
+    }
+
+    @Test
+    void allowsSafeConditionRootsOutsideDefinitionValidatedData() {
+        Flow flow = deploy(
+            "runtime-metadata-route",
+            Map.of(
+                "key", "runtime-metadata-route",
+                "tasks", List.of(Map.of(
+                    "key", "current-route",
+                    "type", Route.class.getName(),
+                    "route", "{{ execution.id }} == execution-1 "
+                        + "&& {{ task.key }} == current-route",
+                    "tasks", List.of(Map.of(
+                        "key", "selected",
+                        "type", AutomaticTask.class.getName()
+                    ))
+                ))
+            ),
+            null
+        );
+
+        assertEquals(
+            List.of("execution", "id"),
+            assertInstanceOf(Route.class, flow.tasks().getFirst())
+                .condition().references().getFirst().path()
         );
     }
 
@@ -261,7 +288,7 @@ class FlowMaterializationTest {
                     "tasks", List.of(Map.of(
                         "key", "invalid-route",
                         "type", Route.class.getName(),
-                        "route", "{{ variables.environment }} == prod",
+                        "route", "{{ vars.environment }} == prod",
                         "tasks", List.of(Map.of(
                             "key", "child",
                             "type", AutomaticTask.class.getName()

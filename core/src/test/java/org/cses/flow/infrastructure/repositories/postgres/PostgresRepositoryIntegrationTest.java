@@ -583,7 +583,7 @@ final class PostgresRepositoryIntegrationTest {
                         .and(tableName.in("flow_tasks", "executions"))
                         .and(columnName.in("flow_id", "flow_reversion"))
         ));
-        int executionAdapterAuditColumnCount = read(dsl -> dsl.fetchCount(
+        int executionAuditColumnCount = read(dsl -> dsl.fetchCount(
                 columns,
                 tableSchema.eq("public")
                         .and(tableName.eq("executions"))
@@ -594,7 +594,7 @@ final class PostgresRepositoryIntegrationTest {
                                 "deleted_at"
                         ))
         ));
-        int taskRunNonDomainTimeColumnCount = read(dsl -> dsl.fetchCount(
+        int taskRunAuditColumnCount = read(dsl -> dsl.fetchCount(
                 columns,
                 tableSchema.eq("public")
                         .and(tableName.eq("task_runs"))
@@ -624,8 +624,8 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(2, stateJsonbColumnCount);
         assertEquals(4, flowVersionBindingColumnCount);
         assertEquals(0, legacyFlowBindingColumnCount);
-        assertEquals(0, executionAdapterAuditColumnCount);
-        assertEquals(0, taskRunNonDomainTimeColumnCount);
+        assertEquals(4, executionAuditColumnCount);
+        assertEquals(5, taskRunAuditColumnCount);
         assertEquals(0, flowDerivedAuditColumnCount);
         assertEquals(
                 "text",

@@ -4,6 +4,8 @@
 package org.flow.gen.flow.records;
 
 
+import java.time.OffsetDateTime;
+
 import org.flow.gen.flow.pojos.QueuesObject;
 import org.flow.gen.flow.tables.QueuesTable;
 import org.jooq.JSONB;
@@ -92,15 +94,15 @@ public class QueuesRecord extends UpdatableRecordImpl<QueuesRecord> {
     /**
      * Setter for <code>public.queues.created_at</code>.
      */
-    public void setCreatedAt(Long value) {
+    public void setCreatedAt(OffsetDateTime value) {
         set(5, value);
     }
 
     /**
      * Getter for <code>public.queues.created_at</code>.
      */
-    public Long getCreatedAt() {
-        return (Long) get(5);
+    public OffsetDateTime getCreatedAt() {
+        return (OffsetDateTime) get(5);
     }
 
     // -------------------------------------------------------------------------
@@ -126,7 +128,7 @@ public class QueuesRecord extends UpdatableRecordImpl<QueuesRecord> {
     /**
      * Create a detached, initialised QueuesRecord
      */
-    public QueuesRecord(String id, String queueType, String queueName, String eventKey, JSONB payload, Long createdAt) {
+    public QueuesRecord(String id, String queueType, String queueName, String eventKey, JSONB payload, OffsetDateTime createdAt) {
         super(QueuesTable.QUEUES);
 
         setId(id);

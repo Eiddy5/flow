@@ -143,10 +143,11 @@
   BeanContext 查找，仅保留明确的 RunnableTask 调用期运行能力。
 - [`ADR 0045`](0045-pass-execution-and-inputs-through-run-variables.md)：通过不可变
   RunContext variables 传递当前 Execution、Execution 级 Flow inputs、当前/父 TaskRun
-  调用期身份与 TaskRun inputs，并由便捷方法解析，不提供状态修改能力。
+  调用期身份与 TaskRun inputs 的历史协议；其 `$flow.*` 键和对象传递方式已由
+  ADR 0076 取代。
 - [`ADR 0058`](0058-remove-dsl-from-run-context.md)：RunContext 不再暴露
-  `DSLContext`；Worker 只传递 Session 和 WorkerTask，ExecutorEventHandler 拥有执行
-  提交所需的事务 DSL。
+  `DSLContext`；ExecutorEventHandler 拥有执行提交所需的事务 DSL。其 Worker 继续传递
+  Session 的历史部分已由 ADR 0076 取消。
 - [`ADR 0029`](0029-model-parallel-as-orchestration-scope.md)：以
   OrchestrationTask 统一编排能力，由 Parallel TaskRun 持有完整并行作用域，并
   定义输入扇出、未选择传播与 concurrent 契约。
@@ -158,14 +159,20 @@
   Loop 固定次数循环、Loop Until 后置条件循环、每轮 TaskRun 身份和可恢复调度协议。
 - [`ADR 0074`](0074-separate-condition-and-structural-task-capabilities.md)：Task 只
   保留共同字段，Branch 独占 tasks，Route 保存 `route` 原文并按需形成 Condition，
-  LoopUntil 直接组合 Condition；Condition 只把完整 `{{ scope.path }}` 识别为引用，
-  其余操作数按常量处理；dependOn 留给 DAG。
+  LoopUntil 直接组合 Condition；Condition 只把完整 `{{ path.to.value }}` 识别为引用，
+  其余操作数按常量处理；dependOn 留给 DAG。固定 scope 已由 ADR 0076 取消。
+- [`ADR 0076`](0076-build-one-run-variable-tree-for-runtime-expressions.md)：由
+  RunVariables Builder 把 Flow、Execution、Task 和 TaskRun 事实投影为统一不可变变量
+  树；RunContext 只保存该树且不保存 Session 或重复身份，Condition 与模板共用完整
+  Map 路径并取消固定 scope；Route 先创建并启动自身 TaskRun，再计算 Condition，未
+  命中时完成自身但不创建子 TaskRun。
 - [`ADR 0052`](0052-bind-confirmed-flow-inputs-to-safe-task-routes.md)：Flow 启动时
   规范化并持久保持 typed inputs 到 `Execution.inputs`，Task Route 可用受限运算符读取
   inputs；宿主只能提交结构化字段映射，不能注入脚本或任意表达式。
 - [`ADR 0055`](0055-add-flow-level-variables.md)：Flow Reversion 持有简单的
   `Map<String, Object>` 流程级变量，Route 和 RunContext 可只读读取，不复制到
-  TaskRun，也不与启动时的 typed inputs 混用。
+  TaskRun，也不与启动时的 typed inputs 混用；当前表达式路径名称由 ADR 0076 统一为
+  `vars.<key>`。
 
 ## Execution、TaskRun、State 与调度
 

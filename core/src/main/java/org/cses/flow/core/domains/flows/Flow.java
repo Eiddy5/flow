@@ -5,7 +5,6 @@ import lombok.NoArgsConstructor;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.conditions.Operand;
-import org.cses.flow.core.domains.conditions.OperandScope;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -25,7 +24,7 @@ import java.util.stream.Stream;
 /**
  * Concrete Flow aggregate for editable drafts and deployed versions.
  */
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Flow extends AbstractFlow {
 
     List<Task> tasks = List.of();
@@ -659,7 +658,7 @@ public class Flow extends AbstractFlow {
             flowVariables
         );
         for (Operand reference : condition.references()) {
-            if (reference.scope() == OperandScope.OUTPUTS) {
+            if (referencesRoot(reference, "outputs")) {
                 requireVisibleOutput(
                     route,
                     condition,
@@ -684,14 +683,14 @@ public class Flow extends AbstractFlow {
             );
         }
         for (Operand reference : condition.references()) {
-            if (reference.scope() == OperandScope.VARIABLES) {
+            if (referencesRoot(reference, "vars")) {
                 requireDeclaredVariable(
                     owner,
                     condition,
                     reference,
                     flowVariables
                 );
-            } else if (reference.scope() == OperandScope.INPUTS) {
+            } else if (referencesRoot(reference, "inputs")) {
                 requireDeclaredInput(
                     owner,
                     condition,
@@ -708,8 +707,16 @@ public class Flow extends AbstractFlow {
         Operand reference,
         Map<String, Object> flowVariables
     ) {
+        List<String> path = reference.path();
+        if (path.size() < 2) {
+            throw new WorkflowException(
+                conditionOwner(owner)
+                    + " Flow variable path must contain a key: "
+                    + reference
+            );
+        }
         Object value = flowVariables;
-        for (String segment : reference.path()) {
+        for (String segment : path.subList(1, path.size())) {
             if (!(value instanceof Map<?, ?> values)
                 || !values.containsKey(segment)) {
                 throw new WorkflowException(
@@ -736,14 +743,14 @@ public class Flow extends AbstractFlow {
         Operand reference,
         List<Input<?>> flowInputs
     ) {
-        if (reference.path().size() != 1) {
+        if (reference.path().size() != 2) {
             throw new WorkflowException(
                 conditionOwner(owner)
                     + " Flow input path must contain one key: "
                     + reference
             );
         }
-        String key = reference.path().getFirst();
+        String key = reference.path().get(1);
         Input<?> input = flowInputs.stream()
             .filter(candidate -> candidate.getKey().equals(key))
             .findFirst()
@@ -794,14 +801,14 @@ public class Flow extends AbstractFlow {
                     + route.key()
             );
         }
-        if (reference.path().size() != 2) {
+        if (reference.path().size() != 3) {
             throw new WorkflowException(
                 "Route.route output path must be taskKey.outputKey: "
                     + reference
             );
         }
-        String taskKey = reference.path().get(0);
-        String outputKey = reference.path().get(1);
+        String taskKey = reference.path().get(1);
+        String outputKey = reference.path().get(2);
         Task source = precedingTasks.stream()
             .filter(candidate -> candidate.key().equals(taskKey))
             .findFirst()
@@ -831,6 +838,14 @@ public class Flow extends AbstractFlow {
                         task.allDescendants().stream()
                 ))
                 .toList();
+    }
+
+    private static boolean referencesRoot(
+        Operand reference,
+        String root
+    ) {
+        return !reference.path().isEmpty()
+            && reference.path().getFirst().equals(root);
     }
 
     protected static String requireText(String value, String field) {

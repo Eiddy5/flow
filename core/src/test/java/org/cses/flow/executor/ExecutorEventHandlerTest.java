@@ -354,7 +354,7 @@ final class ExecutorEventHandlerTest {
         @Override
         public RunResult run(RunContext context) {
             CAPTURED_RUN.set(RunIdentity.from(
-                context.taskRunId(),
+                context.taskRunInfo().id(),
                 context.parentTaskRunId().orElseThrow()
             ));
             return RunResult.success(Map.of());

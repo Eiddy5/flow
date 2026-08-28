@@ -8,19 +8,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 /**
- * Immutable string template that reads scalar values from Task run inputs.
+ * Immutable string template that reads scalar values from runtime variables.
  */
-public final class TemplateExpression {
+public class TemplateExpression {
 
-    private static final Pattern PATH = Pattern.compile(
-        "[A-Za-z][A-Za-z0-9_-]*(?:\\.[A-Za-z][A-Za-z0-9_-]*)*"
-    );
-
-    private final String source;
-    private final List<Segment> segments;
+    private String source;
+    private List<Segment> segments;
 
     private TemplateExpression(String source, List<Segment> segments) {
         this.source = source;
@@ -76,8 +71,11 @@ public final class TemplateExpression {
             if (close < 0) {
                 throw invalidSyntax(source);
             }
-            String path = source.substring(open + 2, close).trim();
-            if (!PATH.matcher(path).matches()) {
+            String pathSource = source.substring(open + 2, close).trim();
+            VariablePath path;
+            try {
+                path = VariablePath.parse(pathSource);
+            } catch (IllegalArgumentException exception) {
                 throw invalidSyntax(source);
             }
             segments.add(Segment.path(path));
@@ -97,19 +95,10 @@ public final class TemplateExpression {
 
     private static String resolveScalar(
         Map<String, ?> variables,
-        String path
+        VariablePath path
     ) {
-        Object current = variables;
-        for (String segment : path.split("\\.")) {
-            if (!(current instanceof Map<?, ?> map)
-                || !map.containsKey(segment)) {
-                throw missingPath(path);
-            }
-            current = map.get(segment);
-        }
-        if (current == null) {
-            throw missingPath(path);
-        }
+        Object current = path.resolve(variables)
+            .orElseThrow(() -> missingPath(path.source()));
         if (current instanceof CharSequence
             || current instanceof Number
             || current instanceof Boolean
@@ -118,7 +107,8 @@ public final class TemplateExpression {
             return current.toString();
         }
         throw new WorkflowException(
-            "Task template expression path is not a scalar value: " + path
+            "Task template expression path is not a scalar value: "
+                + path.source()
         );
     }
 
@@ -145,12 +135,12 @@ public final class TemplateExpression {
         return source;
     }
 
-    private static final class Segment {
+    private static class Segment {
 
-        private final String value;
-        private final String path;
+        private String value;
+        private VariablePath path;
 
-        private Segment(String value, String path) {
+        private Segment(String value, VariablePath path) {
             this.value = value;
             this.path = path;
         }
@@ -159,7 +149,7 @@ public final class TemplateExpression {
             return new Segment(value, null);
         }
 
-        private static Segment path(String path) {
+        private static Segment path(VariablePath path) {
             return new Segment(null, path);
         }
     }
