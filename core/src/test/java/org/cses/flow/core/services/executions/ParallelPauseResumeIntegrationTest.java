@@ -425,9 +425,6 @@ class ParallelPauseResumeIntegrationTest {
                         type: STRING
               - key: join-checks
                 type: org.cses.flow.extensions.tasks.AutomaticTask
-                dependOn:
-                  - backend-check
-                  - frontend-check
               - key: finish
                 type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(key);

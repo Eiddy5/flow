@@ -50,12 +50,17 @@ public final class Uc03AutomaticTask extends Task implements RunnableTask {
                 "result",
                 "processed-" + nestedOutput(
                     context.taskInputs(),
+                    "prepare-input",
                     "payload"
                 )
             ));
             case "observe-output" -> RunResult.success(Map.of(
                 "observed",
-                nestedOutput(context.taskInputs(), "result")
+                nestedOutput(
+                    context.taskInputs(),
+                    "target-success",
+                    "result"
+                )
             ));
             case "target-fail" -> RunResult.failed(
                 "uc03-explicit-failure"
@@ -86,13 +91,16 @@ public final class Uc03AutomaticTask extends Task implements RunnableTask {
 
     private static Object nestedOutput(
         Map<String, Object> inputs,
+        String taskKey,
         String output
     ) {
         Object raw = inputs.get("outputs");
-        if (!(raw instanceof Map<?, ?> outputs)
+        if (!(raw instanceof Map<?, ?> byTask)
+            || !(byTask.get(taskKey) instanceof Map<?, ?> outputs)
             || !outputs.containsKey(output)) {
             throw new IllegalStateException(
-                "Missing expected Task input output: " + output
+                "Missing expected Task input output: "
+                    + taskKey + "." + output
             );
         }
         return outputs.get(output);

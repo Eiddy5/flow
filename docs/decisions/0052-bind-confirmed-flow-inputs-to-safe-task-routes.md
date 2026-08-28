@@ -4,9 +4,10 @@
 
 Accepted（2026-08-14）
 
-本决策修订 ADR 0006、0019、0037 和 0051 中关于 Route 只能读取父 Task
+本决策修订 ADR 0006、0019 和 0051 中关于 Route 只能读取父 Task
 outputs、只支持字符串相等、运行时 Input 尚未绑定，以及 Executor `Create` 不携带
-Input 的旧约束。Loop Until 仍只读取当前轮 outputs，不读取 Flow inputs。
+Input 的旧约束。条件模型及 Route 字段后由 ADR 0074 修订；Loop Until 仍只读取
+当前轮 outputs，不读取 Flow inputs。
 
 ## 背景
 
@@ -32,7 +33,7 @@ Task。
 
 ### 方案三：Flow 声明并校验 typed inputs，Route 读取不可变输入快照
 
-Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 Input key。Express 仍是
+Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 Input key。Condition 是
 受限值对象，不成为脚本执行器。
 
 ## 决策
@@ -44,7 +45,7 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
 - Flow 的 `inputs` 是唯一 Input 目录；每项继续使用 ADR 0019 的 `key`、
   `displayName`、`type`、`required`、`defaultValue` 和具体类型约束。
 - 条件 Route 可以引用直接父 outputs，也可以引用 Flow inputs。Input Route 形如
-  `inputs.<key> <operator> <literal>`。
+  `{{ inputs.<key> }} <operator> <literal>`。
 - 支持的运算符固定为 `==`、`!=`、`>`、`>=`、`<`、`<=`。有序比较只允许数值
   DataType；STRING、CHARACTER 和 BOOLEAN 只允许 `==`、`!=`。
 - literal 只允许转义字符串、boolean 或有限十进制数。方法调用、属性写入、数组、
@@ -52,7 +53,7 @@ Flow 继续拥有编排；宿主只负责把已确认字段值映射到稳定 In
 - 部署时必须确认 Input key 已声明，并确认 literal、运算符和 Input DataType 相容；
   失败不能生成 Flow Reversion。
 - outputs Route 的直接父范围校验继续有效；Loop Until 的两段 outputs 路径和当前轮
-  隔离继续由 ADR 0036、0037 约束。
+  隔离继续由 ADR 0036、0074 约束。
 
 ### 启动与不可变输入
 

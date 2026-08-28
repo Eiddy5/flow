@@ -118,7 +118,7 @@ ActorRef 是共享的不可变值对象。本决策原先允许 ActorRef 直接�
 | TaskRun | 是 | 否 | 否 | 否 |
 
 Task 的具体类型继承 Task 的身份能力。FlowId、ActorRef、Input、Output、State、
-TaskRoute、Express、TemplateExpression 和 RunResult 都是值或定义，不拥有独立
+Condition、TemplateExpression 和 RunResult 都是值或定义，不拥有独立
 生命周期，因此不为统一接口而伪装成实体。Approval 模块继续遵守 ADR 0038 的独立
 边界；它不能反向依赖 server 中的 Flow Core 能力接口，其公共能力需要等未来存在
 真实跨模块复用需求时再提取到双方共同依赖的内核模块。

@@ -50,6 +50,12 @@ class CoreArchitectureStandardTest {
         "UUID\\s*\\.\\s*randomUUID\\s*\\(\\)"
             + "|new\\s+AtomicLong\\s*\\("
     );
+    private static final Pattern DATABASE_CONVERSION_METHOD = Pattern.compile(
+        "(?m)^\\s*(?:(?:public|protected|private|static|final|"
+            + "synchronized|abstract|default)\\s+)*"
+            + "[A-Za-z_$][A-Za-z\\d_$<>,.?\\[\\] ]*\\s+"
+            + "(?:toDomain|fromDomain|toEntry|fromRecord)\\s*\\("
+    );
 
     @Test
     void coreGradleModuleContainsNoHttpServerSources() throws IOException {
@@ -99,18 +105,26 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
-    void expressionValuesRemainInTheExpressionDomain() {
+    void conditionAndTemplateValuesKeepSeparateDomainOwnership() {
+        Path conditions = CORE.resolve("domains/conditions");
         Path expressions = CORE.resolve("domains/expressions");
         Path tasks = CORE.resolve("domains/tasks");
 
         assertTrue(
-            Files.isRegularFile(expressions.resolve("Express.java"))
+            Files.isRegularFile(conditions.resolve("Condition.java"))
+                && Files.isRegularFile(conditions.resolve(
+                    "ConditionParser.java"
+                ))
+                && Files.notExists(conditions.resolve(
+                    "OperandKind.java"
+                ))
                 && Files.isRegularFile(expressions.resolve(
                     "TemplateExpression.java"
                 ))
+                && Files.notExists(tasks.resolve("TaskRoute.java"))
                 && Files.notExists(tasks.resolve("TemplateExpression.java")),
-            "Condition and template expression values must remain owned by "
-                + "the expressions domain"
+            "Condition and template expression values must keep their "
+                + "separate domain ownership"
         );
     }
 
@@ -514,7 +528,7 @@ class CoreArchitectureStandardTest {
         ));
         String executions = Files.readString(FLOW.resolve(
             "infrastructure/repositories/executions/"
-                + "ExecutionPostgresRepository.java"
+                + "ExecutionRepositoryImpl.java"
         ));
         assertTrue(
             invalid.isEmpty()
@@ -531,13 +545,40 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
+    void databaseAdaptersKeepDomainConversionsInEntries() throws IOException {
+        Path infrastructure = FLOW.resolve("infrastructure");
+        List<String> invalid = new ArrayList<>();
+        try (var paths = Files.walk(infrastructure)) {
+            paths.filter(path -> path.toString().endsWith(".java"))
+                .filter(path -> !path.toString().contains("/entries/"))
+                .forEach(path -> {
+                    try {
+                        if (DATABASE_CONVERSION_METHOD.matcher(
+                            Files.readString(path)
+                        ).find()) {
+                            invalid.add(path.toString());
+                        }
+                    } catch (IOException exception) {
+                        throw new IllegalStateException(exception);
+                    }
+                });
+        }
+
+        assertTrue(
+            invalid.isEmpty(),
+            () -> "Database adapters must delegate domain conversions to Entries: "
+                + invalid
+        );
+    }
+
+    @Test
     void postgresBatchWritesBuildOneValuesInsert() throws IOException {
         String flows = Files.readString(FLOW.resolve(
             "infrastructure/repositories/flows/FlowRepositoryImpl.java"
         ));
         String executions = Files.readString(FLOW.resolve(
             "infrastructure/repositories/executions/"
-                + "ExecutionPostgresRepository.java"
+                + "ExecutionRepositoryImpl.java"
         ));
         String queue = Files.readString(FLOW.resolve(
             "infrastructure/queues/PostgresQueueStore.java"
@@ -794,8 +835,11 @@ class CoreArchitectureStandardTest {
             FLOW.resolve("worker/WorkerTaskResult.java")
         );
         assertTrue(
-            state.contains("private final Type current;")
-                && state.contains("private final List<History> history;")
+            state.contains("private Type current;")
+                && state.contains("private List<History> history;")
+                && state.contains("private State(")
+                && !state.contains("setCurrent(")
+                && !state.contains("setHistory(")
                 && state.contains("public Type current()")
                 && state.contains("public List<History> history()")
                 && execution.contains("State state;")

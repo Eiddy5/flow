@@ -153,13 +153,13 @@
 - [`ADR 0031`](0031-model-pause-as-task-backed-gate.md)：Pause 直接拥有暂停前 Task、
   Resume Input、ISO 8601 duration 与 Behavior，并按 Task 即 Plugin 的结构物化。
 - [`ADR 0065`](0065-allow-pause-continuation-tasks.md)：Pause 同时拥有暂停前专有
-  `pause` Task 和恢复后继承的普通 `tasks`，两条关系保持独立并共同进入定义树。
+  `pause` Task 和恢复后继承的普通 `tasks`；其中普通 `tasks` 已由 ADR 0074 取消。
 - [`ADR 0036`](0036-model-loop-and-loop-until-as-recoverable-orchestration-scopes.md)：
   Loop 固定次数循环、Loop Until 后置条件循环、每轮 TaskRun 身份和可恢复调度协议。
-- [`ADR 0037`](0037-centralize-condition-expressions-in-express-domain.md)：由
-  Express 值对象统一 Route 与 Loop Until 的受限 outputs 条件解析和求值，并由
-  消费方分别保护引用范围；TemplateExpression 同属 expressions 领域，但保持独立
-  的模板语法、字符串结果和缺值失败语义。
+- [`ADR 0074`](0074-separate-condition-and-structural-task-capabilities.md)：Task 只
+  保留共同字段，Branch 独占 tasks，Route 保存 `route` 原文并按需形成 Condition，
+  LoopUntil 直接组合 Condition；Condition 只把完整 `{{ scope.path }}` 识别为引用，
+  其余操作数按常量处理；dependOn 留给 DAG。
 - [`ADR 0052`](0052-bind-confirmed-flow-inputs-to-safe-task-routes.md)：Flow 启动时
   规范化并持久保持 typed inputs 到 `Execution.inputs`，Task Route 可用受限运算符读取
   inputs；宿主只能提交结构化字段映射，不能注入脚本或任意表达式。
@@ -232,12 +232,18 @@
 - [`ADR 0072`](0072-domain-owns-audit-and-postgres-adapter-does-not-generate-it.md)：
   审计事实由领域对象产生，PostgreSQL Adapter 只持久化领域字段，不读取 Session 或
   生成当前时间、操作者和独立审计列；Queue 排序时间仍属于基础设施。
+- [`ADR 0073`](0073-keep-flow-lifecycle-rules-in-domain.md)：Flow 版本、删除、定义
+  不可变和正式 Flow 审计保存规则由领域拥有，Repository 只负责查询、聚合恢复和
+  持久化；正式版本 Task 快照只在新版本插入时追加。
 - [`ADR 0009`](0009-persist-current-core-in-postgresql.md)：Core 聚合 PostgreSQL
   持久化。
 - [`ADR 0026`](0026-use-task-class-as-in-project-plugin.md)：`flow_tasks.type`、
   properties JSONB 和 parent_id 派生规则。
+- [`ADR 0075`](0075-use-bigint-time-and-application-validation.md)：Flow PostgreSQL
+  时间统一保存为 Unix 毫秒 `bigint`；数据库只维护结构身份和访问约束，不创建外键
+  或业务校验对象，关系与业务合法性由应用边界保证。
 - [`ADR 0015`](0015-use-long-millisecond-java-time.md)：项目 Java 时间使用 Unix
-  timestamp 毫秒值，数据库保留原生时间类型。
+  timestamp 毫秒值；数据库保留原生时间类型的条款已由 ADR 0075 取代。
 - 各聚合的锁、版本和事务边界继续由所属领域 ADR 及
   [`command-executor.md`](../standards/command-executor.md) 共同约束。
 
@@ -274,5 +280,5 @@
   `(company_id, flow_key)` 全量唯一；独立聚合与表已由 ADR 0069 取代，草稿 key
   唯一规则保留在统一 `flows` 表中。
 
-通用实施方法仍以 [`project-development.md`](../standards/project-development.md)
+通用实施方法仍以 [`development.md`](../standards/development.md)
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。

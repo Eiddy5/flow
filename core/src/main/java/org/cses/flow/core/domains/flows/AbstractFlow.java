@@ -7,14 +7,7 @@ import org.paas.session.RecordState;
 import org.paas.session.Session;
 import org.paas.session.User;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Shared definition facts of an editable draft or deployed Flow version.
@@ -32,65 +25,65 @@ public abstract class AbstractFlow extends Audited {
 
 
     protected AbstractFlow(
-        String id,
-        String key,
-        Long version,
-        boolean draft,
-        Session<? extends User> session,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs
+            String id,
+            String key,
+            Long version,
+            boolean draft,
+            Session<? extends User> session,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs
     ) {
         super(id, session);
         initializeDefinition(
-            key,
-            version,
-            draft,
-            description,
-            variables,
-            inputs,
-            outputs
+                key,
+                version,
+                draft,
+                description,
+                variables,
+                inputs,
+                outputs
         );
     }
 
     protected AbstractFlow(
-        String id,
-        String key,
-        Long version,
-        boolean draft,
-        String companyId,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        ActorRef creator,
-        long createdAt,
-        RecordState status,
-        ActorRef updater,
-        long updatedAt,
-        ActorRef deleter,
-        Long deletedAt
+            String id,
+            String key,
+            Long version,
+            boolean draft,
+            String companyId,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            ActorRef creator,
+            long createdAt,
+            RecordState status,
+            ActorRef updater,
+            long updatedAt,
+            ActorRef deleter,
+            Long deletedAt
     ) {
         super(
-            id,
-            companyId,
-            creator,
-            createdAt,
-            status,
-            updater,
-            updatedAt,
-            deleter,
-            deletedAt
+                id,
+                companyId,
+                creator,
+                createdAt,
+                status,
+                updater,
+                updatedAt,
+                deleter,
+                deletedAt
         );
         initializeDefinition(
-            key,
-            version,
-            draft,
-            description,
-            variables,
-            inputs,
-            outputs
+                key,
+                version,
+                draft,
+                description,
+                variables,
+                inputs,
+                outputs
         );
     }
 
@@ -135,12 +128,12 @@ public abstract class AbstractFlow extends Audited {
     }
 
     protected void reviseDraftDefinition(
-        Session<? extends User> session,
-        long revisedAt,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs
+            Session<? extends User> session,
+            long revisedAt,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs
     ) {
         requireDraft();
         String checkedDescription = normalizeDescription(description);
@@ -158,7 +151,7 @@ public abstract class AbstractFlow extends Audited {
     protected void requireDraft() {
         if (!draft) {
             throw new IllegalStateException(
-                "Deployed Flow cannot be changed as a draft: " + key
+                    "Deployed Flow cannot be changed as a draft: " + key
             );
         }
     }
@@ -166,7 +159,7 @@ public abstract class AbstractFlow extends Audited {
     protected void requireDeployed() {
         if (draft) {
             throw new IllegalStateException(
-                "Draft Flow cannot participate in execution: " + key
+                    "Draft Flow cannot participate in execution: " + key
             );
         }
     }
@@ -175,20 +168,20 @@ public abstract class AbstractFlow extends Audited {
         requireDeployed();
         if (version == null) {
             throw new IllegalStateException(
-                "Deployed Flow has no version: " + key
+                    "Deployed Flow has no version: " + key
             );
         }
         return version;
     }
 
     protected void initializeDefinition(
-        String key,
-        Long version,
-        boolean draft,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs
+            String key,
+            Long version,
+            boolean draft,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs
     ) {
         this.key = requireKey(key);
         this.version = requireVersion(draft, version);
@@ -200,8 +193,8 @@ public abstract class AbstractFlow extends Audited {
     }
 
     private static <T extends Data> List<T> immutableData(
-        List<? extends T> source,
-        String field
+            List<? extends T> source,
+            String field
     ) {
         if (source == null || source.isEmpty()) {
             return List.of();
@@ -211,12 +204,12 @@ public abstract class AbstractFlow extends Audited {
         for (T data : source) {
             if (data == null) {
                 throw new IllegalArgumentException(
-                    field + " must not contain null values"
+                        field + " must not contain null values"
                 );
             }
             if (!keys.add(data.getKey())) {
                 throw new IllegalArgumentException(
-                    field + " contains duplicate key: " + data.getKey()
+                        field + " contains duplicate key: " + data.getKey()
                 );
             }
             result.add(data);
@@ -225,15 +218,15 @@ public abstract class AbstractFlow extends Audited {
     }
 
     private static Map<String, Object> immutableVariables(
-        Map<String, ?> source
+            Map<String, ?> source
     ) {
         if (source == null || source.isEmpty()) {
             return Map.of();
         }
         Map<String, Object> result = new LinkedHashMap<>();
         source.forEach((key, value) -> result.put(
-            Objects.requireNonNull(key, "Flow variable key"),
-            value
+                Objects.requireNonNull(key, "Flow variable key"),
+                value
         ));
         return Collections.unmodifiableMap(result);
     }
@@ -253,14 +246,14 @@ public abstract class AbstractFlow extends Audited {
         if (draft) {
             if (value != null) {
                 throw new IllegalArgumentException(
-                    "Draft Flow must not have a version"
+                        "Draft Flow must not have a version"
                 );
             }
             return null;
         }
         if (value == null || value < 1) {
             throw new IllegalArgumentException(
-                "Deployed Flow version must be positive"
+                    "Deployed Flow version must be positive"
             );
         }
         return value;

@@ -126,17 +126,20 @@ tasks:
 ```yaml
 key: logging-flow
 tasks:
+  - key: prepare
+    type: org.cses.flow.extensions.tasks.AutomaticTask
+    outputs:
+      - key: result
+        type: STRING
   - key: write-log
     type: org.cses.flow.extensions.log.Log
-    dependOn:
-      - prepare
-    message: "处理结果：{{ dependOnOutputs.prepare.result }}"
+    message: "处理结果：{{ outputs.prepare.result }}"
 ```
 
-当前路径只读取本次运行输入：`outputs.<key>` 表示直接父 Task 输出，
-`dependOnOutputs.<taskKey>.<key>` 表示依赖 Task 输出。表达式不能调用方法、执行
-脚本或修改运行上下文；语法错误使部署失败，运行时找不到路径使 Log 明确失败且不
-输出未解析消息。
+当前路径只读取本次 TaskRun 的可见输入。串行作用域中，
+`outputs.<taskKey>.<outputKey>` 表示位于当前 Task 之前且已经完成的 Task 输出；并行
+兄弟之间不共享这个输出域。表达式不能调用方法、执行脚本或修改运行上下文；语法错误
+使部署失败，运行时找不到路径使 Log 明确失败且不输出未解析消息。
 
 ## 目录与定义查询
 
@@ -157,7 +160,9 @@ Draft 7。每个 example 包含 `title`、`code`、`lang` 和 `full`：
 - `key` 和插件自身的必填字段进入 `required`。
 - `id` 不对调用方公开；默认存在的 Task 公共字段不会被误标为必填。
 - 未声明字段由 `additionalProperties: false` 拒绝。
-- `tasks` 表示任意递归 Task，不展开当前插件清单；子 Task 选型后再查询其详情。
+- 只有继承 `Branch` 的结构型插件才公开 `tasks`，其元素表示任意递归 Task，不展开
+  当前插件清单；子 Task 选型后再查询其详情。普通 Runnable Task 和 Pause 不公开
+  `tasks`。
 
 Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响应用启动，会在对应
 详情查询时由框架暴露。
@@ -186,8 +191,8 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
   与实际输入，Task 应通过 `executionId()` 和 `inputs()` 读取它们，不得修改 Execution
   或直接访问 Flow 的 Execution/TaskRun Repository。宿主业务能力应通过明确的扩展接口
   接入，不通过通用容器查找。OrchestrationTask 只声明 Executor 识别的编排特征。
-- 普通 Task 通过 `tasks` 保存递归 children，不保存 `parentId`。类型专有包含关系
-  通过 `Task.definitionChildren()` 暴露，例如 Pause 的 `pause` Task 随插件
-  properties 保存。Repository 在写入普通 `tasks` 时派生 `parent_id`，读取后必须
-  同时恢复通用和类型专有定义树。
+- 抽象 Task 不保存 `tasks` 或 `parentId`。结构型 `Branch` 通过 `tasks` 保存递归
+  children；Pause 的 `pause` 是类型专有包含关系。所有包含关系都通过
+  `Task.definitionChildren()` 暴露。Repository 写入定义树时派生 `parent_id`，读取后
+  必须按具体 Task 类型恢复 Branch 子树或类型专有定义树。
 - 重命名 Task 类或修改 package 会改变持久化类型，是一次显式兼容性变更。

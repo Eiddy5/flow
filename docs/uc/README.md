@@ -31,10 +31,10 @@ docs/uc/
     UC-01 Flow 草稿生命周期与多租户管理.md
     UC-02 用户启动、查询与取消 Flow.md
     UC-03 用户运行自动流程.md
-    UC-04 用户处理外派任务并恢复流程.md
-    UC-05 用户处理并行外派任务.md
-    UC-06 用户提交外派结果后的条件路径.md
-    UC-07 用户处理多阶段外派流程.md
+    UC-04 用户恢复处于 Pause 的 Flow.md
+    UC-05 用户处理包含并行 Pause 的 Flow.md
+    UC-06 用户使用 Pause 结果选择 Flow 路径.md
+    UC-07 用户处理包含多阶段 Pause 的 Flow.md
     UC-08 用户在流程中输出动态日志.md
     UC-09 用户定义并运行循环流程.md
 ```

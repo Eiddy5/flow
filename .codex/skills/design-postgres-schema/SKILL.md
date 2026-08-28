@@ -14,8 +14,7 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
 ## 加载项目上下文
 
 1. 阅读 `AGENTS.md`。
-2. 阅读 `docs/project-structure.md` 和
-   `docs/standards/project-development.md`。
+2. 阅读 `docs/project-structure.md` 和 `docs/standards/development.md`。
 3. 阅读 `docs/standards/postgresql-schema.md`，再阅读 `docs/standards/`、
    `docs/decisions/` 和 `docs/uc/` 中与当前领域、数据库、JOOQ、生命周期及架构
    有关的资料。
@@ -113,6 +112,10 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
 
 ## 设计物理约束
 
+以下内容是跨项目的约束选择方法；项目规范可以进一步限制数据库承担的校验职责。
+当前 Flow 项目以 `docs/standards/postgresql-schema.md` 为准，不使用 `CHECK`、外键或
+其他数据库业务校验对象。
+
 明确决定每个不变量由哪里保证：
 
 - 使用 `PRIMARY KEY` 标识一行数据。
@@ -159,20 +162,18 @@ description: 采用可复用、领域驱动的方法设计、审查和演进 Pos
 - 使用由应用生成的 `varchar(64)` 技术 ID。
 - 需要审计快照时，使用 `creator`、`updater` 和 `deleter` JSONB 字段保存用户快照；
   只有需要直接过滤或索引时才增加派生的操作者 ID 字段。
-- PostgreSQL 的所有 `*_at` 时间值使用 `timestamptz`；项目自有 Java 类型仍按
-  ADR 0015 使用 Unix 毫秒 `long/Long`，只在 Entry/Repository 边界转换。
-- 必填的创建和更新时间使用以下数据库默认值：
-
-```sql
-DEFAULT now()
-```
-
+- PostgreSQL 的所有时间点使用 UTC Unix timestamp 毫秒 `bigint`，字段名使用
+  `*_at`；时长、超时和间隔使用带单位的 `*_millis` 等字段并同样保存为 `bigint`。
+- 项目自有时间语义不使用 PostgreSQL `date`、`time`、`timestamp`、`timestamptz`
+  或 `interval`。领域审计时间由领域产生，数据库只可为自身拥有的纯技术时间提供
+  `bigint` 默认值。
 - 需要软删除时使用 `deleted_at`。
 - 无法避免使用 SQL 关键字作为字段名时加双引号，例如 `"order"`。
-- 不生成 PostgreSQL 外键。通过关系字段、应用校验、唯一约束、检查约束和查询索引
-  表达关系。
+- 不生成 PostgreSQL 外键、`CHECK`、排他约束、Trigger、Rule、存储
+  Function/Procedure、自定义 Domain 或 Enum 等数据库业务校验对象。通过关系字段、
+  应用校验、主键、唯一约束、非空和查询索引表达存储与访问边界。
 - 根据实际查询路径增加租户查询、状态队列、父子遍历、有序读取和历史查询索引。
-- 将 JSON 类型、状态、版本和软删除一致性检查放在表定义附近。
+- JSON 类型、状态、版本、软删除和关系一致性由应用对应所有权边界校验。
 - 表结构文件隔离与表命名遵循 `docs/standards/postgresql-schema.md`；字段、索引和
   约束继续使用小写蛇形命名。
 
@@ -206,10 +207,13 @@ JOOQ；不要在应用启动时自动删表或清库。
 
 ```bash
 rg -n "FOREIGN KEY|REFERENCES|CONSTRAINT fk_" gen/sql/flow/tables
-rg -n "_at\s+bigint" gen/sql/flow/tables
+rg -n "CHECK\s*\(|CREATE\s+(TRIGGER|RULE|FUNCTION|PROCEDURE|DOMAIN|TYPE)" \
+  gen/sql/flow/tables
+rg -n "\b(date|time|timetz|timestamp|timestamptz|interval)\b" \
+  gen/sql/flow/tables
 ```
 
-按照当前项目规则，两项检查都不应匹配任何内容。
+按照当前项目规则，以上检查都不应匹配任何内容。
 
 使用 PostgreSQL 验证完整基线：
 
@@ -226,7 +230,10 @@ rg -n "_at\s+bigint" gen/sql/flow/tables
 - 再次成功执行同一基线；
 - 确认最终数据库表集合与表文件集合一致；
 - 确认 PostgreSQL 外键数量为零；
-- 确认所有 `*_at` 字段都是 `timestamptz`；
+- 确认 PostgreSQL `CHECK`、排他约束、用户 Trigger、Rule、存储 Function/Procedure、
+  自定义 Domain 和 Enum 数量均为零；
+- 确认所有 `*_at` 和 `*_millis` 字段都是 `bigint`，并且不存在 PostgreSQL 原生
+  日期时间字段；
 - 删除临时数据库容器。
 
 不验证旧 Schema 的升级路径；每次变更都验证空库建表、相同基线重复执行以及最终

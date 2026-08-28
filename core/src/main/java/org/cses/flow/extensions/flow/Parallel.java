@@ -5,7 +5,6 @@ import jakarta.validation.constraints.Positive;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
-import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 
@@ -40,7 +39,7 @@ import java.util.OptionalInt;
 )
 @SuperBuilder
 @NoArgsConstructor
-public final class Parallel extends Task implements OrchestrationTask {
+public class Parallel extends Branch implements OrchestrationTask {
 
     @Positive
     @Schema(

@@ -49,7 +49,6 @@ public final class ModelValidator {
         }
         requireTrimmedText(task.id(), "Task id");
         requireTrimmedText(task.key(), "Task key");
-        Objects.requireNonNull(task.route(), "Task route");
         boolean runnable = task instanceof RunnableTask;
         boolean orchestration = task instanceof OrchestrationTask;
         if (runnable == orchestration) {
@@ -60,7 +59,6 @@ public final class ModelValidator {
         }
         requireUniqueData(task.inputs(), "Task inputs");
         requireUniqueData(task.outputs(), "Task outputs");
-        requireUniqueText(task.dependOn(), "Task dependOn");
         for (Input<?> input : task.inputs()) {
             input.validateDefinition();
         }
@@ -100,22 +98,4 @@ public final class ModelValidator {
         }
     }
 
-    private static void requireUniqueText(
-        List<String> values,
-        String field
-    ) {
-        Set<String> unique = new HashSet<>();
-        for (String value : values) {
-            if (value == null || value.isBlank()) {
-                throw new IllegalArgumentException(
-                    field + " values must not be blank"
-                );
-            }
-            if (!unique.add(value)) {
-                throw new IllegalArgumentException(
-                    field + " contains duplicate key: " + value
-                );
-            }
-        }
-    }
 }

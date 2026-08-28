@@ -36,6 +36,29 @@ gen/sql/flow/
 - 字段名表达单行引用时仍使用单数，例如 `task_run_id` 指向一个 TaskRun，不随表名
   机械复数化。
 
+## 时间字段
+
+- PostgreSQL 中所有表达时间点的字段统一使用 `bigint`，值为 UTC Unix timestamp
+  毫秒数。该规则同时适用于领域审计时间、生命周期时间和 Queue 排序时间等技术时间。
+- 时间点字段统一使用 `*_at` 命名；时长、超时和间隔统一使用 `bigint` 毫秒值，并在
+  字段名中包含 `*_millis` 等明确单位。
+- 项目自有 Schema 不使用 `date`、`time`、`timestamp`、`timestamptz` 或 `interval`
+  保存时间语义。可空时间使用可空 `bigint`；必填时间使用 `bigint NOT NULL`。
+- 时间由领域、应用或基础设施中的实际事实所有者生成。数据库可以为自身拥有的纯技术
+  时间提供 `bigint` 默认值，但不得生成或改变领域审计时间。
+
+## 约束与校验边界
+
+- 表结构不得创建 `FOREIGN KEY` 或 `REFERENCES`。跨表关系只保留关系字段和查询索引，
+  由领域聚合、应用校验、Repository 租户条件及同一事务写入保证。
+- 数据库不承担业务合法性校验。不得使用 `CHECK`、排他约束、Trigger、Rule、存储
+  Function/Procedure、自定义 Domain 或 Enum 等数据库对象校验状态值、JSON 结构、
+  时间范围、父子关系、租户归属或生命周期规则。
+- 业务字段、状态转换、JSON 内容和跨表关系必须在 Domain、Service、Handler、
+  Repository 的对应所有权边界完成校验，并由测试保护。
+- `PRIMARY KEY`、`UNIQUE`、`NOT NULL`、查询索引以及纯技术默认值仍然允许。它们只
+  表达行身份、幂等或唯一性、必需的存储形状和访问路径，不承载业务状态校验。
+
 ## 基线演进
 
 项目仍处于允许丢弃旧开发数据的阶段。修改 Schema 时直接编辑所属表文件；新增表时
@@ -46,10 +69,11 @@ gen/sql/flow/
 
 1. 在空 PostgreSQL 数据库执行完整入口，并再次执行同一入口。
 2. 确认每个表文件只定义同名的一张表，最终表集合与文件集合完全一致。
-3. 确认没有 PostgreSQL 外键，时间字段类型遵循对应领域与数据库决策；当前 Flow
-   基线的领域时间和 Queue 顺序时间使用 Epoch 毫秒 `bigint`，不由数据库生成领域
-   审计事实。
-4. 重建开发数据库，重新生成 JOOQ，并同步 Repository、Entry 和相关测试引用。
+3. 确认没有 PostgreSQL 外键、`CHECK`、排他约束、Trigger、Rule、存储
+   Function/Procedure、自定义 Domain 或 Enum 等数据库校验对象。
+4. 确认所有时间点字段和毫秒时长字段均为 `bigint`，没有 PostgreSQL 原生日期时间
+   类型，且数据库没有生成领域审计事实。
+5. 重建开发数据库，重新生成 JOOQ，并同步 Repository、Entry 和相关测试引用。
 
 统一验证命令：
 

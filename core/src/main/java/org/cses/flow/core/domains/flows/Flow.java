@@ -3,12 +3,16 @@ package org.cses.flow.core.domains.flows;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.cses.flow.core.domains.ActorRef;
+import org.cses.flow.core.domains.conditions.Condition;
+import org.cses.flow.core.domains.conditions.Operand;
+import org.cses.flow.core.domains.conditions.OperandScope;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.RequiredUtil;
 import org.cses.flow.core.utils.SessionUtil;
+import org.cses.flow.extensions.flow.Route;
+import org.cses.flow.extensions.flow.LoopUntil;
 import org.paas.common.util.StringUtil;
 import org.paas.session.RecordState;
 import org.paas.session.Session;
@@ -21,35 +25,35 @@ import java.util.stream.Stream;
 /**
  * Concrete Flow aggregate for editable drafts and deployed versions.
  */
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor
 public class Flow extends AbstractFlow {
 
     List<Task> tasks = List.of();
     String source;
 
     private Flow(
-        String id,
-        String key,
-        Long version,
-        boolean draft,
-        Session<? extends User> session,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        String source
+            String id,
+            String key,
+            Long version,
+            boolean draft,
+            Session<? extends User> session,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            String source
     ) {
         super(
-            id,
-            key,
-            version,
-            draft,
-            session,
-            description,
-            variables,
-            inputs,
-            outputs
+                id,
+                key,
+                version,
+                draft,
+                session,
+                description,
+                variables,
+                inputs,
+                outputs
         );
         this.tasks = immutableTasks(tasks);
         this.source = RequiredUtil.required(source, "Flow source");
@@ -57,168 +61,169 @@ public class Flow extends AbstractFlow {
     }
 
     private Flow(
-        String id,
-        String key,
-        Long version,
-        boolean draft,
-        String companyId,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        RecordState status,
-        ActorRef creator,
-        ActorRef updater,
-        ActorRef deleter,
-        long createdAt,
-        long updatedAt,
-        Long deletedAt,
-        String source
+            String id,
+            String key,
+            Long version,
+            boolean draft,
+            String companyId,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            RecordState status,
+            ActorRef creator,
+            ActorRef updater,
+            ActorRef deleter,
+            long createdAt,
+            long updatedAt,
+            Long deletedAt,
+            String source
     ) {
         super(
-            id,
-            key,
-            version,
-            draft,
-            companyId,
-            description,
-            variables,
-            inputs,
-            outputs,
-            creator,
-            createdAt,
-            status,
-            updater,
-            updatedAt,
-            deleter,
-            deletedAt
+                id,
+                key,
+                version,
+                draft,
+                companyId,
+                description,
+                variables,
+                inputs,
+                outputs,
+                creator,
+                createdAt,
+                status,
+                updater,
+                updatedAt,
+                deleter,
+                deletedAt
         );
         this.tasks = immutableTasks(tasks);
         this.source = RequiredUtil.required(source, "Flow source");
         validateTasksForState();
     }
+
     public static Flow create(
-        Session<? extends User> session,
-        String key,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        String source
+            Session<? extends User> session,
+            String key,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            String source
     ) {
         return create(
-            session,
-            key,
-            description,
-            variables,
-            inputs,
-            outputs,
-            List.of(),
-            source
+                session,
+                key,
+                description,
+                variables,
+                inputs,
+                outputs,
+                List.of(),
+                source
         );
     }
 
     public static Flow create(
-        Session<? extends User> session,
-        String key,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        String source
+            Session<? extends User> session,
+            String key,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            String source
     ) {
         return new Flow(
-            StringUtil.newId(),
-            key,
-            null,
-            true,
-            session,
-            description,
-            variables,
-            inputs,
-            outputs,
-            tasks,
-            source
+                StringUtil.newId(),
+                key,
+                null,
+                true,
+                session,
+                description,
+                variables,
+                inputs,
+                outputs,
+                tasks,
+                source
         );
     }
 
     public static Flow deploy(
-        Session<? extends User> session,
-        String key,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        String source,
-        Flow latest
+            Session<? extends User> session,
+            String key,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            String source,
+            Flow latest
     ) {
         String normalizedKey = requireText(key, "Flow key");
         List<Task> boundTasks = tasks == null
-            ? List.of()
-            : List.copyOf(tasks);
+                ? List.of()
+                : List.copyOf(tasks);
         long version = nextVersion(
-            session,
-            normalizedKey,
-            boundTasks,
-            latest
+                session,
+                normalizedKey,
+                boundTasks,
+                latest
         );
         return new Flow(
-            StringUtil.newId(),
-            normalizedKey,
-            version,
-            false,
-            session,
-            description,
-            variables,
-            inputs,
-            outputs,
-            boundTasks,
-            source
+                StringUtil.newId(),
+                normalizedKey,
+                version,
+                false,
+                session,
+                description,
+                variables,
+                inputs,
+                outputs,
+                boundTasks,
+                source
         );
     }
 
     public static Flow rehydrate(
-        String id,
-        String companyId,
-        String key,
-        boolean draft,
-        Long version,
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> tasks,
-        RecordState status,
-        ActorRef creator,
-        ActorRef updater,
-        ActorRef deleter,
-        long createdAt,
-        long updatedAt,
-        Long deletedAt,
-        String source
+            String id,
+            String companyId,
+            String key,
+            boolean draft,
+            Long version,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            RecordState status,
+            ActorRef creator,
+            ActorRef updater,
+            ActorRef deleter,
+            long createdAt,
+            long updatedAt,
+            Long deletedAt,
+            String source
     ) {
         return new Flow(
-            id,
-            key,
-            version,
-            draft,
-            companyId,
-            description,
-            variables,
-            inputs,
-            outputs,
-            tasks,
-            status,
-            creator,
-            updater,
-            deleter,
-            createdAt,
-            updatedAt,
-            deletedAt,
-            source
+                id,
+                key,
+                version,
+                draft,
+                companyId,
+                description,
+                variables,
+                inputs,
+                outputs,
+                tasks,
+                status,
+                creator,
+                updater,
+                deleter,
+                createdAt,
+                updatedAt,
+                deletedAt,
+                source
         );
     }
 
@@ -228,10 +233,10 @@ public class Flow extends AbstractFlow {
      * audit, lifecycle and raw source facts.
      */
     public void initialize(
-        Session<? extends User> session,
-        boolean draft,
-        Flow latest,
-        String rawSource
+            Session<? extends User> session,
+            boolean draft,
+            Flow latest,
+            String rawSource
     ) {
         if (id() != null) {
             throw new IllegalStateException("Flow is already initialized");
@@ -242,22 +247,22 @@ public class Flow extends AbstractFlow {
         if (!draft) {
             rebindTaskIds(latest, boundTasks);
             nextVersion = nextVersion(
-                session,
-                normalizedKey,
-                boundTasks,
-                latest
+                    session,
+                    normalizedKey,
+                    boundTasks,
+                    latest
             );
         }
 
         initializeAudit(session);
         initializeDefinition(
-            normalizedKey,
-            draft ? null : nextVersion,
-            draft,
-            description,
-            variables,
-            inputs,
-            outputs
+                normalizedKey,
+                draft ? null : nextVersion,
+                draft,
+                description,
+                variables,
+                inputs,
+                outputs
         );
         tasks = boundTasks;
         source = RequiredUtil.required(rawSource, "Flow source");
@@ -269,12 +274,12 @@ public class Flow extends AbstractFlow {
             throw new IllegalStateException("Flow is already initialized");
         }
         String supplied = suppliedKey == null || suppliedKey.isBlank()
-            ? null
-            : suppliedKey.trim();
+                ? null
+                : suppliedKey.trim();
         if (key == null || key.isBlank()) {
             if (supplied == null) {
                 throw new IllegalArgumentException(
-                    "Flow key or top-level YAML key must be provided"
+                        "Flow key or top-level YAML key must be provided"
                 );
             }
             key = supplied;
@@ -283,8 +288,8 @@ public class Flow extends AbstractFlow {
         String declared = key.trim();
         if (supplied != null && !supplied.equals(declared)) {
             throw new WorkflowException(
-                "Flow key does not match YAML: "
-                    + supplied + " -> " + declared
+                    "Flow key does not match YAML: "
+                            + supplied + " -> " + declared
             );
         }
         key = declared;
@@ -300,48 +305,48 @@ public class Flow extends AbstractFlow {
     }
 
     public void revise(
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        String revisedSource,
-        Session<? extends User> session,
-        long revisedAt
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            String revisedSource,
+            Session<? extends User> session,
+            long revisedAt
     ) {
         revise(
-            description,
-            variables,
-            inputs,
-            outputs,
-            tasks,
-            revisedSource,
-            session,
-            revisedAt
+                description,
+                variables,
+                inputs,
+                outputs,
+                tasks,
+                revisedSource,
+                session,
+                revisedAt
         );
     }
 
     public void revise(
-        String description,
-        Map<String, ?> variables,
-        List<? extends Input<?>> inputs,
-        List<? extends Output> outputs,
-        List<? extends Task> revisedTasks,
-        String revisedSource,
-        Session<? extends User> session,
-        long revisedAt
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> revisedTasks,
+            String revisedSource,
+            Session<? extends User> session,
+            long revisedAt
     ) {
         requireDraft();
         String checkedSource = RequiredUtil.required(
-            revisedSource,
-            "Flow source"
+                revisedSource,
+                "Flow source"
         );
         reviseDraftDefinition(
-            session,
-            revisedAt,
-            description,
-            variables,
-            inputs,
-            outputs
+                session,
+                revisedAt,
+                description,
+                variables,
+                inputs,
+                outputs
         );
         List<Task> boundTasks = immutableTasks(revisedTasks);
         rebindTaskIds(this, boundTasks);
@@ -354,24 +359,24 @@ public class Flow extends AbstractFlow {
      */
     public Flow copy() {
         return rehydrate(
-            id(),
-            companyId(),
-            key(),
-            draft(),
-            versionOrNull(),
-            description(),
-            variables(),
-            inputs(),
-            outputs(),
-            tasks,
-            status(),
-            creator(),
-            updater(),
-            deleter().orElse(null),
-            createdAt(),
-            updatedAt(),
-            deletedAt().orElse(null),
-            source
+                id(),
+                companyId(),
+                key(),
+                draft(),
+                versionOrNull(),
+                description(),
+                variables(),
+                inputs(),
+                outputs(),
+                tasks,
+                status(),
+                creator(),
+                updater(),
+                deleter().orElse(null),
+                createdAt(),
+                updatedAt(),
+                deletedAt().orElse(null),
+                source
         );
     }
 
@@ -474,10 +479,10 @@ public class Flow extends AbstractFlow {
     }
 
     protected static long nextVersion(
-        Session<? extends User> session,
-        String flowKey,
-        List<Task> tasks,
-        Flow latest
+            Session<? extends User> session,
+            String flowKey,
+            List<Task> tasks,
+            Flow latest
     ) {
         String companyId = SessionUtil.company(session);
         if (latest == null) {
@@ -485,18 +490,18 @@ public class Flow extends AbstractFlow {
         }
         if (!companyId.equals(latest.companyId())) {
             throw new IllegalArgumentException(
-                "Latest Flow belongs to another logical Flow"
+                    "Latest Flow belongs to another logical Flow"
             );
         }
         if (latest.deleted()) {
             throw new WorkflowException(
-                "Deleted Flow cannot be deployed: " + flowKey
+                    "Deleted Flow cannot be deployed: " + flowKey
             );
         }
         if (!latest.key().equals(flowKey)) {
             throw new WorkflowException(
-                "Flow key cannot change across reversion: "
-                    + latest.key() + " -> " + flowKey
+                    "Flow key cannot change across reversion: "
+                            + latest.key() + " -> " + flowKey
             );
         }
         requireStableTaskIds(latest, tasks);
@@ -514,7 +519,7 @@ public class Flow extends AbstractFlow {
         for (Task task : flatten(tasks)) {
             String previousId = previousIdByKey.get(task.key());
             if (previousId != null
-                && !task.identifiedBy(previousId)) {
+                    && !task.identifiedBy(previousId)) {
                 throw new WorkflowException(
                         "Task id cannot change across reversion: " + task.key()
                 );
@@ -549,7 +554,6 @@ public class Flow extends AbstractFlow {
                 flowInputs,
                 flowVariables
         );
-        validateDependencies(tasks, keys);
     }
 
     private void validateTasksForState() {
@@ -564,13 +568,13 @@ public class Flow extends AbstractFlow {
             return;
         }
         Map<String, String> previousIdByKey = previous.allTasks().stream()
-            .collect(Collectors.toMap(Task::key, Task::id));
+                .collect(Collectors.toMap(Task::key, Task::id));
         rebindTaskIds(tasks, previousIdByKey);
     }
 
     private static void rebindTaskIds(
-        List<Task> tasks,
-        Map<String, String> previousIdByKey
+            List<Task> tasks,
+            Map<String, String> previousIdByKey
     ) {
         for (Task task : tasks) {
             String previousId = previousIdByKey.get(task.key());
@@ -582,11 +586,11 @@ public class Flow extends AbstractFlow {
     }
 
     private static List<Task> immutableTasks(
-        List<? extends Task> source
+            List<? extends Task> source
     ) {
         return source == null || source.isEmpty()
-            ? List.of()
-            : List.copyOf(source);
+                ? List.of()
+                : List.copyOf(source);
     }
 
     private static void validateTasks(
@@ -597,6 +601,7 @@ public class Flow extends AbstractFlow {
             List<Input<?>> flowInputs,
             Map<String, Object> flowVariables
     ) {
+        List<Task> precedingTasks = new ArrayList<>();
         for (Task task : tasks) {
             if (task == null) {
                 throw new WorkflowException(
@@ -611,72 +616,22 @@ public class Flow extends AbstractFlow {
             if (!ids.add(taskId)) {
                 throw new WorkflowException("Duplicate Task id: " + taskId);
             }
-            if (parent == null
-                    && !TaskRoute.direct().equals(task.route())) {
-                throw new WorkflowException(
-                        "Top-level Task route must be DIRECT: " + taskKey
+            if (task instanceof Route route) {
+                validateRouteCondition(
+                    route,
+                    precedingTasks,
+                    parent,
+                    flowInputs,
+                    flowVariables
+                );
+            } else if (task instanceof LoopUntil loopUntil) {
+                validateExternalConditionReferences(
+                    loopUntil,
+                    loopUntil.condition(),
+                    flowInputs,
+                    flowVariables
                 );
             }
-            if (task.route() == null) {
-                throw new WorkflowException(
-                        "Task route must not be null: " + taskKey
-                );
-            }
-            boolean ordinaryChild = parent == null
-                    || parent.tasks().contains(task);
-            if (ordinaryChild) {
-                task.route().referencedOutputKey().ifPresent(outputKey -> {
-                    boolean parallelInput =
-                            parent instanceof OrchestrationTask orchestrationTask
-                                    && orchestrationTask
-                                    .startsChildrenInParallel();
-                    boolean declared = parent != null
-                            && (parallelInput
-                            ? parent.declaresInput(outputKey)
-                            : parent.declaresOutput(outputKey));
-                    if (!declared) {
-                        throw new WorkflowException(
-                                "Task route references undeclared parent context "
-                                        + outputKey + ": " + taskKey
-                        );
-                    }
-                    Data routeData = (parallelInput
-                            ? parent.inputs().stream()
-                            : parent.outputs().stream())
-                            .filter(data -> data.getKey().equals(outputKey))
-                            .findFirst()
-                            .orElseThrow();
-                    if (!task.route().supports(routeData.getType())) {
-                        throw new WorkflowException(
-                                "Task route is incompatible with parent context "
-                                        + outputKey + ": " + taskKey
-                        );
-                    }
-                });
-                task.route().referencedInputKey().ifPresent(inputKey -> {
-                    Input<?> flowInput = flowInputs.stream()
-                            .filter(input -> input.getKey().equals(inputKey))
-                            .findFirst()
-                            .orElseThrow(() -> new WorkflowException(
-                                    "Task route references undeclared Flow input "
-                                            + inputKey + ": " + taskKey
-                            ));
-                    if (!task.route().supports(flowInput.getType())) {
-                        throw new WorkflowException(
-                                "Task route is incompatible with Flow input "
-                                        + inputKey + ": " + taskKey
-                        );
-                    }
-                });
-            }
-            task.route().referencedVariableKey().ifPresent(variableKey -> {
-                if (!flowVariables.containsKey(variableKey)) {
-                    throw new WorkflowException(
-                            "Task route references undeclared Flow variable "
-                                    + variableKey + ": " + taskKey
-                    );
-                }
-            });
             validateTasks(
                     task.definitionChildren(),
                     keys,
@@ -685,53 +640,186 @@ public class Flow extends AbstractFlow {
                     flowInputs,
                     flowVariables
             );
+            precedingTasks.add(task);
         }
     }
 
-    private static void validateDependencies(
-            List<Task> tasks,
-            Set<String> keys
+    private static void validateRouteCondition(
+        Route route,
+        List<Task> precedingTasks,
+        Task parent,
+        List<Input<?>> flowInputs,
+        Map<String, Object> flowVariables
     ) {
-        Map<String, Task> tasksByKey = flatten(tasks).stream()
-                .collect(Collectors.toMap(
-                        Task::key,
-                        task -> task,
-                        (first, second) -> first,
-                        LinkedHashMap::new
-                ));
-        for (Task task : tasksByKey.values()) {
-            for (String dependency : task.dependOn()) {
-                if (!keys.contains(dependency)) {
-                    throw new WorkflowException(
-                            "Task dependency does not exist: "
-                                    + task.key() + " -> " + dependency
-                    );
-                }
-                if (task.key().equals(dependency)) {
-                    throw new WorkflowException(
-                            "Task cannot depend on itself: " + task.key()
-                    );
-                }
+        Condition condition = route.condition();
+        validateExternalConditionReferences(
+            route,
+            condition,
+            flowInputs,
+            flowVariables
+        );
+        for (Operand reference : condition.references()) {
+            if (reference.scope() == OperandScope.OUTPUTS) {
+                requireVisibleOutput(
+                    route,
+                    condition,
+                    reference,
+                    precedingTasks,
+                    parent
+                );
             }
-            detectDependencyCycle(task, tasksByKey, new LinkedHashSet<>());
         }
     }
 
-    private static void detectDependencyCycle(
-            Task task,
-            Map<String, Task> tasksByKey,
-            Set<String> path
+    private static void validateExternalConditionReferences(
+        Task owner,
+        Condition condition,
+        List<Input<?>> flowInputs,
+        Map<String, Object> flowVariables
     ) {
-        if (!path.add(task.key())) {
+        if (condition == null) {
             throw new WorkflowException(
-                    "Task dependency cycle contains: " + task.key()
+                conditionOwner(owner)
+                    + " must not be null: " + owner.key()
             );
         }
-        for (String dependency : task.dependOn()) {
-            detectDependencyCycle(
-                    tasksByKey.get(dependency),
-                    tasksByKey,
-                    new LinkedHashSet<>(path)
+        for (Operand reference : condition.references()) {
+            if (reference.scope() == OperandScope.VARIABLES) {
+                requireDeclaredVariable(
+                    owner,
+                    condition,
+                    reference,
+                    flowVariables
+                );
+            } else if (reference.scope() == OperandScope.INPUTS) {
+                requireDeclaredInput(
+                    owner,
+                    condition,
+                    reference,
+                    flowInputs
+                );
+            }
+        }
+    }
+
+    private static void requireDeclaredVariable(
+        Task owner,
+        Condition condition,
+        Operand reference,
+        Map<String, Object> flowVariables
+    ) {
+        Object value = flowVariables;
+        for (String segment : reference.path()) {
+            if (!(value instanceof Map<?, ?> values)
+                || !values.containsKey(segment)) {
+                throw new WorkflowException(
+                    conditionOwner(owner)
+                        + " references undeclared Flow variable "
+                        + reference + ": " + owner.key()
+                );
+            }
+            value = values.get(segment);
+        }
+        DataType type = dataType(value);
+        if (type != null && !condition.supports(reference, type)) {
+            throw new WorkflowException(
+                conditionOwner(owner)
+                    + " is incompatible with Flow variable "
+                    + reference + ": " + owner.key()
+            );
+        }
+    }
+
+    private static void requireDeclaredInput(
+        Task owner,
+        Condition condition,
+        Operand reference,
+        List<Input<?>> flowInputs
+    ) {
+        if (reference.path().size() != 1) {
+            throw new WorkflowException(
+                conditionOwner(owner)
+                    + " Flow input path must contain one key: "
+                    + reference
+            );
+        }
+        String key = reference.path().getFirst();
+        Input<?> input = flowInputs.stream()
+            .filter(candidate -> candidate.getKey().equals(key))
+            .findFirst()
+            .orElseThrow(() -> new WorkflowException(
+                conditionOwner(owner)
+                    + " references undeclared Flow input "
+                    + key + ": " + owner.key()
+            ));
+        if (!condition.supports(reference, input.getType())) {
+            throw new WorkflowException(
+                conditionOwner(owner)
+                    + " is incompatible with Flow input "
+                    + key + ": " + owner.key()
+            );
+        }
+    }
+
+    private static DataType dataType(Object value) {
+        if (value instanceof String) return DataType.STRING;
+        if (value instanceof Character) return DataType.CHARACTER;
+        if (value instanceof Boolean) return DataType.BOOLEAN;
+        if (value instanceof Byte) return DataType.BYTE;
+        if (value instanceof Short) return DataType.SHORT;
+        if (value instanceof Integer) return DataType.INTEGER;
+        if (value instanceof Long) return DataType.LONG;
+        if (value instanceof Float) return DataType.FLOAT;
+        if (value instanceof Number) return DataType.DOUBLE;
+        return null;
+    }
+
+    private static String conditionOwner(Task owner) {
+        return owner instanceof Route
+            ? "Route.route"
+            : owner.getClass().getSimpleName() + " condition";
+    }
+
+    private static void requireVisibleOutput(
+        Route route,
+        Condition condition,
+        Operand reference,
+        List<Task> precedingTasks,
+        Task parent
+    ) {
+        if (parent instanceof OrchestrationTask orchestrationTask
+            && orchestrationTask.startsChildrenInParallel()) {
+            throw new WorkflowException(
+                "Route.route cannot read sibling outputs in a parallel scope: "
+                    + route.key()
+            );
+        }
+        if (reference.path().size() != 2) {
+            throw new WorkflowException(
+                "Route.route output path must be taskKey.outputKey: "
+                    + reference
+            );
+        }
+        String taskKey = reference.path().get(0);
+        String outputKey = reference.path().get(1);
+        Task source = precedingTasks.stream()
+            .filter(candidate -> candidate.key().equals(taskKey))
+            .findFirst()
+            .orElseThrow(() -> new WorkflowException(
+                "Route.route references an unavailable output Task "
+                    + taskKey + ": " + route.key()
+            ));
+        Output output = source.outputs().stream()
+            .filter(candidate -> candidate.getKey().equals(outputKey))
+            .findFirst()
+            .orElseThrow(() -> new WorkflowException(
+                "Route.route references an undeclared output "
+                    + taskKey + "." + outputKey + ": " + route.key()
+            ));
+        if (!condition.supports(reference, output.getType())) {
+            throw new WorkflowException(
+                "Route.route is incompatible with output "
+                    + taskKey + "." + outputKey + ": " + route.key()
             );
         }
     }
@@ -747,7 +835,7 @@ public class Flow extends AbstractFlow {
 
     protected static String requireText(String value, String field) {
         return RequiredUtil.required(value, field + " must not be blank")
-            .trim();
+                .trim();
     }
 
 }

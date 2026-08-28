@@ -1,17 +1,11 @@
 package org.cses.flow.core.services.executions;
 
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.tasks.RunResult;
-import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.core.plugins.annotations.Plugin;
-import org.cses.flow.core.runner.RunContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
@@ -111,8 +105,14 @@ class NestedPauseResumeIntegrationTest {
                     .state()
                     .current()
             );
-            assertCompleted(execution, tasks, "backend-build");
-            assertCompleted(execution, tasks, "frontend-build");
+            assertEquals(
+                State.Type.PAUSED,
+                run(execution, tasks.get("backend-build")).state().current()
+            );
+            assertEquals(
+                State.Type.PAUSED,
+                run(execution, tasks.get("frontend-build")).state().current()
+            );
             assertEquals(State.Type.PAUSED, backendReview.state().current());
             assertEquals(State.Type.PAUSED, frontendReview.state().current());
             assertEquals(
@@ -242,12 +242,10 @@ class NestedPauseResumeIntegrationTest {
             assertEquals(State.Type.SUCCESS, integration.state().current());
             assertEquals(
                 Map.of(
-                    "dependOnOutputs",
+                    "outputs",
                     Map.of(
-                        "backend-review",
-                        Map.of("backendResult", "PASS"),
-                        "frontend-review",
-                        Map.of("frontendResult", "PASS")
+                        "receive-request", Map.of(),
+                        "prepare-release", Map.of()
                     )
                 ),
                 integration.inputs()
@@ -267,8 +265,12 @@ class NestedPauseResumeIntegrationTest {
                 "securityDecision"
             );
 
-            assertCompleted(afterFrontend, tasks, "security-stage");
-            assertEquals(State.Type.SUCCESS, securityCheck.state().current());
+            assertEquals(
+                State.Type.PAUSED,
+                run(afterFrontend, tasks.get("security-stage"))
+                    .state().current()
+            );
+            assertEquals(State.Type.PAUSED, securityCheck.state().current());
             assertEquals(State.Type.PAUSED, securityApprove.state().current());
             assertEquals(
                 securityCheck.id(),
@@ -396,8 +398,14 @@ class NestedPauseResumeIntegrationTest {
                     .state()
                     .current()
             );
-            assertCompleted(canceled, tasks, "backend-build");
-            assertCompleted(canceled, tasks, "frontend-build");
+            assertEquals(
+                State.Type.KILLED,
+                run(canceled, tasks.get("backend-build")).state().current()
+            );
+            assertEquals(
+                State.Type.KILLED,
+                run(canceled, tasks.get("frontend-build")).state().current()
+            );
 
             Execution canceledSnapshot = execution(fixture, started.id());
             TaskRun backendSnapshot = canceledSnapshot.requireTaskRun(
@@ -873,12 +881,10 @@ class NestedPauseResumeIntegrationTest {
         ));
         assertEquals(
             Map.of(
-                "dependOnOutputs",
+                "outputs",
                 Map.of(
-                    "backend-review",
-                    Map.of("backendResult", "PASS"),
-                    "frontend-review",
-                    Map.of("frontendResult", "PASS")
+                    "receive-request", Map.of(),
+                    "prepare-release", Map.of()
                 )
             ),
             run(execution, tasks.get("integrate-results")).inputs()
@@ -1027,7 +1033,7 @@ class NestedPauseResumeIntegrationTest {
                 type: org.cses.flow.extensions.flow.Parallel
                 tasks:
                   - key: backend-build
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
                       - key: backend-review
                         type: org.cses.flow.extensions.flow.Pause
@@ -1042,7 +1048,7 @@ class NestedPauseResumeIntegrationTest {
                             type: STRING
 
                   - key: frontend-build
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
                       - key: frontend-review
                         type: org.cses.flow.extensions.flow.Pause
@@ -1058,15 +1064,12 @@ class NestedPauseResumeIntegrationTest {
 
               - key: integrate-results
                 type: org.cses.flow.extensions.tasks.AutomaticTask
-                dependOn:
-                  - backend-review
-                  - frontend-review
 
               - key: security-stage
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.flow.Sequence
                 tasks:
                   - key: security-check
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
                       - key: security-approve
                         type: org.cses.flow.extensions.flow.Pause
@@ -1115,7 +1118,7 @@ class NestedPauseResumeIntegrationTest {
                         type: STRING
 
                   - key: frontend-build
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
                       - key: frontend-review
                         type: org.cses.flow.extensions.flow.Pause
@@ -1131,15 +1134,12 @@ class NestedPauseResumeIntegrationTest {
 
               - key: integrate-results
                 type: org.cses.flow.extensions.tasks.AutomaticTask
-                dependOn:
-                  - backend-review
-                  - frontend-review
 
               - key: security-stage
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.flow.Sequence
                 tasks:
                   - key: security-check
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
                       - key: security-approve
                         type: org.cses.flow.extensions.flow.Pause
@@ -1167,7 +1167,7 @@ class NestedPauseResumeIntegrationTest {
             description: 普通同级子任务默认串行
             tasks:
               - key: start
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.flow.Sequence
                 tasks:
                   - key: approval
                     type: org.cses.flow.extensions.flow.Pause
@@ -1181,49 +1181,20 @@ class NestedPauseResumeIntegrationTest {
                       - key: decision
                         type: STRING
                   - key: route-approval
-                    type: org.cses.flow.core.services.executions.NestedPauseResumeIntegrationTest.ResumeDecisionTask
-                    dependOn:
-                      - approval
-                    outputs:
-                      - key: decision
-                        type: STRING
+                    type: org.cses.flow.extensions.flow.Route
+                    route: '{{ outputs.approval.decision }} == APPROVED'
                     tasks:
                       - key: approved
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
-                        route: outputs.decision == "APPROVED"
+                        type: org.cses.flow.extensions.flow.Sequence
                         tasks:
                           - key: approved-finish
                             type: org.cses.flow.extensions.tasks.AutomaticTask
-                      - key: rejected
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
-                        route: outputs.decision == "REJECTED"
+                  - key: rejected
+                    type: org.cses.flow.extensions.flow.Route
+                    route: '{{ outputs.approval.decision }} == REJECTED'
                   - key: serial-finish
                     type: org.cses.flow.extensions.tasks.AutomaticTask
             """.formatted(key);
     }
 
-    /** Copies a resumed decision into a normal parent routing output. */
-    @Plugin
-    @SuperBuilder
-    @NoArgsConstructor
-    public static final class ResumeDecisionTask
-        extends Task implements RunnableTask {
-
-        @Override
-        public RunResult run(RunContext context) {
-            Object dependencies = context.taskInputs().get("dependOnOutputs");
-            if (!(dependencies instanceof Map<?, ?> byTask)) {
-                return RunResult.success(Map.of());
-            }
-            Object approval = byTask.get("approval");
-            if (!(approval instanceof Map<?, ?> outputs)
-                || !outputs.containsKey("decision")) {
-                return RunResult.success(Map.of());
-            }
-            return RunResult.success(Map.of(
-                "decision",
-                outputs.get("decision")
-            ));
-        }
-    }
 }

@@ -54,5 +54,13 @@ public interface FlowRepository {
             FlowId flowId
     );
 
+    /**
+     * Persists the Flow state prepared by the domain/application layer.
+     *
+     * <p>This method does not decide Flow lifecycle rules. When the entity ID
+     * already exists, only the Flow row is updated. Task definitions are
+     * inserted only together with a newly inserted deployed Flow and are not
+     * replaced during later Flow saves.</p>
+     */
     void save(DSLContext dsl, Flow flow);
 }

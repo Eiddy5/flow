@@ -96,9 +96,6 @@ public final class FlowDefinitionSerializer {
 
     private static boolean isTaskDefinition(Map<?, ?> source) {
         return source.containsKey("key")
-                && source.containsKey("type")
-                && (source.containsKey("route")
-                || source.containsKey("dependOn")
-                || source.containsKey("tasks"));
+                && source.containsKey("type");
     }
 }

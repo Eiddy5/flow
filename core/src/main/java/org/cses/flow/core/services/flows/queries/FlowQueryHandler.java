@@ -18,8 +18,8 @@ import java.util.Optional;
 @Singleton
 public class FlowQueryHandler {
 
-    private JOOQ jooq;
-    private FlowRepository flowRepository;
+    JOOQ jooq;
+    FlowRepository flowRepository;
 
     @Inject
     public FlowQueryHandler(
@@ -46,8 +46,8 @@ public class FlowQueryHandler {
         return jooq.get(dsl -> flowRepository.findDraftByFlowId(
                         dsl,
                         FlowId.from(
-                            SessionValidation.requireCompanyId(session),
-                            normalizedFlowKey
+                                SessionValidation.requireCompanyId(session),
+                                normalizedFlowKey
                         )
                 )
         );
@@ -69,9 +69,9 @@ public class FlowQueryHandler {
         return jooq.get(dsl -> flowRepository.findByFlowId(
                 dsl,
                 FlowId.from(
-                    SessionValidation.requireCompanyId(session),
-                    normalizedFlowKey,
-                    flowVersion
+                        SessionValidation.requireCompanyId(session),
+                        normalizedFlowKey,
+                        flowVersion
                 )
         ));
     }
@@ -83,8 +83,8 @@ public class FlowQueryHandler {
         return jooq.get(dsl -> flowRepository.findLatestByFlowId(
                 dsl,
                 FlowId.from(
-                    SessionValidation.requireCompanyId(session),
-                    normalizedFlowKey
+                        SessionValidation.requireCompanyId(session),
+                        normalizedFlowKey
                 )
         ).filter(flow -> !flow.deleted()));
     }

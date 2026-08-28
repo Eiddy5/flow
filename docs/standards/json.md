@@ -6,12 +6,15 @@
 逻辑。凡是需要创建、解析、序列化、反序列化或转换 JSON 的代码，都必须遵守本
 规范。
 
-PAAS JSON 是一般业务和基础设施 JSON 的统一能力入口。Task 插件的严格多态绑定
-是 [ADR 0026](../decisions/0026-use-task-class-as-in-project-plugin.md) 定义的窄化
-例外，只能通过 `core/serializers/JacksonMapper` 使用受控 Jackson 配置。其他业务
-代码不得绕过公共封装直接使用 Jackson `ObjectMapper`。
+PAAS JSON 是一般业务和基础设施 JSON 的首选能力入口。只有 PAAS JSON 不支持目标
+格式或必要转换能力时，才允许在对应技术边界提供自定义序列化和反序列化实现。当前
+Flow YAML 和 Task 插件的严格多态绑定是
+[ADR 0026](../decisions/0026-use-task-class-as-in-project-plugin.md) 定义的受控例外：
+PAAS JSON 不支持 YAML，因此该链路只能通过 `core/serializers/YamlParser` 和
+`core/serializers/JacksonMapper` 使用受控 Jackson 配置。其他业务代码不得绕过公共
+封装直接使用 Jackson `ObjectMapper`。
 
-## 1. 统一使用 PAAS JSON
+## 1. 优先使用 PAAS JSON
 
 按数据形态选择 `org.paas.json` 提供的公共类型：
 
@@ -22,10 +25,12 @@ PAAS JSON 是一般业务和基础设施 JSON 的统一能力入口。Task 插�
 | `JsonFactory` | 公共序列化、反序列化和类型转换能力 |
 
 新增或修改一般 JSON 代码时，应先使用这些类型已有的公共方法，不得重复封装
-`JsonUtil`、`JsonHelper` 或项目私有 Mapper。Task 插件链路必须复用现有
-`JacksonMapper`，也不能在插件、Repository 或 Controller 中创建第二套 Mapper。
-只有现有两条受控入口都无法表达已确认的公共需求时，才可以先形成架构决策，再
-扩展统一能力。
+`JsonUtil`、`JsonHelper` 或项目私有 Mapper。只有确认 PAAS JSON 不支持目标格式或
+必要转换能力时，才可以提供自定义实现；该实现必须集中在对应 Serializer 等技术
+边界，只覆盖 PAAS JSON 不支持的部分。Task 插件和 YAML 链路必须复用现有
+`YamlParser`、`JacksonMapper`，也不能在插件、Repository 或 Controller 中创建第二套
+Mapper。只有现有两条受控入口都无法表达已确认的公共需求时，才可以先形成架构决策，
+再扩展统一能力。
 
 ## 2. 常用方法
 

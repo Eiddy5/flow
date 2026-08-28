@@ -39,6 +39,10 @@ public class FlowEntry extends FlowsObject {
         return entry;
     }
 
+    public Flow toDomain() {
+        return toDomain(List.of());
+    }
+
     public Flow toDomain(List<Task> tasks) {
         boolean editable = Boolean.TRUE.equals(draft);
         return Flow.rehydrate(

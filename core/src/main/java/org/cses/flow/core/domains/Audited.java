@@ -14,7 +14,7 @@ import java.util.Optional;
 /**
  * Tenant-scoped domain base that owns current Audit Status and audit facts.
  */
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor
 public abstract class Audited extends BaseDomain {
 
     RecordState status;

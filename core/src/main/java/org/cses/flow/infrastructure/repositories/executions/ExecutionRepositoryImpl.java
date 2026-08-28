@@ -18,7 +18,7 @@ import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 @Singleton
-public final class ExecutionPostgresRepository
+public final class ExecutionRepositoryImpl
     implements ExecutionRepository {
 
     @Override
@@ -33,18 +33,7 @@ public final class ExecutionPostgresRepository
             .and(EXECUTIONS.ID.eq(executionId))
             .forShare()
             .fetchOneInto(ExecutionEntry.class);
-        if (entry == null) {
-            return Optional.empty();
-        }
-        List<TaskRun> taskRuns = dsl.select()
-            .from(TASK_RUNS)
-            .where(TASK_RUNS.EXECUTION_ID.eq(executionId))
-            .orderBy(TASK_RUNS.ORDER.asc())
-            .fetchInto(TaskRunEntry.class)
-            .stream()
-            .map(TaskRunEntry::toDomain)
-            .toList();
-        return Optional.of(entry.toDomain(taskRuns));
+        return restore(dsl, entry);
     }
 
     @Override
@@ -86,34 +75,82 @@ public final class ExecutionPostgresRepository
             .fetchOneInto(ExecutionEntry.class);
 
         if (stored == null) {
-            ExecutionEntry entry = ExecutionEntry.fromDomain(execution);
-            dsl.insertInto(EXECUTIONS)
-                .set(entry.buildInsertMap())
-                .execute();
+            insert(dsl, execution);
         } else {
-            ExecutionEntry entry = ExecutionEntry.fromDomain(execution);
-            int updated = dsl.update(EXECUTIONS)
-                .set(entry.buildUpdateMap())
-                .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
-                .and(EXECUTIONS.ID.eq(execution.id()))
-                .execute();
-            if (updated != 1) {
-                throw new WorkflowException(
-                    "Execution was not updated: " + execution.id()
-                );
-            }
+            update(dsl, execution);
         }
 
-        replaceTaskRuns(dsl, execution);
+        replace(dsl, execution);
     }
 
-    private static void replaceTaskRuns(
+    private Optional<Execution> restore(
+        DSLContext dsl,
+        ExecutionEntry entry
+    ) {
+        return Optional.ofNullable(entry)
+            .map(value -> value.toDomain(readTaskRuns(dsl, value.id)));
+    }
+
+    private List<TaskRun> readTaskRuns(
+        DSLContext dsl,
+        String executionId
+    ) {
+        return dsl.select()
+            .from(TASK_RUNS)
+            .where(TASK_RUNS.EXECUTION_ID.eq(executionId))
+            .orderBy(TASK_RUNS.ORDER.asc())
+            .fetchInto(TaskRunEntry.class)
+            .stream()
+            .map(TaskRunEntry::toDomain)
+            .toList();
+    }
+
+    private void insert(
+        DSLContext dsl,
+        Execution execution
+    ) {
+        insert(dsl, ExecutionEntry.fromDomain(execution));
+    }
+
+    private void insert(
+        DSLContext dsl,
+        ExecutionEntry entry
+    ) {
+        dsl.insertInto(EXECUTIONS)
+            .set(entry.buildInsertMap())
+            .execute();
+    }
+
+    private void update(
+        DSLContext dsl,
+        Execution execution
+    ) {
+        int updated = dsl.update(EXECUTIONS)
+            .set(ExecutionEntry.fromDomain(execution).buildUpdateMap())
+            .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
+            .and(EXECUTIONS.ID.eq(execution.id()))
+            .execute();
+        if (updated != 1) {
+            throw new WorkflowException(
+                "Execution was not updated: " + execution.id()
+            );
+        }
+    }
+
+    private void replace(
         DSLContext dsl,
         Execution execution
     ) {
         dsl.deleteFrom(TASK_RUNS)
             .where(TASK_RUNS.EXECUTION_ID.eq(execution.id()))
             .execute();
+        writeTaskRuns(dsl, execution);
+    }
+
+    private void writeTaskRuns(
+        DSLContext dsl,
+        Execution execution
+    ) {
         List<TaskRun> taskRuns = execution.taskRuns();
         if (taskRuns.isEmpty()) {
             return;
@@ -121,15 +158,22 @@ public final class ExecutionPostgresRepository
         InsertValuesStepN<TaskRunsRecord> values = dsl
             .insertInto(TASK_RUNS)
             .columns();
+        writeTaskRuns(values, execution.id(), taskRuns);
+        values.execute();
+    }
+
+    private void writeTaskRuns(
+        InsertValuesStepN<TaskRunsRecord> values,
+        String executionId,
+        List<TaskRun> taskRuns
+    ) {
         for (int index = 0; index < taskRuns.size(); index++) {
-            TaskRun taskRun = taskRuns.get(index);
             values.values(TaskRunEntry.fromDomain(
-                execution.id(),
-                taskRun,
+                executionId,
+                taskRuns.get(index),
                 index
             ).toRecord());
         }
-        values.execute();
     }
 
 }

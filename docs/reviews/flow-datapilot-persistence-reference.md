@@ -16,7 +16,7 @@ DataPilot 只承接后续新增、语义简单的单表 CRUD 与只读投影。
 - `queues` 的投递、竞争认领、事务内删除和崩溃恢复。
 
 这些链路包含聚合一致性、多表写入、显式租户条件、版本冲突或队列行锁语义。
-它们的现有入口分别见 [FlowPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/postgres/FlowPostgresRepository.java)、[ExecutionPostgresRepository.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/executions/postgres/ExecutionPostgresRepository.java) 与 [PostgresQueueStore.java](../../core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java)。
+它们的现有入口分别见 [FlowRepositoryImpl.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/FlowRepositoryImpl.java)、[ExecutionRepositoryImpl.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/executions/ExecutionRepositoryImpl.java) 与 [PostgresQueueStore.java](../../core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java)。
 对应基线表见 [flows.sql](../../gen/sql/flow/tables/flows.sql)、[flow_tasks.sql](../../gen/sql/flow/tables/flow_tasks.sql)、[executions.sql](../../gen/sql/flow/tables/executions.sql)、[task_runs.sql](../../gen/sql/flow/tables/task_runs.sql) 与 [queues.sql](../../gen/sql/flow/tables/queues.sql)。
 
 DataPilot 的候选场景必须同时满足：新能力、单表、简单 CRUD 或读投影、无队列认领、无复杂聚合保存。

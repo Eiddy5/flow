@@ -2,10 +2,10 @@ package org.cses.flow.core.domains.tasks;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import org.cses.flow.core.domains.Identified;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.cses.flow.core.domains.Identified;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -21,7 +21,7 @@ import java.util.stream.Stream;
  */
 @SuperBuilder
 @NoArgsConstructor
-public abstract class Task implements TaskInterface, Identified {
+public abstract class Task implements TaskInterface {
 
     @NotBlank
     String id;
@@ -38,18 +38,6 @@ public abstract class Task implements TaskInterface, Identified {
     @NotNull
     @Builder.Default
     List<Output> outputs = List.of();
-
-    @NotNull
-    @Builder.Default
-    TaskRoute route = TaskRoute.direct();
-
-    @NotNull
-    @Builder.Default
-    List<@NotBlank String> dependOn = List.of();
-
-    @NotNull
-    @Builder.Default
-    List<Task> tasks = List.of();
 
     public final String id() {
         return id;
@@ -84,47 +72,15 @@ public abstract class Task implements TaskInterface, Identified {
         return outputs == null ? List.of() : List.copyOf(outputs);
     }
 
-    public final TaskRoute route() {
-        return route;
-    }
-
-    public final List<String> dependOn() {
-        return dependOn == null ? List.of() : List.copyOf(dependOn);
-    }
-
-    public final List<Task> tasks() {
-        return tasks == null ? List.of() : List.copyOf(tasks);
-    }
-
     /**
      * Returns every directly-contained Task definition owned by this Task.
      *
-     * <p>The common implementation is the ordinary post-completion
-     * {@link #tasks()} list. A concrete orchestration Task may expose a
-     * type-specific containment relation without changing that list's
-     * scheduling meaning.</p>
+     * <p>The base Task does not own child definitions. A concrete structural
+     * Task can override this method to expose its type-specific containment
+     * relation.</p>
      */
     public List<Task> definitionChildren() {
-        return tasks();
-    }
-
-    public final boolean matchesRoute(Map<String, ?> parentOutputs) {
-        return route.matches(parentOutputs);
-    }
-
-    public final boolean matchesRoute(
-            Map<String, ?> parentOutputs,
-            Map<String, ?> flowInputs
-    ) {
-        return route.matches(parentOutputs, flowInputs);
-    }
-
-    public final boolean matchesRoute(
-            Map<String, ?> parentOutputs,
-            Map<String, ?> flowInputs,
-            Map<String, ?> flowVariables
-    ) {
-        return route.matches(parentOutputs, flowInputs, flowVariables);
+        return List.of();
     }
 
     public final boolean declaresOutput(String outputKey) {
@@ -180,10 +136,6 @@ public abstract class Task implements TaskInterface, Identified {
         return Collections.unmodifiableMap(normalized);
     }
 
-    public final boolean dependsOn(String taskKey) {
-        return dependOn().contains(taskKey);
-    }
-
     public final Optional<Task> findDescendant(String taskId) {
         return definitionChildren().stream()
                 .flatMap(task -> Stream.concat(
@@ -224,13 +176,14 @@ public abstract class Task implements TaskInterface, Identified {
                 && Objects.equals(displayName(), other.displayName())
                 && Objects.equals(inputs(), other.inputs())
                 && Objects.equals(outputs(), other.outputs())
-                && Objects.equals(route, other.route)
-                && Objects.equals(dependOn(), other.dependOn())
-                && Objects.equals(tasks(), other.tasks())
                 && Objects.equals(
-                typeSpecificEqualityState(),
-                other.typeSpecificEqualityState()
-        );
+                    definitionChildren(),
+                    other.definitionChildren()
+                )
+                && Objects.equals(
+                    typeSpecificEqualityState(),
+                    other.typeSpecificEqualityState()
+                );
     }
 
     @Override
@@ -242,9 +195,7 @@ public abstract class Task implements TaskInterface, Identified {
                 displayName(),
                 inputs(),
                 outputs(),
-                route,
-                dependOn(),
-                tasks(),
+                definitionChildren(),
                 typeSpecificEqualityState()
         );
     }

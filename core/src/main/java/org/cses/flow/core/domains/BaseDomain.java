@@ -1,6 +1,5 @@
 package org.cses.flow.core.domains;
 
-import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.RequiredUtil;
@@ -13,7 +12,7 @@ import org.paas.session.User;
 /**
  * Base for tenant-scoped domain objects with a stable string entity id.
  */
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor
 public abstract class BaseDomain implements Identified {
 
     String id;

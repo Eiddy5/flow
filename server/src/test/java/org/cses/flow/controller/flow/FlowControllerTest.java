@@ -3,6 +3,7 @@ package org.cses.flow.controller.flow;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import org.cses.flow.controller.flow.FlowModels.FlowView;
+import org.cses.flow.controller.flow.FlowModels.TaskView;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 
@@ -100,6 +101,15 @@ class FlowControllerTest {
         assertEquals(
             String.class,
             FlowView.class.getMethod("getId").getReturnType()
+        );
+    }
+
+    @Test
+    void exposesTheRouteDefinitionUsingTheRouteProperty()
+        throws NoSuchMethodException {
+        assertEquals(
+            String.class,
+            TaskView.class.getMethod("getRoute").getReturnType()
         );
     }
 }

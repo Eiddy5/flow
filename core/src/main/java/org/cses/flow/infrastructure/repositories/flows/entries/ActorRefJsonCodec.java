@@ -4,9 +4,7 @@ import org.cses.flow.core.domains.ActorRef;
 import org.jooq.JSONB;
 import org.paas.json.JsonObject;
 
-import java.util.Map;
-
-public final class ActorRefJsonCodec {
+public class ActorRefJsonCodec {
 
     private ActorRefJsonCodec() {
     }
@@ -15,9 +13,7 @@ public final class ActorRefJsonCodec {
         if (actor == null) {
             return null;
         }
-        JsonObject value = JsonObject.Create("id", actor.id());
-        actor.name().ifPresent(name -> value.put("name", name));
-        return JSONB.valueOf(value.toJson());
+        return JSONB.valueOf(JsonObject.From(actor).toJson());
     }
 
     public static ActorRef decode(JSONB value, String field) {
@@ -26,28 +22,19 @@ public final class ActorRefJsonCodec {
                 "Persisted " + field + " must not be null"
             );
         }
-        Map<String, Object> actor;
         try {
-            actor = JsonObject.Parse(value.data()).asMap();
+            ActorRef restored = JsonObject.Parse(value.data())
+                .asObject(ActorRef.class);
+            return ActorRef.rehydrate(
+                restored.id(),
+                restored.name().orElse(null)
+            );
         } catch (RuntimeException exception) {
             throw new IllegalStateException(
-                "Persisted " + field + " must be a JSON object",
+                "Persisted " + field + " must contain a valid actor",
                 exception
             );
         }
-        Object id = actor.get("id");
-        if (!(id instanceof String actorId) || actorId.isBlank()) {
-            throw new IllegalStateException(
-                "Persisted " + field + ".id must be non-blank text"
-            );
-        }
-        Object name = actor.get("name");
-        if (name != null && !(name instanceof String)) {
-            throw new IllegalStateException(
-                "Persisted " + field + ".name must be text"
-            );
-        }
-        return ActorRef.rehydrate(actorId, (String) name);
     }
 
     public static ActorRef decodeOptional(JSONB value, String field) {

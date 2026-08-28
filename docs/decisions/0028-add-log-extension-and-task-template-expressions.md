@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted（TemplateExpression 的语义所有权由 ADR 0037 修订）
+Accepted（TemplateExpression 与 Condition 的领域边界由 ADR 0074 修订）
 
 ## 背景
 

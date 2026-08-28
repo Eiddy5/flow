@@ -2,7 +2,7 @@ package org.cses.flow.extensions.flow;
 
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Output;
-import org.cses.flow.core.domains.expressions.Express;
+import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.tasks.OrchestrationTask.IterationDecision;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.extensions.tasks.AutomaticTask;
@@ -25,8 +25,8 @@ class LoopUntilTest {
             LoopUntil.builder()
                 .id("loop-id")
                 .key("poll")
-                .condition(Express.parse(
-                    "outputs.check.status == \"DONE\""
+                .condition(Condition.parser(
+                    "{{ outputs.check.status }} == DONE"
                 ))
                 .maxIterations(5)
                 .tasks(List.of(checkTask(DataType.STRING)))
@@ -35,7 +35,7 @@ class LoopUntilTest {
 
         assertEquals(5, loop.maxIterations());
         assertEquals(
-            "outputs.check.status == \"DONE\"",
+            "{{ outputs.check.status }} == DONE",
             loop.condition().source()
         );
     }
@@ -54,8 +54,8 @@ class LoopUntilTest {
             plugins.modelValidator().validate(LoopUntil.builder()
                 .id("loop-id")
                 .key("poll")
-                .condition(Express.parse(
-                    "outputs.outside.status == \"DONE\""
+                .condition(Condition.parser(
+                    "{{ outputs.outside.status }} == DONE"
                 ))
                 .maxIterations(3)
                 .tasks(List.of(checkTask(DataType.STRING)))
@@ -65,8 +65,8 @@ class LoopUntilTest {
             plugins.modelValidator().validate(LoopUntil.builder()
                 .id("loop-id")
                 .key("poll")
-                .condition(Express.parse(
-                    "outputs.check.status == \"DONE\""
+                .condition(Condition.parser(
+                    "{{ outputs.check.status }} == DONE"
                 ))
                 .maxIterations(3)
                 .tasks(List.of(checkTask(DataType.INTEGER)))
@@ -80,8 +80,8 @@ class LoopUntilTest {
             plugins.modelValidator().validate(LoopUntil.builder()
                 .id("loop-id")
                 .key("poll")
-                .condition(Express.parse(
-                    "outputs.status == \"DONE\""
+                .condition(Condition.parser(
+                    "{{ outputs.status }} == DONE"
                 ))
                 .maxIterations(3)
                 .tasks(List.of(checkTask(DataType.STRING)))
@@ -91,8 +91,8 @@ class LoopUntilTest {
             plugins.modelValidator().validate(LoopUntil.builder()
                 .id("loop-id")
                 .key("poll")
-                .condition(Express.parse(
-                    "outputs.group.check.status == \"DONE\""
+                .condition(Condition.parser(
+                    "{{ outputs.group.check.status }} == DONE"
                 ))
                 .maxIterations(3)
                 .tasks(List.of(checkTask(DataType.STRING)))
@@ -106,8 +106,8 @@ class LoopUntilTest {
             LoopUntil.builder()
                 .id("loop-id")
                 .key("poll")
-                .condition(Express.parse(
-                    "outputs.check.status == \"DONE\""
+                .condition(Condition.parser(
+                    "{{ outputs.check.status }} == DONE"
                 ))
                 .maxIterations(3)
                 .tasks(List.of(checkTask(DataType.STRING)))

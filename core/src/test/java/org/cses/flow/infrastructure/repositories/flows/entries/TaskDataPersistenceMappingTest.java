@@ -1,14 +1,13 @@
 package org.cses.flow.infrastructure.repositories.flows.entries;
 
 import io.micronaut.json.JsonMapper;
-import org.cses.flow.core.domains.expressions.Express;
+import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.flows.inputs.StringInput;
 import org.cses.flow.core.domains.flows.Output;
-import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.extensions.tasks.AutomaticTask;
@@ -47,9 +46,8 @@ class TaskDataPersistenceMappingTest {
             .id("log-id")
             .key("write-log")
             .message(TemplateExpression.parse(
-                "处理结果：{{ dependOnOutputs.prepare.result }}"
+                "处理结果：{{ outputs.prepare.result }}"
             ))
-            .dependOn(List.of("prepare"))
             .build();
 
         FlowTaskEntry entry = FlowTaskEntry.fromDomain(
@@ -63,7 +61,7 @@ class TaskDataPersistenceMappingTest {
         );
 
         assertEquals(
-            "处理结果：{{ dependOnOutputs.prepare.result }}",
+            "处理结果：{{ outputs.prepare.result }}",
             entry.properties.asMap().get("message")
         );
         Log restored = assertInstanceOf(
@@ -102,7 +100,7 @@ class TaskDataPersistenceMappingTest {
     }
 
     @Test
-    void flowTaskEntryRoundTripsLoopUntilExpressAsAString() {
+    void flowTaskEntryRoundTripsLoopUntilConditionAsAString() {
         Task check = AutomaticTask.builder()
             .id("check-id")
             .key("check")
@@ -111,8 +109,8 @@ class TaskDataPersistenceMappingTest {
         LoopUntil task = LoopUntil.builder()
             .id("loop-id")
             .key("poll")
-            .condition(Express.parse(
-                "outputs.check.status == \"DONE\""
+            .condition(Condition.parser(
+                "{{ outputs.check.status }} == DONE"
             ))
             .maxIterations(3)
             .tasks(List.of(check))
@@ -130,7 +128,7 @@ class TaskDataPersistenceMappingTest {
         );
 
         assertEquals(
-            "outputs.check.status == \"DONE\"",
+            "{{ outputs.check.status }} == DONE",
             entry.properties.asMap().get("condition")
         );
         LoopUntil restored = assertInstanceOf(
@@ -147,15 +145,10 @@ class TaskDataPersistenceMappingTest {
             .id("action-id")
             .key("create-approval")
             .build();
-        Task continuation = AutomaticTask.builder()
-            .id("continuation-id")
-            .key("send-result")
-            .build();
         Pause task = Pause.builder()
             .id("pause-id")
             .key("wait-approval")
             .pause(action)
-            .tasks(List.of(continuation))
             .resume(List.of(StringInput.builder()
                 .key("decision")
                 .displayName("Decision")
@@ -181,15 +174,11 @@ class TaskDataPersistenceMappingTest {
         assertEquals("P1M", entry.properties.asMap().get("duration"));
         Pause restored = assertInstanceOf(
             Pause.class,
-            entry.toDomain(plugins.jacksonMapper(), List.of(continuation))
+            entry.toDomain(plugins.jacksonMapper(), List.of())
         );
         assertEquals(task, restored);
         assertEquals(action, restored.pause());
-        assertEquals(List.of(continuation), restored.tasks());
-        assertEquals(
-            List.of(action, continuation),
-            restored.definitionChildren()
-        );
+        assertEquals(List.of(action), restored.definitionChildren());
         assertEquals(
             List.of(Output.create("decision", DataType.STRING)),
             restored.outputs()
@@ -217,10 +206,6 @@ class TaskDataPersistenceMappingTest {
                 "decision",
                 DataType.STRING
             )))
-            .route(TaskRoute.parse(
-                "outputs.decision == \"approved\""
-            ))
-            .dependOn(List.of("prepare"))
             .build();
 
         FlowTaskEntry entry = FlowTaskEntry.fromDomain(
@@ -239,11 +224,8 @@ class TaskDataPersistenceMappingTest {
         assertEquals(2, input.getDefaultValue());
         assertEquals(1, input.getMin());
         assertEquals(5, input.getMax());
-        assertEquals(List.of("prepare"), entry.dependOn.asStrings());
-        assertEquals(
-            "outputs.decision == \"approved\"",
-            entry.route
-        );
+        assertEquals(List.of(), entry.dependOn.asStrings());
+        assertEquals("DIRECT", entry.route);
     }
 
     @Test

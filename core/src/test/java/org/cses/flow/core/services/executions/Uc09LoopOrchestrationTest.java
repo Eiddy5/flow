@@ -498,7 +498,7 @@ class Uc09LoopOrchestrationTest {
             tasks:
               - key: repeat-until-done
                 type: %s
-                condition: 'outputs.%s.status == "DONE"'
+                condition: '{{ outputs.%s.status }} == DONE'
                 maxIterations: %d
                 tasks:
                   - key: body-step
@@ -536,7 +536,7 @@ class Uc09LoopOrchestrationTest {
                 tasks:
                   - key: repeat-until-failure
                     type: %s
-                    condition: 'outputs.condition-never.status == "DONE"'
+                    condition: '{{ outputs.condition-never.status }} == DONE'
                     maxIterations: 3
                     tasks:
                       - key: body-step
@@ -628,7 +628,7 @@ class Uc09LoopOrchestrationTest {
                     tasks:
                       - key: invalid-loop-until
                         type: %s
-                        condition: 'outputs.check.status == "DONE"'
+                        condition: '{{ outputs.check.status }} == DONE'
                         maxIterations: 0
                         tasks:
                           - key: check
@@ -648,7 +648,7 @@ class Uc09LoopOrchestrationTest {
                     tasks:
                       - key: invalid-loop-until
                         type: %s
-                        condition: 'outputs.check.status =='
+                        condition: '{{ outputs.check.status }} =='
                         maxIterations: 3
                         tasks:
                           - key: check
@@ -660,7 +660,7 @@ class Uc09LoopOrchestrationTest {
                         LoopUntil.class.getCanonicalName(),
                         AutomaticTask.class.getCanonicalName()
                     ),
-                "Unsupported Express condition"
+                "Invalid Condition"
             ),
             InvalidDefinition.from(
                 """
@@ -668,7 +668,7 @@ class Uc09LoopOrchestrationTest {
                     tasks:
                       - key: invalid-loop-until
                         type: %s
-                        condition: 'outputs.missing.status == "DONE"'
+                        condition: '{{ outputs.missing.status }} == DONE'
                         maxIterations: 3
                         tasks:
                           - key: check

@@ -45,7 +45,7 @@ Domain、持久化映射、复杂构造和需要框架代理的类型使用 `cla
 - 代码审查按职责和不变量判断类型选择，不再仅因出现 `record` 判定违规。
 
 详细选择规则由
-[`project-development.md`](../standards/project-development.md) 维护。
+[`development.md`](../standards/development.md) 维护。
 
 ## 理由
 

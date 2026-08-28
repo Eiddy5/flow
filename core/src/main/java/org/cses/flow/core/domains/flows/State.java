@@ -11,7 +11,7 @@ import java.util.Objects;
 /**
  * Immutable workflow runtime state and its ordered transition history.
  */
-public final class State {
+public class State {
 
     public enum Type {
         CREATED,
@@ -25,8 +25,8 @@ public final class State {
         KILLED
     }
 
-    private final Type current;
-    private final List<History> history;
+    private Type current;
+    private List<History> history;
 
     private State(Type current, List<History> history) {
         this.current = Objects.requireNonNull(
@@ -205,10 +205,10 @@ public final class State {
         return current.name();
     }
 
-    public static final class History {
+    public static class History {
 
-        private final Type state;
-        private final long date;
+        private Type state;
+        private long date;
 
         private History(Type state, long date) {
             this.state = Objects.requireNonNull(

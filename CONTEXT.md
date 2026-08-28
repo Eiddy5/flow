@@ -84,7 +84,12 @@ Data Type 描述所属定义可以产生并交给下游的数据；实际输出�
 _Avoid_: Output interface, Output value, response DTO
 
 **Task**:
-Flow 定义中不可分割的流程步骤定义；其领域字段 `id` 在正式 reversion 间保持稳定，被引用时称为 `taskId`。Task 通过 `parentId` 表达定义父子关系，并声明输入、输出、路由、依赖及直接子 Task，但不保存实际运行结果；YAML 只声明业务 `key`，创建时可先物化，正式部署时才确认完整约束和跨 reversion 的身份稳定性。
+Flow 定义中不可分割的流程步骤定义；其领域字段 `id` 在正式 reversion 间保持稳定，
+被引用时称为 `taskId`。抽象 Task 只保存所有 Task 共有的 `id`、`key`、
+`displayName`、`inputs` 和 `outputs`，不保存 route、dependOn 或 tasks，也不保存实际
+运行结果。定义树的 parentId 是持久化 Adapter 从结构关系派生的关系字段，不是 Task
+公共领域字段。YAML 只声明业务 `key`，创建时可先物化，正式部署时才确认完整约束和
+跨 reversion 的身份稳定性。
 RunnableTask 与 OrchestrationTask 是具体 Task 可拥有的两种互斥能力，离开 Task 后没有
 独立业务意义；Worker 和 Executor 分别调用或解释这些能力，但不拥有它们。
 _Avoid_: Node, Activity
@@ -98,10 +103,18 @@ _Avoid_: WorkerTaskHandler, executable OrchestrationTask, generic Task execution
 
 **Orchestration Task**:
 继承 Task 并实现 OrchestrationTask 能力的流程控制步骤定义，例如 PAUSE、
-PARALLEL 和未来规则确认后的 LOOP、LOOP UNTIL、SUBFLOW。它没有实际工作和
+ROUTE、SEQUENCE、PARALLEL、LOOP 和 LOOP UNTIL。需要拥有有序子 Task 的结构类型
+继承抽象 Branch；PAUSE 直接继承 Task 并拥有自己的 pause 关系。Orchestration Task
+没有实际工作和
 `run` 方法，不形成 WorkerTask；Executor 直接根据其编排特征管理 TaskRun、暂停、
 作用域收敛和后续路线。
-_Avoid_: BranchTask, runnable orchestration, structural WorkerTask
+_Avoid_: tasks on every Task, runnable orchestration, structural WorkerTask
+
+**Branch**:
+所有结构型流程 Task 的抽象基类，继承 Task 并独占有序 `tasks` 定义。Route、Sequence、
+Parallel、Loop 和 Loop Until 通过继承 Branch 获得子树；Runnable Task 和 Pause 不
+拥有该字段。Branch 只表达结构关系，不自动获得 route、condition 或 DAG dependency。
+_Avoid_: tasks on Task, route on Branch, condition on Branch, concrete generic branch plugin
 
 **Run Context**:
 每次只服务一个 RunnableTask 调用的临时不可变上下文，提供当前 Session、命令
@@ -113,16 +126,16 @@ Task 不得通过它推进状态。Run Context 不持久化，也不跨 Task 复
 _Avoid_: WorkerContext, Persisted Execution Context, TaskRun Snapshot, State Mutation Handle
 
 **Ordered Task Children**:
-普通 Task 完成后按定义顺序选择和运行的直接子 Task；前一个已选择子 Task 的完整
-子树收敛后才能进入下一个，route 不匹配的定义不产生运行事实。它是普通编排的
-默认语义，不表示同级分支同时运行。
+Branch 按定义顺序拥有的直接子 Task；前一个已选择子 Task 的完整子树收敛后才能进入
+下一个。Route 条件不成立时不产生该 Route 的运行事实。它是 Sequence、Route 和循环体
+的串行结构语义，不属于普通 Runnable Task，也不表示同级分支同时运行。
 _Avoid_: Implicit parallel branches, sibling batch, unordered children
 
 **PARALLEL Task**:
 显式声明多个直接子分支可以同时开始的编排作用域。它进入后保持 RUNNING，把所有
-route 成立且依赖满足的直接子 Task 作为同一 Execution 内的并行分支运行，只在
-全部实际选中分支子树正常收敛后完成。没有 route 匹配时正常完成；并行不由普通
-同级 Task、Child Execution 或多个 DIRECT route 隐式推断。各分支共享同一进入
+直接子 Task 作为同一 Execution 内的并行分支运行，只在全部实际分支子树正常收敛后
+完成。条件分支通过显式 Route 子 Task 表达；Route 不能读取尚未完成的并行兄弟输出。
+并行不由普通同级 Task 或 Child Execution 隐式推断。各分支共享同一进入
 上下文快照但独立演进，outputs 不自动合并；`concurrent` 只声明后续 Worker 队列
 消费者并发上限。
 _Avoid_: Implicit parallel, Parallel Execution, Child Execution, parallel flag
@@ -152,20 +165,45 @@ Plugin 扩展点；注册后 Flow 可以用该 `type` 部署 Task。运行能力
 Task 身份、不拥有 Flow 聚合或 TaskRun 状态。
 _Avoid_: Task instance, WorkerTaskHandler, Task type catalog, generic Task
 
-**Express**:
-由 Flow 定义持有、用于只读判断 outputs 的不可变条件表达式；它统一解析
-`outputs.<path> == "<value>"`、暴露被引用的 output 路径，并以区分大小写的字符串
-精确比较完成求值。它与 Task Template Expression 同属受限表达式领域，但二者保持
-不同语法、结果和缺值规则；Route 与 Loop Until 分别约束条件路径所属范围，
-`DIRECT` 仍是 Route 语义。
-_Avoid_: RouteExpression, LoopConditionExpression, arbitrary script,
+**Route Rule**:
+Route 定义持有的必填条件字符串，以 `route` 表达并保留用户原始定义；
+只在正式发布校验或实际判断 Route 时形成 Condition。它不属于 Branch 公共
+结构，也不是已解析 Condition Tree 的持久化快照。
+_Avoid_: Branch route, Route condition field, persisted Condition tree
+
+**Condition**:
+用于一次只读判断的不可变递归值对象；Loop Until 直接持有，Route 只在使用
+Route Rule 时形成。比较节点由
+左侧 Condition Reference、基础 Comparison 和右侧 Condition Constant 组成；逻辑节点
+用 AND 或 OR 组合至少两个子 Condition。外部字符串支持
+`&&`、`||` 和括号并解析为树，运行时不执行源文本。Route 与 Loop Until 分别构造
+Condition Context 并保护自己的 outputs 可见范围；缺值和类型不兼容返回 false。
+_Avoid_: TaskRoute, arbitrary script, right-side reference,
 Task Template Expression
+
+**Condition Reference**:
+Condition 比较左侧对运行时 variables、inputs 或 outputs 的只读引用；只有完整
+`{{ scope.path }}` 才表示引用，花括号是整值引用标记而不是文本插值。未包裹的点分文本
+不解析为引用。
+_Avoid_: bare path, template interpolation, right-side reference
+
+**Condition Constant**:
+Condition 比较右侧在定义时写入且求值时不再解析的数据；未包裹的 `true`、`false` 和
+十进制数分别形成 Boolean、Number，其余文本形成 String，需要保留类型化外观或语法
+保留字符的 String 使用双引号。常量永不从 Condition Context 取值。
+_Avoid_: preset, implicit reference, runtime value, null literal
+
+**Condition Context**:
+一次 Condition 求值使用的临时只读 variables、inputs 和 outputs 映射；不保存 Flow、
+Execution、TaskRun、Repository 或上次求值结果。不同消费方只放入自身允许读取的
+outputs。
+_Avoid_: persisted context, mutable shared variables, expression engine scope
 
 **Task Template Expression**:
 由 Task 定义持有、在一次 Runnable Task 调用中从只读运行输入提取值并插入固定文本
 的消息模板；它属于受限表达式领域，只允许点分路径读取，不能执行脚本、调用方法
-或改变运行上下文，也不承担 Express 的条件判断。
-_Avoid_: Route Expression, arbitrary script, mutable runtime context
+或改变运行上下文，也不承担 Condition 的 boolean 判断。
+_Avoid_: Condition, arbitrary script, mutable runtime context
 
 **Log**:
 在流程运行时解析 message 模板并把结果写入应用日志的步骤；它不负责审计留痕、
@@ -234,8 +272,8 @@ _Avoid_: Activity, Task instance
 的 `duration + behavior` 定义超时目标。Executor 先让 Pause TaskRun 保持
 `RUNNING` 并无条件执行完整 pause 子树，收敛后才使 Pause TaskRun 进入
 `PAUSED`；Execution 始终保持 `RUNNING`。`pause` 只表示暂停前必须完整执行的
-专有 Task；继承自 Task 的通用 `tasks` 表示 Resume 后按普通父子任务规则执行的
-后续 Task，二者都通过 `definitionChildren()` 纳入定义树。Pause 的 `outputs` 直接使用
+专有 Task，并通过 `definitionChildren()` 纳入定义树；Pause 直接继承 Task，不拥有
+Branch 的普通 `tasks`。Pause 的 `outputs` 直接使用
 Task 的普通可配置输出契约；`resume` 只定义外部回调输入，不从 resume 派生 outputs，
 也不要求两者字段一致。它不定义审批人、表单、工单或其他外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
@@ -267,17 +305,21 @@ _Avoid_: In-process test callback, direct Handler invocation
 推进到下一个稳定态或终态。
 _Avoid_: In-memory resume, same-context continuation
 
-**Task Dependency**:
-Task 通过 `dependOn` 声明的运行前置关系；它引用同一 Flow Reversion 中的 Task key，并由同一 Execution 内已完成的 TaskRun 事实满足，不是一种独立 Task 类型。
-_Avoid_: DependOn Task, Wait Task, join TaskRun per branch
+**DAG Dependency**:
+未来 DAG 流程类型拥有的运行前置关系。`dependOn` 不属于抽象 Task、Branch、Route 或
+Condition；在 DAG 领域结构、可见范围和运行规则确认前，普通 Flow 定义不接受该字段。
+_Avoid_: dependOn on every Task, implicit DAG, Condition dependency
 
 **Flowing Context**:
-随单条 Execution 线路流动的一跳数据域。A 完成后 A 的真实 outputs 交给 B；B 完成后，交给 C 的只剩 B 的真实 outputs，不累计整条线路历史输出。
-_Avoid_: Accumulated Execution Context, global variables
+当前串行 Branch 作用域内可供后续 Route 读取的只读 outputs 数据域，按已经完成的前序
+直接子 Task key 隔离，例如 `outputs.prepare.result`。它不包含未来兄弟、并行兄弟、
+其他循环轮次或全局可写状态。
+_Avoid_: all Execution outputs, future sibling outputs, global variables
 
 **DependOn Outputs**:
-声明 Task Dependency 的 Task 开始执行时可读取的依赖输出域，按依赖 Task key 隔离，例如 `dependOnOutputs.A.result`；同一依赖 Task 存在多次完成记录时使用最新的 `COMPLETED` TaskRun。该数据域不会自动传递给当前 Task 的下游。
-_Avoid_: Merged Flowing Context
+旧公共 Task dependOn 产生的输出域；当前模型不提供该数据域。未来 DAG 如需依赖输出，
+必须在 DAG 决策中重新确认，不能通过恢复 Task.dependOn 隐式带回。
+_Avoid_: current Task input, Merged Flowing Context
 
 **Global Context**:
 一次 Execution 共享的全局数据域；第一阶段只允许读取，不允许 Task 写入。

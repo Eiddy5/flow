@@ -187,7 +187,7 @@ flowchart TD
     consumeStart["DefaultExecutor 路由到 ExecutionCommandEventHandler；按 Flow 三字段加载 Flow、创建 Execution、投递 ExecutorEvent"]
     drive["ExecutorEventHandler 领取一个 ExecutorEvent 周期"]
     handle["ExecutorService.handle 状态推进循环"]
-    plan["按顺序、typed input/output route、dependOn 和 PARALLEL 规划下一批 TaskRun"]
+    plan["按串行可见输出、Route 的 route 按需形成的 Condition、Branch 结构和 Parallel 作用域规划下一批 TaskRun"]
     hasNext{"存在下一批 TaskRun？"}
     capability{"Task 运行能力？"}
 

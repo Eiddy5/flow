@@ -13,6 +13,8 @@ import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Parallel;
+import org.cses.flow.extensions.flow.Route;
+import org.cses.flow.extensions.flow.Sequence;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -38,6 +40,8 @@ public class TaskPluginTestSupport {
         plugins.add(new LoopUntil());
         plugins.add(new Pause());
         plugins.add(new Parallel());
+        plugins.add(new Route());
+        plugins.add(new Sequence());
         plugins.add(new Log());
         plugins.addAll(List.of(additionalPlugins));
 

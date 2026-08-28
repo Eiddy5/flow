@@ -1,6 +1,7 @@
 package org.cses.flow.executor;
 
 import jakarta.inject.Singleton;
+import org.cses.flow.core.domains.conditions.ConditionContext;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.State;
@@ -9,13 +10,15 @@ import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.runner.RunContext;
+import org.cses.flow.extensions.flow.Branch;
+import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.flow.Route;
 import org.cses.flow.worker.WorkerTask;
 import org.cses.flow.worker.WorkerTaskResult;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -201,7 +204,10 @@ public final class ExecutorService {
                 "Loop scope has no completed iteration: " + taskRun.id()
             ));
             OrchestrationTask.IterationDecision decision =
-                orchestrationTask.decideAfterIteration(
+                decideAfterIteration(
+                    context,
+                    task,
+                    orchestrationTask,
                     iteration,
                     iterationOutputs(
                         context,
@@ -352,18 +358,26 @@ public final class ExecutorService {
     }
 
     private static SearchResult searchTopLevel(ExecutorContext context, List<Task> tasks) {
+        Map<String, Object> visibleOutputs = new LinkedHashMap<>();
         for (Task task : tasks) {
             SearchResult result = searchTask(
                 context,
                 task,
                 null,
-                Map.of(),
+                Map.copyOf(visibleOutputs),
                 null,
                 null
             );
             if (result.hasPlannedEffects() || !result.settled()) {
                 return result;
             }
+            appendCompletedOutput(
+                context,
+                task,
+                null,
+                null,
+                visibleOutputs
+            );
         }
         return SearchResult.settledResult();
     }
@@ -376,30 +390,21 @@ public final class ExecutorService {
         Integer iteration,
         IterationScope iterationScope
     ) {
+        if (!matchesCondition(context, task, flowingContext)) {
+            return SearchResult.settledResult();
+        }
         Optional<TaskRun> taskRun = context.execution().taskRunForOccurrence(
             task.id(),
             parentTaskRunId,
             iteration
         );
         if (taskRun.isEmpty()) {
-            DependencyState dependencies = dependencyState(
-                context,
+            return SearchResult.nexts(List.of(candidate(
                 task,
-                iterationScope
-            );
-            return switch (dependencies) {
-                case SATISFIED ->
-                        SearchResult.nexts(List.of(candidate(
-                            context,
-                            task,
-                            parentTaskRunId,
-                            flowingContext,
-                            iteration,
-                            iterationScope
-                        )));
-                case PENDING -> SearchResult.unsettled();
-                case UNSELECTED -> SearchResult.settledResult();
-            };
+                parentTaskRunId,
+                flowingContext,
+                iteration
+            )));
         }
 
         TaskRun existing = taskRun.orElseThrow();
@@ -496,11 +501,13 @@ public final class ExecutorService {
             return body.asUnsettled();
         }
 
-        OrchestrationTask.IterationDecision decision =
-            orchestrationTask.decideAfterIteration(
-                iteration,
-                iterationOutputs(context, task, scope)
-            );
+        OrchestrationTask.IterationDecision decision = decideAfterIteration(
+            context,
+            task,
+            orchestrationTask,
+            iteration,
+            iterationOutputs(context, task, scope)
+        );
         if (decision != OrchestrationTask.IterationDecision.CONTINUE) {
             return SearchResult.orchestrationCompletion(loopRun.id());
         }
@@ -531,31 +538,52 @@ public final class ExecutorService {
         TaskRun loopRun,
         IterationScope scope
     ) {
-        Map<String, Object> flowingContext = childFlowingContext(
+        Map<String, Object> flowingContext = new LinkedHashMap<>(childFlowingContext(
             loop,
             loopRun
-        );
-        for (Task child : loop.tasks()) {
-            if (!child.matchesRoute(
-                flowingContext,
-                context.execution().inputs(),
-                context.flowVariables()
-            )) {
-                continue;
-            }
+        ));
+        for (Task child : loop.definitionChildren()) {
             SearchResult result = searchTask(
                 context,
                 child,
                 loopRun.id(),
-                flowingContext,
+                Map.copyOf(flowingContext),
                 scope.iteration(),
                 scope
             );
             if (result.hasPlannedEffects() || !result.settled()) {
                 return result;
             }
+            appendCompletedOutput(
+                context,
+                child,
+                loopRun.id(),
+                scope.iteration(),
+                flowingContext
+            );
         }
         return SearchResult.settledResult();
+    }
+
+    private static OrchestrationTask.IterationDecision decideAfterIteration(
+        ExecutorContext context,
+        Task task,
+        OrchestrationTask orchestrationTask,
+        int completedIterations,
+        Map<String, Map<String, Object>> iterationOutputs
+    ) {
+        if (task instanceof LoopUntil loopUntil) {
+            return loopUntil.decideAfterIteration(
+                completedIterations,
+                iterationOutputs,
+                context.execution().inputs(),
+                context.flowVariables()
+            );
+        }
+        return orchestrationTask.decideAfterIteration(
+            completedIterations,
+            iterationOutputs
+        );
     }
 
     private static OptionalInt latestLoopIteration(
@@ -625,26 +653,28 @@ public final class ExecutorService {
         TaskRun parentRun,
         IterationScope iterationScope
     ) {
-        Map<String, Object> flowingContext = childFlowingContext(parent, parentRun);
-        for (Task child : parent.tasks()) {
-            if (!child.matchesRoute(
-                flowingContext,
-                context.execution().inputs(),
-                context.flowVariables()
-            )) {
-                continue;
-            }
+        Map<String, Object> flowingContext = new LinkedHashMap<>(
+            childFlowingContext(parent, parentRun)
+        );
+        for (Task child : parent.definitionChildren()) {
             SearchResult childResult = searchTask(
                 context,
                 child,
                 parentRun.id(),
-                flowingContext,
+                Map.copyOf(flowingContext),
                 null,
                 iterationScope
             );
             if (childResult.hasPlannedEffects() || !childResult.settled()) {
                 return childResult;
             }
+            appendCompletedOutput(
+                context,
+                child,
+                parentRun.id(),
+                null,
+                flowingContext
+            );
         }
         return SearchResult.settledResult();
     }
@@ -659,14 +689,7 @@ public final class ExecutorService {
         List<TaskRun> nexts = new ArrayList<>();
         List<String> orchestrationCompletions = new ArrayList<>();
         Map<String, Object> flowingContext = childFlowingContext(parent, parentRun);
-        for (Task child : parent.tasks()) {
-            if (!child.matchesRoute(
-                flowingContext,
-                context.execution().inputs(),
-                context.flowVariables()
-            )) {
-                continue;
-            }
+        for (Task child : parent.definitionChildren()) {
             SearchResult branch = searchTask(
                 context,
                 child,
@@ -684,118 +707,8 @@ public final class ExecutorService {
         return new SearchResult(nexts, orchestrationCompletions, settled);
     }
 
-    private static DependencyState dependencyState(
-        ExecutorContext context,
-        Task task,
-        IterationScope iterationScope
-    ) {
-        return dependencyState(
-            context,
-            task,
-            new LinkedHashSet<>(),
-            iterationScope
-        );
-    }
-
-    private static DependencyState dependencyState(
-        ExecutorContext context,
-        Task task,
-        Set<String> path,
-        IterationScope iterationScope
-    ) {
-        if (!path.add(task.key())) {
-            return DependencyState.PENDING;
-        }
-        boolean pending = false;
-        for (String dependencyKey : task.dependOn()) {
-            Task dependency = findTaskByKey(context.flow().allTasks(), dependencyKey).orElseThrow(() -> new IllegalStateException("Validated Task dependency is missing: " + dependencyKey));
-            DependencyState current = dependencyFact(
-                context,
-                dependency,
-                new LinkedHashSet<>(path),
-                iterationScope
-            );
-            if (current == DependencyState.UNSELECTED) {
-                return DependencyState.UNSELECTED;
-            }
-            if (current == DependencyState.PENDING) {
-                pending = true;
-            }
-        }
-        return pending ? DependencyState.PENDING : DependencyState.SATISFIED;
-    }
-
-    private static DependencyState dependencyFact(
-        ExecutorContext context,
-        Task task,
-        Set<String> path,
-        IterationScope iterationScope
-    ) {
-        Optional<TaskRun> existing = taskRunInScope(
-            context,
-            task,
-            iterationScope
-        );
-        if (existing.isPresent()) {
-            State.Type state = existing.orElseThrow().state().current();
-            return state == State.Type.SUCCESS || state == State.Type.WARNING ? DependencyState.SATISFIED : DependencyState.PENDING;
-        }
-
-        Optional<Task> parent = findParentTask(context.flow().tasks(), task.id());
-        if (parent.isEmpty()) {
-            return DependencyState.PENDING;
-        }
-        Task parentTask = parent.orElseThrow();
-        Optional<TaskRun> parentRun = taskRunInScope(
-            context,
-            parentTask,
-            iterationScope
-        );
-        if (parentRun.isEmpty()) {
-            DependencyState parentFact = dependencyFact(
-                context,
-                parentTask,
-                new LinkedHashSet<>(path),
-                iterationScope
-            );
-            return parentFact == DependencyState.UNSELECTED ? DependencyState.UNSELECTED : DependencyState.PENDING;
-        }
-
-        TaskRun actualParentRun = parentRun.orElseThrow();
-        if (!routeCanBeEvaluated(parentTask, actualParentRun)) {
-            return DependencyState.PENDING;
-        }
-        if (!task.matchesRoute(
-            childFlowingContext(parentTask, actualParentRun),
-            context.execution().inputs(),
-            context.flowVariables()
-        )) {
-            return DependencyState.UNSELECTED;
-        }
-
-        DependencyState ownDependencies = dependencyState(
-            context,
-            task,
-            path,
-            iterationScope
-        );
-        return ownDependencies == DependencyState.UNSELECTED ? DependencyState.UNSELECTED : DependencyState.PENDING;
-    }
-
-    private static boolean routeCanBeEvaluated(Task parent, TaskRun parentRun) {
-        if (parentRun.state().is(State.Type.SUCCESS) || parentRun.state().is(State.Type.WARNING)) {
-            return true;
-        }
-        return parentRun.state().is(State.Type.RUNNING)
-            && parent instanceof OrchestrationTask orchestrationTask
-            && (orchestrationTask.startsChildrenInParallel()
-                || orchestrationTask.iteratesChildren());
-    }
-
     private static Map<String, Object> childFlowingContext(Task parent, TaskRun parentRun) {
-        if (!(parent instanceof OrchestrationTask orchestrationTask)
-            || (!orchestrationTask.iteratesChildren()
-                && !orchestrationTask.startsChildrenInParallel())) {
+        if (!(parent instanceof Branch)) {
             return parentRun.outputs();
         }
         Object incoming = parentRun.inputs().get("outputs");
@@ -807,53 +720,41 @@ public final class ExecutorService {
         return Map.copyOf(copied);
     }
 
+    private static boolean matchesCondition(
+        ExecutorContext context,
+        Task task,
+        Map<String, ?> visibleOutputs
+    ) {
+        if (!(task instanceof Route route)) {
+            return true;
+        }
+        return route.matches(ConditionContext.create(
+            context.flowVariables(),
+            context.execution().inputs(),
+            visibleOutputs
+        ));
+    }
+
+    private static void appendCompletedOutput(
+        ExecutorContext context,
+        Task task,
+        String parentTaskRunId,
+        Integer iteration,
+        Map<String, Object> target
+    ) {
+        context.execution().taskRunForOccurrence(
+            task.id(),
+            parentTaskRunId,
+            iteration
+        ).filter(taskRun ->
+            taskRun.state().is(State.Type.SUCCESS)
+                || taskRun.state().is(State.Type.WARNING)
+        ).ifPresent(taskRun -> target.put(task.key(), taskRun.outputs()));
+    }
+
     private static boolean iteratesChildren(Task task) {
         return task instanceof OrchestrationTask orchestrationTask
             && orchestrationTask.iteratesChildren();
-    }
-
-    private static Optional<Task> findParentTask(List<Task> tasks, String childTaskId) {
-        for (Task task : tasks) {
-            if (task.definitionChildren().stream().anyMatch(
-                child -> child.identifiedBy(childTaskId)
-            )) {
-                return Optional.of(task);
-            }
-            Optional<Task> nested = findParentTask(
-                task.definitionChildren(),
-                childTaskId
-            );
-            if (nested.isPresent()) {
-                return nested;
-            }
-        }
-        return Optional.empty();
-    }
-
-    private static Optional<TaskRun> taskRunInScope(
-        ExecutorContext context,
-        Task task,
-        IterationScope scope
-    ) {
-        IterationScope current = scope;
-        while (current != null) {
-            if (current.loop().identifiedBy(task.id())) {
-                return context.execution().findTaskRun(current.loopRunId());
-            }
-            if (current.loop().findDescendant(task.id()).isPresent()) {
-                List<TaskRun> matches = context.execution()
-                    .taskRunsForTask(task.id());
-                for (int index = matches.size() - 1; index >= 0; index--) {
-                    TaskRun candidate = matches.get(index);
-                    if (belongsToIteration(context, candidate, current)) {
-                        return Optional.of(candidate);
-                    }
-                }
-                return Optional.empty();
-            }
-            current = current.parent();
-        }
-        return context.execution().latestTaskRunForTask(task.id());
     }
 
     private static boolean belongsToIteration(
@@ -879,12 +780,10 @@ public final class ExecutorService {
     }
 
     private static TaskRun candidate(
-        ExecutorContext context,
         Task task,
         String parentTaskRunId,
         Map<String, ?> parentOutputs,
-        Integer iteration,
-        IterationScope iterationScope
+        Integer iteration
     ) {
         Map<String, Object> inputs = new LinkedHashMap<>();
         if (parentOutputs != null && !parentOutputs.isEmpty()) {
@@ -893,29 +792,12 @@ public final class ExecutorService {
         if (iteration != null) {
             inputs.put("loop", Map.of("iteration", iteration));
         }
-        if (!task.dependOn().isEmpty()) {
-            Map<String, Object> dependencyOutputs = new LinkedHashMap<>();
-            for (String dependencyKey : task.dependOn()) {
-                Task dependency = findTaskByKey(context.flow().allTasks(), dependencyKey).orElseThrow();
-                TaskRun dependencyRun = taskRunInScope(
-                    context,
-                    dependency,
-                    iterationScope
-                ).orElseThrow();
-                dependencyOutputs.put(dependencyKey, dependencyRun.outputs());
-            }
-            inputs.put("dependOnOutputs", Map.copyOf(dependencyOutputs));
-        }
         return TaskRun.create(
             task.id(),
             parentTaskRunId,
             Map.copyOf(inputs),
             iteration
         );
-    }
-
-    private static Optional<Task> findTaskByKey(List<Task> tasks, String taskKey) {
-        return tasks.stream().filter(task -> task.key().equals(taskKey)).findFirst();
     }
 
     private static void requireExecution(ExecutorContext context, String executionId) {
@@ -990,7 +872,4 @@ public final class ExecutorService {
         }
     }
 
-    private enum DependencyState {
-        SATISFIED, PENDING, UNSELECTED
-    }
 }

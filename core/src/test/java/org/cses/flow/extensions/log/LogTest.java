@@ -30,14 +30,14 @@ class LogTest {
             .id("log-id")
             .key("write-log")
             .message(TemplateExpression.parse(
-                "结果：{{ dependOnOutputs.prepare.result }}"
+                "结果：{{ outputs.prepare.result }}"
             ))
             .build();
 
         RunResult result;
         try (logs) {
             result = log.run(context(Map.of(
-                "dependOnOutputs", Map.of(
+                "outputs", Map.of(
                     "prepare", Map.of("result", "ready")
                 )
             )));
@@ -46,7 +46,7 @@ class LogTest {
         assertEquals(State.Type.SUCCESS, result.targetState());
         assertEquals(Map.of(), result.outputs());
         assertEquals(
-            "结果：{{ dependOnOutputs.prepare.result }}",
+            "结果：{{ outputs.prepare.result }}",
             log.message()
         );
         assertEquals(List.of("结果：ready"), logs.messages());

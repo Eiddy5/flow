@@ -98,12 +98,12 @@ final class ExecutorServiceTest {
     }
 
     @Test
-    void processStagesOnlyFirstRunnableChildForOrdinaryParent() {
+    void processStagesOnlyFirstRunnableChildForSequence() {
         Flow flow = deploy(Map.of(
             "key", "serial-nexts",
             "tasks", List.of(Map.of(
                 "key", "parent",
-                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                "type", org.cses.flow.extensions.flow.Sequence.class.getName(),
                 "tasks", List.of(
                     Map.of(
                         "key", "first",
@@ -118,14 +118,6 @@ final class ExecutorServiceTest {
         ));
         Execution execution = execution(flow);
         ExecutorContext context = new ExecutorContext(flow, execution);
-
-        processUntilBoundary(context);
-        WorkerTask parent = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, parent);
-        executorService.applyResult(
-            context,
-            WorkerTaskResult.success(parent, Map.of())
-        );
 
         processUntilBoundary(context);
 
@@ -202,14 +194,22 @@ final class ExecutorServiceTest {
                 "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
                 "tasks", List.of(
                     Map.of(
-                        "key", "high-value",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                        "route", "inputs.amount > 1000"
+                        "key", "high-value-route",
+                        "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                        "route", "{{ inputs.amount }} > 1000",
+                        "tasks", List.of(Map.of(
+                            "key", "high-value",
+                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        ))
                     ),
                     Map.of(
-                        "key", "standard",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                        "route", "inputs.amount <= 1000"
+                        "key", "standard-route",
+                        "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                        "route", "{{ inputs.amount }} <= 1000",
+                        "tasks", List.of(Map.of(
+                            "key", "standard",
+                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        ))
                     )
                 )
             ))
@@ -252,14 +252,22 @@ final class ExecutorServiceTest {
                 "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
                 "tasks", List.of(
                     Map.of(
-                        "key", "production",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                        "route", "variables.environment == \"prod\""
+                        "key", "production-route",
+                        "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                        "route", "{{ variables.environment }} == prod",
+                        "tasks", List.of(Map.of(
+                            "key", "production",
+                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        ))
                     ),
                     Map.of(
-                        "key", "staging",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                        "route", "variables.environment == \"staging\""
+                        "key", "staging-route",
+                        "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                        "route", "{{ variables.environment }} == staging",
+                        "tasks", List.of(Map.of(
+                            "key", "staging",
+                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        ))
                     )
                 )
             ))
@@ -284,6 +292,101 @@ final class ExecutorServiceTest {
     }
 
     @Test
+    void routeReadsPrecedingOutputsAndEvaluatesACompoundCondition() {
+        Flow flow = deploy(Map.of(
+            "key", "output-route",
+            "variables", Map.of("environment", "prod"),
+            "inputs", List.of(Map.of(
+                "key", "override",
+                "type", "BOOLEAN",
+                "required", false,
+                "defaultValue", false
+            )),
+            "tasks", List.of(Map.of(
+                "key", "sequence",
+                "type", org.cses.flow.extensions.flow.Sequence.class.getName(),
+                "tasks", List.of(
+                    Map.of(
+                        "key", "prepare",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "outputs", List.of(Map.of(
+                            "key", "decision",
+                            "type", "STRING"
+                        ))
+                    ),
+                    Map.of(
+                        "key", "approved-route",
+                        "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                        "route", "({{ outputs.prepare.decision }} == approved "
+                            + "&& {{ variables.environment }} == prod) "
+                            + "|| {{ inputs.override }} == true",
+                        "tasks", List.of(Map.of(
+                            "key", "approved",
+                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        ))
+                    ),
+                    Map.of(
+                        "key", "rejected-route",
+                        "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                        "route", "{{ outputs.prepare.decision }} == rejected",
+                        "tasks", List.of(Map.of(
+                            "key", "rejected",
+                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        ))
+                    )
+                )
+            ))
+        ));
+        Execution seed = execution(flow);
+        Execution execution = Execution.create(
+            seed.id(),
+            session(seed.companyId()),
+            seed.flowKey(),
+            seed.flowVersion(),
+            flow.normalizeInputs(Map.of())
+        );
+        ExecutorContext context = new ExecutorContext(flow, execution);
+
+        completeNextWorker(context, Map.of("decision", "approved"));
+        processUntilBoundary(context);
+
+        assertEquals(
+            List.of("approved"),
+            context.workerTasks().stream()
+                .map(workerTask -> task(workerTask, execution, flow).key())
+                .toList()
+        );
+        assertTrue(execution.taskRuns().stream()
+            .map(TaskRun::taskId)
+            .map(taskId -> flow.findTask(taskId).orElseThrow().key())
+            .noneMatch("rejected-route"::equals));
+    }
+
+    @Test
+    void unmatchedRouteSettlesWithoutCreatingItsTaskRun() {
+        Flow flow = deploy(Map.of(
+            "key", "unmatched-route",
+            "variables", Map.of("environment", "staging"),
+            "tasks", List.of(Map.of(
+                "key", "route",
+                "type", org.cses.flow.extensions.flow.Route.class.getName(),
+                "route", "{{ variables.environment }} == prod",
+                "tasks", List.of(Map.of(
+                    "key", "never",
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                ))
+            ))
+        ));
+        Execution execution = execution(flow);
+        ExecutorContext context = new ExecutorContext(flow, execution);
+
+        processUntilBoundary(context);
+
+        assertTrue(execution.state().is(State.Type.SUCCESS));
+        assertTrue(execution.taskRuns().isEmpty());
+    }
+
+    @Test
     void processRunsPauseActionBeforePausingOnlyThePauseRun() {
         Flow flow = deploy(Map.of(
             "key", "pause-branch",
@@ -292,8 +395,7 @@ final class ExecutorServiceTest {
                 "type", org.cses.flow.extensions.flow.Pause.class.getName(),
                 "pause", Map.of(
                     "key", "create-confirmation",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                    "route", "outputs.never == \"selected\""
+                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
                 )
             ))
         ));
@@ -389,79 +491,6 @@ final class ExecutorServiceTest {
             Map.of("decision", "APPROVED"),
             pauseRun.outputs()
         );
-        assertTrue(execution.state().is(State.Type.SUCCESS));
-    }
-
-    @Test
-    void runsPauseTasksOnlyAfterThePauseIsResumed() {
-        Flow flow = deploy(Map.of(
-            "key", "pause-with-continuation",
-            "tasks", List.of(Map.of(
-                "key", "wait-confirmation",
-                "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                "pause", Map.of(
-                    "key", "create-confirmation",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
-                ),
-                "resume", List.of(Map.of(
-                    "key", "decision",
-                    "type", "STRING",
-                    "required", true
-                )),
-                "tasks", List.of(Map.of(
-                    "key", "send-result",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
-                ))
-            ))
-        ));
-        assertEquals(3, flow.allTasks().size());
-
-        Execution execution = execution(flow);
-        ExecutorContext context = new ExecutorContext(flow, execution);
-
-        processUntilBoundary(context);
-        WorkerTask pauseAction = context.takeWorkerTasks().getFirst();
-        assertEquals(
-            "create-confirmation",
-            task(pauseAction, execution, flow).key()
-        );
-        executorService.dispatch(context, pauseAction);
-        executorService.applyResult(
-            context,
-            WorkerTaskResult.success(pauseAction, Map.of())
-        );
-        processUntilBoundary(context);
-
-        TaskRun pauseRun = run(execution, flow, "wait-confirmation");
-        String continuationId = flow.allTasks().stream()
-            .filter(task -> task.key().equals("send-result"))
-            .findFirst()
-            .orElseThrow()
-            .id();
-        assertTrue(pauseRun.state().is(State.Type.PAUSED));
-        assertTrue(execution.taskRuns().stream()
-            .noneMatch(taskRun -> taskRun.taskId().equals(continuationId)));
-
-        executorService.resume(
-            context,
-            pauseRun.id(),
-            Map.of("decision", "APPROVED")
-        );
-        processUntilBoundary(context);
-
-        assertTrue(pauseRun.state().is(State.Type.SUCCESS));
-        WorkerTask continuation = context.takeWorkerTasks().getFirst();
-        assertEquals(
-            "send-result",
-            task(continuation, execution, flow).key()
-        );
-        executorService.dispatch(context, continuation);
-        executorService.applyResult(
-            context,
-            WorkerTaskResult.success(continuation, Map.of())
-        );
-        processUntilBoundary(context);
-
         assertTrue(execution.state().is(State.Type.SUCCESS));
     }
 
@@ -611,20 +640,20 @@ final class ExecutorServiceTest {
         Flow flow = deploy(Map.of(
             "key", "parallel-context",
             "tasks", List.of(Map.of(
-                "key", "source",
-                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                "outputs", List.of(Map.of(
-                    "key", "decision",
-                    "type", "STRING"
-                )),
+                "key", "serial",
+                "type", org.cses.flow.extensions.flow.Sequence.class.getName(),
                 "tasks", List.of(
+                    Map.of(
+                        "key", "source",
+                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "outputs", List.of(Map.of(
+                            "key", "decision",
+                            "type", "STRING"
+                        ))
+                    ),
                     Map.of(
                         "key", "parallel",
                         "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
-                        "inputs", List.of(Map.of(
-                            "key", "decision",
-                            "type", "STRING"
-                        )),
                         "tasks", List.of(
                             Map.of(
                                 "key", "left",
@@ -669,7 +698,7 @@ final class ExecutorServiceTest {
         List<WorkerTask> branches = context.takeWorkerTasks();
         assertEquals(2, branches.size());
         assertTrue(branches.stream().allMatch(workerTask ->
-            Map.of("decision", "approved").equals(
+            Map.of("source", Map.of("decision", "approved")).equals(
                 workerTask.taskInputs().get("outputs")
             )
         ));
@@ -691,69 +720,11 @@ final class ExecutorServiceTest {
         WorkerTask after = context.workerTasks().getFirst();
         assertTrue(parallel.outputs().isEmpty());
         assertEquals(
-            Map.of("decision", "approved"),
+            Map.of(
+                "source", Map.of("decision", "approved"),
+                "parallel", Map.of()
+            ),
             after.taskInputs().get("outputs")
-        );
-    }
-
-    @Test
-    void dependentBranchCascadesToUnselectedWhenRouteCannotMatch() {
-        Flow flow = deploy(Map.of(
-            "key", "parallel-unselected-dependency",
-            "tasks", List.of(Map.of(
-                "key", "source",
-                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                "outputs", List.of(Map.of(
-                    "key", "decision",
-                    "type", "STRING"
-                )),
-                "tasks", List.of(Map.of(
-                    "key", "parallel",
-                    "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
-                    "inputs", List.of(Map.of(
-                        "key", "decision",
-                        "type", "STRING"
-                    )),
-                    "tasks", List.of(
-                        Map.of(
-                            "key", "selected-only-when-approved",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                            "route", "outputs.decision == \"approved\""
-                        ),
-                        Map.of(
-                            "key", "dependent",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                            "dependOn", List.of(
-                                "selected-only-when-approved"
-                            )
-                        )
-                    )
-                ))
-            ))
-        ));
-        Execution execution = execution(flow);
-        ExecutorContext context = new ExecutorContext(flow, execution);
-
-        processUntilBoundary(context);
-        WorkerTask source = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, source);
-        executorService.applyResult(
-            context,
-            WorkerTaskResult.success(
-                source,
-                Map.of("decision", "rejected")
-            )
-        );
-
-        processUntilBoundary(context);
-
-        assertTrue(execution.state().is(State.Type.SUCCESS));
-        assertEquals(
-            List.of("source", "parallel"),
-            execution.taskRuns().stream()
-                .map(TaskRun::taskId)
-                .map(taskId -> flow.findTask(taskId).orElseThrow().key())
-                .toList()
         );
     }
 
@@ -1014,66 +985,6 @@ final class ExecutorServiceTest {
     }
 
     @Test
-    void loopDependenciesUseOutputsFromTheCurrentIteration() {
-        Flow flow = deploy(Map.of(
-            "key", "loop-dag",
-            "tasks", List.of(Map.of(
-                "key", "repeat",
-                "type", org.cses.flow.extensions.flow.Loop.class.getName(),
-                "times", 2,
-                "tasks", List.of(
-                    Map.of(
-                        "key", "prepare",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask
-                            .class.getName(),
-                        "outputs", List.of(Map.of(
-                            "key", "status",
-                            "type", "STRING"
-                        ))
-                    ),
-                    Map.of(
-                        "key", "consume",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask
-                            .class.getName(),
-                        "dependOn", List.of("prepare")
-                    )
-                )
-            ))
-        ));
-        Execution execution = execution(flow);
-        ExecutorContext context = new ExecutorContext(flow, execution);
-
-        for (int iteration = 1; iteration <= 2; iteration++) {
-            processUntilBoundary(context);
-            WorkerTask prepare = context.takeWorkerTasks().getFirst();
-            String status = "round-" + iteration;
-            executorService.dispatch(context, prepare);
-            executorService.applyResult(
-                context,
-                WorkerTaskResult.success(
-                    prepare,
-                    Map.of("status", status)
-                )
-            );
-
-            processUntilBoundary(context);
-            WorkerTask consume = context.takeWorkerTasks().getFirst();
-            assertEquals(
-                Map.of("prepare", Map.of("status", status)),
-                consume.taskInputs().get("dependOnOutputs")
-            );
-            executorService.dispatch(context, consume);
-            executorService.applyResult(
-                context,
-                WorkerTaskResult.success(consume, Map.of())
-            );
-        }
-
-        processUntilBoundary(context);
-        assertTrue(execution.state().is(State.Type.SUCCESS));
-    }
-
-    @Test
     void loopUntilStopsWhenTheCurrentIterationConditionMatches() {
         Flow flow = loopUntilFlow(3);
         Execution execution = execution(flow);
@@ -1132,7 +1043,7 @@ final class ExecutorServiceTest {
                 "key", "poll",
                 "type", org.cses.flow.extensions.flow.LoopUntil.class
                     .getName(),
-                "condition", "outputs.check.status == \"DONE\"",
+                "condition", "{{ outputs.check.status }} == DONE",
                 "maxIterations", maxIterations,
                 "tasks", List.of(Map.of(
                     "key", "check",

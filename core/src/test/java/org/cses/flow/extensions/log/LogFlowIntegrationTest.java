@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LogFlowIntegrationTest {
 
     @Test
-    void rendersDependencyOutputThroughTheExecutorAndWorkerChain() {
+    void rendersPrecedingOutputThroughTheExecutorAndWorkerChain() {
         LogCapture logs = LogCapture.start();
         try (logs; WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             FlowService flowService = fixture.flowService();
@@ -49,13 +49,9 @@ class LogFlowIntegrationTest {
                         type: STRING
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
-                    dependOn:
-                      - prepare
-                    message: "处理结果：{{ dependOnOutputs.prepare.result }}"
+                    message: "处理结果：{{ outputs.prepare.result }}"
                   - key: observe
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    dependOn:
-                      - write-log
                 """)
             );
             Flow flow = flowService.save(

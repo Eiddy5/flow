@@ -48,25 +48,12 @@ class LoopTest {
     }
 
     @Test
-    void rejectsAnEmptyBodyAndANonDirectFirstChild() {
+    void rejectsAnEmptyBody() {
         assertThrows(RuntimeException.class, () ->
             plugins.modelValidator().validate(Loop.builder()
                 .id("loop-id")
                 .key("loop")
                 .times(1)
-                .build())
-        );
-        assertThrows(RuntimeException.class, () ->
-            plugins.modelValidator().validate(Loop.builder()
-                .id("loop-id")
-                .key("loop")
-                .times(1)
-                .tasks(List.of(AutomaticTask.builder()
-                    .id("work-id")
-                    .key("work")
-                    .route(org.cses.flow.core.domains.tasks.TaskRoute
-                        .parse("outputs.status == \"READY\""))
-                    .build()))
                 .build())
         );
     }

@@ -9,6 +9,8 @@ import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.flow.Route;
+import org.cses.flow.extensions.flow.Sequence;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
@@ -70,21 +72,26 @@ class FlowMaterializationTest {
                     "type", "STRING"
                 )),
                 "tasks", List.of(Map.of(
-                    "key", "prepare",
-                    "type", AutomaticTask.class.getName(),
-                    "outputs", List.of(Map.of(
-                        "key", "prepared",
-                        "type", "BOOLEAN"
-                    )),
-                    "tasks", List.of(Map.of(
-                        "key", "approval",
-                        "type", Pause.class.getName(),
-                        "route", "DIRECT",
-                        "pause", Map.of(
-                            "key", "create-approval",
-                            "type", AutomaticTask.class.getName()
+                    "key", "release-steps",
+                    "type", Sequence.class.getName(),
+                    "tasks", List.of(
+                        Map.of(
+                            "key", "prepare",
+                            "type", AutomaticTask.class.getName(),
+                            "outputs", List.of(Map.of(
+                                "key", "prepared",
+                                "type", "BOOLEAN"
+                            ))
+                        ),
+                        Map.of(
+                            "key", "approval",
+                            "type", Pause.class.getName(),
+                            "pause", Map.of(
+                                "key", "create-approval",
+                                "type", AutomaticTask.class.getName()
+                            )
                         )
-                    ))
+                    )
                 ))
             ),
             null
@@ -102,9 +109,8 @@ class FlowMaterializationTest {
         );
         Task parent = flow.tasks().getFirst();
         assertEquals("release-flow", flow.key());
-        assertEquals("prepare", parent.key());
-        assertEquals("DIRECT", parent.route().source());
-        assertEquals("approval", parent.tasks().getFirst().key());
+        assertEquals("release-steps", parent.key());
+        assertEquals("approval", parent.definitionChildren().getLast().key());
     }
 
     @Test
@@ -138,31 +144,41 @@ class FlowMaterializationTest {
     }
 
     @Test
-    void materializesRouteAndLoopUntilFromTheSameExpressLanguage() {
+    void materializesRouteAndLoopUntilFromTheSameConditionLanguage() {
         Flow flow = deploy(
-            "flow-express",
+            "flow-route",
             Map.of(
-                "key", "express-flow",
+                "key", "route-flow",
                 "tasks", List.of(
                     Map.of(
-                        "key", "prepare",
-                        "type", AutomaticTask.class.getName(),
-                        "outputs", List.of(Map.of(
-                            "key", "decision",
-                            "type", "STRING"
-                        )),
-                        "tasks", List.of(Map.of(
-                            "key", "approved",
-                            "type", AutomaticTask.class.getName(),
-                            "route",
-                            "outputs.decision == \"APPROVED\""
-                        ))
+                        "key", "decision-sequence",
+                        "type", Sequence.class.getName(),
+                        "tasks", List.of(
+                            Map.of(
+                                "key", "prepare",
+                                "type", AutomaticTask.class.getName(),
+                                "outputs", List.of(Map.of(
+                                    "key", "decision",
+                                    "type", "STRING"
+                                ))
+                            ),
+                            Map.of(
+                                "key", "approved-route",
+                                "type", Route.class.getName(),
+                                "route",
+                                "{{ outputs.prepare.decision }} == APPROVED",
+                                "tasks", List.of(Map.of(
+                                    "key", "approved",
+                                    "type", AutomaticTask.class.getName()
+                                ))
+                            )
+                        )
                     ),
                     Map.of(
                         "key", "poll",
                         "type", LoopUntil.class.getName(),
                         "condition",
-                        "outputs.check.status == \"DONE\"",
+                        "{{ outputs.check.status }} == DONE",
                         "maxIterations", 3,
                         "tasks", List.of(Map.of(
                             "key", "check",
@@ -178,10 +194,17 @@ class FlowMaterializationTest {
             null
         );
 
+        Route route = assertInstanceOf(
+            Route.class,
+            flow.tasks().getFirst().definitionChildren().getLast()
+        );
         assertEquals(
-            "decision",
-            flow.tasks().getFirst().tasks().getFirst()
-                .route().referencedOutputKey().orElseThrow()
+            "{{ outputs.prepare.decision }} == APPROVED",
+            route.route()
+        );
+        assertEquals(
+            List.of("prepare", "decision"),
+            route.condition().references().getFirst().path()
         );
         LoopUntil loop = assertInstanceOf(
             LoopUntil.class,
@@ -189,7 +212,7 @@ class FlowMaterializationTest {
         );
         assertEquals(
             List.of("check", "status"),
-            loop.condition().outputPath()
+            loop.condition().references().getFirst().path()
         );
     }
 
@@ -204,12 +227,12 @@ class FlowMaterializationTest {
                     "retryLimit", 3
                 ),
                 "tasks", List.of(Map.of(
-                    "key", "start",
-                    "type", AutomaticTask.class.getName(),
+                    "key", "production-route",
+                    "type", Route.class.getName(),
+                    "route", "{{ variables.environment }} == prod",
                     "tasks", List.of(Map.of(
                         "key", "production-only",
-                        "type", AutomaticTask.class.getName(),
-                        "route", "variables.environment == \"prod\""
+                        "type", AutomaticTask.class.getName()
                     ))
                 ))
             ),
@@ -222,8 +245,8 @@ class FlowMaterializationTest {
         );
         assertEquals(
             "environment",
-            flow.tasks().getFirst().tasks().getFirst().route()
-                .referencedVariableKey().orElseThrow()
+            assertInstanceOf(Route.class, flow.tasks().getFirst())
+                .condition().references().getFirst().path().getFirst()
         );
     }
 
@@ -236,12 +259,12 @@ class FlowMaterializationTest {
                 Map.of(
                     "key", "invalid-variable-route",
                     "tasks", List.of(Map.of(
-                        "key", "start",
-                        "type", AutomaticTask.class.getName(),
+                        "key", "invalid-route",
+                        "type", Route.class.getName(),
+                        "route", "{{ variables.environment }} == prod",
                         "tasks", List.of(Map.of(
                             "key", "child",
-                            "type", AutomaticTask.class.getName(),
-                            "route", "variables.environment == \"prod\""
+                            "type", AutomaticTask.class.getName()
                         ))
                     ))
                 ),
@@ -340,7 +363,7 @@ class FlowMaterializationTest {
     }
 
     @Test
-    void validatesRoutesAndDependenciesDuringMaterialization() {
+    void validatesRouteExpressionsDuringMaterialization() {
         WorkflowException route = assertThrows(
             WorkflowException.class,
             () -> deploy(
@@ -348,20 +371,27 @@ class FlowMaterializationTest {
                 Map.of(
                     "key", "invalid-route",
                     "tasks", List.of(Map.of(
-                        "key", "parent",
-                        "type", AutomaticTask.class.getName(),
-                        "tasks", List.of(Map.of(
-                            "key", "child",
-                            "type", AutomaticTask.class.getName(),
-                            "route", "outputs.missing == \"yes\""
-                        ))
+                        "key", "sequence",
+                        "type", Sequence.class.getName(),
+                        "tasks", List.of(
+                            Map.of(
+                                "key", "parent",
+                                "type", AutomaticTask.class.getName()
+                            ),
+                            Map.of(
+                                "key", "route",
+                                "type", Route.class.getName(),
+                                "route",
+                                "{{ outputs.parent.missing }} == yes"
+                            )
+                        )
                     ))
                 ),
                 null
             )
         );
         assertTrue(route.getMessage().contains(
-            "references undeclared parent context"
+            "references an undeclared output"
         ));
 
         WorkflowException typedRoute = assertThrows(
@@ -371,28 +401,35 @@ class FlowMaterializationTest {
                 Map.of(
                     "key", "invalid-route-type",
                     "tasks", List.of(Map.of(
-                        "key", "parent",
-                        "type", AutomaticTask.class.getName(),
-                        "outputs", List.of(Map.of(
-                            "key", "approved",
-                            "type", "BOOLEAN"
-                        )),
-                        "tasks", List.of(Map.of(
-                            "key", "child",
-                            "type", AutomaticTask.class.getName(),
-                            "route", "outputs.approved == \"yes\""
-                        ))
+                        "key", "sequence",
+                        "type", Sequence.class.getName(),
+                        "tasks", List.of(
+                            Map.of(
+                                "key", "parent",
+                                "type", AutomaticTask.class.getName(),
+                                "outputs", List.of(Map.of(
+                                    "key", "approved",
+                                    "type", "BOOLEAN"
+                                ))
+                            ),
+                            Map.of(
+                                "key", "route",
+                                "type", Route.class.getName(),
+                                "route",
+                                "{{ outputs.parent.approved }} == yes"
+                            )
+                        )
                     ))
                 ),
                 null
             )
         );
         assertTrue(typedRoute.getMessage().contains(
-            "is incompatible with parent context"
+            "is incompatible with output"
         ));
 
-        WorkflowException dependency = assertThrows(
-            WorkflowException.class,
+        IllegalArgumentException dependency = assertThrows(
+            IllegalArgumentException.class,
             () -> deploy(
                 "flow-1",
                 Map.of(
@@ -407,7 +444,7 @@ class FlowMaterializationTest {
             )
         );
         assertTrue(dependency.getMessage().contains(
-            "Task dependency does not exist"
+            "dependOn"
         ));
     }
 
@@ -501,12 +538,12 @@ class FlowMaterializationTest {
                     )
                 ),
                 "tasks", List.of(Map.of(
-                    "key", "parallel",
-                    "type", AutomaticTask.class.getName(),
+                    "key", "high-value-route",
+                    "type", Route.class.getName(),
+                    "route", "{{ inputs.amount }} > 1000",
                     "tasks", List.of(Map.of(
                         "key", "high-value",
-                        "type", AutomaticTask.class.getName(),
-                        "route", "inputs.amount > 1000"
+                        "type", AutomaticTask.class.getName()
                     ))
                 ))
             ),

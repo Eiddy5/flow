@@ -134,8 +134,17 @@ validate_table_sources() {
         exit 1
     fi
 
-    if grep -REn '_at[[:space:]]+bigint' "$schema_tables_dir"; then
-        echo "所有 *_at 字段必须使用 timestamptz" >&2
+    if grep -REin \
+        'CHECK[[:space:]]*\(|EXCLUDE[[:space:]]|CREATE[[:space:]]+(TRIGGER|RULE|FUNCTION|PROCEDURE|DOMAIN)|CREATE[[:space:]]+TYPE[^;]*AS[[:space:]]+ENUM' \
+        "$schema_tables_dir"; then
+        echo "Flow 表结构不能创建数据库业务校验对象" >&2
+        exit 1
+    fi
+
+    if grep -REin \
+        '(^|[^[:alnum:]_])(date|time|timetz|timestamp|timestamptz|interval)([^[:alnum:]_]|$)' \
+        "$schema_tables_dir"; then
+        echo "Flow 时间字段必须使用 Unix 毫秒 bigint" >&2
         exit 1
     fi
 }
@@ -194,20 +203,81 @@ if [[ "$foreign_key_count" != "0" ]]; then
     exit 1
 fi
 
+validation_constraint_count="$(
+    docker exec "$schema_container" \
+        psql -At -U "$schema_user" -d "$schema_database" -c \
+        "SELECT count(*)
+           FROM pg_constraint
+          WHERE contype IN ('c', 'x')
+            AND connamespace = 'public'::regnamespace;"
+)"
+
+if [[ "$validation_constraint_count" != "0" ]]; then
+    echo "预期 CHECK/排他约束数量为 0，实际为: $validation_constraint_count" >&2
+    exit 1
+fi
+
+validation_object_count="$(
+    docker exec "$schema_container" \
+        psql -At -U "$schema_user" -d "$schema_database" -c \
+        "SELECT
+             (SELECT count(*)
+                FROM pg_trigger
+               WHERE NOT tgisinternal)
+           + (SELECT count(*)
+                FROM pg_rules
+               WHERE schemaname = 'public')
+           + (SELECT count(*)
+                FROM pg_type
+               WHERE typnamespace = 'public'::regnamespace
+                 AND typtype IN ('d', 'e'))
+           + (SELECT count(*)
+                FROM pg_proc
+               WHERE pronamespace = 'public'::regnamespace);"
+)"
+
+if [[ "$validation_object_count" != "0" ]]; then
+    echo "预期 Trigger、Rule、Function/Procedure、自定义 Domain/Enum 数量为 0，实际为: $validation_object_count" >&2
+    exit 1
+fi
+
 invalid_time_columns="$(
     docker exec "$schema_container" \
         psql -At -U "$schema_user" -d "$schema_database" -c \
         "SELECT table_name || '.' || column_name || ':' || data_type
            FROM information_schema.columns
           WHERE table_schema = 'public'
-            AND column_name ~ '_at$'
-            AND data_type <> 'timestamp with time zone'
+            AND column_name ~ '(_at|_millis)$'
+            AND data_type <> 'bigint'
           ORDER BY table_name, ordinal_position;"
 )"
 
 if [[ -n "$invalid_time_columns" ]]; then
-    echo "时间字段必须使用 timestamptz:" >&2
+    echo "时间点和毫秒时长字段必须使用 bigint:" >&2
     echo "$invalid_time_columns" >&2
+    exit 1
+fi
+
+native_time_columns="$(
+    docker exec "$schema_container" \
+        psql -At -U "$schema_user" -d "$schema_database" -c \
+        "SELECT table_name || '.' || column_name || ':' || data_type
+           FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND data_type IN (
+                'date',
+                'time without time zone',
+                'time with time zone',
+                'timestamp without time zone',
+                'timestamp with time zone',
+                'interval'
+            )
+          ORDER BY table_name, ordinal_position;"
+)"
+
+if [[ -n "$native_time_columns" ]]; then
+    echo "Flow Schema 不能使用 PostgreSQL 原生日期时间类型:" >&2
+    echo "$native_time_columns" >&2
     exit 1
 fi
 
@@ -261,4 +331,5 @@ echo "- 每张表由独立 SQL 文件定义并由单一入口编排"
 echo "- 表名均为小写 snake_case，且最后单词以 s 结尾"
 echo "- SQL 脚本已成功执行两次"
 echo "- 外键数量: 0"
-echo "- 所有 *_at 字段均为 timestamptz"
+echo "- CHECK、排他约束、Trigger、Rule、Function/Procedure、自定义 Domain/Enum 数量: 0"
+echo "- 所有 *_at 和 *_millis 字段均为 bigint，且没有原生日期时间字段"

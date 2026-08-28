@@ -115,16 +115,39 @@ public record ExecutionSummary(
 }
 ```
 
+### PAAS JSON 序列化与自动绑定约定
+
+- JSON 序列化、反序列化、解析和对象转换优先使用 PAAS JSON 已有能力，不得在其
+  能够满足需求时重复实现 Codec、Mapper 或转换工具。
+- PAAS JSON 确实不支持目标格式或必要转换能力时，可以在对应技术边界提供自定义
+  序列化和反序列化实现。当前 Flow YAML 即为此类例外：PAAS JSON 不支持 YAML，
+  因此由集中的 `YamlParser` 和 `JacksonMapper` 负责转换。自定义实现只能覆盖 PAAS
+  JSON 不支持的部分，不得扩散为一般 JSON 的替代入口。
+- 项目自有普通 `class` 直接通过 PAAS JSON 的 `JsonObject.From(...)`、
+  `JsonObject.asObject(...)` 或同类自动绑定链路进行序列化和反序列化时，统一同时添加
+  Lombok `@Getter`、`@Setter` 和 `@NoArgsConstructor`。这三个注解作为一组约定使用，
+  不拆分选择。
+- 参与自动绑定的字段不使用 `private`，通常保持包可见性；类型继续遵守本项目普通类
+  不显式使用 `final` 的规则。
+- 这些注解生成的 Getter、Setter 和无参构造方法只服务序列化和反序列化，不表达业务
+  行为，也不构成新的业务接口。业务代码必须继续使用类型已有的 `create(...)`、
+  `rehydrate(...)`、领域行为和查询方法，不得调用生成的 Setter 修改业务状态，也不得
+  通过无参构造方法创建业务对象。
+- 未交给 PAAS JSON 自动绑定的类型，以及已经通过手写 Codec、`JsonObject` 或
+  `JsonObjects` 显式映射字段的类型，不要求添加这组注解。
+- 本条是团队编码约定，由开发和代码审查共同维护；不要求新增架构测试、注解处理器
+  检查或其他构建期强制规则。
+
 ### 不可变性与集合
 
 - 选择 `record` 不得绕过领域对象创建规则或模块边界。
-- `class` 中需要保持不变的字段通过构造方法一次初始化，不提供 Setter，并只允许
-  受控领域行为访问或替换其状态；不能依赖 `final` 修饰符表达不变量。
-- ADR 0019 的 Input 定义层次是窄化例外：PAAS JSON 需要先通过无参构造和字段
-  绑定形成具体子类，再由 Flow 或 Repository 边界执行完整定义校验。该层次允许仅供
-  Micronaut Serialization 默认方法内省使用的公共 Setter；Setter 是技术绑定入口，
-  不是业务变更方法。校验通过并进入聚合后仍按只读定义使用，Service、Handler 和
-  其他领域对象不得调用 Setter；此例外不得扩展到其他领域对象。
+- `class` 中需要保持不变的字段通过受控创建入口一次初始化，业务接口不提供手写
+  Setter，并只允许受控领域行为访问或替换其状态；不能依赖 `final` 修饰符表达不变量。
+  采用上文 PAAS JSON 自动绑定约定时，Lombok 生成的 Setter 只是技术绑定入口，不
+  改变该字段的业务不变量。
+- ADR 0019 的 Input 定义层次采用同一自动绑定约定：PAAS JSON 先通过无参构造和字段
+  绑定形成具体子类，再由 Flow 或 Repository 边界执行完整定义校验。校验通过并进入
+  聚合后仍按只读定义使用，Service、Handler 和其他领域对象不得调用生成的 Setter。
 - `record` 组件包含集合、Map、数组或其他可变对象时，紧凑构造方法必须防御性
   复制；访问方法不能泄漏可变引用。
 - 使用 `class` 表达值语义时，应按需要实现 `equals()`、`hashCode()` 和
@@ -144,7 +167,8 @@ public record ExecutionSummary(
 - JOOQ 等工具生成且禁止手工修改的源码遵循生成器输出；不得为了本规则直接修改生成
   结果。项目自有的生成器配置和生成逻辑仍不得在类或字段声明中显式使用 `final`。
 - 审查新代码或修改既有类时，应移除相关类和字段声明上的 `final`。字段不变量继续
-  通过私有可见性、受控构造、无 Setter、领域行为和可变值的防御性复制保证。
+  通过受控创建、无手写业务 Setter、领域行为和可变值的防御性复制保证；使用 PAAS
+  JSON 自动绑定的类型同时遵守上文非 `private` 字段和 Lombok 注解组合约定。
 
 ## 3. timestamp 毫秒值
 
@@ -178,27 +202,14 @@ public record ExecutionSummary(
 
 ### 数据库和第三方边界
 
-数据库和第三方框架可以使用自身要求的日期时间类型，但只能存在于生成代码、Entry、
-Repository 或专用 Adapter 的局部转换边界。PostgreSQL `timestamptz` 对应的 JOOQ
-`OffsetDateTime` 必须与 Unix timestamp 毫秒值转换，不能泄漏到 Core：
+Flow PostgreSQL Schema 中所有时间点统一使用 UTC Unix timestamp 毫秒值 `bigint`；
+JOOQ 生成类型、Entry 和 Repository 直接使用对应的 `Long`，不在数据库边界转换为
+`OffsetDateTime`。时长、超时和间隔同样使用 `bigint` 毫秒值，并在字段名中包含单位。
 
-```java
-static OffsetDateTime toDatabaseTime(long timestamp) {
-    return OffsetDateTime.ofInstant(
-        Instant.ofEpochMilli(timestamp),
-        ZoneOffset.UTC
-    );
-}
-
-static long fromDatabaseTime(OffsetDateTime value) {
-    return value.toInstant().toEpochMilli();
-}
-```
-
-- 时间转换集中在对应 Entry 或稳定的基础设施转换组件中。
-- 写入和回读均以毫秒精度为准；外部系统提供更高精度时，进入项目自有 Java 类型
-  前统一转换为毫秒。
-- Java 使用 timestamp 毫秒值不要求把 PostgreSQL `timestamptz` 改成 `bigint`。
+第三方系统仍可使用其协议要求的日期时间类型，但这些类型只能存在于专用 Adapter 的
+局部转换边界；进入项目自有 Java 类型或 Flow PostgreSQL Schema 前统一转换为毫秒。
+数据库字段类型、命名和校验边界统一遵守
+[`postgresql-schema.md`](postgresql-schema.md)。
 
 ## 4. 复用与小范围重构
 
@@ -290,7 +301,8 @@ Handler、工具类或领域对象。
 - 涉及项目目录、Core 分包、Executor、Worker 或 Plugin 时，必须阅读
   [`../project-structure.md`](../project-structure.md) 和
   [`../decisions/README.md`](../decisions/README.md) 中对应的架构决策。
-- 涉及 JSON 时阅读 [`json.md`](json.md)；手写代码统一使用 `org.paas.json`。
+- 涉及 JSON 时阅读 [`json.md`](json.md)；手写代码优先使用 `org.paas.json`，只有
+  PAAS JSON 不支持的能力才按受控边界提供自定义实现。
 - 涉及 PostgreSQL 表、约束、索引或基线文件时阅读
   [`postgresql-schema.md`](postgresql-schema.md)。
 - 涉及 Command、Handler、Session 或写事务时阅读

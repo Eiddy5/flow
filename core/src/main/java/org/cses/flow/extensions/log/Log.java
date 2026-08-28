@@ -44,7 +44,7 @@ public final class Log extends Task implements RunnableTask {
     @Schema(
         title = "消息",
         description = "支持 {{ path.to.value }} 取值的日志消息",
-        example = "处理结果：{{ dependOnOutputs.prepare.result }}",
+        example = "处理结果：{{ outputs.prepare.result }}",
         implementation = String.class
     )
     private TemplateExpression message;

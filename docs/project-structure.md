@@ -266,7 +266,8 @@ core/
 | --- | --- |
 | `flows` | 统一的 `Flow` 定义、原始 YAML `source`、`draft` 状态、审计删除事实、发布、升级和版本读取 |
 | `executions` | 使用统一 State 的 Execution 创建、推进、恢复、取消和 TaskRun 历史 |
-| `expressions` | 受限条件与模板表达式的解析和求值；Express 由 Route、Loop Until 复用，TemplateExpression 由需要渲染运行输入的 Task 复用 |
+| `conditions` | Condition 递归树、`{{ scope.path }}` 显式引用、typed constant 比较和一次只读求值；`Condition.parser(source)` 是领域入口，包内 `ConditionParser` 承担解析实现；Route 从 `route` 按需形成 Condition，Loop Until 直接持有 Condition，两者分别提供可见上下文 |
+| `expressions` | TemplateExpression 模板值的受限解析和渲染；由需要渲染运行输入的 Task 复用，不承担 boolean 条件 |
 | `plugins` | 按真实 Java 包分组的全局只读插件、Task 元信息和具体定义 Schema 查询 |
 | `tasks` | Task 抽象定义、RunnableTask/OrchestrationTask 能力及其直接调用契约 |
 | `shared` | 被多个业务模块稳定复用的核心协议，不作为兜底目录 |
@@ -396,7 +397,7 @@ Task 领域定义的一种能力：
 
 ```text
 extensions/
-├── flow/               # Flow 自有编排 Task：Pause、Parallel，以及后续 Loop 等
+├── flow/               # Flow 自有编排 Task：Branch、Route、Sequence、Parallel、Loop、LoopUntil、Pause
 ├── tasks/              # 尚未迁移类型地址的 AutomaticTask
 ├── log/                # 独立的 Log 扩展能力
 └── <extension-name>/   # 其他独立扩展能力
@@ -422,15 +423,21 @@ extensions/
 RunnableTask 与 `Pause.pause` 对接，Task 使用 `RunContext` 调用宿主 Service；跨进程
 场景才通过公开 `ExecutionService.resume(...)` 恢复 Pause。Task 不能直接调用 Worker、
 Executor 或 Handler。Pause 直接声明唯一必填的 `pause` Task、允许为空的 `resume` Input
-列表以及可选且成对配置的 `duration + behavior`；继承的 `tasks` 保持普通完成后子任务
-语义，在 Resume 后执行，`definitionChildren()` 按 `pause`、`tasks` 顺序暴露完整定义树。
+列表以及可选且成对配置的 `duration + behavior`。Pause 直接继承 Task，不拥有 Branch
+的普通 `tasks`；`definitionChildren()` 只暴露其专有的 `pause` Task，Resume 数据进入
+Pause 自身的 `outputs`，后续流程由 Pause 所在串行作用域继续推进。
 完整定义遍历通过 `Task.definitionChildren()` 识别类型专有 Task，跨字段约束继续由
 `ModelValidator` 统一调用 `ModelInvariant` 校验。
 
 当前 `Parallel` 是 Flow Core 自带并标注 `@Plugin` 的显式并行 OrchestrationTask
-作用域，位于 `extensions/flow/Parallel.java`。普通 Task 的直接子任务默认串行；
-只有 Parallel 的直接子任务由 Executor 组成同一批次。Parallel TaskRun 在全部实际
+作用域，位于 `extensions/flow/Parallel.java`。Branch 的有序子任务默认串行；只有
+Parallel 的直接子任务由 Executor 组成同一批次。Parallel TaskRun 在全部实际
 选中分支子树收敛前保持 RUNNING，且不投递 Worker。
+
+`Branch` 是所有结构型 Task 的抽象基类并独占有序 `tasks`。`Sequence` 只显式建立
+串行作用域；`Route` 只保存 `route` 原始字符串，正式发布校验或运行匹配时才
+解析为 Condition。Condition 成立时进入 Route 的 Branch 子树，不成立时不创建
+Route TaskRun。Route、Sequence 与 Parallel 均位于 `extensions/flow`。
 
 当前 `Loop` 与 `LoopUntil` 同样属于 Flow Core 自带的 OrchestrationTask：Loop 按
 固定正整数次数串行重复子 Task，LoopUntil 在每轮收敛后检查受限条件并受最大轮数
@@ -438,7 +445,8 @@ Executor 或 Handler。Pause 直接声明唯一必填的 `pause` Task、允许�
 恢复进度，不保存循环游标。
 
 `flow` 目录按语义所有权归纳 Flow 自身提供的编排 Task，而不是按每个具体能力再拆
-一层目录。Pause、Parallel、Loop、Loop Until 以及后续 Subflow 都属于该目录。
+一层目录。Branch、Route、Sequence、Pause、Parallel、Loop、Loop Until 以及后续
+Subflow 都属于该目录。
 Log、Notification 等能够作为独立扩展能力演进的 Task，才使用自己的能力目录。
 
 扩展可以依赖 Core 提供的插件 SPI 与 Task 能力接口，不应为了声明 Task 能力而
@@ -639,7 +647,8 @@ queues/event
 | 写操作处理 | `core/src/main/java/org/cses/flow/core/handlers/<业务模块>/` |
 | 跨领域共享能力接口与 ActorRef 值对象 | `core/src/main/java/org/cses/flow/core/domains/` 根目录，不再按单项能力建立子目录 |
 | 领域对象或状态 | `core/src/main/java/org/cses/flow/core/domains/<业务模块>/` |
-| Express 条件与 TemplateExpression 模板值对象 | `core/src/main/java/org/cses/flow/core/domains/expressions/` |
+| Condition 条件值对象 | `core/src/main/java/org/cses/flow/core/domains/conditions/` |
+| TemplateExpression 模板值对象 | `core/src/main/java/org/cses/flow/core/domains/expressions/` |
 | 查询处理 | `core/src/main/java/org/cses/flow/core/queries/<业务模块>/` |
 | 持久化接口 | `core/src/main/java/org/cses/flow/core/repositories/<业务模块>/` |
 | YAML、严格 Jackson、Flow 定义物化与插件定义 Schema | `core/src/main/java/org/cses/flow/core/serializers/`，保持扁平 |
@@ -689,7 +698,7 @@ queues/event
 AI Agent 接到开发、测试、审查或文档任务后：
 
 1. 先用本文确定目标模块、公开入口和允许修改的目录。
-2. 再读取 `docs/standards/project-development.md`。
+2. 再读取 `docs/standards/development.md`。
 3. 根据任务读取对应 `docs/agents/`、`docs/standards/`、`docs/decisions/` 和
    `docs/uc/`。
 4. 修改后检查新增文件是否位于本文规定的目录，并检查测试包是否镜像生产包。

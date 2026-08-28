@@ -1,23 +1,16 @@
 package org.cses.flow.core.services.executions;
 
-import lombok.NoArgsConstructor;
-import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.tasks.RunResult;
-import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.plugins.annotations.Plugin;
-import org.cses.flow.core.runner.RunContext;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTaskRunRef;
 
@@ -92,7 +85,7 @@ class ConditionalRouteResumeIntegrationTest {
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertEquals(3, completed.taskRuns().size());
+            assertEquals(2, completed.taskRuns().size());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
@@ -149,7 +142,7 @@ class ConditionalRouteResumeIntegrationTest {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy(routeYaml(
                 "conditional-resume-isolation-flow",
-                "outputs.decision == \"APPROVED\""
+                "{{ outputs.approval-decision.decision }} == APPROVED"
             ));
             Execution first = fixture.startCreated(flow);
             Execution second = fixture.startCreated(flow);
@@ -201,7 +194,7 @@ class ConditionalRouteResumeIntegrationTest {
     ) {
         Flow flow = fixture.deploy(routeYaml(
             key,
-            "outputs.decision == \"APPROVED\""
+            "{{ outputs.approval-decision.decision }} == APPROVED"
         ));
         Execution execution = fixture.startCreated(flow);
         fixture.restartServer();
@@ -230,7 +223,7 @@ class ConditionalRouteResumeIntegrationTest {
         return tasks.stream()
             .flatMap(task -> java.util.stream.Stream.concat(
                 java.util.stream.Stream.of(task),
-                flatten(task.tasks()).stream()
+                flatten(task.definitionChildren()).stream()
             ))
             .toList();
     }
@@ -247,7 +240,7 @@ class ConditionalRouteResumeIntegrationTest {
             .noneMatch(run -> run.taskId().equals(task.id())));
     }
 
-    private static String routeYaml(String key, String approveRoute) {
+    private static String routeYaml(String key, String approveExpress) {
         return """
             key: %s
             description: conditional approval
@@ -264,45 +257,18 @@ class ConditionalRouteResumeIntegrationTest {
                   - key: decision
                     type: STRING
               - key: route-decision
-                type: org.cses.flow.core.services.executions.ConditionalRouteResumeIntegrationTest.ResumeDecisionTask
-                dependOn:
-                  - approval-decision
-                outputs:
-                  - key: decision
-                    type: STRING
+                type: org.cses.flow.extensions.flow.Route
+                route: '%s'
                 tasks:
                   - key: approve
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    route: '%s'
+              - key: reject-decision
+                type: org.cses.flow.extensions.flow.Route
+                route: '{{ outputs.approval-decision.decision }} == REJECTED'
+                tasks:
                   - key: reject
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    route: 'outputs.decision == "REJECTED"'
-            """.formatted(key, approveRoute);
-    }
-
-    /** Copies a resumed decision into a normal parent routing output. */
-    @Plugin
-    @SuperBuilder
-    @NoArgsConstructor
-    public static final class ResumeDecisionTask
-        extends Task implements RunnableTask {
-
-        @Override
-        public RunResult run(RunContext context) {
-            Object dependencies = context.taskInputs().get("dependOnOutputs");
-            if (!(dependencies instanceof Map<?, ?> byTask)) {
-                return RunResult.success(Map.of());
-            }
-            Object approval = byTask.get("approval-decision");
-            if (!(approval instanceof Map<?, ?> outputs)
-                || !outputs.containsKey("decision")) {
-                return RunResult.success(Map.of());
-            }
-            return RunResult.success(Map.of(
-                "decision",
-                outputs.get("decision")
-            ));
-        }
+            """.formatted(key, approveExpress);
     }
 
     private static final class RouteScenario {

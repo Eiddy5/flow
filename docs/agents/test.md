@@ -30,7 +30,7 @@ Test Agent 读取精简 UC 中的真实用户场景和验证方式，建立对�
 ## 开始前必读
 
 1. 项目根目录 `AGENTS.md`。
-2. `docs/standards/project-development.md`。
+2. `docs/standards/development.md`。
 3. `docs/standards/uc-testing.md`。
 4. 目标 UC Markdown。
 5. UC 领域 `README.md`。

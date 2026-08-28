@@ -29,23 +29,24 @@ class Uc03AutomaticTaskFlowTest {
                 key: uc03-s1-flow
                 description: automatic input and output
                 tasks:
-                  - key: prepare-input
-                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
-                    outputs:
-                      - key: payload
-                        type: STRING
+                  - key: pipeline
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
+                      - key: prepare-input
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
+                        outputs:
+                          - key: payload
+                            type: STRING
                       - key: target-success
                         type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                         outputs:
                           - key: result
                             type: STRING
-                        tasks:
-                          - key: observe-output
-                            type: org.cses.flow.core.services.executions.Uc03AutomaticTask
-                            outputs:
-                              - key: observed
-                                type: STRING
+                      - key: observe-output
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
+                        outputs:
+                          - key: observed
+                            type: STRING
                 """);
 
             Execution created = fixture.startCreated(flow);
@@ -54,10 +55,16 @@ class Uc03AutomaticTaskFlowTest {
             Task prepare = task(flow, "prepare-input");
             Task target = task(flow, "target-success");
             Task observe = task(flow, "observe-output");
+            Task pipeline = task(flow, "pipeline");
 
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(
-                List.of(prepare.id(), target.id(), observe.id()),
+                List.of(
+                    pipeline.id(),
+                    prepare.id(),
+                    target.id(),
+                    observe.id()
+                ),
                 completed.taskRuns().stream().map(TaskRun::taskId).toList()
             );
             assertEquals(
@@ -67,7 +74,10 @@ class Uc03AutomaticTaskFlowTest {
             assertEquals(
                 Map.of(
                     "outputs",
-                    Map.of("payload", "prepared")
+                    Map.of(
+                        "prepare-input",
+                        Map.of("payload", "prepared")
+                    )
                 ),
                 run(completed, target).inputs()
             );
@@ -78,7 +88,12 @@ class Uc03AutomaticTaskFlowTest {
             assertEquals(
                 Map.of(
                     "outputs",
-                    Map.of("result", "processed-prepared")
+                    Map.of(
+                        "prepare-input",
+                        Map.of("payload", "prepared"),
+                        "target-success",
+                        Map.of("result", "processed-prepared")
+                    )
                 ),
                 run(completed, observe).inputs()
             );
@@ -100,17 +115,18 @@ class Uc03AutomaticTaskFlowTest {
                 key: uc03-s2-flow
                 description: explicit automatic failure
                 tasks:
-                  - key: prepare-input
-                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
-                    outputs:
-                      - key: payload
-                        type: STRING
+                  - key: pipeline
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
+                      - key: prepare-input
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
+                        outputs:
+                          - key: payload
+                            type: STRING
                       - key: target-fail
                         type: org.cses.flow.core.services.executions.Uc03AutomaticTask
-                        tasks:
-                          - key: never-run
-                            type: org.cses.flow.core.services.executions.Uc03AutomaticTask
+                      - key: never-run
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
 
             Execution created = fixture.startCreated(flow);
@@ -141,12 +157,14 @@ class Uc03AutomaticTaskFlowTest {
                 key: uc03-s3-flow
                 description: unexpected automatic exception
                 tasks:
-                  - key: prepare-input
-                    type: org.cses.flow.core.services.executions.Uc03AutomaticTask
-                    outputs:
-                      - key: payload
-                        type: STRING
+                  - key: pipeline
+                    type: org.cses.flow.extensions.flow.Sequence
                     tasks:
+                      - key: prepare-input
+                        type: org.cses.flow.core.services.executions.Uc03AutomaticTask
+                        outputs:
+                          - key: payload
+                            type: STRING
                       - key: target-throw
                         type: org.cses.flow.core.services.executions.Uc03AutomaticTask
                 """);
@@ -180,7 +198,7 @@ class Uc03AutomaticTaskFlowTest {
         return tasks.stream()
             .flatMap(task -> java.util.stream.Stream.concat(
                 java.util.stream.Stream.of(task),
-                flatten(task.tasks()).stream()
+                flatten(task.definitionChildren()).stream()
             ))
             .toList();
     }

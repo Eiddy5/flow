@@ -14,7 +14,7 @@ description: 为 Flow Micronaut/JOOQ 项目中已有的 Core Repository 契约�
 
 1. 读取 `AGENTS.md`。
 2. 读取 `docs/project-structure.md` 和
-   `docs/standards/project-development.md`。
+   `docs/standards/development.md`。
 3. 读取 `docs/standards/jooq.md` 和
    `docs/standards/DATAPILOT_USAGE.md`。
 4. 如果 `docs/agents/` 下存在相关角色文档，读取该文档。

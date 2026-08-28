@@ -47,13 +47,9 @@ class Uc08DynamicLogFlowTest {
                         type: STRING
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
-                    dependOn:
-                      - prepare
-                    message: "处理结果：{{ dependOnOutputs.prepare.result }}"
+                    message: "处理结果：{{ outputs.prepare.result }}"
                   - key: observe
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    dependOn:
-                      - write-log
                 """);
 
             Execution completed = fixture.startAndAwait(flow);
@@ -138,13 +134,9 @@ class Uc08DynamicLogFlowTest {
                         type: STRING
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
-                    dependOn:
-                      - prepare
-                    message: "结果：{{ dependOnOutputs.prepare.missing }}"
+                    message: "结果：{{ outputs.prepare.missing }}"
                   - key: never-run
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    dependOn:
-                      - write-log
                 """);
 
             Execution failed = fixture.startAndAwait(flow);
@@ -155,7 +147,7 @@ class Uc08DynamicLogFlowTest {
             assertEquals(State.Type.FAILED, failed.state().current());
             assertEquals(State.Type.FAILED, targetRun.state().current());
             assertTrue(targetRun.error().orElseThrow().contains(
-                "dependOnOutputs.prepare.missing"
+                "outputs.prepare.missing"
             ));
             assertTrue(failed.taskRunsForTask(neverRun.id()).isEmpty());
             assertTrue(logs.messages().isEmpty());

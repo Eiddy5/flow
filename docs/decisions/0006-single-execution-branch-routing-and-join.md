@@ -5,7 +5,7 @@
 Accepted（生产内存实现部分由 ADR 0007 修订；绑定的 Flow 定义类型由
 ADR 0008 修订；PAUSE 恢复入口由 ADR 0016 修订；可运行批次的计划与应用边界
 由 ADR 0020 修订；普通子任务默认串行和显式 PARALLEL 语义由 ADR 0021
-修订；条件表达式的语义所有权由 ADR 0037 修订；typed Flow inputs 与数值、布尔
+修订；条件表达式的语义所有权由 ADR 0074 修订；typed Flow inputs 与数值、布尔
 Route 由 ADR 0052 修订；Flow-level variable Route 由 ADR 0055 增补）
 
 ## 背景

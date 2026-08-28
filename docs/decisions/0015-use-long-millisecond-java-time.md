@@ -2,7 +2,8 @@
 
 ## 状态
 
-Accepted
+Accepted（PostgreSQL 时间列保留 `timestamptz` 的条款由
+[`ADR 0075`](0075-use-bigint-time-and-application-validation.md) 取代）
 
 ## 背景
 
@@ -71,5 +72,5 @@ ADR 0014 关于 Flow 来源、Reversion 和 PostgreSQL `timestamptz` 的其他�
   精度断言。
 - 可空时间迁移为 `Long` 时，必须同时验证对应状态和审计字段的一致性。
 - 具体编码规则以
-  [`project-development.md`](../standards/project-development.md)
+  [`development.md`](../standards/development.md)
   为准。

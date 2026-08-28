@@ -55,7 +55,6 @@ class PauseTest {
 
         assertEquals(Pause.class.getCanonicalName(), pause.getType());
         assertEquals(action, pause.pause());
-        assertTrue(pause.tasks().isEmpty());
         assertEquals(List.of(action), pause.definitionChildren());
         assertEquals(action, pause.findDescendant(action.id()).orElseThrow());
         assertEquals(
@@ -69,22 +68,18 @@ class PauseTest {
     }
 
     @Test
-    void keepsPauseActionSeparateFromPostResumeTasks() {
+    void doesNotOwnTheOrdinaryBranchTasksField() {
         Task action = automatic("action-id", "create-approval");
-        Task continuation = automatic("continuation-id", "send-result");
 
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
             .key("wait-approval")
             .pause(action)
-            .tasks(List.of(continuation))
             .build());
 
-        assertEquals(List.of(continuation), pause.tasks());
-        assertEquals(
-            List.of(action, continuation),
-            pause.definitionChildren()
-        );
+        assertEquals(List.of(action), pause.definitionChildren());
+        assertTrue(java.util.Arrays.stream(Pause.class.getMethods())
+            .noneMatch(method -> method.getName().equals("tasks")));
     }
 
     @Test
@@ -107,8 +102,7 @@ class PauseTest {
                     "type", Pause.class.getCanonicalName(),
                     "pause", Map.of(
                         "key", "create-approval",
-                        "type", AutomaticTask.class.getCanonicalName(),
-                        "route", "outputs.ignored == \"value\""
+                        "type", AutomaticTask.class.getCanonicalName()
                     ),
                     "resume", List.of(Map.of(
                         "key", "decision",

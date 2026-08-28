@@ -39,7 +39,6 @@ class TaskTest {
 
     @Test
     void exposesReadOnlyBoundDefinitionState() {
-        Task child = automatic("child-id", "child");
         Task task = PLUGINS.modelValidator().validate(
             AutomaticTask.builder()
                 .id("task-id")
@@ -49,27 +48,20 @@ class TaskTest {
                     "result",
                     DataType.STRING
                 )))
-                .route(TaskRoute.direct())
-                .dependOn(List.of("prepare"))
-                .tasks(List.of(child))
                 .build()
         );
 
         assertEquals(AutomaticTask.class.getName(), task.getType());
         assertEquals("task", task.key());
         assertTrue(task.declaresOutput("result"));
-        assertEquals("DIRECT", task.route().source());
-        assertEquals(List.of("prepare"), task.dependOn());
-        assertEquals(List.of("child"), task.tasks().stream()
-            .map(Task::key)
-            .toList());
+        assertTrue(task.definitionChildren().isEmpty());
         assertThrows(
             UnsupportedOperationException.class,
             () -> task.inputs().add(input("other", DataType.STRING))
         );
         assertThrows(
             UnsupportedOperationException.class,
-            () -> task.dependOn().add("other")
+            () -> task.outputs().add(Output.create("other", DataType.STRING))
         );
         assertFalse(Arrays.stream(Task.class.getMethods())
             .anyMatch(method -> method.getName().startsWith("set")));
@@ -82,10 +74,6 @@ class TaskTest {
             .key("approval")
             .inputs(List.of(input("request", DataType.STRING)))
             .outputs(List.of(Output.create("decision", DataType.STRING)))
-            .route(TaskRoute.parse(
-                "outputs.decision == \"approved\""
-            ))
-            .dependOn(List.of("prepare"))
             .build();
         Task restored = AutomaticTask.builder()
             .id("task-1")
@@ -95,10 +83,6 @@ class TaskTest {
                 "decision",
                 DataType.STRING
             )))
-            .route(TaskRoute.parse(
-                "outputs.decision == \"approved\""
-            ))
-            .dependOn(List.of("prepare"))
             .build();
 
         assertEquals(first, restored);
@@ -121,16 +105,6 @@ class TaskTest {
             )
         );
         assertThrows(
-            IllegalArgumentException.class,
-            () -> PLUGINS.modelValidator().validate(
-                AutomaticTask.builder()
-                    .id("task-1")
-                    .key("approval")
-                    .dependOn(List.of("prepare", "prepare"))
-                    .build()
-            )
-        );
-        assertThrows(
             jakarta.validation.ConstraintViolationException.class,
             () -> PLUGINS.modelValidator().validate(
                 AutomaticTask.builder().id(" ").key("task").build()
@@ -145,6 +119,22 @@ class TaskTest {
                     .build()
             )
         );
+    }
+
+    @Test
+    void commonTaskDeclaresOnlyFieldsSharedByEveryTaskType() {
+        List<String> fields = Arrays.stream(Task.class.getDeclaredFields())
+            .filter(field -> !Modifier.isStatic(field.getModifiers()))
+            .map(java.lang.reflect.Field::getName)
+            .toList();
+
+        assertEquals(
+            List.of("id", "key", "displayName", "inputs", "outputs"),
+            fields
+        );
+        assertFalse(fields.contains("route"));
+        assertFalse(fields.contains("dependOn"));
+        assertFalse(fields.contains("tasks"));
     }
 
     @Test

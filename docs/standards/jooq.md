@@ -175,10 +175,16 @@ core/src/main/java/org/cses/flow/infrastructure/
 └── repositories/
     └── flows/
         ├── FlowRepositoryImpl.java
-        └── entries/
-            ├── FlowEntry.java
-            └── FlowTaskEntry.java
+        ├── entries/
+        │   ├── FlowEntry.java
+        │   └── FlowTaskEntry.java
+        └── codec/
+            ├── StateCodec.java
+            └── TaskPropertiesCodec.java
 ```
+
+`codec` 只在 Entry 确实需要序列化或专用字段转换时创建，并且必须与 `entries`
+平级。具体使用规则见第 6 节。
 
 其他业务模块使用相同结构：
 
@@ -229,7 +235,7 @@ gen/src/main/java/org/flow/gen/    # 此处只放生成代码
 
 ```text
 Domain
-  -> XxxEntry.fromDomain(domain)
+  -> XxxEntry.from(domain)
   -> buildInsertMap() / buildUpdateMap()
   -> JOOQ
   -> Database
@@ -240,42 +246,139 @@ Domain
 ```text
 Database
   -> JOOQ fetchInto(XxxEntry.class)
-  -> XxxEntry.toDomain()
+  -> entry.to()
   -> Domain
 ```
 
 不得把 Entry 从 Repository 返回给 Service、Handler 或 Controller，也不得在 Entry
 中实现 Flow 发布、Execution 推进、TaskRun 完成等领域行为。
 
-## 6. 转换和扩展方法放在 Entry
+## 6. Entry 与 Domain 的转换接口
 
-生成代码不能手工修改。以下方法应放在对应的 `XxxEntry` 中：
+生成代码不能手工修改。需要与 Domain 双向转换的 `XxxEntry` 只提供 `from(...)` 和
+`to(...)` 两类转换方法：
 
-- `fromDomain(...)`、`of(...)` 等 Domain 到 Entry 的转换。
-- `toDomain()`、`toXxx()` 等 Entry 到 Domain 的转换。
-- JSON、枚举、时间或数据库专属类型的转换。
-- 同一张表特有的持久化字段组合方法。
-- 只服务于该 Repository 的读取辅助方法。
+- `from(...)` 从 Domain 形成 Entry。
+- `to(...)` 从当前 Entry 形成 Domain。
 
-Entry 和专用 Codec 中的 JSON/JSONB 转换必须同时遵守
-[`json.md`](json.md)。一般字段统一使用 PAAS JSON；ADR 0026 定义的
-`FlowTaskEntry` 插件 properties 例外只能调用集中 `JacksonMapper` 的公开转换
-方法，Entry 仍不得直接使用 Jackson `ObjectMapper` 或注册 Module。
+不得使用 `fromDomain(...)`、`toDomain(...)`、`toEntry(...)`、`toXxx(...)` 或
+`of(...)` 建立同义转换入口。Repository 只调用 Entry 的 `from(...)` 和 `to(...)`，
+不能复制字段转换逻辑。
 
-例如，`FlowEntry.fromDomain(...)` 把完整 `Flow` 状态转换为生成对象字段，
-`FlowEntry.toDomain()` 再使用 `Flow.rehydrate(...)` 恢复同一领域事实。转换
-必须覆盖重建所需的全部字段，不能为了简化映射构造只有部分状态的领域对象。
+### `from(...)`
 
-`toDomain` 必须使用领域对象已经确认的静态 `rehydrate(...)` 入口。持久化恢复
-不是普通业务创建，不得调用 `create(...)`，也不得通过 Factory、反射或直接修改
-私有字段绕过领域约束。如果领域对象尚无必要的重建入口，应先补充领域持久化
-契约。
+`from(...)` 是 `XxxEntry` 的静态方法，返回一个完整的 Entry：
+
+```java
+public static ExecutionEntry from(Execution execution) {
+    // Domain -> Entry
+}
+```
+
+需要所属聚合、父节点或持久化顺序等额外事实时，将这些事实作为普通转换参数传入：
+
+```java
+public static FlowTaskEntry from(
+    String companyId,
+    String flowKey,
+    long flowVersion,
+    Task task,
+    String parentId,
+    int order
+) {
+    // Domain + 持久化结构事实 -> Entry
+}
+```
+
+`from(...)` 只转换 Domain 已经形成的状态以及写入所需的持久化结构事实，不能执行
+领域状态迁移。
+
+### `to(...)`
+
+`to(...)` 是当前 `XxxEntry` 的实例方法，返回对应 Domain：
+
+```java
+public Execution to() {
+    // Entry -> Domain
+}
+```
+
+恢复聚合需要 Repository 已经读取和恢复的子领域对象时，通过参数接收这些对象：
+
+```java
+public Execution to(List<TaskRun> taskRuns) {
+    // Entry + 已恢复的子领域对象 -> Domain
+}
+```
+
+数据库恢复属于数据库 Adapter。`to(...)` 负责当前 Entry 的字段转换，Repository
+负责查询、排序和关联装配。Domain 已有确认的 `rehydrate(...)` 时，`to(...)` 可以
+把转换后的纯领域事实交给该入口；不得把 Entry、JOOQ 或数据库专属类型传入 Domain，
+也不得调用会重新生成身份或初始状态的普通创建入口。
+
+### 转换场景统一使用重载
+
+同一个 Entry 需要支持多种转换情况时，必须重载 `from(...)` 或 `to(...)`。不同情况
+仍然表达同一个转换动作，不能通过增加方法名前后缀、布尔开关或可空序列化参数建立
+平行入口：
+
+```java
+public static XxxEntry from(Domain domain) { ... }
+
+public static XxxEntry from(
+    String ownerId,
+    Domain domain,
+    int order
+) { ... }
+
+public Domain to() { ... }
+
+public Domain to(List<ChildDomain> children) { ... }
+```
+
+### 序列化转换统一放在同级 `codec`
+
+`from(...)` 和 `to(...)` 的参数只能表达 Domain、子领域对象或持久化结构事实，不能
+接收 `JacksonMapper`、`ObjectMapper`、`JsonFactory`、序列化器或序列化策略。
+
+确实需要序列化、反序列化或数据库专属字段转换时，在 `entries` 的同级建立
+`codec` 子包。一个 Codec 只负责一种具体类型或字段的稳定转换，并提供静态方法；
+序列化工具、配置和转换过程全部封装在方法内部：
+
+```java
+public class StateCodec {
+
+    public static JsonObject encode(State state) {
+        // State -> 数据库存储类型
+    }
+
+    public static State decode(JsonObject value) {
+        // 数据库存储类型 -> State
+    }
+}
+```
+
+Entry 只静态调用对应 Codec：
+
+```java
+entry.state = StateCodec.encode(execution.state());
+State state = StateCodec.decode(this.state);
+```
+
+Codec 不执行 SQL、不查询关联 Entry、不装配聚合，也不实现领域行为。不同字段不能
+堆入 `EntryCodec`、`JsonHelper` 或其他职责不明确的通用类。
+
+Entry 和 Codec 中的 JSON/JSONB 转换必须同时遵守 [`json.md`](json.md)。一般字段
+统一使用 PAAS JSON；ADR 0026 确认的特殊序列化方式也必须封装在对应 Codec 内部，
+不能作为 `from(...)` 或 `to(...)` 的参数传入。
+
+转换必须覆盖恢复 Domain 所需的全部字段，不能为了简化映射构造只有部分状态的
+领域对象。
 
 项目自有 Java 类型的时间点统一为 Unix timestamp 毫秒值 `long/Long`，完整规则
-见 [`project-development.md`](project-development.md)。当前 Flow Schema 直接使用
-`bigint` 保存这些毫秒值；如果其他 PostgreSQL Schema 使用 `timestamptz`，对应的
-`OffsetDateTime` 只允许出现在生成代码和 Entry/数据库 Adapter 转换边界，不得返回
-给 Core。
+见 [`development.md`](development.md)。Flow PostgreSQL Schema 的时间点、
+时长、超时和间隔同样使用 `bigint` 毫秒值，JOOQ 生成类型和 Entry 不得为项目自有
+时间字段引入 `OffsetDateTime` 或其他原生日期时间类型。
 
 Entry 可以复用生成父类已有的 `toMap()`、`table()`、`buildInsertMap()` 和
 `buildUpdateMap()`，不得重复实现同名通用能力。只有生成能力无法满足已确认的
@@ -284,7 +387,7 @@ Entry 可以复用生成父类已有的 `toMap()`、`table()`、`buildInsertMap(
 ### 领域审计字段归领域所有权
 
 创建人、创建时间、更新人、更新时间、删除人和删除时间等审计事实，必须先由领域
-对象产生并由 `XxxEntry.fromDomain(...)` 原样映射。PostgreSQL Adapter 只负责写入、
+对象产生并由 `XxxEntry.from(...)` 原样映射。PostgreSQL Adapter 只负责写入、
 读取和查询这些已经存在于领域对象中的字段，不得从 `DSLContext` 的配置上下文读取
 当前 Session，不得在数据库 Adapter 中调用当前时间或拼装操作者 JSON，也不得建立
 通用的 `PostgresAudit` 辅助类。
@@ -299,6 +402,56 @@ Entry 可以复用生成父类已有的 `toMap()`、`table()`、`buildInsertMap(
 对应字段，数据库也不应为它新增审计列；需要数据库并发、行锁或排序的字段，仍可由
 具体数据库 Adapter 按基础设施协议处理。
 
+## 6.1 Repository 私有实现的组织
+
+Repository 的公开方法是 Core Repository Interface 在数据库 Adapter 上的实现；私有
+方法是该 Adapter 的内部实现，不应把某一个领域分支直接当作方法的主要抽象。私有
+方法名优先表达数据库动作、聚合装配或数据读取阶段，避免把草稿、正式版本、审计或
+某个具体生命周期路径硬编码到方法名中。数据库实体与领域实体的转换名称和实现不
+属于 Repository 私有方法。
+
+同一个动作在不同阶段需要不同参数时，优先使用方法重载。重载必须满足“概念相同、
+上下文不同”的条件，不能仅为了减少字符把不同语义的操作合并为同名方法：
+
+| 内部概念 | 推荐的重载形态 | 两个阶段的区别 |
+| --- | --- | --- |
+| 结果恢复 | `restore(dsl, entry)` / `restore(entry)` | 前者按需要读取关联数据，后者使用已完整的 Entry |
+| 保存 | `save(dsl, domain)` / `insert(dsl, entry)` | 由实体 ID 区分已有行更新和新行插入；聚合子记录只在需要时随新行写入 |
+| 插入 | `insert(dsl, domain)` / `insert(dsl, entry)` | 前者协调聚合及子记录，后者只写入一行 |
+| 聚合装配 | `restore(dsl, entry)` 或直接调用 `entry.to(children)` | Repository 查询关联数据，Entry 执行领域重建 |
+| 子集合读取或写入 | `readChildren(...)` / `readChildren(entries, ...)`，以及 `writeChildren(...)` 的对应重载 | 数据库查询阶段与内存递归或批量 `VALUES` 阶段 |
+
+例如，聚合插入可以由 `insert(dsl, Flow)` 调用 Entry 完成领域到 Entry 的转换并协调子集合，
+再由 `insert(dsl, FlowEntry)` 负责单行 JOOQ 写入；两个方法都是“插入”，但参数分别
+表示聚合编排阶段和数据库行阶段。任务树则可以由 `readTasks(DSLContext, ...)`
+读取数据库，再由同名的 `readTasks(List<FlowTaskEntry>, ...)` 在内存中递归恢复。
+这种组织方式把变化集中在一个动作下，调用方无需知道当前是草稿还是正式版本。
+
+私有方法组织遵循以下规则：
+
+1. 首先按 `find`、`insert`、`update`、`delete`、`restore`、`read` 和 `write` 等
+   技术动作分组；状态差异只反映领域已经准备好的字段，不在 Repository 中实现领域
+   状态迁移或生命周期判断。领域转换方法不属于 Repository 的私有动作。
+2. 同一动作的重载由高层编排逐步调用低层实现，避免在 `insert`、`update` 或查询
+   的多个分支中重复构造 Entry、租户条件、子集合写入和异常转换。
+3. 一次性且没有复用价值的查询不要为了“看起来通用”额外包成私有方法；查询语义
+   已经清晰时可以直接写在公开方法中。只有条件或映射确实复用，才抽取查询辅助方法。
+4. 方法名不要使用 `insertDraft`、`insertReversion`、`updateDeployedAudit`、
+   `restoreChildren` 这类把当前业务状态或历史命名带入实现动作的名称。状态差异应
+   由领域对象先完成，Repository 只通过通用持久化动作写入结果。
+5. 重载不能隐藏领域规则，也不能生成审计事实。领域不变量由领域对象负责；Repository
+   只协调持久化协议、租户条件、子记录一致性、数据库冲突和对象重建。
+6. Repository 不定义数据库实体与领域实体的转换方法。`from(...)` 和 `to(...)`
+   只能位于对应的 `XxxEntry`；Repository 的 `restore` 只负责关联数据装配并调用
+   Entry。
+7. 私有方法不是新的跨 Repository 工具接口。只有至少两个 Adapter 具有相同且稳定
+   的技术语义时，才考虑抽取共享基础设施；否则保持在当前 Adapter 内，保证修改和
+   验证的局部性。
+
+审查 Repository 时，应能从私有方法名称看出“正在执行哪种技术动作”，而不需要先
+了解某个历史生命周期名称。若同一个概念出现多个带状态后缀的方法，应优先检查它们
+是否可以合并为一组重载。
+
 ## 7. 完整对象插入
 
 完整对象首次入库时：
@@ -310,7 +463,7 @@ Entry 可以复用生成父类已有的 `toMap()`、`table()`、`buildInsertMap(
 正确示例：
 
 ```java
-ExecutionEntry entry = ExecutionEntry.fromDomain(execution);
+ExecutionEntry entry = ExecutionEntry.from(execution);
 
 dsl.insertInto(EXECUTIONS)
     .set(entry.buildInsertMap())
@@ -387,11 +540,9 @@ values.execute();
 dsl.update(FLOWS)
     .set(FLOWS.SOURCE, source)
     .set(FLOWS.UPDATED_AT, updatedAt)
-    .set(FLOWS.LOCK_VERSION, nextLockVersion)
     .where(FLOWS.COMPANY_ID.eq(companyId))
     .and(FLOWS.ID.eq(flowId))
     .and(FLOWS.DRAFT.isTrue())
-    .and(FLOWS.LOCK_VERSION.eq(expectedLockVersion))
     .execute();
 ```
 
@@ -399,7 +550,8 @@ dsl.update(FLOWS)
 
 - 只包含本次命令明确允许修改的字段。
 - 使用生成的 Table Field，不手写数据库字段名。
-- 带上完整业务身份、租户和并发条件。
+- 带上完整业务身份和租户条件；持久化协议明确要求行锁或 CAS 时，同时带上对应的
+  技术并发条件。
 - 需要清空字段时显式调用 `.set(TABLE.FIELD, null)`。
 
 调用 `entry.setState(...)` 只会修改内存中的 Entry，并不会执行数据库更新；真正的
@@ -411,7 +563,7 @@ dsl.update(FLOWS)
 `buildUpdateMap()`：
 
 ```java
-ExecutionEntry entry = ExecutionEntry.fromDomain(execution);
+ExecutionEntry entry = ExecutionEntry.from(execution);
 
 dsl.update(EXECUTIONS)
     .set(entry.buildUpdateMap())
@@ -438,7 +590,7 @@ dsl.update(EXECUTIONS)
 确实需要完整对象 Upsert 时，插入与更新部分分别使用对应 Map：
 
 ```java
-ExecutionEntry entry = ExecutionEntry.fromDomain(execution);
+ExecutionEntry entry = ExecutionEntry.from(execution);
 
 dsl.insertInto(EXECUTIONS)
     .set(entry.buildInsertMap())
@@ -551,7 +703,7 @@ ExecutionEntry entry = dsl.select()
 ```java
 return entry == null
     ? Optional.empty()
-    : Optional.of(entry.toDomain(/* 关联数据 */));
+    : Optional.of(entry.to(/* 关联数据 */));
 ```
 
 聚合包含子记录时，由 Repository 读取所需的多个 Entry，再统一调用领域重建入口。
@@ -563,9 +715,15 @@ Entry 列表暴露给 Core 调用方。
 - Repository 使用调用链传入的 `DSLContext`，不能自行创建新事务。
 - 查询、更新和删除必须带上 companyId 等租户边界。
 - 全对象 Map 只负责构造待写字段，不负责生成 `where` 条件。
-- 更新必须显式指定主键、业务身份和需要的 lockVersion/revision 条件。
+- 领域确认的业务唯一键必须由 PostgreSQL 主键或唯一索引保护；首次插入发生竞争时，
+  Repository 将数据库唯一冲突转换为稳定的持久化冲突，Domain 不承担竞争检测。
+- 更新必须显式指定租户、主键或已确认的业务身份。若业务还要求发现同一已有行的
+  并发覆盖，由 Repository 根据 ADR 选择行锁、CAS 或事务隔离实现。
+- `lockVersion` 等纯技术并发字段只属于 Schema、Entry 和 Repository 更新条件，不
+  进入 Domain，也不能与业务版本混用。
 - `buildUpdateMap()` 自动排除主键，不代表更新语句可以省略主键条件。
-- 更新条数不符合预期时，应按业务协议处理不存在或并发冲突，不能静默忽略。
+- 使用 CAS 时更新条数必须符合预期；不符合时按持久化协议处理不存在或并发冲突，
+  不能静默忽略。
 
 事务边界见
 [`command-executor.md`](command-executor.md)，领域与 Repository 边界见
@@ -588,7 +746,8 @@ Entry 列表暴露给 Core 调用方。
   `fetchInto(...)` 或 `fetchOneInto(...)`。
 - 禁止用 `fetchOne()` 或 `fetchOneInto(...)` 从可能返回多条记录的查询中任取
   第一条。
-- 禁止在没有 `where`、租户或并发条件的情况下执行 update/delete。
+- 禁止在没有 `where` 和租户条件的情况下执行 update/delete；持久化协议已确认并发
+  条件时也不得遗漏该条件。
 
 ## 13. 开发与审查清单
 
@@ -597,7 +756,8 @@ Entry 列表暴露给 Core 调用方。
 1. 是否使用 `org.flow.gen.flow` 下的当前生成类。
 2. 是否在具体数据库 Adapter 实现的 `entries` 子包建立了 `XxxEntry`。
 3. Entry 是否继承正确的 `XxxObject`。
-4. Domain 与 Entry 的双向转换是否集中在 Entry。
+4. Domain 与 Entry 的双向转换是否集中在 Entry，并且只提供 `from(...)` 和
+   `to(...)` 两类方法。
 5. Core 是否完全不知道 JOOQ 生成类型和 Entry。
 6. 完整插入是否使用 `buildInsertMap()`。
 7. 字段级更新是否使用 JOOQ 字段级 `set(...)`。
@@ -610,7 +770,21 @@ Entry 列表暴露给 Core 调用方。
 13. 批量保存是否使用一条 INSERT、多次 `.values(...)` 和一次 `execute()`。
 14. 是否没有在批量保存中使用 `values(Map)`、`newRecord()`、`batchInsert` 或逐条
     `execute()`。
-15. 查询、更新和删除是否包含租户、主键及并发条件。
+15. 查询、更新和删除是否包含租户及主键/业务身份；已确认的并发协议是否完全由
+    Schema、Entry 和 Repository 实现。
 16. 是否复用了传入的 `DSLContext` 和已有事务。
 17. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。
 18. JSON/JSONB 转换是否遵守 `json.md` 并统一使用 PAAS JSON。
+19. 是否没有在 Repository 或数据库中实现 Flow 的版本递增、删除发布限制、正式定义
+    不可变或审计状态变化等领域规则。
+20. Repository 私有方法是否按技术动作命名，而不是按草稿、版本或审计分支命名。
+21. 相同概念的不同阶段是否通过合理重载复用，是否避免了重复的 Entry 转换和 JOOQ
+    构造。
+22. 是否没有为一次性查询添加无复用价值的包装方法，也没有把私有方法误变成跨
+    Repository 的通用工具接口。
+23. Repository 是否没有定义数据库实体与领域实体的转换方法，转换是否全部位于
+    对应的 `XxxEntry`。
+24. 同一个 Entry 的不同转换情况是否使用 `from(...)` 或 `to(...)` 重载，而没有
+    增加同义方法名、布尔开关或可空序列化参数。
+25. 序列化和专用字段转换是否位于与 `entries` 平级的 `codec` 中，Entry 是否只调用
+    Codec 的静态方法，并且没有把序列化方式暴露为转换参数。

@@ -44,8 +44,6 @@ public final class PluginSchemaGenerator {
     private static final Set<String> DEFAULTED_TASK_PROPERTIES = Set.of(
         "inputs",
         "outputs",
-        "route",
-        "dependOn",
         "tasks"
     );
 

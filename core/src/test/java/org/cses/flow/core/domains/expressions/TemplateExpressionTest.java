@@ -14,14 +14,14 @@ class TemplateExpressionTest {
     void rendersLiteralTextAndMultipleRuntimePaths() {
         TemplateExpression expression = TemplateExpression.parse(
             "处理 {{ outputs.order-id }}，结果："
-                + "{{ dependOnOutputs.prepare.result }}"
+                + "{{ outputs.prepare.result }}"
         );
 
         assertEquals(
             "处理 order-1，结果：ready",
             expression.render(Map.of(
-                "outputs", Map.of("order-id", "order-1"),
-                "dependOnOutputs", Map.of(
+                "outputs", Map.of(
+                    "order-id", "order-1",
                     "prepare", Map.of("result", "ready")
                 )
             ))
@@ -55,17 +55,17 @@ class TemplateExpressionTest {
     @Test
     void rejectsMissingAndNonScalarRuntimePaths() {
         TemplateExpression missing = TemplateExpression.parse(
-            "{{ dependOnOutputs.prepare.result }}"
+            "{{ outputs.prepare.result }}"
         );
         WorkflowException missingFailure = assertThrows(
             WorkflowException.class,
             () -> missing.render(Map.of(
-                "dependOnOutputs", Map.of("prepare", Map.of())
+                "outputs", Map.of("prepare", Map.of())
             ))
         );
         assertEquals(
             "Task template expression path is missing: "
-                + "dependOnOutputs.prepare.result",
+                + "outputs.prepare.result",
             missingFailure.getMessage()
         );
 

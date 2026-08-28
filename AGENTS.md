@@ -79,7 +79,7 @@ AI agents should use this workflow:
 
 1. Read `docs/project-structure.md` to identify the target module, directory
    responsibility, public entry point, and dependency direction.
-2. Read `docs/standards/project-development.md`; it is mandatory for every
+2. Read `docs/standards/development.md`; it is mandatory for every
    development and code review task.
 3. Check `docs/agents/` to identify the role and boundaries for the task when an agent document exists.
 4. Read relevant files in `docs/standards/` before implementing project-specific code.

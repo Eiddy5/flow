@@ -25,11 +25,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 /**
- * External-resume orchestration gate with one mandatory pre-pause Task and
- * optional ordinary post-resume child Tasks.
+ * External-resume orchestration gate with one mandatory pre-pause Task.
  */
 @Plugin(
     title = "暂停",
@@ -59,7 +57,7 @@ import java.util.stream.Stream;
 )
 @SuperBuilder
 @NoArgsConstructor
-public final class Pause extends Task implements OrchestrationTask, ModelInvariant {
+public class Pause extends Task implements OrchestrationTask, ModelInvariant {
 
     private static final DatatypeFactory DURATION_FACTORY = durationFactory();
 
@@ -109,9 +107,7 @@ public final class Pause extends Task implements OrchestrationTask, ModelInvaria
 
     @Override
     public List<Task> definitionChildren() {
-        return pause == null
-            ? tasks()
-            : Stream.concat(Stream.of(pause), tasks().stream()).toList();
+        return pause == null ? List.of() : List.of(pause);
     }
 
     @Override

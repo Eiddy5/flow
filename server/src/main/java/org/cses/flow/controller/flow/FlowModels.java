@@ -14,7 +14,9 @@ import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.flow.Route;
 import org.paas.json.SerializableObject;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -503,7 +505,6 @@ public class FlowModels {
         private final String key;
         private final String type;
         private final String route;
-        private final List<String> dependOn;
         private final List<DataView> inputs;
         private final List<DataView> outputs;
         private final List<TaskView> tasks;
@@ -517,7 +518,6 @@ public class FlowModels {
             String key,
             String type,
             String route,
-            List<String> dependOn,
             List<DataView> inputs,
             List<DataView> outputs,
             List<TaskView> tasks,
@@ -530,7 +530,6 @@ public class FlowModels {
             this.key = key;
             this.type = type;
             this.route = route;
-            this.dependOn = List.copyOf(dependOn);
             this.inputs = List.copyOf(inputs);
             this.outputs = List.copyOf(outputs);
             this.tasks = List.copyOf(tasks);
@@ -544,15 +543,22 @@ public class FlowModels {
             Pause pauseTask = task instanceof Pause candidate
                 ? candidate
                 : null;
+            Branch branch = task instanceof Branch candidate
+                ? candidate
+                : null;
+            Route route = task instanceof Route candidate
+                ? candidate
+                : null;
             return new TaskView(
                 task.id(),
                 task.key(),
                 task.getType(),
-                task.route().source(),
-                task.dependOn(),
+                route == null ? null : route.route(),
                 task.inputs().stream().map(DataView::from).toList(),
                 task.outputs().stream().map(DataView::from).toList(),
-                task.tasks().stream().map(TaskView::from).toList(),
+                branch == null
+                    ? List.of()
+                    : branch.tasks().stream().map(TaskView::from).toList(),
                 pauseTask == null ? null : from(pauseTask.pause()),
                 pauseTask == null
                     ? List.of()
@@ -580,10 +586,6 @@ public class FlowModels {
 
         public String getRoute() {
             return route;
-        }
-
-        public List<String> getDependOn() {
-            return dependOn;
         }
 
         public List<DataView> getInputs() {

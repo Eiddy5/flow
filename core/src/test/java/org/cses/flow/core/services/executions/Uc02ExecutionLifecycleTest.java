@@ -58,14 +58,34 @@ class Uc02ExecutionLifecycleTest {
             );
             assertTrue(first.taskRuns().stream().allMatch(taskRun ->
                 taskRun.state().current() == State.Type.SUCCESS
-                    && taskRun.inputs().isEmpty()
                     && taskRun.outputs().isEmpty()
             ));
             assertTrue(second.taskRuns().stream().allMatch(taskRun ->
                 taskRun.state().current() == State.Type.SUCCESS
-                    && taskRun.inputs().isEmpty()
                     && taskRun.outputs().isEmpty()
             ));
+            var expectedInputs = java.util.List.of(
+                java.util.Map.<String, Object>of(),
+                java.util.Map.<String, Object>of(
+                    "outputs",
+                    java.util.Map.of("first", java.util.Map.of())
+                ),
+                java.util.Map.<String, Object>of(
+                    "outputs",
+                    java.util.Map.of(
+                        "first", java.util.Map.of(),
+                        "second", java.util.Map.of()
+                    )
+                )
+            );
+            assertEquals(
+                expectedInputs,
+                first.taskRuns().stream().map(TaskRun::inputs).toList()
+            );
+            assertEquals(
+                expectedInputs,
+                second.taskRuns().stream().map(TaskRun::inputs).toList()
+            );
             assertTrue(first.taskRuns().stream().map(TaskRun::id)
                 .noneMatch(second.taskRuns().stream()
                     .map(TaskRun::id)

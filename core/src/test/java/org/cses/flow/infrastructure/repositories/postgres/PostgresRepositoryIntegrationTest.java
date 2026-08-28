@@ -11,10 +11,11 @@ import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.infrastructure.repositories.executions.ExecutionPostgresRepository;
+import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
 import org.cses.flow.infrastructure.repositories.flows.FlowRepositoryImpl;
 import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.flow.Route;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -59,8 +60,8 @@ final class PostgresRepositoryIntegrationTest {
     private final FlowRepositoryImpl flowRepository =
             new FlowRepositoryImpl(plugins.jacksonMapper());
     private FlowRepositoryImpl draftRepository = flowRepository;
-    private final ExecutionPostgresRepository executionRepository =
-            new ExecutionPostgresRepository();
+    private final ExecutionRepositoryImpl executionRepository =
+            new ExecutionRepositoryImpl();
     private final String companyId = "repository-test-" + StringUtil.newId();
 
     @BeforeAll
@@ -142,7 +143,11 @@ final class PostgresRepositoryIntegrationTest {
             flowRepository.save(dsl, first);
             return null;
         });
-        String stableTaskId = first.tasks().getFirst().id();
+        String stableTaskId = first.allTasks().stream()
+                .filter(task -> task.key().equals("prepare"))
+                .findFirst()
+                .orElseThrow()
+                .id();
 
         Flow second = plugins.deploy(
                 companyId,
@@ -165,19 +170,42 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(2, restoredFlow.reversion());
         assertEquals(
                 stableTaskId,
-                second.tasks().getFirst().id()
+                second.allTasks().stream()
+                        .filter(task -> task.key().equals("prepare"))
+                        .findFirst()
+                        .orElseThrow()
+                        .id()
         );
         assertEquals(
                 stableTaskId,
-                restoredFlow.tasks().getFirst().id()
+                restoredFlow.allTasks().stream()
+                        .filter(task -> task.key().equals("prepare"))
+                        .findFirst()
+                        .orElseThrow()
+                        .id()
         );
         assertEquals(
                 List.of(Output.create("approved", DataType.STRING)),
-                restoredFlow.tasks().getFirst().outputs()
+                restoredFlow.allTasks().stream()
+                        .filter(task -> task.key().equals("prepare"))
+                        .findFirst()
+                        .orElseThrow()
+                        .outputs()
+        );
+        Route approvalRoute = assertInstanceOf(
+                Route.class,
+                restoredFlow.allTasks().stream()
+                        .filter(task -> task.key().equals("approval-route"))
+                        .findFirst()
+                        .orElseThrow()
+        );
+        assertEquals(
+                "{{ outputs.prepare.approved }} == yes",
+                approvalRoute.route()
         );
         assertEquals(
                 Pause.class.getName(),
-                restoredFlow.tasks().getFirst().tasks().getFirst().getType()
+                approvalRoute.definitionChildren().getFirst().getType()
         );
         Flow restoredFirst = read(dsl -> flowRepository.findByFlowId(
                 dsl,
@@ -707,32 +735,41 @@ final class PostgresRepositoryIntegrationTest {
                 "key", flowKey,
                 "description", description,
                 "tasks", List.of(Map.of(
-                        "key", taskKey,
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
-                        "inputs", List.of(Map.of(
-                                "key", "request",
-                                "type", "STRING",
-                                "displayName", "Request",
-                                "required", false
-                        )),
-                        "outputs", List.of(Map.of(
-                                "key", "approved",
-                                "type", "STRING"
-                        )),
-                        "route", "DIRECT",
-                        "tasks", List.of(Map.of(
-                                "key", "approval",
-                                "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                                "pause", Map.of(
-                                        "key", "create-approval",
-                                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "key", "pipeline",
+                        "type", org.cses.flow.extensions.flow.Sequence.class.getName(),
+                        "tasks", List.of(
+                                Map.of(
+                                        "key", taskKey,
+                                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                                        "inputs", List.of(Map.of(
+                                                "key", "request",
+                                                "type", "STRING",
+                                                "displayName", "Request",
+                                                "required", false
+                                        )),
+                                        "outputs", List.of(Map.of(
+                                                "key", "approved",
+                                                "type", "STRING"
+                                        ))
                                 ),
-                                "resume", List.of(Map.of(
-                                        "key", "approved",
-                                        "type", "STRING"
-                                )),
-                                "route", "outputs.approved == \"yes\""
-                        ))
+                                Map.of(
+                                        "key", "approval-route",
+                                        "type", Route.class.getName(),
+                                        "route", "{{ outputs.%s.approved }} == yes".formatted(taskKey),
+                                        "tasks", List.of(Map.of(
+                                                "key", "approval",
+                                                "type", Pause.class.getName(),
+                                                "pause", Map.of(
+                                                        "key", "create-approval",
+                                                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                                                ),
+                                                "resume", List.of(Map.of(
+                                                        "key", "approved",
+                                                        "type", "STRING"
+                                                ))
+                                        ))
+                                )
+                        )
                 ))
         );
     }

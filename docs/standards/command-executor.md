@@ -76,7 +76,7 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 - Command 只保存调用方能够决定的参数。
 - Command 必须不可变。简单数据协议可以使用 `record`；需要隐藏构造、复杂校验、
   继承或框架代理时使用 `final class`。具体选择规则见
-  [`project-development.md`](project-development.md)。
+  [`development.md`](development.md)。
 - `validate()` 只校验 Command 自身字段，不访问 Repository。
 - Command 不注入 Service、Repository、Handler 或具体 Task 扩展。
 

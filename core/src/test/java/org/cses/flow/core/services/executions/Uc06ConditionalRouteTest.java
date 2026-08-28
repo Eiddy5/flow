@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * UC: docs/uc/flow/UC-06 用户提交外派结果后的条件路径.md
+ * UC: docs/uc/flow/UC-06 用户使用 Pause 结果选择 Flow 路径.md
  */
 class Uc06ConditionalRouteTest {
 
@@ -19,7 +19,7 @@ class Uc06ConditionalRouteTest {
                 fixture.session(),
                 PublishFlowCommand.from(routeYaml(
                     "uc06-s4-flow",
-                    "outputs.decision =="
+                    "{{ outputs.decision }} =="
                 ))
             );
             IllegalArgumentException failure = assertThrows(
@@ -29,7 +29,7 @@ class Uc06ConditionalRouteTest {
                     PublishFlowCommand.from(draft.key(), false)
                 )
             );
-            assertTrue(failure.getMessage().contains("route expression"));
+            assertTrue(failure.getMessage().contains("Condition"));
             assertTrue(
                 fixture.flowService()
                     .latestFlow(fixture.session(), draft.key())
@@ -42,7 +42,7 @@ class Uc06ConditionalRouteTest {
         }
     }
 
-    private static String routeYaml(String key, String approveRoute) {
+    private static String routeYaml(String key, String approveExpress) {
         return """
             key: %s
             description: conditional approval
@@ -59,19 +59,17 @@ class Uc06ConditionalRouteTest {
                   - key: decision
                     type: STRING
               - key: route-decision
-                type: org.cses.flow.core.services.executions.ConditionalRouteResumeIntegrationTest.ResumeDecisionTask
-                dependOn:
-                  - approval-decision
-                outputs:
-                  - key: decision
-                    type: STRING
+                type: org.cses.flow.extensions.flow.Route
+                route: '%s'
                 tasks:
                   - key: approve
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    route: '%s'
+              - key: reject-decision
+                type: org.cses.flow.extensions.flow.Route
+                route: '{{ outputs.approval-decision.decision }} == REJECTED'
+                tasks:
                   - key: reject
                     type: org.cses.flow.extensions.tasks.AutomaticTask
-                    route: 'outputs.decision == "REJECTED"'
-            """.formatted(key, approveRoute);
+            """.formatted(key, approveExpress);
     }
 }

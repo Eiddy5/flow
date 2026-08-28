@@ -1,5 +1,8 @@
 package org.cses.flow.core.domains;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.cses.flow.core.utils.RequiredUtil;
 
 import java.util.Objects;
@@ -9,10 +12,13 @@ import java.util.Optional;
  * Immutable value object identifying the actor responsible for a domain
  * change.
  */
-public final class ActorRef {
+@Getter
+@Setter
+@NoArgsConstructor
+public class ActorRef {
 
-    private final String id;
-    private final String name;
+    String id;
+    String name;
 
     private ActorRef(String id, String name) {
         this.id = requireText(id, "Actor id");

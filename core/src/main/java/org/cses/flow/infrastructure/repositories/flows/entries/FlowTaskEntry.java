@@ -37,7 +37,7 @@ public final class FlowTaskEntry extends FlowTasksObject {
         entry.companyId = companyId;
         entry.id = task.id();
         entry.type = task.getType();
-        entry.route = task.route().source();
+        entry.route = "DIRECT";
         entry.inputs = DataJsonCodec.encode(task.inputs());
         entry.outputs = DataJsonCodec.encode(task.outputs());
         entry.properties = JsonObject.FromMap(properties(task, jacksonMapper));
@@ -46,7 +46,7 @@ public final class FlowTaskEntry extends FlowTasksObject {
         entry.parentId = parentId;
         entry.order = order;
         entry.key = task.key();
-        entry.dependOn = JsonObjects.FromList(task.dependOn());
+        entry.dependOn = JsonObjects.FromList(List.of());
         return entry;
     }
 
@@ -69,12 +69,9 @@ public final class FlowTaskEntry extends FlowTasksObject {
             "outputs",
             DataJsonCodec.decodeOutputs(outputs, "Task.outputs")
         );
-        definition.put("route", route);
-        definition.put(
-            "dependOn",
-            dependOn == null ? List.of() : dependOn.asStrings()
-        );
-        definition.put("tasks", List.copyOf(children));
+        if (children != null && !children.isEmpty()) {
+            definition.put("tasks", List.copyOf(children));
+        }
         return jacksonMapper.convertValue(definition, Task.class);
     }
 

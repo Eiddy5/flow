@@ -7,6 +7,7 @@ import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.flow.Route;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -46,7 +47,7 @@ class PluginSchemaGeneratorTest {
         );
         assertEquals("string", message.get("type"));
         assertEquals(
-            List.of("处理结果：{{ dependOnOutputs.prepare.result }}"),
+            List.of("处理结果：{{ outputs.prepare.result }}"),
             message.get("examples")
         );
         assertTrue(((List<?>) schema.get("required")).contains("message"));
@@ -79,9 +80,9 @@ class PluginSchemaGeneratorTest {
         assertTrue(properties.containsKey("key"));
         assertTrue(properties.containsKey("inputs"));
         assertTrue(properties.containsKey("outputs"));
-        assertTrue(properties.containsKey("route"));
-        assertTrue(properties.containsKey("dependOn"));
-        assertTrue(properties.containsKey("tasks"));
+        assertFalse(properties.containsKey("route"));
+        assertFalse(properties.containsKey("dependOn"));
+        assertFalse(properties.containsKey("tasks"));
 
         Map<String, Object> type = objectMap(properties.get("type"));
         assertEquals("string", type.get("type"));
@@ -139,6 +140,7 @@ class PluginSchemaGeneratorTest {
         Map<String, Object> concurrent = objectMap(
             objectMap(schema.get("properties")).get("concurrent")
         );
+        assertTrue(objectMap(schema.get("properties")).containsKey("tasks"));
 
         assertEquals("integer", concurrent.get("type"));
         assertEquals(
@@ -148,6 +150,30 @@ class PluginSchemaGeneratorTest {
         assertFalse(
             ((List<?>) schema.get("required")).contains("concurrent")
         );
+    }
+
+    @Test
+    void routeSchemaExposesARequiredStringRoute() {
+        DefaultPluginRegistry registry = registry(new Route());
+        JacksonMapper mapper = new JacksonMapper(
+            new PluginModule(registry)
+        );
+        PluginMetadata<?> metadata = registry.findMetadata(
+            Route.class.getCanonicalName()
+        ).orElseThrow();
+
+        Map<String, Object> schema = new PluginSchemaGenerator(mapper)
+            .generate(metadata);
+        Map<String, Object> properties = objectMap(
+            schema.get("properties")
+        );
+        Map<String, Object> route = objectMap(properties.get("route"));
+        List<?> required = (List<?>) schema.get("required");
+
+        assertEquals("string", route.get("type"));
+        assertEquals("flow-condition", route.get("format"));
+        assertTrue(required.contains("route"));
+        assertFalse(properties.containsKey("condition"));
     }
 
     @Test
@@ -213,7 +239,7 @@ class PluginSchemaGeneratorTest {
             untilProperties.get("condition")
         );
         assertEquals("string", condition.get("type"));
-        assertEquals("flow-expression", condition.get("format"));
+        assertEquals("flow-condition", condition.get("format"));
         List<?> required = (List<?>) untilSchema.get("required");
         assertTrue(required.contains("condition"));
         assertTrue(required.contains("maxIterations"));

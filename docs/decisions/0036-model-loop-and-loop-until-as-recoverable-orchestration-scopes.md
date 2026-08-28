@@ -2,7 +2,7 @@
 
 ## 状态
 
-Accepted（2026-08-05；条件表达式的语义所有权由 ADR 0037 修订）
+Accepted（2026-08-05；条件表达式的语义所有权由 ADR 0074 修订）
 
 本决策补充 ADR 0002、0006、0020 和 0029 中预留的循环运行协议。单
 Execution、真实 TaskRun 历史、OrchestrationTask 由 Executor 解释、精确 Flow
@@ -30,9 +30,9 @@ Execution 中仍最多产生一个 TaskRun。该限制无法表达以下两类�
   `tasks`，轮末条件成立时完成，达到上限仍不成立时失败。
 - **Loop iteration**：一个 Loop TaskRun 内从 1 开始编号的一轮真实执行范围。
   它不是独立聚合，也不建立 Repository 或单独表。
-- **Loop Until condition**：LoopUntil 持有的 Express 条件，固定引用路径为
-  `outputs.<taskKey>.<outputKey>`；它复用 Express 的字符串精确比较，但仍由
-  LoopUntil 保护本轮 Task 和 Output 范围，不继承 Route 的 DIRECT 语义。
+- **Loop Until condition**：LoopUntil 持有的 Condition；引用使用
+  `{{ outputs.<taskKey>.<outputKey> }}`，由 Condition 负责受限比较和逻辑组合，
+  仍由 LoopUntil 保护本轮 Task 和 Output 范围。
 
 Loop 与 Loop Until 都是 Flow 聚合内的 Task 定义实体并直接实现
 `OrchestrationTask`；它们通过该既有能力的可选迭代特征声明串行轮次规则，不新增
@@ -67,7 +67,7 @@ Loop TaskRun 表达完整作用域并保持 RUNNING；直接子 TaskRun 保存�
   - `times`：必填正整数。
   - `tasks`：必填非空，按定义顺序串行执行。
 - `org.cses.flow.extensions.flow.LoopUntil`
-  - `condition`：必填 Express，由统一条件领域解析和求值，并继续以字符串绑定、
+  - `condition`：必填 Condition，由统一条件领域解析和求值，并继续以字符串绑定、
     展示和持久化。
   - `maxIterations`：必填正整数，是同步循环的硬上限。
   - `tasks`：必填非空，按定义顺序串行执行。
@@ -108,17 +108,15 @@ class Loop {
 }
 
 class LoopUntil {
-    -Express condition
+    -Condition condition
     -Integer maxIterations
 }
 
-class Express {
+class Condition {
     <<valueObject>>
     -String source
-    -List~String~ outputPath
-    -String expectedValue
-    +parse(source) Express$
-    +matches(outputs) boolean
+    +parser(source) Condition$
+    +matches(context) boolean
 }
 
 class Execution {
@@ -140,7 +138,7 @@ Task <|-- Loop
 Task <|-- LoopUntil
 OrchestrationTask <|.. Loop
 OrchestrationTask <|.. LoopUntil
-LoopUntil *-- Express : condition
+LoopUntil *-- Condition : condition
 Execution "1" *-- "0..*" TaskRun
 Loop "1" *-- "1..*" Task
 LoopUntil "1" *-- "1..*" Task

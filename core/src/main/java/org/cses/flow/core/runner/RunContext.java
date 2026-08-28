@@ -128,8 +128,8 @@ public final class RunContext {
     }
 
     /**
-     * Returns the inputs assembled for this TaskRun, such as preceding
-     * outputs, dependency outputs and loop metadata.
+     * Returns the inputs assembled for this TaskRun, such as visible
+     * preceding outputs and loop metadata.
      */
     public Map<String, Object> taskInputs() {
         return mapVariable(TASK_INPUTS_VARIABLE);

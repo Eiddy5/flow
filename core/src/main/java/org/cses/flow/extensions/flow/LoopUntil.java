@@ -5,8 +5,10 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.expressions.Express;
-import org.cses.flow.core.domains.flows.DataType;
+import org.cses.flow.core.domains.conditions.Condition;
+import org.cses.flow.core.domains.conditions.ConditionContext;
+import org.cses.flow.core.domains.conditions.Operand;
+import org.cses.flow.core.domains.conditions.OperandScope;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -30,7 +32,7 @@ import java.util.Map;
                 tasks:
                   - key: check-until-done
                     type: org.cses.flow.extensions.flow.LoopUntil
-                    condition: 'outputs.check.status == "DONE"'
+                    condition: '{{ outputs.check.status }} == DONE'
                     maxIterations: 3
                     tasks:
                       - key: check
@@ -45,17 +47,18 @@ import java.util.Map;
 )
 @SuperBuilder
 @NoArgsConstructor
-public final class LoopUntil extends Task implements OrchestrationTask, ModelInvariant {
+public class LoopUntil extends Branch implements OrchestrationTask, ModelInvariant {
 
     @NotNull
     @Schema(
         title = "结束条件",
-        description = "当前轮次输出满足此表达式时结束循环",
+        description = "当前轮次输出满足时结束；仅 {{ scope.path }} 表示引用，"
+            + "其他操作数为常量",
         implementation = String.class,
-        format = "flow-expression",
-        example = "outputs.check.status == \"DONE\""
+        format = "flow-condition",
+        example = "{{ outputs.check.status }} == DONE"
     )
-    private Express condition;
+    private Condition condition;
 
     @NotNull
     @Positive
@@ -66,7 +69,7 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
     )
     private Integer maxIterations;
 
-    public Express condition() {
+    public Condition condition() {
         return condition;
     }
 
@@ -90,7 +93,25 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
         int completedIterations,
         Map<String, Map<String, Object>> iterationOutputs
     ) {
-        if (condition != null && condition.matches(iterationOutputs)) {
+        return decideAfterIteration(
+            completedIterations,
+            iterationOutputs,
+            Map.of(),
+            Map.of()
+        );
+    }
+
+    public IterationDecision decideAfterIteration(
+        int completedIterations,
+        Map<String, Map<String, Object>> iterationOutputs,
+        Map<String, ?> flowInputs,
+        Map<String, ?> flowVariables
+    ) {
+        if (condition != null && condition.matches(ConditionContext.create(
+            flowVariables,
+            flowInputs,
+            iterationOutputs
+        ))) {
             return IterationDecision.SUCCESS;
         }
         return completedIterations < maxIterations()
@@ -112,14 +133,19 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
                 "LOOP UNTIL condition must be provided"
             );
         }
-        if (condition.outputPath().size() != 2) {
+        condition.references().stream()
+            .filter(reference -> reference.scope() == OperandScope.OUTPUTS)
+            .forEach(this::verifyOutputReference);
+    }
+
+    private void verifyOutputReference(Operand reference) {
+        if (reference.path().size() != 2) {
             throw new IllegalArgumentException(
-                "Unsupported LOOP UNTIL condition expression: "
-                    + condition.source()
+                "Unsupported LOOP UNTIL output reference: " + reference
             );
         }
-        String taskKey = condition.outputPath().get(0);
-        String outputKey = condition.outputPath().get(1);
+        String taskKey = reference.path().get(0);
+        String outputKey = reference.path().get(1);
         Task source = allDescendants().stream()
             .filter(task -> task.key().equals(taskKey))
             .findFirst()
@@ -134,9 +160,9 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
                 "LOOP UNTIL condition references an undeclared output: "
                     + taskKey + "." + outputKey
             ));
-        if (output.getType() != DataType.STRING) {
+        if (!condition.supports(reference, output.getType())) {
             throw new IllegalArgumentException(
-                "LOOP UNTIL condition output must be STRING: "
+                "LOOP UNTIL condition is incompatible with output: "
                     + taskKey + "." + outputKey
             );
         }
@@ -151,11 +177,6 @@ public final class LoopUntil extends Task implements OrchestrationTask, ModelInv
         if (tasks().isEmpty()) {
             throw new IllegalArgumentException(
                 "LOOP UNTIL requires at least one child Task"
-            );
-        }
-        if (!"DIRECT".equals(tasks().getFirst().route().source())) {
-            throw new IllegalArgumentException(
-                "LOOP UNTIL first child Task route must be DIRECT"
             );
         }
     }

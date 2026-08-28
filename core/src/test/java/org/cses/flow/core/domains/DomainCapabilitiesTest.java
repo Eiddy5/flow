@@ -2,7 +2,8 @@ package org.cses.flow.core.domains;
 
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.expressions.Express;
+import org.cses.flow.core.domains.conditions.Condition;
+import org.cses.flow.core.domains.conditions.Operand;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
@@ -10,7 +11,6 @@ import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.TaskRoute;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.SessionUtil;
 import org.junit.jupiter.api.Test;
@@ -56,8 +56,8 @@ final class DomainCapabilitiesTest {
         assertFalse(Identified.class.isAssignableFrom(Input.class));
         assertFalse(Identified.class.isAssignableFrom(Output.class));
         assertFalse(Identified.class.isAssignableFrom(State.class));
-        assertFalse(Identified.class.isAssignableFrom(TaskRoute.class));
-        assertFalse(Identified.class.isAssignableFrom(Express.class));
+        assertFalse(Identified.class.isAssignableFrom(Condition.class));
+        assertFalse(Identified.class.isAssignableFrom(Operand.class));
         assertFalse(
             Identified.class.isAssignableFrom(TemplateExpression.class)
         );
