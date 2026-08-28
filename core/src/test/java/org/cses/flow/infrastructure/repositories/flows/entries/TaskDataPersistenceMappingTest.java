@@ -11,7 +11,6 @@ import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
-import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Parallel;
@@ -128,9 +127,10 @@ class TaskDataPersistenceMappingTest {
 
     @Test
     void flowTaskEntryRoundTripsLoopUntilConditionAsAString() {
-        Task check = AutomaticTask.builder()
+        Task check = Log.builder()
             .id("check-id")
             .key("check")
+            .message(TemplateExpression.parse("test step"))
             .outputs(List.of(Output.create("status", DataType.STRING)))
             .build();
         LoopUntil task = LoopUntil.builder()
@@ -167,9 +167,10 @@ class TaskDataPersistenceMappingTest {
 
     @Test
     void flowTaskEntryRoundTripsPauseSpecificDefinitionTree() {
-        Task action = AutomaticTask.builder()
+        Task action = Log.builder()
             .id("action-id")
             .key("create-approval")
+            .message(TemplateExpression.parse("test step"))
             .build();
         Pause task = Pause.builder()
             .id("pause-id")
@@ -223,9 +224,10 @@ class TaskDataPersistenceMappingTest {
                 "max", 5
             )
         ).asObject(Input.class);
-        Task task = AutomaticTask.builder()
+        Task task = Log.builder()
             .id("task-id")
             .key("approval")
+            .message(TemplateExpression.parse("test step"))
             .inputs(List.of(definitionInput))
             .outputs(List.of(Output.create(
                 "decision",
@@ -258,7 +260,7 @@ class TaskDataPersistenceMappingTest {
         entry.id = "task-id";
         entry.key = "automatic";
         entry.displayName = "automatic";
-        entry.type = AutomaticTask.class.getName();
+        entry.type = Log.class.getName();
         entry.inputs = JSONB.valueOf(JsonObjects.FromList(List.of(Map.of(
             "key", "request",
             "type", "STRING"
@@ -276,7 +278,7 @@ class TaskDataPersistenceMappingTest {
         entry.id = "task-id";
         entry.key = "approval";
         entry.displayName = "approval";
-        entry.type = AutomaticTask.class.getName();
+        entry.type = Log.class.getName();
         entry.inputs = JSONB.valueOf(JsonObjects.FromList(List.of("legacy")).toJson());
         entry.outputs = JSONB.valueOf(JsonObjects.Create().toJson());
 

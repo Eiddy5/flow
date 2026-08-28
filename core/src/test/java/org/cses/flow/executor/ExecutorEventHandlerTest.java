@@ -50,8 +50,7 @@ final class ExecutorEventHandlerTest {
                 "key", "company-independent-flow",
                 "tasks", List.of(Map.of(
                     "key", "task",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class
-                        .getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ))
             ),
             null,
@@ -82,11 +81,11 @@ final class ExecutorEventHandlerTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "prepare",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     ),
                     Map.of(
                         "key", "finish",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ),
@@ -158,7 +157,7 @@ final class ExecutorEventHandlerTest {
                     "type", org.cses.flow.extensions.flow.Pause.class.getName(),
                     "pause", Map.of(
                         "key", "create-confirmation",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 ))
             ),

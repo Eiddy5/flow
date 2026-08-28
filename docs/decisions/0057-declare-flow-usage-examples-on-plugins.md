@@ -66,7 +66,7 @@ JSON Schema。Schema 能说明一个字段接受什么数据，但不能表达�
 - `GET /api/plugins` 继续返回轻量目录，不携带源码块。
 - `GET /api/plugins/{canonicalType}` 在原有 `metadata + schema` 之外返回顶层
   `examples`，每项保持 `title`、`code`、`lang` 和 `full`。
-- Flow 内置的 AutomaticTask、Log、Parallel、Pause、Loop 和 LoopUntil 都至少声明
+- Flow 内置的 Log、Parallel、Pause、Loop 和 LoopUntil 都至少声明
   一个最小完整 Flow 示例。测试直接通过真实 `FlowDefinitionDeserializer` 物化每个
   YAML 源码块，确保示例使用已注册类型并满足当前定义约束。
 - 外部插件的示例仍是可选文档元信息。注册阶段验证其基本结构，但不执行示例，也不让

@@ -49,7 +49,8 @@ class Uc08DynamicLogFlowTest {
                     type: org.cses.flow.extensions.log.Log
                     message: "处理结果：{{ outputs.prepare.result }}"
                   - key: observe
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """);
 
             Execution completed = fixture.startAndAwait(flow);
@@ -136,7 +137,8 @@ class Uc08DynamicLogFlowTest {
                     type: org.cses.flow.extensions.log.Log
                     message: "结果：{{ outputs.prepare.missing }}"
                   - key: never-run
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """);
 
             Execution failed = fixture.startAndAwait(flow);

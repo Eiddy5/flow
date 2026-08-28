@@ -94,7 +94,7 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
 
 - 删除 WorkerContext、WorkerTaskHandler 以及 `extensions/workers` 中的执行实现。
 - WorkerTaskResult 不再接受 WAITING。
-- AutomaticTask 实现 RunnableTask；PauseTask 和 ParallelTask 实现 BranchTask。
+- Log 实现 RunnableTask；Pause 和 Parallel 实现 OrchestrationTask。
 - RunnableTask、BranchTask、RunContext 和 RunResult 统一归入 Task 领域包；
   Worker 与 Executor 包只保留运行时组件和投递/结果信封。
 - ParallelTask 的并行子节点语义从 Task 基类迁移到 BranchTask 能力。

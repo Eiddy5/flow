@@ -86,7 +86,8 @@ final class FlowDefinitionSerializerTest {
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-approval
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: decision
                         type: STRING

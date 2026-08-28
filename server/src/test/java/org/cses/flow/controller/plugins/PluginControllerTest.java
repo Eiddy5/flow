@@ -7,7 +7,7 @@ import org.cses.flow.core.plugins.PluginModule;
 import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.PluginSchemaGenerator;
 import org.cses.flow.core.services.plugins.PluginService;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Parallel;
 import org.junit.jupiter.api.Test;
 
@@ -22,7 +22,7 @@ class PluginControllerTest {
         DefaultPluginRegistry registry = new DefaultPluginRegistry(
             List.of(
                 new Parallel(),
-                new AutomaticTask()
+                new Log()
             )
         );
         JacksonMapper mapper = new JacksonMapper(
@@ -40,7 +40,7 @@ class PluginControllerTest {
         assertEquals(
             List.of(
                 Parallel.class.getPackageName(),
-                AutomaticTask.class.getPackageName()
+                Log.class.getPackageName()
             ),
             plugins.stream()
                 .map(RegisteredPluginView::packageName)
@@ -51,7 +51,7 @@ class PluginControllerTest {
             plugins.getFirst().tasks().getFirst().packageName()
         );
         assertEquals(
-            AutomaticTask.class.getPackageName(),
+            Log.class.getPackageName(),
             plugins.getLast().tasks().getFirst().packageName()
         );
         PluginDetailsView parallel = controller.plugin(
@@ -63,23 +63,24 @@ class PluginControllerTest {
         );
 
         PluginDetailsView details = controller.plugin(
-            AutomaticTask.class.getCanonicalName()
+            Log.class.getCanonicalName()
         );
         assertEquals(
-            AutomaticTask.class.getPackageName(),
+            Log.class.getPackageName(),
             details.metadata().packageName()
         );
         assertEquals(1, details.examples().size());
         assertEquals(
-            "执行自动步骤",
+            "记录流程消息",
             details.examples().getFirst().title()
         );
         assertEquals(
             List.of("""
-                key: automatic-task-flow
+                key: log-flow
                 tasks:
-                  - key: automatic-step
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                  - key: write-log
+                    type: org.cses.flow.extensions.log.Log
+                    message: "流程已进入自动处理阶段"
                 """),
             details.examples().getFirst().code()
         );

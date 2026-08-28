@@ -55,7 +55,7 @@ flowchart LR
         end
 
         subgraph taskExtensions ["Task 扩展"]
-            autoTask["AutomaticTask @Plugin / RunnableTask"]
+            logTask["Log @Plugin / RunnableTask"]
             pauseTask["Pause @Plugin / OrchestrationTask"]
             parallelTask["Parallel @Plugin / OrchestrationTask"]
             inProjectPlugins["项目内具体 Task @Plugin"]
@@ -107,9 +107,9 @@ flowchart LR
     executor -->|"解释 OrchestrationTask"| pauseTask
     executor -->|"解释 OrchestrationTask"| parallelTask
     executor --> worker
-    worker -->|"调用 RunnableTask.run"| autoTask
+        worker -->|"调用 RunnableTask.run"| logTask
 
-    autoTask -.->|"Micronaut 编译期发现"| pluginRuntime
+        logTask -.->|"Micronaut 编译期发现"| pluginRuntime
     pauseTask -.->|"Micronaut 编译期发现"| pluginRuntime
     parallelTask -.->|"Micronaut 编译期发现"| pluginRuntime
     inProjectPlugins -.->|"Micronaut 编译期发现"| pluginRuntime
@@ -136,7 +136,7 @@ flowchart LR
     class browser,externalCaller caller
     class micronautApp,pluginController,flowController inboundNode
     class flowService,executionService,pluginService,commandExecutor,commandHandlers,queryHandlers,yamlParser,domains,repositoryPorts,queueContracts,executor,worker,pluginRuntime,pluginSchema coreNode
-    class autoTask,pauseTask,parallelTask,inProjectPlugins extensionNode
+    class logTask,pauseTask,parallelTask,inProjectPlugins extensionNode
     class postgresRepositories,defaultQueue,jooqBoundary,migrations,generatedJooq adapterNode
     class postgres,consul storeNode
 ```

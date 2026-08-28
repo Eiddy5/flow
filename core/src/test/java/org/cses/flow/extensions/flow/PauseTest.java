@@ -8,10 +8,11 @@ import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.flows.inputs.StringInput;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,7 +30,7 @@ class PauseTest {
 
     @Test
     void ownsIndependentResumeInputsAndOutputs() {
-        Task action = automatic("action-id", "create-approval");
+        Task action = log("action-id", "create-approval");
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
             .key("wait-approval")
@@ -69,7 +70,7 @@ class PauseTest {
 
     @Test
     void doesNotOwnTheOrdinaryBranchTasksField() {
-        Task action = automatic("action-id", "create-approval");
+        Task action = log("action-id", "create-approval");
 
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
@@ -102,7 +103,7 @@ class PauseTest {
                     "type", Pause.class.getCanonicalName(),
                     "pause", Map.of(
                         "key", "create-approval",
-                        "type", AutomaticTask.class.getCanonicalName()
+                        "type", Log.class.getCanonicalName(), "message", "test step"
                     ),
                     "resume", List.of(Map.of(
                         "key", "decision",
@@ -123,7 +124,7 @@ class PauseTest {
         );
 
         Pause pause = assertInstanceOf(Pause.class, flow.tasks().getFirst());
-        assertInstanceOf(AutomaticTask.class, pause.pause());
+        assertInstanceOf(Log.class, pause.pause());
         assertEquals("decision",
             pause.resume().getFirst().getDisplayName());
         assertEquals(
@@ -140,7 +141,7 @@ class PauseTest {
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .pause(automatic("action-id", "create"))
+            .pause(log("action-id", "create"))
             .resume(List.of(
                 StringInput.builder()
                     .key("decision")
@@ -191,13 +192,13 @@ class PauseTest {
         assertInvalid(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .pause(automatic("action-id", "create"))
+            .pause(log("action-id", "create"))
             .duration("PT5M")
             .build());
         assertInvalid(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .pause(automatic("action-id", "create"))
+            .pause(log("action-id", "create"))
             .duration("PT0S")
             .behavior(Pause.Behavior.FAIL)
             .build());
@@ -210,10 +211,11 @@ class PauseTest {
         );
     }
 
-    private static Task automatic(String id, String key) {
-        return AutomaticTask.builder()
+    private static Task log(String id, String key) {
+        return Log.builder()
             .id(id)
             .key(key)
+            .message(TemplateExpression.parse("test step"))
             .build();
     }
 }

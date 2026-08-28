@@ -434,7 +434,8 @@ class Uc01FlowLifecycleTest {
               id: injected-user
             tasks:
               - key: start
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """;
         assertThrows(
             IllegalArgumentException.class,
@@ -487,7 +488,8 @@ class Uc01FlowLifecycleTest {
             description: %s
             tasks:
               - key: start
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """.formatted(key, description);
     }
 

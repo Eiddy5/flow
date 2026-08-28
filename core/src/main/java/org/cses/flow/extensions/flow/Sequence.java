@@ -22,9 +22,11 @@ import org.cses.flow.core.plugins.annotations.Plugin;
                     type: org.cses.flow.extensions.flow.Sequence
                     tasks:
                       - key: prepare
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                        type: org.cses.flow.extensions.log.Log
+                        message: "准备顺序步骤"
                       - key: finish
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                        type: org.cses.flow.extensions.log.Log
+                        message: "完成顺序步骤"
                 """,
             full = true
         )

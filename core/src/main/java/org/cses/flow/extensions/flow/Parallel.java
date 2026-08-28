@@ -29,9 +29,11 @@ import java.util.OptionalInt;
                     concurrent: 2
                     tasks:
                       - key: backend-check
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                        type: org.cses.flow.extensions.log.Log
+                        message: "执行后端检查"
                       - key: frontend-check
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                        type: org.cses.flow.extensions.log.Log
+                        message: "执行前端检查"
                 """,
             full = true
         )

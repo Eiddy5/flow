@@ -416,8 +416,7 @@ Task 领域定义的一种能力：
 ```text
 extensions/
 ├── flow/               # Flow 自有编排 Task：Branch、Route、Sequence、Parallel、Loop、LoopUntil、Pause
-├── tasks/              # 尚未迁移类型地址的 AutomaticTask
-├── log/                # 独立的 Log 扩展能力
+├── log/                # 独立的 Log 可执行扩展能力
 └── <extension-name>/   # 其他独立扩展能力
     └── <ExtensionName>.java
 ```
@@ -484,8 +483,8 @@ Log、Notification 等能够作为独立扩展能力演进的 Task，才使用�
 真实 Java 包中并标注 `@Plugin`，无需声明额外的来源对象或标识。Micronaut 在编译期
 发现这些 Bean，注册表按 `Class#getPackageName()` 分组，再按
 `Class#getCanonicalName()` 建立精确、只读映射；新增类型不得修改 Flow、中心枚举
-或中心 `switch`。现有 `AutomaticTask` 暂时保留原类型地址；Pause 与 Parallel 按照
-ADR 0029 一次性迁移为 `org.cses.flow.extensions.flow.Pause` 和
+或中心 `switch`。Pause 与 Parallel 按照 ADR 0029 一次性迁移为
+`org.cses.flow.extensions.flow.Pause` 和
 `org.cses.flow.extensions.flow.Parallel`，不提供旧地址兼容。
 `core/services/plugins` 对外提供目录和按需 Schema 查询，`controller/plugins` 只把
 Java Class 转换为字符串 DTO。

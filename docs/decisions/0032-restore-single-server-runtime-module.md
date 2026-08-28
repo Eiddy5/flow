@@ -66,7 +66,7 @@ Infrastructure 的职责边界。
 
 - 具体 Task 仍直接作为 `@Plugin` Bean，以 canonical class name 注册。
 - `Pause`、`Parallel` 和后续 Flow 编排 Task 仍位于 `extensions/flow`。
-- `Log` 仍位于 `extensions/log`，`AutomaticTask` 暂时位于 `extensions/tasks`。
+- `Log` 位于 `extensions/log`，作为内置的无业务副作用可执行步骤。
 - 不恢复 `TaskExtension`、`TaskTypeDispatcher`、伴生 `*TaskPlugin` 或 `BranchTask`。
 
 ## 理由

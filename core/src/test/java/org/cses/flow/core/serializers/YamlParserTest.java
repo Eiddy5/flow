@@ -1,7 +1,7 @@
 package org.cses.flow.core.serializers;
 
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -52,7 +52,7 @@ class YamlParserTest {
             tasks:
               - key: prepare
                 type: %s
-            """.formatted(AutomaticTask.class.getName()),
+            """.formatted(Log.class.getName()),
             Flow.class
         );
 

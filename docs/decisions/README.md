@@ -77,6 +77,8 @@
   `@Plugin.examples` 的值类型，随插件详情提供可物化的 Flow YAML 使用示例。
 - [`ADR 0028`](0028-add-log-extension-and-task-template-expressions.md)：按能力名称
   组织新的 Task 扩展，并由受限模板表达式从运行输入提取日志消息。
+- [`ADR 0077`](0077-remove-automatic-task-use-log.md)：移除没有业务语义的
+  `AutomaticTask`，使用 `Log` 替代无副作用的流程推进步骤。
 
 目录位置和当前文件落位以 [`../project-structure.md`](../project-structure.md) 为准；
 它只描述目录职责，不重新定义架构决策。

@@ -204,7 +204,8 @@ class FlowServiceTest {
                 key: externally-owned-flow
                 tasks:
                   - key: externally-owned-task
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """)
             );
 
@@ -233,7 +234,7 @@ class FlowServiceTest {
                 PublishFlowCommand.from("externally-owned-flow", """
                 description: key omitted on the next revision
                 tasks:
-                  - type: org.cses.flow.extensions.tasks.AutomaticTask
+                  - type: org.cses.flow.extensions.log.Log
                 """)
             );
             Flow second = service.save(
@@ -255,7 +256,8 @@ class FlowServiceTest {
                 key: existing-flow-key
                 tasks:
                   - key: start
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """;
 
             Flow latest = fixture.deploy(yaml);
@@ -287,7 +289,8 @@ class FlowServiceTest {
             description: %s
             tasks:
               - key: start
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """.formatted(description);
     }
 
@@ -297,7 +300,8 @@ class FlowServiceTest {
             description: %s
             tasks:
               - key: start
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """.formatted(key, description);
     }
 

@@ -5,7 +5,6 @@ import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
-import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Parallel;
@@ -25,8 +24,8 @@ class FlowCoreWiringTest {
             FlowService service = fixture.flowService();
             PluginRegistry registry = fixture.pluginRegistry();
             assertSame(
-                AutomaticTask.class,
-                registry.resolve(AutomaticTask.class.getName(), Task.class)
+                Log.class,
+                registry.resolve(Log.class.getName(), Task.class)
             );
             assertSame(
                 Pause.class,
@@ -35,10 +34,6 @@ class FlowCoreWiringTest {
             assertSame(
                 Parallel.class,
                 registry.resolve(Parallel.class.getName(), Task.class)
-            );
-            assertSame(
-                Log.class,
-                registry.resolve(Log.class.getName(), Task.class)
             );
             Session<User> session = fixture.sessionFor(
                 "wiring-company"
@@ -51,7 +46,8 @@ class FlowCoreWiringTest {
                 description: Micronaut 装配验证
                 tasks:
                   - key: start
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """)
             );
             service.save(
@@ -67,7 +63,7 @@ class FlowCoreWiringTest {
             assertTrue(!current.deleted());
             assertEquals(1L, current.reversion());
             assertEquals(
-                AutomaticTask.class.getName(),
+                Log.class.getName(),
                 current.tasks().getFirst().getType()
             );
             assertEquals(

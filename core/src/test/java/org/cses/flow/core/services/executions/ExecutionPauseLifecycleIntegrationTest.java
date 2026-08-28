@@ -361,13 +361,14 @@ class ExecutionPauseLifecycleIntegrationTest {
             ).orElseThrow();
             assertEquals(State.Type.KILLED, canceledReloaded.state().current());
 
-            Flow automaticFlow = fixture.deploy("""
+            Flow logFlow = fixture.deploy("""
                 key: pause-lifecycle-completed
                 tasks:
                   - key: complete
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """);
-            Execution completed = fixture.startAndAwait(automaticFlow);
+            Execution completed = fixture.startAndAwait(logFlow);
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().cancel(

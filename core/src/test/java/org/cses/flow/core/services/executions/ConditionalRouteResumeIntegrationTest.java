@@ -259,7 +259,8 @@ class ConditionalRouteResumeIntegrationTest {
                 type: org.cses.flow.extensions.flow.Pause
                 pause:
                   key: create-approval-decision
-                  type: org.cses.flow.extensions.tasks.AutomaticTask
+                  type: org.cses.flow.extensions.log.Log
+                  message: "test step"
                 resume:
                   - key: decision
                     type: STRING
@@ -271,13 +272,15 @@ class ConditionalRouteResumeIntegrationTest {
                 route: '%s'
                 tasks:
                   - key: approve
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
               - key: reject-decision
                 type: org.cses.flow.extensions.flow.Route
                 route: '{{ outputs.approval-decision.decision }} == REJECTED'
                 tasks:
                   - key: reject
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
             """.formatted(key, approveExpress);
     }
 

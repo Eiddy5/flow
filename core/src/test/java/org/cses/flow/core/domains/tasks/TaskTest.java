@@ -4,10 +4,11 @@ import io.micronaut.json.JsonMapper;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Pause;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -40,9 +41,10 @@ class TaskTest {
     @Test
     void exposesReadOnlyBoundDefinitionState() {
         Task task = PLUGINS.modelValidator().validate(
-            AutomaticTask.builder()
+            Log.builder()
                 .id("task-id")
                 .key("task")
+                .message(TemplateExpression.parse("test step"))
                 .inputs(List.of(input("request", DataType.STRING)))
                 .outputs(List.of(Output.create(
                     "result",
@@ -51,7 +53,7 @@ class TaskTest {
                 .build()
         );
 
-        assertEquals(AutomaticTask.class.getName(), task.getType());
+        assertEquals(Log.class.getName(), task.getType());
         assertEquals("task", task.key());
         assertTrue(task.declaresOutput("result"));
         assertTrue(task.definitionChildren().isEmpty());
@@ -69,15 +71,17 @@ class TaskTest {
 
     @Test
     void usesDefinitionValueEqualityAcrossPersistenceBoundaries() {
-        Task first = AutomaticTask.builder()
+        Task first = Log.builder()
             .id("task-1")
             .key("approval")
+            .message(TemplateExpression.parse("test step"))
             .inputs(List.of(input("request", DataType.STRING)))
             .outputs(List.of(Output.create("decision", DataType.STRING)))
             .build();
-        Task restored = AutomaticTask.builder()
+        Task restored = Log.builder()
             .id("task-1")
             .key("approval")
+            .message(TemplateExpression.parse("test step"))
             .inputs(List.of(input("request", DataType.STRING)))
             .outputs(List.of(Output.rehydrate(
                 "decision",
@@ -94,9 +98,10 @@ class TaskTest {
         assertThrows(
             IllegalArgumentException.class,
             () -> PLUGINS.modelValidator().validate(
-                AutomaticTask.builder()
+                Log.builder()
                     .id("task-1")
                     .key("approval")
+                    .message(TemplateExpression.parse("test step"))
                     .inputs(List.of(
                         input("request", DataType.STRING),
                         input("request", DataType.INTEGER)
@@ -107,7 +112,11 @@ class TaskTest {
         assertThrows(
             jakarta.validation.ConstraintViolationException.class,
             () -> PLUGINS.modelValidator().validate(
-                AutomaticTask.builder().id(" ").key("task").build()
+                Log.builder()
+                    .id(" ")
+                    .key("task")
+                    .message(TemplateExpression.parse("test step"))
+                    .build()
             )
         );
         assertThrows(
@@ -140,9 +149,10 @@ class TaskTest {
     @Test
     void allowsTheSameDataKeyAcrossInputAndOutputDirections() {
         Task task = PLUGINS.modelValidator().validate(
-            AutomaticTask.builder()
+            Log.builder()
                 .id("task-1")
                 .key("transform")
+                .message(TemplateExpression.parse("test step"))
                 .inputs(List.of(input("payload", DataType.STRING)))
                 .outputs(List.of(Output.create(
                     "payload",
@@ -157,9 +167,10 @@ class TaskTest {
 
     @Test
     void validatesProvidedAndDeclaredRuntimeOutputs() {
-        Task task = AutomaticTask.builder()
+        Task task = Log.builder()
             .id("task-1")
             .key("wait")
+            .message(TemplateExpression.parse("test step"))
             .outputs(List.of(Output.create("decision", DataType.STRING)))
             .build();
 
@@ -185,9 +196,10 @@ class TaskTest {
             () -> task.validateOutputs(Map.of("decision", true))
         );
 
-        Task numericTask = AutomaticTask.builder()
+        Task numericTask = Log.builder()
             .id("task-2")
             .key("numeric-wait")
+            .message(TemplateExpression.parse("test step"))
             .outputs(List.of(Output.create("count", DataType.LONG)))
             .build();
         assertEquals(
@@ -203,7 +215,7 @@ class TaskTest {
     @Test
     void providesAPublicNoArgsConstructorForFrameworkBinding() {
         for (Class<? extends Task> type : List.of(
-            AutomaticTask.class,
+            Log.class,
             Pause.class
         )) {
             var constructor = assertDoesNotThrow(
@@ -213,10 +225,6 @@ class TaskTest {
                 Modifier.isPublic(constructor.getModifiers())
             );
         }
-    }
-
-    private static AutomaticTask automatic(String id, String key) {
-        return AutomaticTask.builder().id(id).key(key).build();
     }
 
     private static Input<?> input(String key, DataType type) {

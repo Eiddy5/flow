@@ -4,6 +4,7 @@ import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.ActorRef;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.RunResult;
@@ -13,7 +14,7 @@ import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.extensions.flow.Pause;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -37,9 +38,10 @@ class WorkerDispatcherTest {
 
     @Test
     void directlyInvokesTheRunnableTask() {
-        AutomaticTask task = AutomaticTask.builder()
+        Log task = Log.builder()
             .id("task-1")
-            .key("automatic")
+            .key("log")
+            .message(TemplateExpression.parse("test step"))
             .build();
         WorkerTask workerTask = workerTask(
             "execution-1",
@@ -81,9 +83,10 @@ class WorkerDispatcherTest {
         Pause task = Pause.builder()
             .id("task-1")
             .key("pause")
-            .pause(AutomaticTask.builder()
+            .pause(Log.builder()
                 .id("action-1")
                 .key("create-pause")
+                .message(TemplateExpression.parse("test step"))
                 .build())
             .build();
 
@@ -224,9 +227,10 @@ class WorkerDispatcherTest {
 
     @Test
     void rejectsVariableIdentitiesThatDoNotMatchTheEnvelope() {
-        AutomaticTask task = AutomaticTask.builder()
+        Log task = Log.builder()
             .id("task-1")
-            .key("automatic")
+            .key("log")
+            .message(TemplateExpression.parse("test step"))
             .build();
 
         IllegalArgumentException taskRunFailure = assertThrows(
@@ -267,9 +271,10 @@ class WorkerDispatcherTest {
 
     @Test
     void rejectsAnExecutionIdentityThatDoesNotMatchTheEnvelope() {
-        AutomaticTask task = AutomaticTask.builder()
+        Log task = Log.builder()
             .id("task-1")
-            .key("automatic")
+            .key("log")
+            .message(TemplateExpression.parse("test step"))
             .build();
 
         IllegalArgumentException failure = assertThrows(

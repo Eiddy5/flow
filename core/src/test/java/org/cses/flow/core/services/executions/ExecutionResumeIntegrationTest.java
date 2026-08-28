@@ -487,7 +487,8 @@ class ExecutionResumeIntegrationTest {
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-confirmation
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: decision
                         type: STRING

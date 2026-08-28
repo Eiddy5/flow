@@ -4,7 +4,7 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.extensions.flow.Pause;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.cses.flow.core.serializers.YamlParser;
 import org.junit.jupiter.api.Test;
 
@@ -32,7 +32,7 @@ class PluginDeserializerTest {
                 "pause", Map.of(
                     "id", "child-id",
                     "key", "prepare",
-                    "type", AutomaticTask.class.getCanonicalName()
+                    "type", Log.class.getCanonicalName(), "message", "test step"
                 ),
                 "resume", List.of(Map.of(
                     "key", "decision",
@@ -62,7 +62,8 @@ class PluginDeserializerTest {
             tasks:
               - key: task
                 type: %s
-            """.formatted(AutomaticTask.class.getCanonicalName()),
+                message: "test step"
+            """.formatted(Log.class.getCanonicalName()),
             Flow.class
         );
 
@@ -76,7 +77,8 @@ class PluginDeserializerTest {
                   - id: caller-owned-id
                     key: task
                     type: %s
-                """.formatted(AutomaticTask.class.getCanonicalName()),
+                    message: "test step"
+                """.formatted(Log.class.getCanonicalName()),
                 Flow.class
             )
         );
@@ -92,14 +94,14 @@ class PluginDeserializerTest {
                 Map.of(
                     "id", "task-id",
                     "key", "task",
-                    "type", "AUTO"
+                    "type", "LOG"
                 ),
                 Task.class
             )
         );
 
         assertTrue(
-            exception.getMessage().contains("No plugin registered for type: AUTO")
+            exception.getMessage().contains("No plugin registered for type: LOG")
         );
     }
 

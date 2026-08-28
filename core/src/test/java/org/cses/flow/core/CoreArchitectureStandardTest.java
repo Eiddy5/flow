@@ -718,8 +718,8 @@ class CoreArchitectureStandardTest {
         String orchestrationTask = Files.readString(taskDomain.resolve(
             "OrchestrationTask.java"
         ));
-        String automatic = Files.readString(FLOW.resolve(
-            "extensions/tasks/AutomaticTask.java"
+        String log = Files.readString(FLOW.resolve(
+            "extensions/log/Log.java"
         ));
         String pause = Files.readString(FLOW.resolve(
             "extensions/flow/Pause.java"
@@ -845,8 +845,8 @@ class CoreArchitectureStandardTest {
             "Worker must directly run RunnableTask and cannot return PAUSED"
         );
         assertTrue(
-            automatic.contains("implements RunnableTask")
-                && automatic.contains("RunResult run(RunContext context)")
+            log.contains("implements RunnableTask")
+                && log.contains("RunResult run(RunContext context)")
                 && pause.contains("implements OrchestrationTask")
                 && parallel.contains("implements OrchestrationTask")
                 && loop.contains("implements OrchestrationTask")
@@ -1168,7 +1168,7 @@ class CoreArchitectureStandardTest {
             "PluginDeserializer.java"
         );
         Path pluginModule = plugins.resolve("PluginModule.java");
-        Path extensions = FLOW.resolve("extensions/tasks");
+        Path extensions = FLOW.resolve("extensions");
         Path loader = plugins.resolve("PluginLoader.java");
         Path registry = plugins.resolve("PluginRegistry.java");
         Path defaultRegistry = plugins.resolve(
@@ -1253,7 +1253,7 @@ class CoreArchitectureStandardTest {
                     "new PluginDeserializer<>(registry, sourceDefinition)"
                 )
                 && !deserializerSource.contains("switch")
-                && !deserializerSource.contains("AutomaticTask")
+                && !deserializerSource.contains("Log")
                 && !deserializerSource.contains("Pause"),
             "Plugin deserialization must resolve without concrete branches"
         );

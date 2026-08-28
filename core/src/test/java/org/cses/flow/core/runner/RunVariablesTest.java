@@ -2,9 +2,10 @@ package org.cses.flow.core.runner;
 
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -168,10 +169,10 @@ class RunVariablesTest {
 
     private static Fixture fixture() {
         Session<User> session = session();
-        AutomaticTask root = task("root-id", "root");
-        AutomaticTask repeated = task("repeat-id", "repeat");
-        AutomaticTask parent = task("parent-id", "parent");
-        AutomaticTask current = task("current-id", "current");
+        Log root = task("root-id", "root");
+        Log repeated = task("repeat-id", "repeat");
+        Log parent = task("parent-id", "parent");
+        Log current = task("current-id", "current");
         Flow flow = Flow.deploy(
             session,
             "run-variables-flow",
@@ -235,8 +236,12 @@ class RunVariablesTest {
         );
     }
 
-    private static AutomaticTask task(String id, String key) {
-        return AutomaticTask.builder().id(id).key(key).build();
+    private static Log task(String id, String key) {
+        return Log.builder()
+            .id(id)
+            .key(key)
+            .message(TemplateExpression.parse("test step"))
+            .build();
     }
 
     private static Session<User> session() {
@@ -279,20 +284,20 @@ class RunVariablesTest {
     private record Fixture(
         Flow flow,
         Execution execution,
-        AutomaticTask currentTask,
+        Log currentTask,
         TaskRun currentTaskRun,
         TaskRun parentTaskRun,
         TaskRun rootTaskRun,
-        AutomaticTask rootTask
+        Log rootTask
     ) {
         private static Fixture from(
             Flow flow,
             Execution execution,
-            AutomaticTask currentTask,
+            Log currentTask,
             TaskRun currentTaskRun,
             TaskRun parentTaskRun,
             TaskRun rootTaskRun,
-            AutomaticTask rootTask
+            Log rootTask
         ) {
             return new Fixture(
                 flow,

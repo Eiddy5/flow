@@ -207,7 +207,8 @@ _Avoid_: Condition, arbitrary script, mutable runtime context
 
 **Log**:
 在流程运行时解析 message 模板并把结果写入应用日志的步骤；它不负责审计留痕、
-不产生流程输出，也不改变 Execution 或 TaskRun 的推进规则。
+不产生流程输出，也不改变 Execution 或 TaskRun 的推进规则。对于只需要无业务副作用
+地记录或推进流程的步骤，Log 是当前内置的可执行步骤；它不代表通用业务计算能力。
 _Avoid_: LogTask, Audit Log, logging service
 
 **Execution**:

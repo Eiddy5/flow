@@ -128,15 +128,14 @@ tasks:
 key: logging-flow
 tasks:
   - key: prepare
-    type: org.cses.flow.extensions.tasks.AutomaticTask
-    outputs:
-      - key: result
-        type: STRING
+    type: org.cses.flow.extensions.log.Log
+    message: "准备处理步骤"
   - key: write-log
     type: org.cses.flow.extensions.log.Log
-    message: "处理结果：{{ outputs.prepare.result }}"
+    message: "流程继续执行"
 ```
 
+Log 不产生流程输出；它适合替代只需要无业务副作用地推进流程的内置自动步骤。
 当前路径只读取本次 TaskRun 的可见输入。串行作用域中，
 `outputs.<taskKey>.<outputKey>` 表示位于当前 Task 之前且已经完成的 Task 输出；并行
 兄弟之间不共享这个输出域。表达式不能调用方法、执行脚本或修改运行上下文；语法错误

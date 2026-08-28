@@ -170,7 +170,7 @@ class FlowDeletionLifecycleTest {
                 "key", "lifecycle-flow",
                 "tasks", List.of(Map.of(
                     "key", "start",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ))
             ),
             latest,

@@ -11,7 +11,6 @@ import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Sequence;
 import org.cses.flow.extensions.log.Log;
-import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -26,7 +25,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BuiltInPluginExamplesTest {
 
     private static final List<Plugin> BUILT_IN_PLUGINS = List.of(
-        new AutomaticTask(),
         new Log(),
         new Loop(),
         new LoopUntil(),

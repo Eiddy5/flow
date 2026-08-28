@@ -740,7 +740,7 @@ final class PostgresRepositoryIntegrationTest {
                         "tasks", List.of(
                                 Map.of(
                                         "key", taskKey,
-                                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
                                         "inputs", List.of(Map.of(
                                                 "key", "request",
                                                 "type", "STRING",
@@ -761,7 +761,7 @@ final class PostgresRepositoryIntegrationTest {
                                                 "type", Pause.class.getName(),
                                                 "pause", Map.of(
                                                         "key", "create-approval",
-                                                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                                                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                                                 ),
                                                 "resume", List.of(Map.of(
                                                         "key", "approved",

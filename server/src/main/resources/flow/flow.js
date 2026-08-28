@@ -4,7 +4,7 @@
     const API = "/api";
     const PLUGIN_API = "/api/plugins";
     const TASK_TYPES = Object.freeze({
-        AUTO: "org.cses.flow.extensions.tasks.AutomaticTask",
+        LOG: "org.cses.flow.extensions.log.Log",
         PAUSE: "org.cses.flow.extensions.flow.Pause",
         PARALLEL: "org.cses.flow.extensions.flow.Parallel",
     });
@@ -1976,7 +1976,7 @@
                     >
                     <span>
                         <strong>创建汇合后的后续任务</strong>
-                        <small>PARALLEL 会先等待两个分支完成，再按顺序执行该 AUTO 任务。</small>
+                    <small>PARALLEL 会先等待两个分支完成，再按顺序执行该 LOG 任务。</small>
                     </span>
                 </label>
                 ${modal.createJoin
@@ -2859,8 +2859,8 @@
             parallelKey,
             branchAKey,
             branchBKey,
-            branchAType: parallel ? TASK_TYPES.PAUSE : TASK_TYPES.AUTO,
-            branchBType: parallel ? TASK_TYPES.PAUSE : TASK_TYPES.AUTO,
+            branchAType: parallel ? TASK_TYPES.PAUSE : TASK_TYPES.LOG,
+            branchBType: parallel ? TASK_TYPES.PAUSE : TASK_TYPES.LOG,
             branchAValue: values.approve,
             branchBValue: values.reject,
             outputKey: output.key,
@@ -2950,7 +2950,7 @@
             );
             children.push(parallelTask);
             if (joinKey) {
-                const join = taskDefinition(TASK_TYPES.AUTO, joinKey);
+                const join = taskDefinition(TASK_TYPES.LOG, joinKey);
                 join.dependOn = [branchAKey, branchBKey];
                 children.push(join);
             }
@@ -3653,12 +3653,19 @@
     }
 
     function applyPluginDefaults(task, type) {
+        if (type === TASK_TYPES.LOG) {
+            task.outputs = [];
+            task.tasks = [];
+            if (!Object.prototype.hasOwnProperty.call(task, "message")) {
+                task.message = "流程步骤";
+            }
+        }
         if (type === TASK_TYPES.PAUSE) {
             task.outputs = [];
             task.tasks = [];
             if (!task.pause || typeof task.pause !== "object") {
                 task.pause = taskDefinition(
-                    TASK_TYPES.AUTO,
+                    TASK_TYPES.LOG,
                     uniqueTaskKey(`${task.key || "pause"}-action`),
                 );
             }
@@ -4327,7 +4334,7 @@
         if (entry) {
             return entry[0];
         }
-        const className = String(type || TASK_TYPES.AUTO);
+        const className = String(type || TASK_TYPES.LOG);
         return className.split(/[.$]/).at(-1);
     }
 
@@ -4338,7 +4345,7 @@
         if (type === TASK_TYPES.PARALLEL) {
             return "parallel";
         }
-        return "auto";
+        return "log";
     }
 
     function taskTypeIcon(type) {
@@ -4742,7 +4749,7 @@
             ? "approval-task"
             : type === TASK_TYPES.PARALLEL
                 ? "parallel-task"
-                : "auto-task";
+                : "log-task";
         const keys = definitionTaskKeys();
         let index = 1;
         while (keys.has(`${base}-${index}`)) {

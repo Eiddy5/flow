@@ -7,7 +7,7 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,13 +23,13 @@ class PluginRegistryTest {
     @Test
     void resolvesTheExactCanonicalClassName() {
         PluginRegistry registry = registry(
-            new AutomaticTask(),
+            new Log(),
             new SpecialTask()
         );
 
         assertSame(
-            AutomaticTask.class,
-            registry.resolve(AutomaticTask.class.getName(), Task.class)
+            Log.class,
+            registry.resolve(Log.class.getName(), Task.class)
         );
         assertSame(
             SpecialTask.class,
@@ -44,13 +44,13 @@ class PluginRegistryTest {
     void groupsPluginsByTheirRealPackagesInDeterministicOrder() {
         PluginRegistry registry = registry(
             new SpecialTask(),
-            new AutomaticTask()
+            new Log()
         );
 
         assertEquals(
             List.of(
                 SpecialTask.class.getPackageName(),
-                AutomaticTask.class.getPackageName()
+                Log.class.getPackageName()
             ),
             registry.plugins().stream()
                 .map(RegisteredPlugin::packageName)
@@ -63,10 +63,10 @@ class PluginRegistryTest {
                 .map(PluginMetadata::canonicalType)
                 .toList()
         );
-        RegisteredPlugin automaticPackage = registry.plugins().getLast();
+        RegisteredPlugin logPackage = registry.plugins().getLast();
         assertEquals(
-            List.of(AutomaticTask.class.getCanonicalName()),
-            automaticPackage.tasks().stream()
+            List.of(Log.class.getCanonicalName()),
+            logPackage.tasks().stream()
                 .map(PluginMetadata::canonicalType)
                 .toList()
         );
@@ -118,13 +118,13 @@ class PluginRegistryTest {
     @Test
     void normalizesOptionalDisplayMetadata() {
         PluginMetadata<Task> metadata = PluginMetadata.from(
-            AutomaticTask.class,
+            Log.class,
             Task.class,
             " ",
             " "
         );
 
-        assertEquals("AutomaticTask", metadata.title());
+        assertEquals("Log", metadata.title());
         assertEquals("", metadata.description());
         assertTrue(metadata.examples().isEmpty());
         assertTrue(metadata.capabilities().isEmpty());
@@ -154,28 +154,28 @@ class PluginRegistryTest {
     @Test
     void doesNotNormalizeOrAliasTypes() {
         PluginRegistry registry = registry(
-            new AutomaticTask()
+            new Log()
         );
 
         IllegalArgumentException shortType = assertThrows(
             IllegalArgumentException.class,
-            () -> registry.resolve("AUTO", Task.class)
+            () -> registry.resolve("LOG", Task.class)
         );
         assertEquals(
-            "No plugin registered for type: AUTO",
+            "No plugin registered for type: LOG",
             shortType.getMessage()
         );
         assertThrows(
             IllegalArgumentException.class,
             () -> registry.resolve(
-                AutomaticTask.class.getName().toLowerCase(),
+                Log.class.getName().toLowerCase(),
                 Task.class
             )
         );
         assertThrows(
             IllegalArgumentException.class,
             () -> registry.resolve(
-                " " + AutomaticTask.class.getName() + " ",
+                " " + Log.class.getName() + " ",
                 Task.class
             )
         );
@@ -186,27 +186,27 @@ class PluginRegistryTest {
         IllegalStateException exception = assertThrows(
             IllegalStateException.class,
             () -> registry(
-                new AutomaticTask(),
-                new AutomaticTask()
+                new Log(),
+                new Log()
             )
         );
 
         assertTrue(exception.getMessage().contains(
-            "Duplicate plugin type '" + AutomaticTask.class.getName()
+            "Duplicate plugin type '" + Log.class.getName()
         ));
     }
 
     @Test
     void checksTheRequestedPluginCapability() {
         PluginRegistry registry = registry(
-            new AutomaticTask(),
+            new Log(),
             new SpecialTask()
         );
 
         IllegalArgumentException exception = assertThrows(
             IllegalArgumentException.class,
             () -> registry.resolve(
-                AutomaticTask.class.getCanonicalName(),
+                Log.class.getCanonicalName(),
                 SpecialExtension.class
             )
         );

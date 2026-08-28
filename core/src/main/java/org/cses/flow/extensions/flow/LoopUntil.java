@@ -26,20 +26,22 @@ import java.util.Map;
     description = "重复执行子任务直到条件满足或达到次数上限",
     examples = {
         @Example(
-            title = "检查结果后结束循环",
+            title = "检查输入后结束循环",
             code = """
                 key: loop-until-flow
+                inputs:
+                  - key: done
+                    type: BOOLEAN
+                    required: true
                 tasks:
                   - key: check-until-done
                     type: org.cses.flow.extensions.flow.LoopUntil
-                    condition: '{{ outputs.check.status }} == DONE'
+                    condition: '{{ inputs.done }} == true'
                     maxIterations: 3
                     tasks:
                       - key: check
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
-                        outputs:
-                          - key: status
-                            type: STRING
+                        type: org.cses.flow.extensions.log.Log
+                        message: "检查循环条件"
                 """,
             full = true
         )

@@ -29,7 +29,8 @@ import java.util.Map;
                     times: 3
                     tasks:
                       - key: repeated-step
-                        type: org.cses.flow.extensions.tasks.AutomaticTask
+                        type: org.cses.flow.extensions.log.Log
+                        message: "执行循环步骤"
                 """,
             full = true
         )

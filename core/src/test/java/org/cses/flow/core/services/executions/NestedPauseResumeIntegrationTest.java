@@ -1031,7 +1031,8 @@ class NestedPauseResumeIntegrationTest {
             description: 两层嵌套 Task 长流程
             tasks:
               - key: receive-request
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
 
               - key: prepare-release
                 type: org.cses.flow.extensions.flow.Parallel
@@ -1043,7 +1044,8 @@ class NestedPauseResumeIntegrationTest {
                         type: org.cses.flow.extensions.flow.Pause
                         pause:
                           key: create-backend-review
-                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                          type: org.cses.flow.extensions.log.Log
+                          message: "test step"
                         resume:
                           - key: backendResult
                             type: STRING
@@ -1058,7 +1060,8 @@ class NestedPauseResumeIntegrationTest {
                         type: org.cses.flow.extensions.flow.Pause
                         pause:
                           key: create-frontend-review
-                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                          type: org.cses.flow.extensions.log.Log
+                          message: "test step"
                         resume:
                           - key: frontendResult
                             type: STRING
@@ -1067,7 +1070,8 @@ class NestedPauseResumeIntegrationTest {
                             type: STRING
 
               - key: integrate-results
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
 
               - key: security-stage
                 type: org.cses.flow.extensions.flow.Sequence
@@ -1079,7 +1083,8 @@ class NestedPauseResumeIntegrationTest {
                         type: org.cses.flow.extensions.flow.Pause
                         pause:
                           key: create-security-approval
-                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                          type: org.cses.flow.extensions.log.Log
+                          message: "test step"
                         resume:
                           - key: securityDecision
                             type: STRING
@@ -1088,10 +1093,12 @@ class NestedPauseResumeIntegrationTest {
                             type: STRING
 
               - key: publish-artifact
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
 
               - key: notify-result
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """.formatted(key);
     }
 
@@ -1101,19 +1108,22 @@ class NestedPauseResumeIntegrationTest {
             description: 上移 backend review 的两层流程
             tasks:
               - key: receive-request
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
 
               - key: prepare-release
                 type: org.cses.flow.extensions.flow.Parallel
                 tasks:
                   - key: backend-build
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
 
                   - key: backend-review
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-backend-review
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: backendResult
                         type: STRING
@@ -1128,7 +1138,8 @@ class NestedPauseResumeIntegrationTest {
                         type: org.cses.flow.extensions.flow.Pause
                         pause:
                           key: create-frontend-review
-                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                          type: org.cses.flow.extensions.log.Log
+                          message: "test step"
                         resume:
                           - key: frontendResult
                             type: STRING
@@ -1137,7 +1148,8 @@ class NestedPauseResumeIntegrationTest {
                             type: STRING
 
               - key: integrate-results
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
 
               - key: security-stage
                 type: org.cses.flow.extensions.flow.Sequence
@@ -1149,7 +1161,8 @@ class NestedPauseResumeIntegrationTest {
                         type: org.cses.flow.extensions.flow.Pause
                         pause:
                           key: create-security-approval
-                          type: org.cses.flow.extensions.tasks.AutomaticTask
+                          type: org.cses.flow.extensions.log.Log
+                          message: "test step"
                         resume:
                           - key: securityDecision
                             type: STRING
@@ -1158,10 +1171,12 @@ class NestedPauseResumeIntegrationTest {
                             type: STRING
 
               - key: publish-artifact
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
 
               - key: notify-result
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """.formatted(key);
     }
 
@@ -1177,7 +1192,8 @@ class NestedPauseResumeIntegrationTest {
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-approval
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: decision
                         type: STRING
@@ -1192,12 +1208,14 @@ class NestedPauseResumeIntegrationTest {
                         type: org.cses.flow.extensions.flow.Sequence
                         tasks:
                           - key: approved-finish
-                            type: org.cses.flow.extensions.tasks.AutomaticTask
+                            type: org.cses.flow.extensions.log.Log
+                            message: "test step"
                   - key: rejected
                     type: org.cses.flow.extensions.flow.Route
                     route: '{{ outputs.approval.decision }} == REJECTED'
                   - key: serial-finish
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
             """.formatted(key);
     }
 

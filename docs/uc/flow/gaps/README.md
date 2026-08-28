@@ -15,7 +15,6 @@
 | --- | --- | --- |
 | [UC-01-gap.md](UC-01-gap.md) | FlowDraft/Flow 目标模型迁移与并发写协议 | RESOLVED |
 | [UC-02-gap.md](UC-02-gap.md) | Execution 状态竞争保护 | RESOLVED |
-| [UC-03-gap.md](UC-03-gap.md) | 内存存储事务回滚 | RESOLVED |
 | [UC-04-gap.md](UC-04-gap.md) | Pause 恢复与 Flow 推进原子性 | RESOLVED |
 | [UC-05-gap.md](UC-05-gap.md) | 并行与汇合运行能力 | RESOLVED |
 | [UC-06-gap.md](UC-06-gap.md) | 条件路由运行能力 | RESOLVED |

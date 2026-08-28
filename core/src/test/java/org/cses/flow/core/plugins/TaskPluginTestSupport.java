@@ -7,11 +7,10 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.validations.ModelValidator;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
-import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Route;
 import org.cses.flow.extensions.flow.Sequence;
@@ -35,14 +34,13 @@ public class TaskPluginTestSupport {
 
     public static Context builtInContext(Plugin... additionalPlugins) {
         List<Plugin> plugins = new ArrayList<>();
-        plugins.add(new AutomaticTask());
+        plugins.add(new Log());
         plugins.add(new Loop());
         plugins.add(new LoopUntil());
         plugins.add(new Pause());
         plugins.add(new Parallel());
         plugins.add(new Route());
         plugins.add(new Sequence());
-        plugins.add(new Log());
         plugins.addAll(List.of(additionalPlugins));
 
         PluginRegistry registry = new DefaultPluginRegistry(plugins);

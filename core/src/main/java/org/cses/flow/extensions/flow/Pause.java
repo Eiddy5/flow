@@ -42,7 +42,8 @@ import java.util.Optional;
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-approval
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "创建暂停前记录"
                     resume:
                       - key: decision
                         type: STRING

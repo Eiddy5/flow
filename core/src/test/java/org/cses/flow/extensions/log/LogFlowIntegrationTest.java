@@ -40,7 +40,8 @@ class LogFlowIntegrationTest {
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-prepare-request
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: result
                         type: STRING
@@ -51,7 +52,8 @@ class LogFlowIntegrationTest {
                     type: org.cses.flow.extensions.log.Log
                     message: "处理结果：{{ outputs.prepare.result }}"
                   - key: observe
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """)
             );
             Flow flow = flowService.save(

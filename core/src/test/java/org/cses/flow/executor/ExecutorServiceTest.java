@@ -39,7 +39,7 @@ final class ExecutorServiceTest {
             "key", "process-cycle",
             "tasks", List.of(Map.of(
                 "key", "prepare",
-                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
             ))
         ));
         Execution execution = execution(flow);
@@ -107,11 +107,11 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "first",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     ),
                     Map.of(
                         "key", "second",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ))
@@ -139,11 +139,11 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "left",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     ),
                     Map.of(
                         "key", "right",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ))
@@ -199,7 +199,7 @@ final class ExecutorServiceTest {
                         "route", "{{ inputs.amount }} > 1000",
                         "tasks", List.of(Map.of(
                             "key", "high-value",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ))
                     ),
                     Map.of(
@@ -208,7 +208,7 @@ final class ExecutorServiceTest {
                         "route", "{{ inputs.amount }} <= 1000",
                         "tasks", List.of(Map.of(
                             "key", "standard",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ))
                     )
                 )
@@ -257,7 +257,7 @@ final class ExecutorServiceTest {
                         "route", "{{ vars.environment }} == prod",
                         "tasks", List.of(Map.of(
                             "key", "production",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ))
                     ),
                     Map.of(
@@ -266,7 +266,7 @@ final class ExecutorServiceTest {
                         "route", "{{ vars.environment }} == staging",
                         "tasks", List.of(Map.of(
                             "key", "staging",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ))
                     )
                 )
@@ -301,7 +301,7 @@ final class ExecutorServiceTest {
                     + "&& {{ execution.flowKey }} == runtime-metadata-route",
                 "tasks", List.of(Map.of(
                     "key", "selected",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ))
             ))
         ));
@@ -335,7 +335,7 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "prepare",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
                         "outputs", List.of(Map.of(
                             "key", "decision",
                             "type", "STRING"
@@ -349,7 +349,7 @@ final class ExecutorServiceTest {
                             + "|| {{ inputs.override }} == true",
                         "tasks", List.of(Map.of(
                             "key", "approved",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ))
                     ),
                     Map.of(
@@ -358,7 +358,7 @@ final class ExecutorServiceTest {
                         "route", "{{ outputs.prepare.decision }} == rejected",
                         "tasks", List.of(Map.of(
                             "key", "rejected",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ))
                     )
                 )
@@ -400,7 +400,7 @@ final class ExecutorServiceTest {
                 "route", "{{ vars.environment }} == prod",
                 "tasks", List.of(Map.of(
                     "key", "never",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ))
             ))
         ));
@@ -432,7 +432,7 @@ final class ExecutorServiceTest {
                 "type", org.cses.flow.extensions.flow.Pause.class.getName(),
                 "pause", Map.of(
                     "key", "create-confirmation",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 )
             ))
         ));
@@ -478,7 +478,7 @@ final class ExecutorServiceTest {
                 "type", org.cses.flow.extensions.flow.Pause.class.getName(),
                 "pause", Map.of(
                     "key", "create-confirmation",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ),
                 "resume", List.of(Map.of(
                     "key", "decision",
@@ -544,7 +544,7 @@ final class ExecutorServiceTest {
                         "type", org.cses.flow.extensions.flow.Pause.class.getName(),
                         "pause", Map.of(
                             "key", "left-action",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         )
                     ),
                     Map.of(
@@ -552,7 +552,7 @@ final class ExecutorServiceTest {
                         "type", org.cses.flow.extensions.flow.Pause.class.getName(),
                         "pause", Map.of(
                             "key", "right-action",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         )
                     )
                 )
@@ -602,17 +602,17 @@ final class ExecutorServiceTest {
                     "tasks", List.of(
                         Map.of(
                             "key", "left",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         ),
                         Map.of(
                             "key", "right",
-                            "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                            "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         )
                     )
                 ),
                 Map.of(
                     "key", "after",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 )
             )
         ));
@@ -682,7 +682,7 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "source",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
                         "outputs", List.of(Map.of(
                             "key", "decision",
                             "type", "STRING"
@@ -694,7 +694,7 @@ final class ExecutorServiceTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "left",
-                                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
                                 "outputs", List.of(Map.of(
                                     "key", "branchResult",
                                     "type", "STRING"
@@ -702,7 +702,7 @@ final class ExecutorServiceTest {
                             ),
                             Map.of(
                                 "key", "right",
-                                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName(),
+                                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
                                 "outputs", List.of(Map.of(
                                     "key", "branchResult",
                                     "type", "STRING"
@@ -712,7 +712,7 @@ final class ExecutorServiceTest {
                     ),
                     Map.of(
                         "key", "after",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ))
@@ -779,17 +779,17 @@ final class ExecutorServiceTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "inner-left",
-                                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                             ),
                             Map.of(
                                 "key", "inner-right",
-                                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                             )
                         )
                     ),
                     Map.of(
                         "key", "outer-sibling",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ))
@@ -847,7 +847,7 @@ final class ExecutorServiceTest {
             "key", "warning-flow",
             "tasks", List.of(Map.of(
                 "key", "warn",
-                "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
             ))
         ));
         Execution execution = execution(flow);
@@ -883,11 +883,11 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "left",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     ),
                     Map.of(
                         "key", "right",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ))
@@ -930,11 +930,11 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "left",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     ),
                     Map.of(
                         "key", "right",
-                        "type", org.cses.flow.extensions.tasks.AutomaticTask.class.getName()
+                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
                 )
             ))
@@ -977,8 +977,7 @@ final class ExecutorServiceTest {
                 "times", 3,
                 "tasks", List.of(Map.of(
                     "key", "work",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class
-                        .getName()
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ))
             ))
         ));
@@ -1088,8 +1087,7 @@ final class ExecutorServiceTest {
                 "maxIterations", maxIterations,
                 "tasks", List.of(Map.of(
                     "key", "check",
-                    "type", org.cses.flow.extensions.tasks.AutomaticTask.class
-                        .getName(),
+                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
                     "outputs", List.of(Map.of(
                         "key", "status",
                         "type", "STRING"

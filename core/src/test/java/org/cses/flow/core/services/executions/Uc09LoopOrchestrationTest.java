@@ -15,7 +15,7 @@ import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -618,7 +618,7 @@ class Uc09LoopOrchestrationTest {
                             type: %s
                     """.formatted(
                         Loop.class.getCanonicalName(),
-                        AutomaticTask.class.getCanonicalName()
+                        Log.class.getCanonicalName()
                 ),
                 "times"
             ),
@@ -638,7 +638,7 @@ class Uc09LoopOrchestrationTest {
                                 type: STRING
                     """.formatted(
                         LoopUntil.class.getCanonicalName(),
-                        AutomaticTask.class.getCanonicalName()
+                        Log.class.getCanonicalName()
                     ),
                 "maxIterations"
             ),
@@ -658,7 +658,7 @@ class Uc09LoopOrchestrationTest {
                                 type: STRING
                     """.formatted(
                         LoopUntil.class.getCanonicalName(),
-                        AutomaticTask.class.getCanonicalName()
+                        Log.class.getCanonicalName()
                     ),
                 "Invalid Condition"
             ),
@@ -678,7 +678,7 @@ class Uc09LoopOrchestrationTest {
                                 type: STRING
                     """.formatted(
                         LoopUntil.class.getCanonicalName(),
-                        AutomaticTask.class.getCanonicalName()
+                        Log.class.getCanonicalName()
                     ),
                 "outside its body"
             )

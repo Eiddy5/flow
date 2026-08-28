@@ -42,7 +42,6 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
   ./gradlew :core:test \
   --tests '*Uc01FlowLifecycleTest' \
   --tests '*Uc02ExecutionLifecycleTest' \
-  --tests '*Uc03AutomaticTaskFlowTest' \
   --tests '*Uc06ConditionalRouteTest' \
   --tests '*Uc07NestedTaskFlowTest' \
   --tests '*TaskTest' \
@@ -57,7 +56,7 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
 - 目标测试类全部通过，只证明表中列出的场景证据和基础约束通过。
 - 不得从统一 Gradle 退出状态推导 UC-02、UC-04、UC-05、UC-06 或 UC-07
   整体 PASS；必须逐场景使用上表结论。
-- Task 抽象领域对象及 `AutomaticTask` 的不可变快照语义通过。
+- Task 抽象领域对象及 `Log` 的不可变快照语义通过。
 - UC-01 的 Flow 定义由 YAML 解析，默认字段、递归 Task 和类型扩展字段通过。
 - 查询只接受 `FlowService.flow(session, id, version, status)` 的精确条件，
   错误 version 或 status 不会回退到其他 Flow。

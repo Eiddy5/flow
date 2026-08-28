@@ -405,7 +405,8 @@ class ParallelPauseResumeIntegrationTest {
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-backend-check
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: backendResult
                         type: STRING
@@ -416,7 +417,8 @@ class ParallelPauseResumeIntegrationTest {
                     type: org.cses.flow.extensions.flow.Pause
                     pause:
                       key: create-frontend-check
-                      type: org.cses.flow.extensions.tasks.AutomaticTask
+                      type: org.cses.flow.extensions.log.Log
+                      message: "test step"
                     resume:
                       - key: frontendResult
                         type: STRING
@@ -424,9 +426,11 @@ class ParallelPauseResumeIntegrationTest {
                       - key: frontendResult
                         type: STRING
               - key: join-checks
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
               - key: finish
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """.formatted(key);
     }
 }

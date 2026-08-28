@@ -86,7 +86,8 @@ final class FlowDatabaseIntegrationTest {
                 description: Flow manually provisioned datasource integration
                 tasks:
                   - key: start
-                    type: org.cses.flow.extensions.tasks.AutomaticTask
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """)
             );
             assertEquals(

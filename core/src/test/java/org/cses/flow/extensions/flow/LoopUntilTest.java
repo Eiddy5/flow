@@ -2,10 +2,11 @@ package org.cses.flow.extensions.flow;
 
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.tasks.OrchestrationTask.IterationDecision;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -137,10 +138,11 @@ class LoopUntilTest {
         );
     }
 
-    private static AutomaticTask checkTask(DataType type) {
-        return AutomaticTask.builder()
+    private static Log checkTask(DataType type) {
+        return Log.builder()
             .id("check-id")
             .key("check")
+            .message(TemplateExpression.parse("test step"))
             .outputs(List.of(Output.create("status", type)))
             .build();
     }

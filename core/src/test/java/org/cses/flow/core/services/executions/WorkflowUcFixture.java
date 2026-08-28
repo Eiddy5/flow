@@ -456,12 +456,13 @@ public final class WorkflowUcFixture implements AutoCloseable {
     public static String pauseYaml(
         String key,
         String description,
-        boolean trailingAutomaticTask
+        boolean trailingLogTask
     ) {
-        String trailing = trailingAutomaticTask
+        String trailing = trailingLogTask
             ? """
               - key: record-result
-                type: org.cses.flow.extensions.tasks.AutomaticTask
+                type: org.cses.flow.extensions.log.Log
+                message: "test step"
             """
             : "";
         return """
@@ -472,7 +473,8 @@ public final class WorkflowUcFixture implements AutoCloseable {
                 type: org.cses.flow.extensions.flow.Pause
                 pause:
                   key: create-confirmation
-                  type: org.cses.flow.extensions.tasks.AutomaticTask
+                  type: org.cses.flow.extensions.log.Log
+                  message: "test step"
                 resume:
                   - key: decision
                     type: STRING

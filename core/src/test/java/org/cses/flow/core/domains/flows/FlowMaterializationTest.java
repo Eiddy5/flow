@@ -6,7 +6,7 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
@@ -77,7 +77,7 @@ class FlowMaterializationTest {
                     "tasks", List.of(
                         Map.of(
                             "key", "prepare",
-                            "type", AutomaticTask.class.getName(),
+                            "type", Log.class.getName(), "message", "test step",
                             "outputs", List.of(Map.of(
                                 "key", "prepared",
                                 "type", "BOOLEAN"
@@ -88,7 +88,7 @@ class FlowMaterializationTest {
                             "type", Pause.class.getName(),
                             "pause", Map.of(
                                 "key", "create-approval",
-                                "type", AutomaticTask.class.getName()
+                                "type", Log.class.getName(), "message", "test step"
                             )
                         )
                     )
@@ -119,7 +119,7 @@ class FlowMaterializationTest {
             null,
             Map.of(
                 "tasks", List.of(Map.of(
-                    "type", AutomaticTask.class.getName()
+                    "type", Log.class.getName(), "message", "test step"
                 ))
             ),
             null
@@ -133,7 +133,7 @@ class FlowMaterializationTest {
             "unused-fallback",
             Map.of(
                 "tasks", List.of(Map.of(
-                    "type", AutomaticTask.class.getName()
+                    "type", Log.class.getName(), "message", "test step"
                 ))
             ),
             first
@@ -156,7 +156,7 @@ class FlowMaterializationTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "prepare",
-                                "type", AutomaticTask.class.getName(),
+                                "type", Log.class.getName(), "message", "test step",
                                 "outputs", List.of(Map.of(
                                     "key", "decision",
                                     "type", "STRING"
@@ -169,7 +169,7 @@ class FlowMaterializationTest {
                                 "{{ outputs.prepare.decision }} == APPROVED",
                                 "tasks", List.of(Map.of(
                                     "key", "approved",
-                                    "type", AutomaticTask.class.getName()
+                                    "type", Log.class.getName(), "message", "test step"
                                 ))
                             )
                         )
@@ -182,7 +182,7 @@ class FlowMaterializationTest {
                         "maxIterations", 3,
                         "tasks", List.of(Map.of(
                             "key", "check",
-                            "type", AutomaticTask.class.getName(),
+                            "type", Log.class.getName(), "message", "test step",
                             "outputs", List.of(Map.of(
                                 "key", "status",
                                 "type", "STRING"
@@ -232,7 +232,7 @@ class FlowMaterializationTest {
                     "route", "{{ vars.environment }} == prod",
                     "tasks", List.of(Map.of(
                         "key", "production-only",
-                        "type", AutomaticTask.class.getName()
+                        "type", Log.class.getName(), "message", "test step"
                     ))
                 ))
             ),
@@ -263,7 +263,7 @@ class FlowMaterializationTest {
                         + "&& {{ task.key }} == current-route",
                     "tasks", List.of(Map.of(
                         "key", "selected",
-                        "type", AutomaticTask.class.getName()
+                        "type", Log.class.getName(), "message", "test step"
                     ))
                 ))
             ),
@@ -291,7 +291,7 @@ class FlowMaterializationTest {
                         "route", "{{ vars.environment }} == prod",
                         "tasks", List.of(Map.of(
                             "key", "child",
-                            "type", AutomaticTask.class.getName()
+                            "type", Log.class.getName(), "message", "test step"
                         ))
                     ))
                 ),
@@ -343,7 +343,7 @@ class FlowMaterializationTest {
                     "tasks", List.of(Map.of(
                         "id", "user-controlled",
                         "key", "prepare",
-                        "type", AutomaticTask.class.getName()
+                        "type", Log.class.getName(), "message", "test step"
                     ))
                 ),
                 null
@@ -361,7 +361,7 @@ class FlowMaterializationTest {
                     "key", "invalid",
                     "tasks", List.of(Map.of(
                         "key", "prepare",
-                        "type", AutomaticTask.class.getName(),
+                        "type", Log.class.getName(), "message", "test step",
                         "retryTimes", 2
                     ))
                 ),
@@ -378,14 +378,14 @@ class FlowMaterializationTest {
                     "key", "invalid",
                     "tasks", List.of(Map.of(
                         "key", "prepare",
-                        "type", "AUTO"
+                        "type", "LOG"
                     ))
                 ),
                 null
             )
         );
         assertTrue(legacyType.getMessage().contains(
-            "No plugin registered for type: AUTO"
+            "No plugin registered for type: LOG"
         ));
     }
 
@@ -403,7 +403,7 @@ class FlowMaterializationTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "parent",
-                                "type", AutomaticTask.class.getName()
+                                "type", Log.class.getName(), "message", "test step"
                             ),
                             Map.of(
                                 "key", "route",
@@ -433,7 +433,7 @@ class FlowMaterializationTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "parent",
-                                "type", AutomaticTask.class.getName(),
+                                "type", Log.class.getName(), "message", "test step",
                                 "outputs", List.of(Map.of(
                                     "key", "approved",
                                     "type", "BOOLEAN"
@@ -463,7 +463,7 @@ class FlowMaterializationTest {
                     "key", "invalid-dependency",
                     "tasks", List.of(Map.of(
                         "key", "task",
-                        "type", AutomaticTask.class.getName(),
+                        "type", Log.class.getName(), "message", "test step",
                         "dependOn", List.of("missing")
                     ))
                 ),
@@ -570,7 +570,7 @@ class FlowMaterializationTest {
                     "route", "{{ inputs.amount }} > 1000",
                     "tasks", List.of(Map.of(
                         "key", "high-value",
-                        "type", AutomaticTask.class.getName()
+                        "type", Log.class.getName(), "message", "test step"
                     ))
                 ))
             ),
@@ -617,7 +617,7 @@ class FlowMaterializationTest {
             java.util.Arrays.stream(taskKeys)
                 .map(key -> Map.<String, Object>of(
                     "key", key,
-                    "type", AutomaticTask.class.getName()
+                    "type", Log.class.getName(), "message", "test step"
                 ))
                 .toList();
         return Map.of(

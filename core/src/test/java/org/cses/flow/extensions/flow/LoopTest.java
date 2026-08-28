@@ -4,7 +4,7 @@ import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
-import org.cses.flow.extensions.tasks.AutomaticTask;
+import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,7 +32,7 @@ class LoopTest {
                     "times", 3,
                     "tasks", List.of(Map.of(
                         "key", "work",
-                        "type", AutomaticTask.class.getCanonicalName()
+                        "type", Log.class.getCanonicalName(), "message", "test step"
                     ))
                 ))
             ),
@@ -44,7 +44,7 @@ class LoopTest {
         Loop loop = assertInstanceOf(Loop.class, flow.tasks().getFirst());
         assertEquals(3, loop.times());
         assertEquals(3, loop.maxIterations());
-        assertInstanceOf(AutomaticTask.class, loop.tasks().getFirst());
+        assertInstanceOf(Log.class, loop.tasks().getFirst());
     }
 
     @Test
