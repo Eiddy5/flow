@@ -10,7 +10,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-final class TaskRunEntryTest {
+class TaskRunEntryTest {
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -25,12 +25,12 @@ final class TaskRunEntryTest {
             Map.of("loop", Map.of("iteration", 2)),
             2
         );
-        TaskRunEntry entry = TaskRunEntry.fromDomain(
+        TaskRunEntry entry = TaskRunEntry.from(
             "execution-id",
             taskRun,
             1
         );
-        TaskRun restored = entry.toDomain();
+        TaskRun restored = entry.to();
 
         assertEquals(2, entry.getIteration());
         assertEquals(2, restored.iteration().orElseThrow());

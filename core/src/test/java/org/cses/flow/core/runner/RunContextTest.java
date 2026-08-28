@@ -1,5 +1,6 @@
 package org.cses.flow.core.runner;
 
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -108,6 +109,27 @@ final class RunContextTest {
         assertThrows(
             UnsupportedOperationException.class,
             () -> context.taskInputs().put("new", true)
+        );
+    }
+
+    @Test
+    void rendersExpressionsFromTheCurrentTaskRunInputs() {
+        RunContext context = context(Map.of(
+            RunContext.INPUTS_VARIABLE,
+            Map.of("orderId", "order-1"),
+            RunContext.TASK_INPUTS_VARIABLE,
+            Map.of(
+                "outputs",
+                Map.of("prepare", Map.of("result", "ready"))
+            )
+        ));
+
+        assertEquals(
+            "处理结果：ready（ready）",
+            context.render(TemplateExpression.parse(
+                "处理结果：{{ outputs.prepare.result }}（"
+                    + "{{ outputs.prepare.result }}）"
+            ))
         );
     }
 

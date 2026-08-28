@@ -43,13 +43,15 @@ class ExecutionEntryTest {
             List.of()
         );
 
-        ExecutionEntry entry = ExecutionEntry.fromDomain(execution);
+        ExecutionEntry entry = ExecutionEntry.from(execution);
         JsonObject storedState = JsonObject.Parse(entry.state.data());
 
         assertEquals(
             Set.of("current", "history"),
             storedState.asMap().keySet()
         );
-        assertEquals(state, entry.toDomain(List.of()).state());
+        Execution restored = entry.to(List.of());
+        assertEquals(state, restored.state());
+        assertEquals(execution.inputs(), restored.inputs());
     }
 }

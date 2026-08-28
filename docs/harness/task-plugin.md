@@ -95,8 +95,9 @@ public final class Notification extends Task implements RunnableTask {
 - 插件有专有定义字段时，应通过 `typeSpecificEqualityState()` 纳入定义相等性；
   多个字段可以返回 record 或不可变 List。
 
-不需要创建 `TaskExtension`、`*TaskPlugin`、注册文件、类型常量、properties Codec
-或中心分支。
+插件不需要创建 `TaskExtension`、`*TaskPlugin`、注册文件、类型常量、插件专属
+properties Codec 或中心分支。数据库 Adapter 统一通过共享的
+`TaskPropertiesCodec` 持久化插件专有字段。
 
 目录先按语义所有权确定：Log、Notification 等独立扩展能力使用
 `extensions/<extension-name>`；Pause、Parallel 以及后续 Loop、Loop Until、

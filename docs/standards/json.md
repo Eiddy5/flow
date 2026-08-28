@@ -105,15 +105,16 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
   Task 字段。`PublishFlowHandler` 在补充 Session、draft、版本和 source 后调用
   `ModelValidator`，校验失败的部署对象不能进入聚合。持久化 Input 继续由
   Repository Codec 使用 PAAS JSON 恢复。
-- Task 插件 properties 的拆分与合并由 `FlowTaskEntry` 调用同一个
-  `JacksonMapper` 完成。Entry 不持有 ObjectMapper，不注册 Module，也不自行处理
-  插件类型；恢复具体 Task 仍经过注册表驱动的 `PluginDeserializer`。YAML Mapper
-  注册 source 定义配置，自动拒绝用户声明的 Task 系统字段并生成首次身份；JSON
-  Mapper 注册持久化配置，按原值恢复已保存身份。调用方不得传递业务 reader
-  attribute 或创建第二套 Mapper。
+- Task 插件 properties 的拆分与合并统一由 Repository Adapter 的
+  `TaskPropertiesCodec` 完成。Codec 通过 `JacksonMapper` 内部的持久化转换入口复用
+  同一个受控 JSON Mapper；`FlowTaskEntry` 只静态调用 Codec，不接收或持有 Mapper。
+  恢复具体 Task 仍经过注册表驱动的 `PluginDeserializer`。YAML Mapper 注册 source
+  定义配置，自动拒绝用户声明的 Task 系统字段并生成首次身份；JSON Mapper 注册
+  持久化配置，按原值恢复已保存身份。调用方不得传递业务 reader attribute 或创建
+  第二套 Mapper。
 - JOOQ Entry 中的 JSON/JSONB 字段转换必须使用 `JsonObject`、
-  `JsonObjects` 或 `JsonFactory`。转换和扩展方法仍放在对应的 `XxxEntry` 或其
-  专用 Codec 中。
+  `JsonObjects` 或 `JsonFactory`。需要序列化或专用字段转换时，Entry 只调用与
+  `entries` 平级的专用 Codec；目录和静态调用规则由 [`jooq.md`](jooq.md) 统一定义。
 - 测试代码解析请求、响应或构造 JSON 数据时同样使用 PAAS JSON，不能因为测试
   代码生命周期短而直接创建 `ObjectMapper`。
 - `org.flow.gen` 下的生成代码由生成器维护，不手工修改；生成类已经提供 PAAS
@@ -155,8 +156,9 @@ PAAS 公共能力演进。
    `core/plugins/PluginDeserializer` 可在一次 Jackson 回调内读取插件节点并通过
    当前 `DeserializationContext` 递归绑定具体类。该例外只服务 Flow 定义和 Task
    插件的多态绑定，不得成为公共领域契约。
-2. `FlowTaskEntry` 只能调用 `JacksonMapper` 的领域级转换方法拆分/合并插件
-   properties；不能直接接触 ObjectMapper 或 JsonNode。
+2. `TaskPropertiesCodec` 是持久化 Task properties 调用 `JacksonMapper` 的唯一边界；
+   `FlowTaskEntry` 只调用 Codec，不能直接接触 `JacksonMapper`、ObjectMapper 或
+   JsonNode。
 3. Micronaut、PAAS JSON 或其他第三方库内部使用 Jackson，项目代码不直接绕过
    PAAS API。
 4. 无 Micronaut 容器的基础设施测试为 PAAS JSON 初始化
@@ -184,7 +186,7 @@ PAAS 公共能力演进。
    `JacksonMapper`。
 3. 是否避免在受控包之外新增 `ObjectMapper`、`JsonNode` 或私有 JSON 工具类。
 4. JSON 技术类型是否被限制在 HTTP、Serializer、Entry、Codec 等必要边界。
-5. JOOQ JSON/JSONB 字段转换是否放在对应 Entry 或专用 Codec 中。
+5. JOOQ 的序列化和专用字段转换是否放在与 `entries` 平级的专用 Codec 中。
 6. 转换失败或公共方法返回 `null` 时是否按业务契约处理。
 7. 正常输入、缺失字段、错误类型、非法 JSON 和空值场景是否有测试。
 8. 如需例外，是否已有明确的 ADR，并且例外没有扩散。

@@ -58,7 +58,7 @@ final class PostgresRepositoryIntegrationTest {
             new TestNotificationTask()
     );
     private final FlowRepositoryImpl flowRepository =
-            new FlowRepositoryImpl(plugins.jacksonMapper());
+            new FlowRepositoryImpl();
     private FlowRepositoryImpl draftRepository = flowRepository;
     private final ExecutionRepositoryImpl executionRepository =
             new ExecutionRepositoryImpl();
@@ -454,7 +454,7 @@ final class PostgresRepositoryIntegrationTest {
     }
 
     @Test
-    void roundTripsAPluginSpecificFieldWithoutACompanionCodec() {
+    void roundTripsAPluginSpecificFieldThroughTaskPropertiesCodec() {
         ActorRef actor = ActorRef.create(
                 "plugin-user",
                 "Plugin Repository Test"

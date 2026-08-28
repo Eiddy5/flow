@@ -9,6 +9,7 @@ import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.extensions.flow.Sequence;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,8 @@ class BuiltInPluginExamplesTest {
         new Loop(),
         new LoopUntil(),
         new Parallel(),
-        new Pause()
+        new Pause(),
+        new Sequence()
     );
     private static final Set<String> SYSTEM_FIELDS = Set.of(
         "id",

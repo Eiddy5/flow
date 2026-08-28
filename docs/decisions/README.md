@@ -103,9 +103,9 @@
 - [`ADR 0070`](0070-use-flow-id-for-flow-repository-selectors.md)：Flow Repository 统一
   使用 `FlowId(companyId, key, version)` 业务选择器；有 version 时精确查询正式版本，
   无 version 时查询最新正式版本或唯一草稿，实体仍使用字符串 `Flow.id`。
-- [`ADR 0071`](0071-remove-lockable-from-domain.md)：暂不在 Flow 领域建模
-  `Lockable`、领域 `lockVersion` 或聚合乐观锁；数据库兼容列暂保留，Queue 消费行锁
-  仍属于 Queue Adapter 的基础设施机制。
+- [`ADR 0071`](0071-remove-lockable-from-domain.md)：锁与并发协议不进入 Flow 领域；
+  业务唯一键、行锁、CAS 和事务隔离由数据库 Schema、Repository 与 Queue Adapter
+  在各自基础设施边界负责。
 
 ## Data、Input 与 Output
 

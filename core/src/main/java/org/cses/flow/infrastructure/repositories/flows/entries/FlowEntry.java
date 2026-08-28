@@ -2,19 +2,20 @@ package org.cses.flow.infrastructure.repositories.flows.entries;
 
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.infrastructure.repositories.flows.codec.ActorRefJsonCodec;
+import org.cses.flow.infrastructure.repositories.flows.codec.AuditStatusCodec;
+import org.cses.flow.infrastructure.repositories.flows.codec.DataJsonCodec;
+import org.cses.flow.infrastructure.repositories.flows.codec.FlowVariablesJsonCodec;
 import org.flow.gen.flow.pojos.FlowsObject;
-import org.paas.json.JsonObject;
-import org.paas.json.JsonObjects;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Persistence mapping for both editable and deployed Flow states.
  */
 public class FlowEntry extends FlowsObject {
 
-    public static FlowEntry fromDomain(Flow flow) {
+    public static FlowEntry from(Flow flow) {
         FlowEntry entry = new FlowEntry();
         entry.id = flow.id();
         entry.key = flow.key();
@@ -33,17 +34,17 @@ public class FlowEntry extends FlowsObject {
         entry.updatedAt = flow.updatedAt();
         entry.deletedAt = flow.deletedAt()
             .orElse(null);
-        entry.inputs = JsonObjects.FromList(flow.inputs());
-        entry.outputs = JsonObjects.FromList(flow.outputs());
-        entry.variables = JsonObject.FromMap(flow.variables());
+        entry.inputs = DataJsonCodec.encode(flow.inputs());
+        entry.outputs = DataJsonCodec.encode(flow.outputs());
+        entry.variables = FlowVariablesJsonCodec.encode(flow.variables());
         return entry;
     }
 
-    public Flow toDomain() {
-        return toDomain(List.of());
+    public Flow to() {
+        return to(List.of());
     }
 
-    public Flow toDomain(List<Task> tasks) {
+    public Flow to(List<Task> tasks) {
         boolean editable = Boolean.TRUE.equals(draft);
         return Flow.rehydrate(
             id,
@@ -52,7 +53,7 @@ public class FlowEntry extends FlowsObject {
             editable,
             version,
             description,
-            variables == null ? Map.of() : variables.asMap(),
+            FlowVariablesJsonCodec.decode(variables),
             DataJsonCodec.decodeInputs(inputs, "Flow.inputs"),
             DataJsonCodec.decodeOutputs(outputs, "Flow.outputs"),
             editable ? List.of() : tasks,

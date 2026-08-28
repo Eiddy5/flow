@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.executions.entries;
+package org.cses.flow.infrastructure.repositories.executions.codec;
 
 import org.cses.flow.core.domains.flows.State;
 import org.jooq.JSONB;
@@ -8,12 +8,12 @@ import org.paas.json.JsonObjects;
 import java.util.ArrayList;
 import java.util.List;
 
-final class StateJsonCodec {
+public class StateJsonCodec {
 
     private StateJsonCodec() {
     }
 
-    static JSONB encode(State state) {
+    public static JSONB encode(State state) {
         JsonObjects history = JsonObjects.Create();
         for (State.History item : state.history()) {
             history.add(JsonObject.Create()
@@ -26,7 +26,7 @@ final class StateJsonCodec {
         return JSONB.valueOf(value.toJson());
     }
 
-    static State decode(JSONB storedState) {
+    public static State decode(JSONB storedState) {
         if (storedState == null) {
             throw new IllegalArgumentException(
                 "Persisted state must not be null"

@@ -2,28 +2,29 @@ package org.cses.flow.infrastructure.repositories.executions.entries;
 
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.infrastructure.repositories.flows.entries.ActorRefJsonCodec;
+import org.cses.flow.infrastructure.repositories.executions.codec.ExecutionInputsJsonCodec;
+import org.cses.flow.infrastructure.repositories.executions.codec.StateJsonCodec;
+import org.cses.flow.infrastructure.repositories.flows.codec.ActorRefJsonCodec;
 import org.flow.gen.flow.pojos.ExecutionsObject;
-import org.paas.json.JsonObject;
 
 import java.util.List;
 
-public final class ExecutionEntry extends ExecutionsObject {
+public class ExecutionEntry extends ExecutionsObject {
 
-    public static ExecutionEntry fromDomain(Execution execution) {
+    public static ExecutionEntry from(Execution execution) {
         ExecutionEntry entry = new ExecutionEntry();
         entry.id = execution.id();
         entry.companyId = execution.companyId();
         entry.flowKey = execution.flowKey();
         entry.flowVersion = execution.flowVersion();
-        entry.inputs = JsonObject.FromMap(execution.inputs());
+        entry.inputs = ExecutionInputsJsonCodec.encode(execution.inputs());
         entry.state = StateJsonCodec.encode(execution.state());
         entry.creator = ActorRefJsonCodec.encode(execution.creator());
         entry.createdAt = execution.createdAt();
         return entry;
     }
 
-    public Execution toDomain(List<TaskRun> taskRuns) {
+    public Execution to(List<TaskRun> taskRuns) {
         if (flowVersion == null) {
             throw new IllegalStateException(
                 "Persisted Execution flowVersion must not be null"
@@ -36,7 +37,7 @@ public final class ExecutionEntry extends ExecutionsObject {
             requiredEpochMillis(createdAt, "Execution.createdAt"),
             flowKey,
             flowVersion,
-            inputs == null ? java.util.Map.of() : inputs.asMap(),
+            ExecutionInputsJsonCodec.decode(inputs),
             StateJsonCodec.decode(state),
             taskRuns
         );

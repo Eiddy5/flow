@@ -50,11 +50,22 @@ class CoreArchitectureStandardTest {
         "UUID\\s*\\.\\s*randomUUID\\s*\\(\\)"
             + "|new\\s+AtomicLong\\s*\\("
     );
-    private static final Pattern DATABASE_CONVERSION_METHOD = Pattern.compile(
+    private static Pattern DATABASE_CONVERSION_METHOD = Pattern.compile(
         "(?m)^\\s*(?:(?:public|protected|private|static|final|"
             + "synchronized|abstract|default)\\s+)*"
             + "[A-Za-z_$][A-Za-z\\d_$<>,.?\\[\\] ]*\\s+"
-            + "(?:toDomain|fromDomain|toEntry|fromRecord)\\s*\\("
+            + "(?:from|to|toDomain|fromDomain|toEntry|fromRecord)\\s*\\("
+    );
+    private static Pattern LEGACY_ENTRY_CONVERSION_METHOD = Pattern.compile(
+        "\\b(?:toDomain|fromDomain|toEntry|fromRecord)\\s*\\("
+    );
+    private static Pattern ENTRY_FROM_METHOD = Pattern.compile(
+        "(?m)^\\s*public\\s+static\\s+"
+            + "[A-Za-z_$][A-Za-z\\d_$]*Entry\\s+from\\s*\\("
+    );
+    private static Pattern ENTRY_TO_METHOD = Pattern.compile(
+        "(?m)^\\s*public\\s+"
+            + "[A-Za-z_$][A-Za-z\\d_$<>,.?\\[\\] ]*\\s+to\\s*\\("
     );
 
     @Test
@@ -545,29 +556,76 @@ class CoreArchitectureStandardTest {
     }
 
     @Test
-    void databaseAdaptersKeepDomainConversionsInEntries() throws IOException {
-        Path infrastructure = FLOW.resolve("infrastructure");
-        List<String> invalid = new ArrayList<>();
-        try (var paths = Files.walk(infrastructure)) {
+    void databaseAdaptersKeepDomainConversionsInEntriesAndCodecsSibling()
+        throws IOException {
+
+        Path repositories = FLOW.resolve("infrastructure/repositories");
+        List<String> invalidAdapters = new ArrayList<>();
+        List<String> invalidEntries = new ArrayList<>();
+        List<String> invalidCodecs = new ArrayList<>();
+        try (var paths = Files.walk(repositories)) {
             paths.filter(path -> path.toString().endsWith(".java"))
-                .filter(path -> !path.toString().contains("/entries/"))
                 .forEach(path -> {
                     try {
-                        if (DATABASE_CONVERSION_METHOD.matcher(
-                            Files.readString(path)
+                        String location = path.toString();
+                        String source = Files.readString(path);
+                        if (location.endsWith("Entry.java")) {
+                            if (!location.contains("/entries/")
+                                || LEGACY_ENTRY_CONVERSION_METHOD.matcher(
+                                    source
+                                ).find()
+                                || !ENTRY_FROM_METHOD.matcher(source).find()
+                                || !ENTRY_TO_METHOD.matcher(source).find()
+                                || source.contains("JacksonMapper")
+                                || source.contains("ObjectMapper")
+                                || source.contains("JsonFactory")
+                                || source.contains(
+                                    "import org.paas.json.JsonObject;"
+                                )) {
+                                invalidEntries.add(location);
+                            }
+                        } else if (location.endsWith("Codec.java")) {
+                            if (!location.contains("/codec/")
+                                || location.contains("/entries/")
+                                || !source.contains("public static ")) {
+                                invalidCodecs.add(location);
+                            }
+                        } else if (DATABASE_CONVERSION_METHOD.matcher(
+                            source
                         ).find()) {
-                            invalid.add(path.toString());
+                            invalidAdapters.add(location);
                         }
                     } catch (IOException exception) {
                         throw new IllegalStateException(exception);
                     }
                 });
         }
+        Path taskPropertiesCodec = repositories.resolve(
+            "flows/codec/TaskPropertiesCodec.java"
+        );
+        String taskPropertiesSource = Files.readString(
+            taskPropertiesCodec
+        );
 
         assertTrue(
-            invalid.isEmpty(),
-            () -> "Database adapters must delegate domain conversions to Entries: "
-                + invalid
+            invalidAdapters.isEmpty()
+                && invalidEntries.isEmpty()
+                && invalidCodecs.isEmpty()
+                && Files.isRegularFile(taskPropertiesCodec)
+                && taskPropertiesSource.contains(
+                    "public static JsonObject encode(Task task)"
+                )
+                && taskPropertiesSource.contains("public static Task decode(")
+                && taskPropertiesSource.contains(
+                    "JacksonMapper.toPersistenceMap(task)"
+                )
+                && taskPropertiesSource.contains(
+                    "JacksonMapper.convertPersistenceValue("
+                ),
+            () -> "Database conversions must use Entry from/to and sibling "
+                + "static Codecs: adapters=" + invalidAdapters
+                + ", entries=" + invalidEntries
+                + ", codecs=" + invalidCodecs
         );
     }
 
@@ -585,11 +643,11 @@ class CoreArchitectureStandardTest {
         ));
 
         assertTrue(
-            flows.contains("values(FlowTaskEntry.fromDomain(")
+            flows.contains("values(FlowTaskEntry.from(")
                 && flows.contains("values.execute()")
                 && !flows.contains("newRecord()")
                 && executions.contains(
-                    "values.values(TaskRunEntry.fromDomain("
+                    "values.values(TaskRunEntry.from("
                 )
                 && executions.contains("values.execute()")
                 && !executions.contains("newRecord()")
@@ -977,7 +1035,14 @@ class CoreArchitectureStandardTest {
                 && mapperSource.contains(
                     "com.fasterxml.jackson.dataformat.yaml.YAMLFactory"
                 )
+                && mapperSource.contains("@Context")
                 && mapperSource.contains("PluginModule")
+                && mapperSource.contains(
+                    "public static <T> T convertPersistenceValue("
+                )
+                && mapperSource.contains(
+                    "public static Map<String, Object> toPersistenceMap("
+                )
                 && !mapperSource.contains("org.yaml.snakeyaml"),
             "JacksonMapper must own strict JSON/YAML mapper configuration"
         );

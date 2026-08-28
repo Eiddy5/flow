@@ -129,7 +129,7 @@ XxxObject -> JooqPojo -> JooqObject
 例如 `flows` 表生成了 `FlowsObject`，项目中应建立：
 
 ```java
-public final class FlowEntry extends FlowsObject {
+public class FlowEntry extends FlowsObject {
 }
 ```
 
@@ -179,17 +179,19 @@ core/src/main/java/org/cses/flow/infrastructure/
         │   ├── FlowEntry.java
         │   └── FlowTaskEntry.java
         └── codec/
-            ├── StateCodec.java
+            ├── DataJsonCodec.java
             └── TaskPropertiesCodec.java
 ```
 
 `codec` 只在 Entry 确实需要序列化或专用字段转换时创建，并且必须与 `entries`
 平级。具体使用规则见第 6 节。
 
-其他业务模块使用相同结构：
+其他业务模块使用同样的 `entries` 与可选 `codec` 平级结构：
 
 ```text
-infrastructure/repositories/executions/entries/
+infrastructure/repositories/executions/
+├── entries/
+└── codec/
 ```
 
 非 Repository 的数据库 Adapter 同样把 Entry 放在自身实现下，例如：
@@ -623,9 +625,9 @@ dsl.insertInto(EXECUTIONS)
 
 完整表行映射到 Entry 时，必须直接使用 `fetchOneInto(XxxEntry.class)` 或
 `fetchInto(XxxEntry.class)`。不得先取得 JOOQ `Record`，再通过
-`XxxEntry.fromRecord(...)` 或 `Record.into(XxxRecord.class)` 转成 Entry。这样可以让
-查询结果的目标类型在 Repository 代码中明确表达，并避免为每张表重复维护 Record
-到 Entry 的字段拷贝。
+手工方法或 `Record.into(XxxRecord.class)` 转成 Entry。这样可以让查询结果的目标
+类型在 Repository 代码中明确表达，并避免为每张表重复维护 Record 到 Entry 的
+字段拷贝。
 
 ```java
 ExecutionEntry entry = dsl.select()
@@ -693,7 +695,7 @@ ExecutionEntry entry = dsl.select()
 如果查询字段名称、别名、类型或转换逻辑与 Entry 不完全对应，应在查询中使用明确
 的字段别名，或把它视为投影/聚合查询自行组装；不能为了绕过统一 JOOQ 类型映射，
 在 Entry 中增加查询专用字段数组和 `Field.convertFrom(...)`，也不能退回到
-`Record.into(...)` 或 `XxxEntry.fromRecord(...)`。
+`Record.into(...)` 或其他手工 Entry 映射入口。
 
 ### 映射后重建领域对象
 

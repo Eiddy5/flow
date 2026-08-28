@@ -1,37 +1,22 @@
 package org.cses.flow.infrastructure.repositories.flows.entries;
 
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.serializers.JacksonMapper;
+import org.cses.flow.infrastructure.repositories.flows.codec.DataJsonCodec;
+import org.cses.flow.infrastructure.repositories.flows.codec.TaskPropertiesCodec;
 import org.flow.gen.flow.pojos.FlowTasksObject;
-import org.paas.json.JsonObject;
 import org.paas.json.JsonObjects;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
-public final class FlowTaskEntry extends FlowTasksObject {
+public class FlowTaskEntry extends FlowTasksObject {
 
-    private static final Set<String> CORE_FIELDS = Set.of(
-        "id",
-        "type",
-        "key",
-        "inputs",
-        "outputs",
-        "route",
-        "dependOn",
-        "tasks"
-    );
-
-    public static FlowTaskEntry fromDomain(
+    public static FlowTaskEntry from(
         String companyId,
         String flowKey,
         long flowVersion,
         Task task,
         String parentId,
-        int order,
-        JacksonMapper jacksonMapper
+        int order
     ) {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.companyId = companyId;
@@ -40,49 +25,25 @@ public final class FlowTaskEntry extends FlowTasksObject {
         entry.route = "DIRECT";
         entry.inputs = DataJsonCodec.encode(task.inputs());
         entry.outputs = DataJsonCodec.encode(task.outputs());
-        entry.properties = JsonObject.FromMap(properties(task, jacksonMapper));
+        entry.properties = TaskPropertiesCodec.encode(task);
         entry.flowKey = flowKey;
         entry.flowVersion = flowVersion;
         entry.parentId = parentId;
         entry.order = order;
         entry.key = task.key();
-        entry.dependOn = JsonObjects.FromList(List.of());
+        entry.dependOn = JsonObjects.Create();
         return entry;
     }
 
-    public Task toDomain(
-        JacksonMapper jacksonMapper,
-        List<Task> children
-    ) {
-        Map<String, Object> definition = new LinkedHashMap<>();
-        if (properties != null) {
-            definition.putAll(properties.asMap());
-        }
-        definition.put("id", id);
-        definition.put("type", type);
-        definition.put("key", key);
-        definition.put(
-            "inputs",
-            DataJsonCodec.decodeInputs(inputs, "Task.inputs")
+    public Task to(List<Task> children) {
+        return TaskPropertiesCodec.decode(
+            properties,
+            id,
+            type,
+            key,
+            DataJsonCodec.decodeInputs(inputs, "Task.inputs"),
+            DataJsonCodec.decodeOutputs(outputs, "Task.outputs"),
+            children
         );
-        definition.put(
-            "outputs",
-            DataJsonCodec.decodeOutputs(outputs, "Task.outputs")
-        );
-        if (children != null && !children.isEmpty()) {
-            definition.put("tasks", List.copyOf(children));
-        }
-        return jacksonMapper.convertValue(definition, Task.class);
-    }
-
-    private static Map<String, Object> properties(
-        Task task,
-        JacksonMapper jacksonMapper
-    ) {
-        Map<String, Object> serialized = new LinkedHashMap<>(
-            jacksonMapper.toMap(task)
-        );
-        CORE_FIELDS.forEach(serialized::remove);
-        return Map.copyOf(serialized);
     }
 }

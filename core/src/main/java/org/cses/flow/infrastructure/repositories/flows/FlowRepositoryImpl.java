@@ -1,6 +1,5 @@
 package org.cses.flow.infrastructure.repositories.flows;
 
-import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
@@ -8,7 +7,6 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
-import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowEntry;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowTaskEntry;
 import org.flow.gen.flow.records.FlowTasksRecord;
@@ -29,13 +27,6 @@ import static org.flow.gen.flow.Tables.FLOW_TASKS;
 
 @Singleton
 public class FlowRepositoryImpl implements FlowRepository {
-
-    private JacksonMapper jacksonMapper;
-
-    @Inject
-    public FlowRepositoryImpl(JacksonMapper jacksonMapper) {
-        this.jacksonMapper = jacksonMapper;
-    }
 
     @Override
     public Optional<Flow> findById(
@@ -97,7 +88,7 @@ public class FlowRepositoryImpl implements FlowRepository {
                 .orderBy(FLOWS.UPDATED_AT.desc(), FLOWS.ID.asc())
                 .fetchInto(FlowEntry.class)
                 .stream()
-                .map(FlowEntry::toDomain)
+                .map(FlowEntry::to)
                 .toList();
     }
 
@@ -114,12 +105,12 @@ public class FlowRepositoryImpl implements FlowRepository {
                 .and(FLOWS.DRAFT.eq(true))
                 .and(FLOWS.STATUS.ne(RecordState.Delete.getName()))
                 .fetchOneInto(FlowEntry.class);
-        return Optional.ofNullable(entry).map(FlowEntry::toDomain);
+        return Optional.ofNullable(entry).map(FlowEntry::to);
     }
 
     @Override
     public void save(DSLContext dsl, Flow flow) {
-        FlowEntry entry = FlowEntry.fromDomain(flow);
+        FlowEntry entry = FlowEntry.from(flow);
         try {
             int updated = dsl.update(FLOWS)
                     .set(entry.buildUpdateMap())
@@ -166,9 +157,9 @@ public class FlowRepositoryImpl implements FlowRepository {
             return Optional.empty();
         }
         if (Boolean.TRUE.equals(entry.draft)) {
-            return Optional.of(entry.toDomain());
+            return Optional.of(entry.to());
         }
-        return Optional.of(entry.toDomain(readTasks(
+        return Optional.of(entry.to(readTasks(
                 dsl,
                 entry.companyId,
                 entry.key,
@@ -231,9 +222,8 @@ public class FlowRepositoryImpl implements FlowRepository {
                                 "Duplicate persisted Flow Task id " + entry.id
                         );
                     }
-                    return entry.toDomain(
-                            jacksonMapper,
-                            readTasks(entries, entry.id, restored)
+                    return entry.to(
+                        readTasks(entries, entry.id, restored)
                     );
                 })
                 .toList();
@@ -267,14 +257,13 @@ public class FlowRepositoryImpl implements FlowRepository {
     ) {
         for (int index = 0; index < tasks.size(); index++) {
             Task task = tasks.get(index);
-            values.values(FlowTaskEntry.fromDomain(
+            values.values(FlowTaskEntry.from(
                     companyId,
                     flowKey,
                     flowVersion,
                     task,
                     parentId,
-                    index,
-                    jacksonMapper
+                    index
             ).toRecord());
             if (task instanceof Branch branch) {
                 writeTasks(

@@ -13,7 +13,7 @@ PostgreSQL Repository 曾通过 `PostgresAudit` 从 JOOQ 配置上下文读取�
 
 ## 决策
 
-- 审计事实由领域对象在创建或状态变化时产生；`XxxEntry.fromDomain(...)` 只负责把
+- 审计事实由领域对象在创建或状态变化时产生；`XxxEntry.from(...)` 只负责把
   已存在的领域字段映射为数据库字段。
 - PostgreSQL Adapter 不读取 `DSLContext` 配置中的 Session，不调用当前时间生成
   审计值，不拼装操作者 JSON，并不提供通用 `PostgresAudit` 类。
@@ -25,8 +25,8 @@ PostgreSQL Repository 曾通过 `PostgresAudit` 从 JOOQ 配置上下文读取�
   Adapter 的基础设施字段，不是审计字段。
 - 数据库不通过默认值、生成列或索引生成、复制或改变领域审计事实。开发期 Schema
   变化时重建基线并重新生成 JOOQ，不为旧基线增加迁移脚本。
-- `executions.lock_version` 的兼容保留仍遵循 ADR 0071；它是并发基础设施字段，
-  不是审计字段。
+- `executions.lock_version` 是并发基础设施字段，不是审计字段，Entry 不将它映射到
+  领域对象。
 
 ## 理由
 

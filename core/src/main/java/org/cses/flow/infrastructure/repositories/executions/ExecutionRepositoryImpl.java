@@ -88,7 +88,7 @@ public final class ExecutionRepositoryImpl
         ExecutionEntry entry
     ) {
         return Optional.ofNullable(entry)
-            .map(value -> value.toDomain(readTaskRuns(dsl, value.id)));
+            .map(value -> value.to(readTaskRuns(dsl, value.id)));
     }
 
     private List<TaskRun> readTaskRuns(
@@ -101,7 +101,7 @@ public final class ExecutionRepositoryImpl
             .orderBy(TASK_RUNS.ORDER.asc())
             .fetchInto(TaskRunEntry.class)
             .stream()
-            .map(TaskRunEntry::toDomain)
+            .map(TaskRunEntry::to)
             .toList();
     }
 
@@ -109,7 +109,7 @@ public final class ExecutionRepositoryImpl
         DSLContext dsl,
         Execution execution
     ) {
-        insert(dsl, ExecutionEntry.fromDomain(execution));
+        insert(dsl, ExecutionEntry.from(execution));
     }
 
     private void insert(
@@ -126,7 +126,7 @@ public final class ExecutionRepositoryImpl
         Execution execution
     ) {
         int updated = dsl.update(EXECUTIONS)
-            .set(ExecutionEntry.fromDomain(execution).buildUpdateMap())
+            .set(ExecutionEntry.from(execution).buildUpdateMap())
             .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
             .and(EXECUTIONS.ID.eq(execution.id()))
             .execute();
@@ -168,7 +168,7 @@ public final class ExecutionRepositoryImpl
         List<TaskRun> taskRuns
     ) {
         for (int index = 0; index < taskRuns.size(); index++) {
-            values.values(TaskRunEntry.fromDomain(
+            values.values(TaskRunEntry.from(
                 executionId,
                 taskRuns.get(index),
                 index

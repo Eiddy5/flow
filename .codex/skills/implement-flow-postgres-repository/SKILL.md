@@ -1,250 +1,107 @@
 ---
 name: implement-flow-postgres-repository
-description: 为 Flow Micronaut/JOOQ 项目中已有的 Core Repository 契约实现并验证 PostgreSQL 适配器。当需要新增、补全、替换或审查 `*PostgresRepository`、仓储内部的 `*Entry` 映射、聚合持久化、租户过滤、审计上下文、乐观锁、PostgreSQL 数据库迁移、JOOQ 重新生成或真实 PostgreSQL 集成测试时使用。
+description: 为 Flow 项目中已有的 Core Repository 契约实现、修改或审查 PostgreSQL/JOOQ 适配器。适用于 Repository 实现、聚合持久化、XxxEntry 与领域转换、同级 Codec、租户与唯一性条件、开发期 Schema 基线、JOOQ 重新生成以及真实 PostgreSQL 集成测试。
 ---
 
-# 实现 PostgreSQL Repository
+# 实现 Flow PostgreSQL Repository
 
-从 Core 契约向外实现。将 Repository 视为聚合持久化适配器，不要把它实现成围绕
-数据表的简单 CRUD。
+从 Core Repository 契约和聚合所有权出发实现数据库适配器。表结构、JOOQ 生成类和
+Entry 都是基础设施表示，不能反向定义领域模型。
 
-## 读取项目记忆
+## 必读项目记忆
 
-修改文件前：
+修改前依次读取：
 
-1. 读取 `AGENTS.md`。
-2. 读取 `docs/project-structure.md` 和
-   `docs/standards/development.md`。
-3. 读取 `docs/standards/jooq.md` 和
-   `docs/standards/DATAPILOT_USAGE.md`。
-4. 如果 `docs/agents/` 下存在相关角色文档，读取该文档。
-5. 检查相关 ADR、UC 规格、开发规范和验证 Harness。
-6. 编写或运行 UC 测试前，同时读取 `docs/standards/uc-testing.md` 和
-   `docs/agents/test.md`。
+1. `AGENTS.md`。
+2. `docs/project-structure.md` 和 `docs/standards/development.md`。
+3. `docs/standards/jooq.md`、`docs/standards/postgresql-schema.md` 和
+   `docs/standards/command-executor.md`。
+4. 涉及 JSON/JSONB 时读取 `docs/standards/json.md`。
+5. 目标聚合对应的 ADR、UC、Repository 契约、领域对象和现有测试。
+6. `docs/harness/postgresql-repositories.md`。
 
-编辑前检查 `git status`。保留所有无关和预先存在的工作区修改。
+编写或运行 UC 测试前，再读取 `docs/standards/uc-testing.md` 和
+`docs/agents/test.md`。编辑前检查 `git status`，保留无关修改。
 
-## 1. 还原持久化契约
+## 工作流程
 
-定位并读取：
+### 1. 还原持久化契约
 
-- Core Repository 接口。
-- 聚合根以及它拥有的所有子实体和值对象。
-- 调用 Repository 的 Handler、Service 和 Query。
-- 内存实现和现有测试。
-- 状态迁移、生命周期和并发相关文档。
+确认：
 
-设计 SQL 前，先明确以下契约：
+- 聚合身份、业务唯一键和租户边界。
+- 聚合根拥有的子集合、稳定 ID 和顺序。
+- 每个查询的结果基数和未找到语义。
+- 调用方拥有的事务边界。
+- 领域已经产生、需要原样持久化的状态和审计事实。
+- 由 Schema 与 Repository 负责的唯一性、行锁、CAS 或事务隔离协议。
 
-- 聚合身份和租户身份。
-- 必须原子保存的子集合。
-- 必须保持的顺序和稳定 ID。
-- 查询语义和未找到时的行为。
-- 新增与更新的判断规则。
-- revision 或 lockVersion 规则。
-- 领域实际拥有、需要持久化的审计字段。
-- 事务的所有者。
+不要根据表名、历史 Schema 或旧实现反推领域契约。发现冲突时，以当前已接受的 ADR
+和 Core 契约为准，并修正基础设施表示。
 
-不要只根据表名推断契约。如果接口与数据库 Schema 不一致，应保留领域契约，并明确
-记录两者之间的差异。
-
-## 2. 检查 PostgreSQL 是否能表达契约
+### 2. 检查 Schema 与生成代码
 
 检查：
 
-- `gen/sql/production-release/flow/`
+- `gen/sql/flow/001_create_flow_tables.sql`
+- `gen/sql/flow/tables/<table_name>.sql`
 - `gen/src/main/java/org/flow/gen/flow/`
-- 现有主键、外键、索引、默认值、生成列和 JSONB 类型。
 
-确认数据库能够无损还原聚合，重点检查：
+Schema 变更直接修改开发期基线，并完整遵守
+`docs/standards/postgresql-schema.md`。修改后重建开发数据库、运行 Schema 校验并重新
+生成 JOOQ。禁止手工修改 `gen/src/main/java/org/flow/gen/flow/`。
 
-- 包含租户维度的复合键。
-- 聚合不同版本之间复用的稳定子实体 ID。
-- 有序子集合。
-- 可空值与数据库默认值。
-- 枚举和时间类型的表示。
-- JSONB 数据。
-- revision 或 lockVersion 字段。
-- 领域审计字段是否由 Entry 直接映射，而不是由 Adapter 生成。
+### 3. 实现 Adapter、Entry 与 Codec
 
-当 Schema 无法满足契约时：
-
-1. 在 `gen/sql/production-release/flow/` 下增加带日期的迁移。
-2. 确保已有数据库能够安全升级。
-3. 使约束和索引与 Repository 的查询方式保持一致。
-4. 在 `docs/decisions/` 中记录重要或过渡性的数据建模决定。
-5. 基于迁移后的 Schema 重新生成 JOOQ。
-
-禁止手工修改 `gen/src/main/java/org/flow/gen/flow/` 下的生成文件。
-
-## 3. 设计 Entry 映射
-
-将生产适配器放在：
+生产实现位于：
 
 ```text
-server/src/main/java/org/cses/flow/infrastructure/repositories/
-  <module>/postgres/
-    XxxPostgresRepository.java
+core/src/main/java/org/cses/flow/infrastructure/repositories/
+  <business>/
+    XxxRepositoryImpl.java
     entries/
       XxxEntry.java
+    codec/
+      XxxCodec.java
 ```
 
-为适配器使用的每张业务表：
+严格按 `docs/standards/jooq.md` 实现：
 
-- 创建 Repository 内部使用的 `XxxEntry`。
-- 继承对应的 JOOQ 生成类 `XxxObject`。
-- 实现 Domain 到 Entry 的转换。
-- 当框架转换不能无损工作时，实现生成 Record 到 Entry 的转换。
-- 实现 Entry 到 Domain 的重建。
-- 将 JSONB、枚举、时间、空值、默认值和快照转换放在 Entry 中；复杂转换可以放在
-  `entries` 下职责单一的 Codec 中。
+- 完整表行直接映射到继承生成 `XxxObject` 的 `XxxEntry`。
+- Domain 与 Entry 的双向转换只位于 Entry。
+- 序列化和专用字段转换只位于与 `entries` 平级的 `codec`。
+- Repository 不复制字段转换，不把 Entry、Record 或生成类型暴露给 Core。
+- 插入、更新、批量写入和查询映射使用规范指定的 JOOQ 形式。
 
-使用生成的表字段和对象辅助方法：
+### 4. 实现聚合读写
 
-- 插入时使用 `buildInsertMap()`。
-- 更新非空、非主键字段时使用 `buildUpdateMap()`。
-- 需要把字段明确更新为 `NULL` 时，使用字段级 `set(...)`。
+读取时先按租户和业务身份取得根 Entry，再按相同边界读取、排序并恢复子 Entry，最后
+装配完整聚合。写入时使用方法收到的 `DSLContext`，在调用方事务内保存根与所属子集合。
 
-不要让 Entry、生成 POJO、Record 或 JOOQ 类型越过基础设施适配器边界。不要在
-Entry 中实现领域状态迁移。
+每个查询、更新和删除都必须包含租户以及主键或业务身份。业务唯一键由 PostgreSQL
+主键或唯一索引保护；竞争冲突由 Repository 转换为 Core 能理解的稳定异常。只有对应
+ADR 已经确认时才增加行锁、CAS 或特定隔离协议。
 
-不要假设 `fetchInto(XxxEntry.class)` 一定能转换自定义 JSON 类型。必须使用真实
-PostgreSQL 验证；必要时使用显式的生成 Record 映射方法。
+### 5. 验证
 
-## 4. 实现聚合持久化
+至少覆盖：
 
-按以下顺序实现读取：
+- Domain、Entry 与数据库的完整往返。
+- JSONB、空值、默认值和异常持久化数据。
+- 子集合顺序、稳定 ID 和聚合装配。
+- 每个查询与写入的租户隔离。
+- 业务唯一键冲突以及已确认的并发协议。
+- 领域审计事实原样往返，Adapter 不生成领域事实。
+- Schema 与当前 JOOQ 生成代码一致。
 
-1. 使用租户身份和聚合身份查询聚合根。
-2. 按 Repository 契约返回未找到结果。
-3. 使用相同的租户身份和聚合身份查询所属子记录。
-4. 应用确定性的排序。
-5. 重建一个完整聚合。
-
-在调用方拥有的同一事务中实现写入：
-
-1. 将聚合根转换为 Entry。
-2. 插入聚合根，或使用 compare-and-set 更新聚合根。
-3. 协调聚合拥有的子记录。
-4. 保持稳定子实体 ID 和集合顺序。
-5. 只删除属于同一租户和同一聚合的记录。
-
-始终使用 Repository 方法接收到的 `DSLContext`。不要在适配器内部打开、提交或
-嵌套独立事务。
-
-每一个查询、更新、删除、加锁、计数和存在性检查都必须包含租户条件。不要依赖
-业务 ID 全局唯一来实现租户隔离。
-
-按照现有配置方式将生产适配器注册为 Micronaut Bean。仅供测试的内存实现只能放在
-`src/test` 下。
-
-## 5. 执行并发控制
-
-对带版本号的聚合使用 compare-and-set 更新：
-
-```text
-UPDATE ...
-SET lock_version = next_version
-WHERE company_id = tenant
-  AND id = aggregate_id
-  AND lock_version = expected_version
-```
-
-要求更新行数恰好为 1。更新行数为 0 时，转换为项目定义的稳定并发冲突异常。
-
-明确区分：
-
-- 第一次插入。
-- 合法的单步版本递增。
-- 使用旧版本写入。
-- 同一命令事务内多次保存同一聚合。
-
-当并发首次插入可能发生竞争时，将唯一键冲突转换为与旧版本更新相同的稳定并发冲突
-抽象。不要让数据库方言相关异常穿透 Core Repository 契约。
-
-只有在区分合法的事务内重复保存确有需要时，才使用事务作用域上下文。在事务边界
-绑定并清理该上下文，不要在 HTTP Controller 中处理。
-
-## 6. 持久化领域审计事实
-
-审计事实必须由领域对象在创建或状态变化时产生，Entry 只负责把领域字段映射到
-数据库。PostgreSQL Adapter 不得从 `DSLContext` 配置读取 `Session`，不得调用当前
-时间生成审计值，不得拼装操作者 JSON，也不得提供通用的数据库审计辅助类。
-
-只为领域对象确实拥有的审计字段建表并测试其往返。没有对应领域字段的数据库审计
-列、默认值、生成列和派生索引都不应添加；数据库排序、行锁和并发版本等纯基础设施
-字段可以按具体 Adapter 协议保留。完整边界见
-`docs/standards/jooq.md` 和 ADR 0072。
-
-不要把 HTTP 层对象传入 Core Repository 契约。
-
-## 7. 使用真实 PostgreSQL 验证
-
-在对应的 `server/src/test/java` 包下增加聚焦测试，并根据适配器行为覆盖：
-
-- 插入以及完整聚合往返。
-- 更新并重新读取。
-- 子实体顺序和稳定 ID。
-- JSONB 空值、嵌套值和可空值。
-- 每个查询方法的租户隔离。
-- revision 或 lockVersion 成功更新与旧版本冲突。
-- 支持时验证同一事务内重复保存。
-- 领域审计字段由领域产生并正确往返，Adapter 没有生成审计值。
-- Repository 特有的过滤查询。
-- 未找到时的行为。
-
-使用真实 PostgreSQL 完成集成验证。Mock 或 H2 测试无法验证 PostgreSQL JSONB、
-生成列、部分索引、复合键和 compare-and-set 行为。
-
-只有在提供所需环境并且测试确实执行时，环境门控的集成测试才算完成验证。在任务
-交付说明或对应测试报告中记录实际执行的命令和结果。
-
-每个测试生成唯一的租户 ID，清理时只删除该租户的数据。禁止清空开发者共享表。
-
-先运行范围最小的集成测试，再运行完整构建：
-
-```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 21) \
-FLOW_POSTGRES_TEST_URL=jdbc:postgresql://localhost:5432/flow \
-FLOW_POSTGRES_TEST_USER=flow \
-FLOW_POSTGRES_TEST_PASSWORD=flow \
-./gradlew :server:test --tests '*PostgresRepositoryIntegrationTest'
-
-JAVA_HOME=$(/usr/libexec/java_home -v 21) ./gradlew build
-```
-
-Schema 变化后，在编译前重新生成 JOOQ：
-
-```bash
-JAVA_HOME=$(/usr/libexec/java_home -v 21) \
-./gradlew :gen:generateJooq --rerun-tasks
-```
-
-需要使用一次性数据库生成代码时，通过 `FLOW_JOOQ_JDBC_URL`、
-`FLOW_JOOQ_JDBC_USER` 和 `FLOW_JOOQ_JDBC_PASSWORD` 指定数据库连接。
-
-## 8. 更新项目记忆
-
-只更新由本次实现产生或改变的文档：
-
-- 可复用的强制规则放入 `docs/standards/`。
-- 可重复执行的环境准备和验证命令放入 `docs/harness/`。
-- 重要或过渡性的架构选择放入 `docs/decisions/`。
-- 新增或变化的验收行为放入 `docs/uc/`。
-- 目录职责变化时更新 `docs/project-structure.md`。
-
-不要在 Skill 中复制项目已有文档。
+先运行受影响的单元测试和架构测试，再按
+`docs/harness/postgresql-repositories.md` 使用真实 PostgreSQL 运行 Repository 集成
+测试，最后运行 `./gradlew build`。未实际执行的环境门控测试不能报告为通过。
 
 ## 完成门槛
 
-满足所有适用条件后才能报告完成：
-
-- 适配器实现了现有 Core 契约。
-- 聚合往返不会丢失状态。
-- 每个数据库操作都包含租户限制。
-- Entry 负责所有数据库与领域之间的转换。
-- Schema 与生成的 JOOQ 代码一致。
-- 领域审计字段映射已有测试，Adapter 没有 Session、当前时间或操作者生成逻辑。
-- 真实 PostgreSQL 集成测试通过。
-- 完整 Gradle 构建通过。
-- 没有覆盖任何无关的工作区修改。
+- 实现满足当前 Core Repository 契约和对应 ADR。
+- 目录、Entry/Codec 边界及 JOOQ 调用符合 `jooq.md`。
+- Schema 基线符合 `postgresql-schema.md`，生成代码未被手工修改。
+- 聚合往返、租户边界、唯一性和适用的并发协议均有验证。
+- 相关测试与构建通过，未覆盖无关工作区修改。

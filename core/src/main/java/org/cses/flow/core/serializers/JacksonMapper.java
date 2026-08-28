@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator;
-import jakarta.inject.Singleton;
+import io.micronaut.context.annotation.Context;
 import org.cses.flow.core.plugins.PluginModule;
 
 import java.util.Map;
@@ -18,7 +18,7 @@ import java.util.Map;
 /**
  * Central strict Jackson configuration for JSON and YAML serialization.
  */
-@Singleton
+@Context
 public class JacksonMapper {
 
     private static TypeReference<Map<String, Object>> MAP_TYPE_REFERENCE =
@@ -43,13 +43,29 @@ public class JacksonMapper {
      * The source-definition mapper used by the static YamlParser entry point.
      */
     private static ObjectMapper YAML_MAPPER = BASE_YAML_MAPPER;
+    private static volatile ObjectMapper PERSISTENCE_JSON_MAPPER;
 
     private ObjectMapper jsonMapper;
 
     public JacksonMapper(PluginModule pluginModule) {
         jsonMapper = configure(new ObjectMapper(), pluginModule);
+        PERSISTENCE_JSON_MAPPER = jsonMapper;
         YAML_MAPPER = BASE_YAML_MAPPER.copy()
             .registerModule(pluginModule.sourceDefinitions());
+    }
+
+    public static <T> T convertPersistenceValue(
+        Object value,
+        Class<T> type
+    ) {
+        return persistenceJsonMapper().convertValue(value, type);
+    }
+
+    public static Map<String, Object> toPersistenceMap(Object value) {
+        return persistenceJsonMapper().convertValue(
+            value,
+            MAP_TYPE_REFERENCE
+        );
     }
 
     public <T> T convertValue(Object value, Class<T> type) {
@@ -104,5 +120,15 @@ public class JacksonMapper {
 
     static ObjectMapper yamlMapper() {
         return YAML_MAPPER;
+    }
+
+    private static ObjectMapper persistenceJsonMapper() {
+        if (PERSISTENCE_JSON_MAPPER == null) {
+            throw new IllegalStateException(
+                "JacksonMapper must be initialized before persistence "
+                    + "conversion"
+            );
+        }
+        return PERSISTENCE_JSON_MAPPER;
     }
 }

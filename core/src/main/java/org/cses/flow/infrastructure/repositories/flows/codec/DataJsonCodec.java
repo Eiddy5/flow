@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.flows.entries;
+package org.cses.flow.infrastructure.repositories.flows.codec;
 
 import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.DataType;
@@ -10,20 +10,23 @@ import org.paas.json.JsonObjects;
 import java.util.List;
 import java.util.Map;
 
-final class DataJsonCodec {
+public class DataJsonCodec {
 
-    private static final Class<Input<?>> INPUT_TYPE = inputType();
+    private static Class<Input<?>> INPUT_TYPE = inputType();
 
     private DataJsonCodec() {
     }
 
-    static JsonObjects encode(List<? extends Data> values) {
+    public static JsonObjects encode(List<? extends Data> values) {
         return JsonObjects.FromList(
             values.stream().map(DataJsonCodec::jsonValue).toList()
         );
     }
 
-    static List<Input<?>> decodeInputs(JsonObjects values, String field) {
+    public static List<Input<?>> decodeInputs(
+        JsonObjects values,
+        String field
+    ) {
         if (values == null) {
             return List.of();
         }
@@ -67,7 +70,10 @@ final class DataJsonCodec {
         return List.copyOf(inputs);
     }
 
-    static List<Output> decodeOutputs(JsonObjects values, String field) {
+    public static List<Output> decodeOutputs(
+        JsonObjects values,
+        String field
+    ) {
         if (values == null) {
             return List.of();
         }

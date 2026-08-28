@@ -116,11 +116,13 @@ Jackson 先读取 `type`，再通过注册表选择具体类并执行严格字�
 
 - `flow_tasks.type` 保存具体 Task 的 canonical class name，列类型使用 `text`；不迁移
   旧短类型数据。
-- `FlowTaskEntry` 使用同一 `JacksonMapper` 把 Task 转成属性 Map。id、key、type、
-  route、inputs、outputs、dependOn 和 children 等通用字段进入关系列或树结构，剩余
-  插件专有字段进入 `properties` JSONB。
-- 读取时 Entry 合并关系列、`properties` 和已重建的 children，再通过注册表驱动的
-  Jackson 绑定恢复原具体 Task。插件不再编写显式 properties 编解码器。
+- Repository Adapter 使用一个共享的 `TaskPropertiesCodec` 拆分和合并 Task
+  properties。id、key、type、route、inputs、outputs、dependOn 和 children 等通用
+  字段进入关系列或树结构，剩余插件专有字段进入 `properties` JSONB。
+- `FlowTaskEntry` 只静态调用 `TaskPropertiesCodec`。Codec 在内部复用同一个受控
+  `JacksonMapper`：读取时合并关系列、`properties` 和已重建的 children，再通过
+  注册表驱动的 Jackson 绑定恢复原具体 Task。每个插件不创建自己的 properties
+  Codec。
 
 ```mermaid
 erDiagram

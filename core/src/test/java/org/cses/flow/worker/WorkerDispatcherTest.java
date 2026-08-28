@@ -273,6 +273,34 @@ final class WorkerDispatcherTest {
         );
     }
 
+    @Test
+    void rejectsAnExecutionVariableThatDoesNotMatchTheEnvelope() {
+        AutomaticTask task = AutomaticTask.builder()
+            .id("task-1")
+            .key("automatic")
+            .build();
+        Execution execution = execution(
+            "execution-2",
+            Map.of("amount", 1200)
+        );
+
+        IllegalArgumentException failure = assertThrows(
+            IllegalArgumentException.class,
+            () -> WorkerTask.from(
+                "execution-1",
+                "task-run-1",
+                task,
+                Map.of(),
+                Map.of(RunContext.EXECUTION_VARIABLE, execution)
+            )
+        );
+
+        assertEquals(
+            "Worker Execution id does not match envelope: execution-2 != execution-1",
+            failure.getMessage()
+        );
+    }
+
     @SuperBuilder
     @NoArgsConstructor
     private static final class ContextRecordingTask

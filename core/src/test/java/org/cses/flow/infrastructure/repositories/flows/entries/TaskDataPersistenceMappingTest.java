@@ -10,11 +10,13 @@ import org.cses.flow.core.domains.flows.inputs.StringInput;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
+import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.extensions.tasks.AutomaticTask;
 import org.cses.flow.extensions.log.Log;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Pause;
+import org.cses.flow.infrastructure.repositories.flows.codec.DataJsonCodec;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonFactory;
@@ -33,7 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskDataPersistenceMappingTest {
 
-    private final Context plugins = builtInContext();
+    private Context plugins = builtInContext(new TestNotificationTask());
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -50,14 +52,13 @@ class TaskDataPersistenceMappingTest {
             ))
             .build();
 
-        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+        FlowTaskEntry entry = FlowTaskEntry.from(
             "company-1",
             "flow-1",
             1,
             task,
             null,
-            0,
-            plugins.jacksonMapper()
+            0
         );
 
         assertEquals(
@@ -66,7 +67,7 @@ class TaskDataPersistenceMappingTest {
         );
         Log restored = assertInstanceOf(
             Log.class,
-            entry.toDomain(plugins.jacksonMapper(), List.of())
+            entry.to(List.of())
         );
         assertEquals(task, restored);
         assertEquals(task.message(), restored.message());
@@ -80,23 +81,48 @@ class TaskDataPersistenceMappingTest {
             .concurrent(4)
             .build();
 
-        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+        FlowTaskEntry entry = FlowTaskEntry.from(
             "company-1",
             "flow-1",
             1,
             task,
             null,
-            0,
-            plugins.jacksonMapper()
+            0
         );
 
         assertEquals(4, entry.properties.asMap().get("concurrent"));
         Parallel restored = assertInstanceOf(
             Parallel.class,
-            entry.toDomain(plugins.jacksonMapper(), List.of())
+            entry.to(List.of())
         );
         assertEquals(task, restored);
         assertEquals(4, restored.concurrent().orElseThrow());
+    }
+
+    @Test
+    void flowTaskEntryRoundTripsARegisteredPluginSpecificProperty() {
+        TestNotificationTask task = TestNotificationTask.builder()
+            .id("notification-id")
+            .key("notify")
+            .channel("operations")
+            .build();
+
+        FlowTaskEntry entry = FlowTaskEntry.from(
+            "company-1",
+            "flow-1",
+            1,
+            task,
+            null,
+            0
+        );
+
+        assertEquals("operations", entry.properties.getString("channel"));
+        TestNotificationTask restored = assertInstanceOf(
+            TestNotificationTask.class,
+            entry.to(List.of())
+        );
+        assertEquals(task, restored);
+        assertEquals("operations", restored.channel());
     }
 
     @Test
@@ -117,14 +143,13 @@ class TaskDataPersistenceMappingTest {
             .build();
         plugins.modelValidator().validate(task);
 
-        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+        FlowTaskEntry entry = FlowTaskEntry.from(
             "company-1",
             "flow-1",
             1,
             task,
             null,
-            0,
-            plugins.jacksonMapper()
+            0
         );
 
         assertEquals(
@@ -133,7 +158,7 @@ class TaskDataPersistenceMappingTest {
         );
         LoopUntil restored = assertInstanceOf(
             LoopUntil.class,
-            entry.toDomain(plugins.jacksonMapper(), List.of(check))
+            entry.to(List.of(check))
         );
         assertEquals(task, restored);
         assertEquals(task.condition(), restored.condition());
@@ -160,21 +185,20 @@ class TaskDataPersistenceMappingTest {
             .build();
         plugins.modelValidator().validate(task);
 
-        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+        FlowTaskEntry entry = FlowTaskEntry.from(
             "company-1",
             "flow-1",
             1,
             task,
             null,
-            0,
-            plugins.jacksonMapper()
+            0
         );
 
         assertTrue(entry.properties.asMap().containsKey("pause"));
         assertEquals("P1M", entry.properties.asMap().get("duration"));
         Pause restored = assertInstanceOf(
             Pause.class,
-            entry.toDomain(plugins.jacksonMapper(), List.of())
+            entry.to(List.of())
         );
         assertEquals(task, restored);
         assertEquals(action, restored.pause());
@@ -208,17 +232,16 @@ class TaskDataPersistenceMappingTest {
             )))
             .build();
 
-        FlowTaskEntry entry = FlowTaskEntry.fromDomain(
+        FlowTaskEntry entry = FlowTaskEntry.from(
             "company-1",
             "flow-1",
             1,
             task,
             null,
-            0,
-            plugins.jacksonMapper()
+            0
         );
 
-        Task restored = entry.toDomain(plugins.jacksonMapper(), List.of());
+        Task restored = entry.to(List.of());
         assertEquals(task, restored);
         IntegerInput input = (IntegerInput) restored.inputs().getFirst();
         assertEquals(2, input.getDefaultValue());
@@ -242,16 +265,13 @@ class TaskDataPersistenceMappingTest {
         entry.outputs = JsonObjects.Create();
         entry.dependOn = JsonObjects.Create();
 
-        Input<?> restored = entry.toDomain(
-            plugins.jacksonMapper(),
-            List.of()
-        ).inputs().getFirst();
+        Input<?> restored = entry.to(List.of()).inputs().getFirst();
         assertEquals("request", restored.getDisplayName());
         assertEquals(false, restored.isRequired());
     }
 
     @Test
-    void persistedLegacyStringDataIsNotGivenAnInferredType() {
+    void persistedScalarDataIsRejectedInsteadOfReceivingAnInferredType() {
         FlowTaskEntry entry = new FlowTaskEntry();
         entry.id = "task-id";
         entry.key = "approval";
@@ -263,7 +283,7 @@ class TaskDataPersistenceMappingTest {
 
         assertThrows(
             RuntimeException.class,
-            () -> entry.toDomain(plugins.jacksonMapper(), List.of())
+            () -> entry.to(List.of())
         );
     }
 

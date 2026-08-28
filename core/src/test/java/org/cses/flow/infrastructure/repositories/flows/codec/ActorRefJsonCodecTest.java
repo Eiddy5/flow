@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.flows.entries;
+package org.cses.flow.infrastructure.repositories.flows.codec;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.core.domains.ActorRef;

@@ -485,10 +485,10 @@ core/src/main/java/org/cses/flow/infrastructure/
 │   └── entries/     # 保存业务 payload、queue_type 与 queue_name 的 Queue Message Entry
 ├── repositories/    # Repository 的具体生产实现
 │   └── <业务模块>/
-│       └── postgres/
-│           ├── XxxPostgresRepository.java
-│           └── entries/
-│               └── XxxEntry.java
+│       ├── XxxRepositoryImpl.java
+│       ├── entries/
+│       │   └── XxxEntry.java
+│       └── codec/   # 可选；与 entries 平级的序列化和专用字段转换
 └── datapilot/       # Flow DataPilot 兼容接线
 
 ```
@@ -497,6 +497,7 @@ core/src/main/java/org/cses/flow/infrastructure/
 
 - Repository 的 PostgreSQL、DataPilot 等生产实现。
 - `entries` 子包中的数据库 Entry，以及 Entry 与领域对象之间的转换。
+- 与 `entries` 平级的 `codec` 子包；只保存 Entry 静态调用的序列化和专用字段转换。
 - `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；普通发布使用 Queue
   自有事务，显式事务发布使用调用方传入的 `DSLContext`。它使用项目现有 `JsonFactory`
   把 Event 重组为只含业务数据的 JSONB Queue Entry，并通过装配时传入的 `Class<T>`
@@ -514,7 +515,8 @@ DataPilot、JOOQ Record 或具体数据库实现。
 
 JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository 或数据库 Queue
 Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中
-完成数据库字段与项目对象的转换。详细规则见
+完成数据库字段与项目对象的转换；需要序列化或专用字段转换时，在同级 `codec`
+子包提供静态 Codec。详细规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
 
 测试专用替身和辅助代码统一放在对应模块的 `src/test/java`，不能作为生产 Bean 放入
@@ -669,8 +671,9 @@ queues/event
 | Default Dispatch Queue、统一消息表、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
 | Executor Command/Event Queue 的 Micronaut 组合根 | `core/src/main/java/org/cses/flow/infrastructure/queues/ExecutorCommandQueueFactory.java`、`ExecutorEventQueueFactory.java` |
 | 包含 `queue_type + queue_name` 的统一 Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
-| PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/postgres/` |
+| PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/XxxRepositoryImpl.java` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
+| Entry 序列化和专用字段转换 | 与具体 Repository 的 `entries/` 平级的 `codec/` 子包 |
 | Flow YAML 数据源配置、JOOQ 与数据库接线 | `core/src/main/java/org/cses/flow/infrastructure/jooq/` |
 | Flow 的 DataPilot 接线 | `core/src/main/java/org/cses/flow/infrastructure/datapilot/` |
 | Flow 自有 OrchestrationTask | `core/src/main/java/org/cses/flow/extensions/flow/<TypeName>.java` |

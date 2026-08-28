@@ -3,7 +3,7 @@
 ## 目的
 
 验证 Flow、Execution 和 TaskRun 的真实 PostgreSQL 往返、JSONB 转换、跨版本
-Task id 复用，以及乐观锁冲突。
+Task id 复用，以及业务唯一键冲突。
 
 当前完整关系模型：
 
@@ -99,21 +99,6 @@ psql "$FLOW_POSTGRES_PSQL_URL" \
 基线使用 `IF NOT EXISTS`，因此相同内容可以重复执行；它不会修正已经存在但定义
 不同的对象。基线发生变化后必须显式重建开发数据库，不执行 ALTER、回填或旧数据
 转换。应用不携带 Flyway，也不会在启动时创建、升级或清理 Schema。
-
-### 旧库动态迁移
-
-如果数据库仍同时存在旧版 `flows` 和 `flow_drafts`，使用
-[`flow-unify-migration.sql`](flow-unify-migration.sql) 将草稿的 `raw` YAML 合并到
-`flows.source`，并切换到 `draft=true/false` 的统一模型：
-
-```bash
-psql "$FLOW_POSTGRES_PSQL_URL" \
-  -f docs/harness/flow-unify-migration.sql
-```
-
-旧版已部署 `flows` 没有原始 YAML，执行迁移前必须先补齐对应的 `source`；脚本发现
-缺失或为空时会回滚。迁移完成后会删除 `flow_drafts`，该操作不可逆，执行前应完成
-备份并确认所有正式版本的来源数据已准备好。
 
 领域时间在 Java 中使用 Epoch 毫秒 `long/Long`，当前 Flow 基线中的领域时间列使用
 `bigint`，由 Entry 直接映射；Queue 的 `created_at` 是数据库消息顺序字段，可由

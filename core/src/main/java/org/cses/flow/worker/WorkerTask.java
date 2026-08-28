@@ -144,6 +144,7 @@ public record WorkerTask(
             variables,
             "Worker variables"
         ));
+        validateExecutionVariable(executionId, variables);
     }
 
     public Map<String, Object> taskInputs() {
@@ -202,6 +203,28 @@ public record WorkerTask(
             inputs == null ? Map.of() : Map.copyOf(inputs)
         );
         return Map.copyOf(runtimeVariables);
+    }
+
+    private static void validateExecutionVariable(
+        String executionId,
+        Map<String, Object> variables
+    ) {
+        Object value = variables.get(RunContext.EXECUTION_VARIABLE);
+        if (value == null) {
+            return;
+        }
+        if (!(value instanceof Execution execution)) {
+            throw new IllegalArgumentException(
+                "Worker variable " + RunContext.EXECUTION_VARIABLE
+                    + " must contain an Execution"
+            );
+        }
+        if (!executionId.equals(execution.id())) {
+            throw new IllegalArgumentException(
+                "Worker Execution id does not match envelope: "
+                    + execution.id() + " != " + executionId
+            );
+        }
     }
 
     private static String requireText(String value, String field) {

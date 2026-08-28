@@ -1,4 +1,4 @@
-package org.cses.flow.infrastructure.repositories.executions.entries;
+package org.cses.flow.infrastructure.repositories.executions.codec;
 
 import io.micronaut.json.JsonMapper;
 import org.cses.flow.core.domains.flows.State;
@@ -13,7 +13,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-final class StateJsonCodecTest {
+class StateJsonCodecTest {
 
     @BeforeAll
     static void initializeJsonMapper() {
