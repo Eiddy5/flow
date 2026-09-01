@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS task_runs (
     task_id          varchar(64) NOT NULL,
     parent_id        varchar(64),
     iteration        integer,
+    execution_generation_version integer,
+    generation       jsonb NOT NULL DEFAULT '{"current": null, "history": []}'::jsonb,
     state            jsonb NOT NULL,
     inputs           jsonb NOT NULL DEFAULT '{}'::jsonb,
     outputs          jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -29,7 +31,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_task_runs_occurrence
         execution_id,
         task_id,
         COALESCE(parent_id, ''),
-        COALESCE(iteration, 0)
+        COALESCE(iteration, 0),
+        COALESCE(execution_generation_version, 0)
     );
 
 CREATE INDEX IF NOT EXISTS idx_task_runs_parent

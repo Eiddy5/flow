@@ -194,7 +194,84 @@ final class ExecutionTest {
             WorkflowException.class,
             () -> execution.succeedTaskRun(taskRun.id(), Map.of())
         );
+        assertThrows(
+            WorkflowException.class,
+            () -> execution.skipTaskRun(taskRun.id())
+        );
         assertEquals(State.Type.CREATED, taskRun.state().current());
+    }
+
+    @Test
+    void skippedTaskRunIsTerminalWithoutOutputsOrError() {
+        Execution execution = Execution.create(
+            null,
+            session("execution-skipped-company"),
+            "execution-skipped-flow",
+            1,
+            Map.of()
+        );
+        execution.start();
+        TaskRun taskRun = execution.createTaskRun(
+            "execution-skipped-route",
+            null,
+            Map.of("decision", "not-selected")
+        );
+        execution.startTaskRun(taskRun.id());
+
+        execution.skipTaskRun(taskRun.id());
+
+        assertEquals(State.Type.SKIPPED, taskRun.state().current());
+        assertEquals(
+            List.of(
+                State.Type.CREATED,
+                State.Type.RUNNING,
+                State.Type.SKIPPED
+            ),
+            history(taskRun.state())
+        );
+        assertTrue(taskRun.outputs().isEmpty());
+        assertTrue(taskRun.error().isEmpty());
+        assertFalse(taskRun.isUnfinished());
+
+        execution.succeed();
+        assertEquals(State.Type.SUCCESS, execution.state().current());
+    }
+
+    @Test
+    void skippedTaskRunCannotBeARewindTarget() {
+        Execution execution = Execution.create(
+            null,
+            session("execution-skipped-rewind-company"),
+            "execution-skipped-rewind-flow",
+            1,
+            Map.of()
+        );
+        execution.start();
+        TaskRun skipped = execution.createTaskRun(
+            "execution-skipped-target",
+            null,
+            Map.of()
+        );
+        execution.startTaskRun(skipped.id());
+        execution.skipTaskRun(skipped.id());
+        TaskRun source = execution.createTaskRun(
+            "execution-skipped-source",
+            null,
+            Map.of()
+        );
+        execution.startTaskRun(source.id());
+        execution.pauseTaskRun(source.id());
+        execution.pause();
+
+        assertThrows(
+            WorkflowException.class,
+            () -> execution.rewindTaskRun(
+                source.id(),
+                skipped.id(),
+                "cannot rewind to skipped route"
+            )
+        );
+        assertEquals(State.Type.PAUSED, execution.state().current());
     }
 
     @Test
@@ -282,6 +359,100 @@ final class ExecutionTest {
     }
 
     @Test
+    void completedRewindShouldExposeOnlyTheLatestFragmentResults() {
+        Execution execution = Execution.create(
+            null,
+            session("rewind-effective-company"),
+            "rewind-effective-flow",
+            1,
+            Map.of()
+        );
+        execution.start();
+
+        TaskRun before = execution.createTaskRun(
+            "before",
+            null,
+            Map.of()
+        );
+        execution.startTaskRun(before.id());
+        execution.succeedTaskRun(before.id(), Map.of("value", "before"));
+
+        TaskRun originalTarget = execution.createTaskRun(
+            "target",
+            null,
+            Map.of()
+        );
+        execution.startTaskRun(originalTarget.id());
+        execution.warnTaskRun(
+            originalTarget.id(),
+            Map.of("value", "obsolete-warning")
+        );
+
+        TaskRun originalSource = execution.createTaskRun(
+            "approval",
+            null,
+            Map.of()
+        );
+        execution.startTaskRun(originalSource.id());
+        execution.pauseTaskRun(originalSource.id());
+        execution.pause();
+
+        execution.rewindTaskRun(
+            originalSource.id(),
+            originalTarget.id(),
+            "correct warning result"
+        );
+        execution.restart();
+
+        TaskRun latestTarget = TaskRun.create(
+            "target",
+            null,
+            Map.of(),
+            null,
+            1
+        );
+        execution.addTaskRuns(List.of(latestTarget));
+        execution.startTaskRun(latestTarget.id());
+        execution.succeedTaskRun(
+            latestTarget.id(),
+            Map.of("value", "latest-success")
+        );
+
+        TaskRun latestSource = TaskRun.create(
+            "approval",
+            null,
+            Map.of(),
+            null,
+            1
+        );
+        execution.addTaskRuns(List.of(latestSource));
+        execution.startTaskRun(latestSource.id());
+        execution.pauseTaskRun(latestSource.id());
+        execution.pause();
+        execution.resumeTaskRun(latestSource.id(), Map.of());
+        execution.restart();
+        execution.succeedTaskRun(latestSource.id(), Map.of());
+
+        List<TaskRun> effective = execution.effectiveTaskRuns();
+        assertEquals(
+            List.of(before.id(), latestTarget.id(), latestSource.id()),
+            effective.stream().map(TaskRun::id).toList()
+        );
+        assertTrue(effective.stream().noneMatch(taskRun ->
+            taskRun.state().is(State.Type.WARNING)
+        ));
+        assertEquals(
+            "latest-success",
+            effective.stream()
+                .filter(taskRun -> taskRun.taskId().equals("target"))
+                .findFirst()
+                .orElseThrow()
+                .outputs()
+                .get("value")
+        );
+    }
+
+    @Test
     void rehydrateShouldRejectPausedExecutionState() {
         State paused = State.rehydrate(
             State.Type.PAUSED,
@@ -303,6 +474,33 @@ final class ExecutionTest {
                 1,
                 Map.of(),
                 paused,
+                List.of()
+            )
+        );
+    }
+
+    @Test
+    void rehydrateShouldRejectSkippedExecutionState() {
+        State skipped = State.rehydrate(
+            State.Type.SKIPPED,
+            List.of(
+                State.History.rehydrate(State.Type.CREATED, 100L),
+                State.History.rehydrate(State.Type.RUNNING, 200L),
+                State.History.rehydrate(State.Type.SKIPPED, 300L)
+            )
+        );
+
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> Execution.rehydrate(
+                "execution-skipped-execution",
+                "execution-skipped-company",
+                ActorRef.create("execution-creator", "Execution creator"),
+                100L,
+                "execution-skipped-flow",
+                1,
+                Map.of(),
+                skipped,
                 List.of()
             )
         );

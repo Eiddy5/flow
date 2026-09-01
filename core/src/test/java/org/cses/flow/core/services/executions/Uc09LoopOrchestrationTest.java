@@ -4,6 +4,7 @@ import io.micronaut.context.annotation.Requires;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.Generation;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
@@ -40,31 +41,94 @@ class Uc09LoopOrchestrationTest {
     void s1FixedLoopRunsEveryBodyStepThreeTimesBeforeFollowingStep() {
         try (WorkflowUcFixture fixture = fixture()) {
             Flow flow = fixture.deploy(fixedLoopYaml("uc09-s1-flow", 3));
-
-            Execution completed = startAndQuery(fixture, flow);
+            Execution firstWaiting = fixture.startAndAwait(flow);
             Task loop = task(flow, "repeat-three-times");
-            Task first = task(flow, "body-first");
-            Task second = task(flow, "body-second");
+            Task body = task(flow, "body-step");
+            Task waiting = task(flow, "wait-round");
+            Task request = task(flow, "request-round");
             Task following = task(flow, "after-loop");
+            TaskRun firstLoopRun = onlyRun(firstWaiting, loop);
+            WorkflowUcFixture.PausedTaskRunRef firstPause =
+                fixture.waitingForOutput(firstWaiting.id(), "continue");
+
+            // S1 第一轮等待点：当前版本为 1，尚无历史，原因为初始轮次。
+            assertCurrentLoopGeneration(
+                firstLoopRun,
+                1,
+                "INITIAL",
+                List.of()
+            );
+            assertTrue(firstWaiting.generation().current().isEmpty());
+
+            // 持久化往返：重建服务后仍可查询相同第一轮和等待步骤。
+            fixture.restartServer();
+            Execution persistedFirst = query(fixture, firstWaiting.id());
+            assertCurrentLoopGeneration(
+                onlyRun(persistedFirst, loop),
+                1,
+                "INITIAL",
+                List.of()
+            );
+            WorkflowUcFixture.PausedTaskRunRef requeriedFirst =
+                fixture.waitingForOutput(firstWaiting.id(), "continue");
+            assertEquals(firstPause.taskRunId(), requeriedFirst.taskRunId());
+
+            Execution secondWaiting = fixture.resume(
+                requeriedFirst,
+                Map.of("continue", "second")
+            );
+            assertCurrentLoopGeneration(
+                onlyRun(secondWaiting, loop),
+                2,
+                "FIXED_COUNT_NOT_REACHED",
+                List.of("INITIAL")
+            );
+            WorkflowUcFixture.PausedTaskRunRef secondPause =
+                fixture.waitingForOutput(firstWaiting.id(), "continue");
+
+            Execution thirdWaiting = fixture.resume(
+                secondPause,
+                Map.of("continue", "third")
+            );
+            assertCurrentLoopGeneration(
+                onlyRun(thirdWaiting, loop),
+                3,
+                "FIXED_COUNT_NOT_REACHED",
+                List.of("INITIAL", "FIXED_COUNT_NOT_REACHED")
+            );
+            WorkflowUcFixture.PausedTaskRunRef thirdPause =
+                fixture.waitingForOutput(firstWaiting.id(), "continue");
+
+            Execution completed = fixture.resume(
+                thirdPause,
+                Map.of("continue", "done")
+            );
             TaskRun loopRun = onlyRun(completed, loop);
 
             // S1 预期：两个步骤每轮按声明顺序完整执行，然后才开始下一轮。
             assertEquals(
                 List.of(
                     loop.id(),
-                    first.id(), second.id(),
-                    first.id(), second.id(),
-                    first.id(), second.id(),
+                    body.id(), waiting.id(), request.id(),
+                    body.id(), waiting.id(), request.id(),
+                    body.id(), waiting.id(), request.id(),
                     following.id()
                 ),
                 completed.taskRuns().stream().map(TaskRun::taskId).toList()
             );
-            assertSuccessfulIterations(completed, first, loopRun, 1, 2, 3);
-            assertSuccessfulIterations(completed, second, loopRun, 1, 2, 3);
-            assertIterationOutputs(completed, first, 1, 2, 3);
-            assertIterationOutputs(completed, second, 1, 2, 3);
+            assertSuccessfulIterations(completed, body, loopRun, 1, 2, 3);
+            assertSuccessfulIterations(completed, waiting, loopRun, 1, 2, 3);
+            assertIterationOutputs(completed, body, 1, 2, 3);
 
-            // S1 预期：循环后续步骤只执行一次。
+            // S1 预期：结束后 current 为空，三个完整轮次进入历史。
+            assertCompletedLoopGeneration(
+                loopRun,
+                List.of(
+                    "INITIAL",
+                    "FIXED_COUNT_NOT_REACHED",
+                    "FIXED_COUNT_NOT_REACHED"
+                )
+            );
             assertEquals(State.Type.SUCCESS, loopRun.state().current());
             assertEquals(State.Type.SUCCESS, onlyRun(completed, following)
                 .state().current());
@@ -77,41 +141,81 @@ class Uc09LoopOrchestrationTest {
     @Test
     void s2LoopUntilStopsAfterSecondCompletedIteration() {
         try (WorkflowUcFixture fixture = fixture()) {
-            Flow flow = fixture.deploy(loopUntilYaml(
+            Flow flow = fixture.deploy(interactiveLoopUntilYaml(
                 "uc09-s2-flow",
-                "condition-second",
                 3
             ));
-
-            Execution completed = startAndQuery(fixture, flow);
+            Execution firstWaiting = fixture.startAndAwait(flow);
             Task loop = task(flow, "repeat-until-done");
             Task body = task(flow, "body-step");
-            Task condition = task(flow, "condition-second");
+            Task waiting = task(flow, "wait-round");
+            Task request = task(flow, "request-round");
             Task following = task(flow, "after-loop");
+            WorkflowUcFixture.PausedTaskRunRef firstPause =
+                fixture.waitingForOutput(firstWaiting.id(), "status");
+
+            assertCurrentLoopGeneration(
+                onlyRun(firstWaiting, loop),
+                1,
+                "INITIAL",
+                List.of()
+            );
+            Execution secondWaiting = fixture.resume(
+                firstPause,
+                Map.of("status", "WAIT")
+            );
+
+            // S2 第二轮等待点：第一轮已归档，继续原因可查询。
+            fixture.restartServer();
+            Execution persistedSecond = query(fixture, firstWaiting.id());
+            assertCurrentLoopGeneration(
+                onlyRun(persistedSecond, loop),
+                2,
+                "CONDITION_NOT_SATISFIED",
+                List.of("INITIAL")
+            );
+            WorkflowUcFixture.PausedTaskRunRef secondPause =
+                fixture.waitingForOutput(firstWaiting.id(), "status");
+            assertEquals(
+                fixture.waitingForOutput(
+                    secondWaiting.id(),
+                    "status"
+                ).taskRunId(),
+                secondPause.taskRunId()
+            );
+
+            Execution completed = fixture.resume(
+                secondPause,
+                Map.of("status", "DONE")
+            );
             TaskRun loopRun = onlyRun(completed, loop);
 
             // S2 预期：每轮完整结束后才判断，第一轮继续、第二轮停止。
             assertEquals(
                 List.of(
                     loop.id(),
-                    body.id(), condition.id(),
-                    body.id(), condition.id(),
+                    body.id(), waiting.id(), request.id(),
+                    body.id(), waiting.id(), request.id(),
                     following.id()
                 ),
                 completed.taskRuns().stream().map(TaskRun::taskId).toList()
             );
             assertSuccessfulIterations(completed, body, loopRun, 1, 2);
-            assertSuccessfulIterations(completed, condition, loopRun, 1, 2);
+            assertSuccessfulIterations(completed, waiting, loopRun, 1, 2);
             assertIterationOutputs(completed, body, 1, 2);
             assertEquals(
                 List.of("WAIT", "DONE"),
-                runs(completed, condition).stream()
+                runs(completed, waiting).stream()
                     .map(run -> run.outputs().get("status"))
                     .toList()
             );
 
-            // S2 预期：不会创建第三轮，后续步骤只执行一次。
-            assertEquals(2, runs(completed, condition).size());
+            // S2 预期：不会创建第三轮，两个轮次归档，后续只执行一次。
+            assertEquals(2, runs(completed, waiting).size());
+            assertCompletedLoopGeneration(
+                loopRun,
+                List.of("INITIAL", "CONDITION_NOT_SATISFIED")
+            );
             assertEquals(State.Type.SUCCESS, loopRun.state().current());
             assertEquals(State.Type.SUCCESS, onlyRun(completed, following)
                 .state().current());
@@ -331,6 +435,63 @@ class Uc09LoopOrchestrationTest {
         return fixture.startAndAwait(flow);
     }
 
+    private static Execution query(
+        WorkflowUcFixture fixture,
+        String executionId
+    ) {
+        return fixture.executionService().execution(
+            fixture.session(), executionId
+        ).orElseThrow();
+    }
+
+    private static void assertCurrentLoopGeneration(
+        TaskRun loopRun,
+        int currentVersion,
+        String currentReason,
+        List<String> historyReasons
+    ) {
+        Generation generation = loopRun.generation();
+        Generation.Current current = generation.current().orElseThrow();
+        assertEquals(currentVersion, current.version());
+        assertEquals(currentReason, current.reason());
+        assertTrue(current.sourceTaskRunId().isEmpty());
+        assertTrue(current.targetTaskRunId().isEmpty());
+        assertGenerationHistory(generation, historyReasons);
+    }
+
+    private static void assertCompletedLoopGeneration(
+        TaskRun loopRun,
+        List<String> historyReasons
+    ) {
+        Generation generation = loopRun.generation();
+        assertTrue(generation.current().isEmpty());
+        assertGenerationHistory(generation, historyReasons);
+    }
+
+    private static void assertGenerationHistory(
+        Generation generation,
+        List<String> expectedReasons
+    ) {
+        assertEquals(
+            java.util.stream.IntStream.rangeClosed(1, expectedReasons.size())
+                .boxed()
+                .toList(),
+            generation.history().currents().stream()
+                .map(Generation.Current::version)
+                .toList()
+        );
+        assertEquals(
+            expectedReasons,
+            generation.history().currents().stream()
+                .map(Generation.Current::reason)
+                .toList()
+        );
+        assertTrue(generation.history().currents().stream().allMatch(current ->
+            current.sourceTaskRunId().isEmpty()
+                && current.targetTaskRunId().isEmpty()
+        ));
+    }
+
     private static void assertSuccessfulIterations(
         Execution execution,
         Task task,
@@ -459,22 +620,29 @@ class Uc09LoopOrchestrationTest {
     private static String fixedLoopYaml(String key, int times) {
         return """
             key: %s
-            description: fixed loop with ordered body
+            description: fixed loop with a user wait in every round
             tasks:
               - key: repeat-three-times
                 type: %s
                 times: %d
                 tasks:
-                  - key: body-first
+                  - key: body-step
                     type: %s
                     outputs:
                       - key: iteration
                         type: INTEGER
-                  - key: body-second
-                    type: %s
+                  - key: wait-round
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: request-round
+                      type: org.cses.flow.extensions.log.Log
+                      message: "continue round"
+                    resume:
+                      - key: continue
+                        type: STRING
                     outputs:
-                      - key: iteration
-                        type: INTEGER
+                      - key: continue
+                        type: STRING
               - key: after-loop
                 type: %s
             """.formatted(
@@ -482,6 +650,47 @@ class Uc09LoopOrchestrationTest {
                 Loop.class.getCanonicalName(),
                 times,
                 LoopProbeTask.class.getCanonicalName(),
+                LoopProbeTask.class.getCanonicalName()
+            );
+    }
+
+    private static String interactiveLoopUntilYaml(
+        String key,
+        int maxIterations
+    ) {
+        return """
+            key: %s
+            description: conditional loop with a user result every round
+            tasks:
+              - key: repeat-until-done
+                type: %s
+                condition: '{{ outputs.wait-round.status }} == DONE'
+                maxIterations: %d
+                tasks:
+                  - key: body-step
+                    type: %s
+                    outputs:
+                      - key: iteration
+                        type: INTEGER
+                  - key: wait-round
+                    type: org.cses.flow.extensions.flow.Pause
+                    pause:
+                      key: request-round
+                      type: org.cses.flow.extensions.log.Log
+                      message: "provide round status"
+                    resume:
+                      - key: status
+                        type: STRING
+                        required: true
+                    outputs:
+                      - key: status
+                        type: STRING
+              - key: after-loop
+                type: %s
+            """.formatted(
+                key,
+                LoopUntil.class.getCanonicalName(),
+                maxIterations,
                 LoopProbeTask.class.getCanonicalName(),
                 LoopProbeTask.class.getCanonicalName()
             );

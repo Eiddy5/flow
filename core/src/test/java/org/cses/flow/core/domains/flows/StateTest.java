@@ -71,6 +71,9 @@ class StateTest {
         State failed = State.created()
             .running()
             .failed();
+        State skipped = State.created()
+            .running()
+            .skipped();
         State killedWhilePaused = State.created()
             .running()
             .paused()
@@ -78,8 +81,20 @@ class StateTest {
             .killed();
 
         assertEquals(State.Type.FAILED, failed.current());
+        assertEquals(State.Type.SKIPPED, skipped.current());
         assertEquals(State.Type.KILLED, killedWhilePaused.current());
         assertEquals(3, failed.history().size());
+        assertEquals(
+            List.of(
+                State.Type.CREATED,
+                State.Type.RUNNING,
+                State.Type.SKIPPED
+            ),
+            skipped.history().stream()
+                .map(State.History::state)
+                .toList()
+        );
+        assertTrue(skipped.isTerminal());
         assertEquals(5, killedWhilePaused.history().size());
     }
 
@@ -138,6 +153,10 @@ class StateTest {
         assertThrows(
             WorkflowException.class,
             () -> State.created().running().success().running()
+        );
+        assertThrows(
+            WorkflowException.class,
+            () -> State.created().running().skipped().running()
         );
     }
 }

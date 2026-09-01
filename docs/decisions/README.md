@@ -61,6 +61,9 @@
 - [`ADR 0068`](0068-remove-two-phase-execution-start.md)：删除 `createPending` 与
   `continueExecution`，Execution 只通过一次完整 `create` 受理；Service 在发布前确认
   当前 Flow、inputs、稳定 id 和发起人，Consumer 原子物化 Execution 并交接首个事件。
+- [`ADR 0080`](0080-start-execution-with-optional-flow-version.md)：Execution 启动统一
+  使用 `create(session, key, Optional<version>, inputs)`；版本为空选择最新 Flow，版本
+  不为空精确选择指定 Flow 版本，不保留旧启动重载。
 - [`ADR 0059`](0059-route-executor-state-handoffs-through-executor-event-queue.md)：
   保持泛型 `ExecutorEventHandler<T>` 契约不变；外部 Command 只进入
   `ExecutionCommandEventHandler`，内部状态交接统一使用 `ExecutorEvent` Queue，
@@ -159,6 +162,9 @@
   `pause` Task 和恢复后继承的普通 `tasks`；其中普通 `tasks` 已由 ADR 0074 取消。
 - [`ADR 0036`](0036-model-loop-and-loop-until-as-recoverable-orchestration-scopes.md)：
   Loop 固定次数循环、Loop Until 后置条件循环、每轮 TaskRun 身份和可恢复调度协议。
+- [`ADR 0078`](0078-reuse-generation-for-rewind-fragments-and-loop-rounds.md)：以拥有者
+  级 Generation 统一记录退回片段和 Loop/LoopUntil 轮次的 Current、History 与原因；
+  Loop 最新轮次不再由子 TaskRun 扫描推导。
 - [`ADR 0074`](0074-separate-condition-and-structural-task-capabilities.md)：Task 只
   保留共同字段，Branch 独占 tasks，Route 保存 `route` 原文并按需形成 Condition，
   LoopUntil 直接组合 Condition；Condition 只把完整 `{{ path.to.value }}` 识别为引用，
@@ -168,6 +174,9 @@
   树；RunContext 只保存该树且不保存 Session 或重复身份，Condition 与模板共用完整
   Map 路径并取消固定 scope；Route 先创建并启动自身 TaskRun，再计算 Condition，未
   命中时完成自身但不创建子 TaskRun。
+- [`ADR 0079`](0079-record-unmatched-routes-as-skipped.md)：Route 在自己的 TaskRun
+  已创建并开始后计算条件；未命中时该 TaskRun 以 `SKIPPED` 收敛且不创建子
+  TaskRun，Execution 继续正常推进。
 - [`ADR 0052`](0052-bind-confirmed-flow-inputs-to-safe-task-routes.md)：Flow 启动时
   规范化并持久保持 typed inputs 到 `Execution.inputs`，Task Route 可用受限运算符读取
   inputs；宿主只能提交结构化字段映射，不能注入脚本或任意表达式。
@@ -202,6 +211,13 @@
   Pause TaskRun 使用 PAUSED，以及 Execution 始终保持 RUNNING 的当前规则。
 - [`ADR 0036`](0036-model-loop-and-loop-until-as-recoverable-orchestration-scopes.md)：
   同一 Task 的多轮 TaskRun、iteration 运行事实以及 Loop 作用域收敛规则。
+- [`ADR 0078`](0078-reuse-generation-for-rewind-fragments-and-loop-rounds.md)：Execution
+  拥有退回片段 Generation，循环 TaskRun 拥有轮次 Generation；`handleNext` 根据活动
+  Current 计算片段内下一批 TaskRun；Rewind 受理结果同时返回提交时 Execution 快照
+  和按业务回滚顺序排列的当前有效影响 TaskRun 编号。
+- [`ADR 0079`](0079-record-unmatched-routes-as-skipped.md)：共享 State 增加 TaskRun
+  专用终态 `SKIPPED`；Execution 与 Worker 不能使用该状态，未命中 Route 不贡献输出
+  且被调度器视为已收敛叶子。
 
 ## PAUSE 与外部恢复
 
@@ -222,6 +238,9 @@
   OrchestrationTask；Pause TaskRun 使用 PAUSED，Execution 不再进入等待状态。
 - [`ADR 0031`](0031-model-pause-as-task-backed-gate.md)：Pause 前置 Task、恢复输入、
   超时定义以及 `PAUSED -> RUNNING` 后由 Executor 继续推进的当前契约。
+- [`ADR 0078`](0078-reuse-generation-for-rewind-fragments-and-loop-rounds.md)：Pause
+  除 Resume 外支持 Rewind 到同一 Execution 的历史 TaskRun；当前只接受顶层串行片段，
+  并在受理时返回该片段已经真实发生的 TaskRun 编号。
 
 ## 持久化、时间与并发
 
@@ -266,8 +285,9 @@
 - [`ADR 0049`](0049-remove-demo-and-memory-runtime-modes.md)：移除 Demo 与 Memory
   运行时模式，统一使用标准具名 `flow` PostgreSQL 数据源；它取代 ADR 0035。页面
   删除条款已由 [`ADR 0053`](0053-restore-flow-management-surface.md) 修订。
-- [`ADR 0053`](0053-restore-flow-management-surface.md)：恢复正式 Flow 管理页面和
-  真实 HTTP Controller；页面使用 `@UserSession`，不恢复 Demo/Memory 运行时。
+- [`ADR 0053`](0053-restore-flow-management-surface.md)：恢复正式 Flow 管理页面，并按
+  Flow、Execution 和 Session 资源拆分真实 HTTP Controllers；页面使用
+  `@UserSession`，不恢复 Demo/Memory 运行时。
 - [`ADR 0054`](0054-temporary-admin-session-for-flow-management.md)：在宿主认证尚未
   接入前，为正式管理页面提供可关闭的固定 `admin` 管理员身份。
 - [`ADR 0056`](0056-bind-paas-jooq-to-named-datasource.md)：替换 PAAS 的无限定名

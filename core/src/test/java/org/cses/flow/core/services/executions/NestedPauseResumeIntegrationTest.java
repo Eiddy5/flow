@@ -737,7 +737,7 @@ class NestedPauseResumeIntegrationTest {
                 taskKeys(completed, flow)
             );
             assertEquals(
-                State.Type.SUCCESS,
+                State.Type.SKIPPED,
                 run(completed, tasks.get("rejected")).state().current()
             );
             assertTrue(fixture.pausedTaskRuns().isEmpty());

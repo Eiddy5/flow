@@ -306,7 +306,7 @@ class CoreArchitectureStandardTest {
             "(?m)^\\s*public\\s+.*\\sCreate\\s+create\\("
         ).matcher(executionService).results().count();
         assertTrue(
-            publicCreateMethods == 2
+            publicCreateMethods == 1
                 && executionService.contains("Create.from(")
                 && executionService.contains("normalizedInputs")
                 && executionService.contains("executorCommandQueue.emit(command)")

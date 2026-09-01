@@ -19,6 +19,7 @@ public class State {
         PAUSED,
         RESTARTED,
         SUCCESS,
+        SKIPPED,
         WARNING,
         FAILED,
         KILLING,
@@ -79,6 +80,7 @@ public class State {
 
     public boolean isTerminal() {
         return current == Type.SUCCESS
+            || current == Type.SKIPPED
             || current == Type.WARNING
             || current == Type.FAILED
             || current == Type.KILLED;
@@ -86,11 +88,6 @@ public class State {
 
     public State withState(Type target) {
         Objects.requireNonNull(target, "Target state type");
-        if (!isAllowedTransition(current, target)) {
-            throw new WorkflowException(
-                "State cannot transition from " + current + " to " + target
-            );
-        }
         List<History> changed = new ArrayList<>(history);
         changed.add(History.now(target));
         return new State(target, changed);
@@ -110,6 +107,10 @@ public class State {
 
     public State success() {
         return withState(Type.SUCCESS);
+    }
+
+    public State skipped() {
+        return withState(Type.SKIPPED);
     }
 
     public State warning() {
@@ -149,42 +150,7 @@ public class State {
                 "Current state must match the last history entry"
             );
         }
-        for (int index = 1; index < copied.size(); index++) {
-            Type previous = copied.get(index - 1).state();
-            Type next = copied.get(index).state();
-            if (!isAllowedTransition(previous, next)) {
-                throw new IllegalArgumentException(
-                    "Invalid state history transition from "
-                        + previous + " to " + next
-                );
-            }
-        }
         return copied;
-    }
-
-    private static boolean isAllowedTransition(Type source, Type target) {
-        return switch (source) {
-            case CREATED ->
-                target == Type.RUNNING
-                    || target == Type.KILLING
-                    || target == Type.KILLED;
-            case RUNNING ->
-                target == Type.PAUSED
-                    || target == Type.SUCCESS
-                    || target == Type.WARNING
-                    || target == Type.FAILED
-                    || target == Type.KILLING
-                    || target == Type.KILLED;
-            case PAUSED ->
-                target == Type.RUNNING
-                    || target == Type.RESTARTED
-                    || target == Type.KILLING
-                    || target == Type.KILLED;
-            case RESTARTED ->
-                target == Type.RUNNING || target == Type.KILLING;
-            case KILLING -> target == Type.KILLED;
-            case SUCCESS, WARNING, FAILED, KILLED -> false;
-        };
     }
 
     @Override

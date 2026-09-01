@@ -52,6 +52,7 @@ erDiagram
         varchar flow_key
         bigint flow_version
         jsonb state
+        jsonb generation
         bigint lock_version
         jsonb creator
         bigint created_at
@@ -62,6 +63,9 @@ erDiagram
         varchar execution_id
         varchar task_id
         varchar parent_id
+        integer iteration
+        integer execution_generation_version
+        jsonb generation
         jsonb state
         integer order
     }
@@ -78,6 +82,9 @@ Input、Output 和 Plugin properties 没有独立身份或
 生命周期，作为不可变定义快照保存在 JSONB 中；Execution 与 TaskRun 的 inputs、
 outputs 保存运行事实，完整 State 以
 `{"current":"...","history":[...]}` 作为单一 JSONB 值对象持久化。Execution
+与循环 TaskRun 的片段迭代事实分别以 `generation` JSONB 保存 Current/History；
+TaskRun 的 `execution_generation_version` 标识它属于哪个 Execution 退回片段。
+Execution
 和 TaskRun 按当前运行状态过滤时使用 `state ->> 'current'` 表达式索引，不存在独立
 运行 `status` 或 `state_history` 字段；Flow 的 Audit Status 则以独立文本
 `status` 持久化。

@@ -79,19 +79,19 @@ public class TaskRunsTable extends TableImpl<TaskRunsRecord> {
     public final TableField<TaskRunsRecord, Integer> ITERATION = createField(DSL.name("iteration"), SQLDataType.INTEGER, this, "");
 
     /**
+     * The column <code>public.task_runs.execution_generation_version</code>.
+     */
+    public final TableField<TaskRunsRecord, Integer> EXECUTION_GENERATION_VERSION = createField(DSL.name("execution_generation_version"), SQLDataType.INTEGER, this, "");
+
+    /**
+     * The column <code>public.task_runs.generation</code>.
+     */
+    public final TableField<TaskRunsRecord, JSONB> GENERATION = createField(DSL.name("generation"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{\"current\": null, \"history\": []}'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
      * The column <code>public.task_runs.state</code>.
      */
     public final TableField<TaskRunsRecord, JSONB> STATE = createField(DSL.name("state"), SQLDataType.JSONB.nullable(false), this, "");
-
-    /**
-     * The column <code>public.task_runs.start_at</code>.
-     */
-    public final TableField<TaskRunsRecord, Long> START_AT = createField(DSL.name("start_at"), SQLDataType.BIGINT, this, "");
-
-    /**
-     * The column <code>public.task_runs.end_at</code>.
-     */
-    public final TableField<TaskRunsRecord, Long> END_AT = createField(DSL.name("end_at"), SQLDataType.BIGINT, this, "");
 
     /**
      * The column <code>public.task_runs.inputs</code>.
@@ -112,21 +112,6 @@ public class TaskRunsTable extends TableImpl<TaskRunsRecord> {
      * The column <code>public.task_runs.order</code>.
      */
     public final TableField<TaskRunsRecord, Integer> ORDER = createField(DSL.name("order"), SQLDataType.INTEGER.nullable(false), this, "");
-
-    /**
-     * The column <code>public.task_runs.created_at</code>.
-     */
-    public final TableField<TaskRunsRecord, Long> CREATED_AT = createField(DSL.name("created_at"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("((EXTRACT(epoch FROM now()) * (1000)::numeric))::bigint"), SQLDataType.BIGINT)), this, "");
-
-    /**
-     * The column <code>public.task_runs.updated_at</code>.
-     */
-    public final TableField<TaskRunsRecord, Long> UPDATED_AT = createField(DSL.name("updated_at"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("((EXTRACT(epoch FROM now()) * (1000)::numeric))::bigint"), SQLDataType.BIGINT)), this, "");
-
-    /**
-     * The column <code>public.task_runs.deleted_at</code>.
-     */
-    public final TableField<TaskRunsRecord, Long> DELETED_AT = createField(DSL.name("deleted_at"), SQLDataType.BIGINT, this, "");
 
     private TaskRunsTable(Name alias, Table<TaskRunsRecord> aliased) {
         this(alias, aliased, (Field<?>[]) null, null);

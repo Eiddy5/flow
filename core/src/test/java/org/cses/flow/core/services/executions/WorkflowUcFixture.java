@@ -21,15 +21,16 @@ import org.x9.jooq.JOOQ;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
-public final class WorkflowUcFixture implements AutoCloseable {
+public class WorkflowUcFixture implements AutoCloseable {
 
-    private static final Map<String, Object> PROPERTIES = Map.of(
+    private static Map<String, Object> PROPERTIES = Map.of(
         "datasources.default.enabled", false,
         "flyway.datasources.default.enabled", false,
         "micronaut.config-client.enabled", false,
@@ -44,12 +45,12 @@ public final class WorkflowUcFixture implements AutoCloseable {
     private ApplicationContext context;
     private FlowService flowService;
     private ExecutionService executionService;
-    private final Session<User> session;
-    private final PostgresJooqTestAdapter jooq;
-    private final boolean cleanupOnClose;
-    private final Map<String, Object> properties;
-    private final Object[] singletons;
-    private final Set<String> companyIds = new LinkedHashSet<>();
+    private Session<User> session;
+    private PostgresJooqTestAdapter jooq;
+    private boolean cleanupOnClose;
+    private Map<String, Object> properties;
+    private Object[] singletons;
+    private Set<String> companyIds = new LinkedHashSet<>();
 
     private WorkflowUcFixture(
         PostgresJooqTestAdapter jooq,
@@ -189,7 +190,12 @@ public final class WorkflowUcFixture implements AutoCloseable {
         Session<User> startSession,
         Flow flow
     ) {
-        Create accepted = executionService.create(startSession, flow.key());
+        Create accepted = executionService.create(
+            startSession,
+            flow.key(),
+            Optional.empty(),
+            Map.of()
+        );
         return awaitCreated(
             startSession,
             accepted.getExecutionId()
@@ -375,6 +381,35 @@ public final class WorkflowUcFixture implements AutoCloseable {
         Map<String, ?> outputs
     ) {
         return resume(session, pausedTaskRun, outputs);
+    }
+
+    public RewindAttempt rewind(
+        PausedTaskRunRef pausedTaskRun,
+        String targetTaskRunId,
+        String reason
+    ) {
+        RewindResult accepted = executionService.rewind(
+            session,
+            pausedTaskRun.executionId(),
+            pausedTaskRun.taskRunId(),
+            targetTaskRunId,
+            reason
+        );
+        Execution rewound = awaitExecution(
+            session,
+            accepted.execution().id(),
+            execution -> execution.state().isPaused()
+                && execution.generation().current()
+                    .filter(current -> current.sourceTaskRunId()
+                        .filter(pausedTaskRun.taskRunId()::equals)
+                        .isPresent())
+                    .filter(current -> current.targetTaskRunId()
+                        .filter(targetTaskRunId::equals)
+                        .isPresent())
+                    .filter(current -> current.reason().equals(reason))
+                    .isPresent()
+        );
+        return RewindAttempt.from(accepted, rewound);
     }
 
     public Execution cancel(String executionId) {
@@ -572,6 +607,35 @@ public final class WorkflowUcFixture implements AutoCloseable {
             String taskRunId
         ) {
             return new PausedTaskRunRef(executionId, taskRunId);
+        }
+    }
+
+    public record RewindAttempt(
+        RewindResult accepted,
+        Execution rewound
+    ) {
+
+        public RewindAttempt {
+            accepted = Objects.requireNonNull(
+                accepted,
+                "Accepted rewind result"
+            );
+            rewound = Objects.requireNonNull(
+                rewound,
+                "Rewound Execution"
+            ).copy();
+        }
+
+        public static RewindAttempt from(
+            RewindResult accepted,
+            Execution rewound
+        ) {
+            return new RewindAttempt(accepted, rewound);
+        }
+
+        @Override
+        public Execution rewound() {
+            return rewound.copy();
         }
     }
 }

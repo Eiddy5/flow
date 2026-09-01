@@ -11,7 +11,8 @@ import org.cses.flow.queues.event.DispatchEvent;
  * transaction. The command Queue therefore uses its own transaction for
  * ordinary command publishing. Command-specific identity is kept on each
  * concrete command: Create materializes its preassigned stable Execution id,
- * while Resume and Cancel target an already materialized Execution.</p>
+ * while Resume, Rewind and Cancel target an already materialized
+ * Execution.</p>
  */
 @JsonTypeInfo(
         use = JsonTypeInfo.Id.NAME,
@@ -21,9 +22,10 @@ import org.cses.flow.queues.event.DispatchEvent;
 @JsonSubTypes({
         @JsonSubTypes.Type(value = Create.class, name = "CREATE"),
         @JsonSubTypes.Type(value = Resume.class, name = "RESUME"),
+        @JsonSubTypes.Type(value = Rewind.class, name = "REWIND"),
         @JsonSubTypes.Type(value = Cancel.class, name = "CANCEL")
 })
-public sealed interface ExecutionCommand extends DispatchEvent permits Create, Resume, Cancel {
+public sealed interface ExecutionCommand extends DispatchEvent permits Create, Resume, Rewind, Cancel {
 
     String QUEUE_NAME = "flow-executor-command";
 
@@ -34,6 +36,7 @@ public sealed interface ExecutionCommand extends DispatchEvent permits Create, R
     enum Type {
         CREATE,
         RESUME,
+        REWIND,
         CANCEL
     }
 }

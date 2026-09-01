@@ -21,7 +21,9 @@ public final class TaskRun implements Identified {
     private final String taskId;
     private final String parentId;
     private final Integer iteration;
+    private final Integer executionGenerationVersion;
     private final Map<String, Object> inputs;
+    private Generation generation;
     private State state;
     private Map<String, Object> outputs;
     private String error;
@@ -31,13 +33,18 @@ public final class TaskRun implements Identified {
         String taskId,
         String parentId,
         Integer iteration,
+        Integer executionGenerationVersion,
         Map<String, ?> inputs
     ) {
         this.id = requireText(id, "TaskRun id");
         this.taskId = requireText(taskId, "Task id");
         this.parentId = normalizeOptionalText(parentId);
         this.iteration = normalizeIteration(iteration, this.parentId);
+        this.executionGenerationVersion = normalizeGenerationVersion(
+            executionGenerationVersion
+        );
         this.inputs = immutableMap(inputs);
+        this.generation = Generation.empty();
         this.state = State.created();
         this.outputs = Map.of();
     }
@@ -67,11 +74,28 @@ public final class TaskRun implements Identified {
         Map<String, ?> inputs,
         Integer iteration
     ) {
+        return create(
+            taskId,
+            parentTaskRunId,
+            inputs,
+            iteration,
+            null
+        );
+    }
+
+    public static TaskRun create(
+        String taskId,
+        String parentTaskRunId,
+        Map<String, ?> inputs,
+        Integer iteration,
+        Integer executionGenerationVersion
+    ) {
         return new TaskRun(
             StringUtil.newId(),
             taskId,
             parentTaskRunId,
             iteration,
+            executionGenerationVersion,
             inputs
         );
     }
@@ -81,7 +105,9 @@ public final class TaskRun implements Identified {
         String taskId,
         String parentId,
         Integer iteration,
+        Integer executionGenerationVersion,
         Map<String, ?> inputs,
+        Generation generation,
         State state,
         Map<String, ?> outputs,
         String error
@@ -90,7 +116,14 @@ public final class TaskRun implements Identified {
         this.taskId = requireText(taskId, "Task id");
         this.parentId = normalizeOptionalText(parentId);
         this.iteration = normalizeIteration(iteration, this.parentId);
+        this.executionGenerationVersion = normalizeGenerationVersion(
+            executionGenerationVersion
+        );
         this.inputs = immutableMap(inputs);
+        this.generation = RequiredUtil.required(
+            generation,
+            "TaskRun generation"
+        ).copy();
         this.state = RequiredUtil.required(state, "TaskRun state");
         this.outputs = immutableMap(outputs);
         this.error = normalizeOptionalText(error);
@@ -115,12 +148,40 @@ public final class TaskRun implements Identified {
         Map<String, ?> outputs,
         String error
     ) {
+        return rehydrate(
+            id,
+            taskId,
+            parentTaskRunId,
+            iteration,
+            null,
+            inputs,
+            Generation.empty(),
+            state,
+            outputs,
+            error
+        );
+    }
+
+    public static TaskRun rehydrate(
+        String id,
+        String taskId,
+        String parentTaskRunId,
+        Integer iteration,
+        Integer executionGenerationVersion,
+        Map<String, ?> inputs,
+        Generation generation,
+        State state,
+        Map<String, ?> outputs,
+        String error
+    ) {
         return new TaskRun(
             id,
             taskId,
             parentTaskRunId,
             iteration,
+            executionGenerationVersion,
             inputs,
+            generation,
             state,
             outputs,
             error
@@ -146,6 +207,16 @@ public final class TaskRun implements Identified {
         return iteration == null
             ? OptionalInt.empty()
             : OptionalInt.of(iteration);
+    }
+
+    public OptionalInt executionGenerationVersion() {
+        return executionGenerationVersion == null
+            ? OptionalInt.empty()
+            : OptionalInt.of(executionGenerationVersion);
+    }
+
+    public Generation generation() {
+        return generation.copy();
     }
 
     public Map<String, Object> inputs() {
@@ -195,6 +266,13 @@ public final class TaskRun implements Identified {
         state = state.success();
     }
 
+    void skip() {
+        requireState(State.Type.RUNNING);
+        outputs = Map.of();
+        error = null;
+        state = state.skipped();
+    }
+
     void warn(Map<String, ?> warningOutputs) {
         requireState(State.Type.RUNNING);
         outputs = immutableMap(warningOutputs);
@@ -228,13 +306,33 @@ public final class TaskRun implements Identified {
         state = state.killed();
     }
 
+    void startGeneration(String reason) {
+        generation.start(reason);
+    }
+
+    void advanceGeneration(String reason) {
+        generation.advance(reason);
+    }
+
+    void completeGeneration() {
+        generation.complete();
+    }
+
+    void completeGenerationIfActive() {
+        if (generation.active()) {
+            generation.complete();
+        }
+    }
+
     TaskRun copy() {
         return rehydrate(
             id,
             taskId,
-                parentId,
+            parentId,
             iteration,
+            executionGenerationVersion,
             inputs,
+            generation,
             state,
             outputs,
             error
@@ -261,13 +359,14 @@ public final class TaskRun implements Identified {
                 case RUNNING ->
                     target == State.Type.PAUSED
                         || target == State.Type.SUCCESS
+                        || target == State.Type.SKIPPED
                         || target == State.Type.WARNING
                         || target == State.Type.FAILED
                         || target == State.Type.KILLED;
                 case PAUSED ->
                     target == State.Type.RUNNING
                         || target == State.Type.KILLED;
-                case RESTARTED, SUCCESS, WARNING, FAILED, KILLING,
+                case RESTARTED, SUCCESS, SKIPPED, WARNING, FAILED, KILLING,
                     KILLED -> false;
             };
             if (!valid) {
@@ -315,6 +414,15 @@ public final class TaskRun implements Identified {
         if (parentTaskRunId == null) {
             throw new IllegalArgumentException(
                 "An iterated TaskRun must have a parent"
+            );
+        }
+        return value;
+    }
+
+    private static Integer normalizeGenerationVersion(Integer value) {
+        if (value != null && value < 1) {
+            throw new IllegalArgumentException(
+                "TaskRun execution Generation version must be positive"
             );
         }
         return value;

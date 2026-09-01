@@ -22,6 +22,7 @@ public class Execution extends BaseDomain {
     String flowKey;
     Long flowVersion;
     List<TaskRun> taskRuns;
+    Generation generation;
     State state;
     Map<String, Object> inputs;
 
@@ -39,6 +40,7 @@ public class Execution extends BaseDomain {
         }
         this.flowVersion = flowVersion;
         this.taskRuns = new ArrayList<>();
+        this.generation = Generation.empty();
         this.inputs = immutableMap(inputs);
         this.state = State.created();
     }
@@ -51,6 +53,7 @@ public class Execution extends BaseDomain {
             String flowKey,
             long flowVersion,
             Map<String, ?> inputs,
+            Generation generation,
             State state,
             List<TaskRun> taskRuns
     ) {
@@ -61,6 +64,10 @@ public class Execution extends BaseDomain {
         }
         this.flowVersion = flowVersion;
         this.inputs = immutableMap(inputs);
+        this.generation = RequiredUtil.required(
+                generation,
+                "Execution generation"
+        ).copy();
         this.state = RequiredUtil.required(state, "Execution state");
         this.taskRuns = new ArrayList<>();
         if (taskRuns != null) {
@@ -99,6 +106,32 @@ public class Execution extends BaseDomain {
             State state,
             List<TaskRun> taskRuns
     ) {
+        return rehydrate(
+                id,
+                companyId,
+                creator,
+                createdAt,
+                flowKey,
+                flowVersion,
+                inputs,
+                Generation.empty(),
+                state,
+                taskRuns
+        );
+    }
+
+    public static Execution rehydrate(
+            String id,
+            String companyId,
+            ActorRef creator,
+            long createdAt,
+            String flowKey,
+            long flowVersion,
+            Map<String, ?> inputs,
+            Generation generation,
+            State state,
+            List<TaskRun> taskRuns
+    ) {
         return new Execution(
                 id,
                 companyId,
@@ -107,6 +140,7 @@ public class Execution extends BaseDomain {
                 flowKey,
                 flowVersion,
                 inputs,
+                generation,
                 state,
                 taskRuns
         );
@@ -129,6 +163,10 @@ public class Execution extends BaseDomain {
 
     public State state() {
         return state;
+    }
+
+    public Generation generation() {
+        return generation.copy();
     }
 
     public List<TaskRun> taskRuns() {
@@ -157,7 +195,50 @@ public class Execution extends BaseDomain {
      */
     public Optional<TaskRun> taskRunForOccurrence(String taskId, String parentTaskRunId, Integer iteration) {
         String normalizedTaskId = requireText(taskId, "Task id");
-        return taskRuns.stream().filter(taskRun -> taskRun.taskId().equals(normalizedTaskId)).filter(taskRun -> Objects.equals(taskRun.parentId().orElse(null), parentTaskRunId)).filter(taskRun -> Objects.equals(taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null, iteration)).findFirst();
+        List<TaskRun> matches = taskRuns.stream()
+                .filter(taskRun -> taskRun.taskId().equals(normalizedTaskId))
+                .filter(taskRun -> Objects.equals(
+                        taskRun.parentId().orElse(null),
+                        parentTaskRunId
+                ))
+                .filter(taskRun -> Objects.equals(
+                        taskRun.iteration().isPresent()
+                                ? taskRun.iteration().getAsInt()
+                                : null,
+                        iteration
+                ))
+                .toList();
+        return matches.isEmpty()
+                ? Optional.empty()
+                : Optional.of(matches.getLast());
+    }
+
+    public Optional<TaskRun> taskRunForOccurrence(
+            String taskId,
+            String parentTaskRunId,
+            Integer iteration,
+            Integer executionGenerationVersion
+    ) {
+        String normalizedTaskId = requireText(taskId, "Task id");
+        return taskRuns.stream()
+                .filter(taskRun -> taskRun.taskId().equals(normalizedTaskId))
+                .filter(taskRun -> Objects.equals(
+                        taskRun.parentId().orElse(null),
+                        parentTaskRunId
+                ))
+                .filter(taskRun -> Objects.equals(
+                        taskRun.iteration().isPresent()
+                                ? taskRun.iteration().getAsInt()
+                                : null,
+                        iteration
+                ))
+                .filter(taskRun -> Objects.equals(
+                        taskRun.executionGenerationVersion().isPresent()
+                                ? taskRun.executionGenerationVersion().getAsInt()
+                                : null,
+                        executionGenerationVersion
+                ))
+                .findFirst();
     }
 
     public List<TaskRun> activeTaskRuns() {
@@ -263,6 +344,16 @@ public class Execution extends BaseDomain {
         taskRun.succeed(outputs);
     }
 
+    /**
+     * Records an orchestration decision that was evaluated but not selected.
+     */
+    public void skipTaskRun(String taskRunId) {
+        requireRunning();
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
+        taskRun.skip();
+    }
+
     public void warnTaskRun(String taskRunId, Map<String, ?> outputs) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
@@ -294,7 +385,123 @@ public class Execution extends BaseDomain {
         requireTaskRunState(taskRun, State.Type.PAUSED);
         taskRun.resume(outputs);
         resumePausedAncestors(taskRun);
+        completeRewindWhenSourceResumes(taskRun);
         state = state.restarted();
+    }
+
+    public void rewindTaskRun(
+            String sourceTaskRunId,
+            String targetTaskRunId,
+            String reason
+    ) {
+        requireState(State.Type.PAUSED);
+        String normalizedReason = requireText(reason, "Rewind reason");
+        TaskRun source = requireTaskRun(sourceTaskRunId);
+        TaskRun target = requireTaskRun(targetTaskRunId);
+        requireTaskRunState(source, State.Type.PAUSED);
+        if (!target.state().is(State.Type.SUCCESS)
+                && !target.state().is(State.Type.WARNING)) {
+            throw new WorkflowException(
+                    "Rewind target TaskRun must be completed: " + target.id()
+            );
+        }
+        if (taskRuns.indexOf(target) >= taskRuns.indexOf(source)) {
+            throw new WorkflowException(
+                    "Rewind target TaskRun must precede its source: "
+                            + target.id()
+            );
+        }
+        unfinishedTaskRuns().forEach(TaskRun::kill);
+        if (generation.active()) {
+            generation.advance(source.id(), target.id(), normalizedReason);
+        } else {
+            generation.start(source.id(), target.id(), normalizedReason);
+        }
+        state = state.restarted();
+    }
+
+    public void startTaskRunGeneration(String taskRunId, String reason) {
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
+        taskRun.startGeneration(reason);
+    }
+
+    public void advanceTaskRunGeneration(String taskRunId, String reason) {
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
+        taskRun.advanceGeneration(reason);
+    }
+
+    public void completeTaskRunGeneration(String taskRunId) {
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        requireTaskRunState(taskRun, State.Type.RUNNING);
+        taskRun.completeGeneration();
+    }
+
+    public List<TaskRun> effectiveTaskRuns() {
+        Optional<Generation.Current> current = generation.current();
+        Map<String, Integer> latestGenerationByTask = new HashMap<>();
+        for (TaskRun taskRun : taskRuns) {
+            taskRun.executionGenerationVersion().ifPresent(version ->
+                    latestGenerationByTask.merge(
+                            taskRun.taskId(),
+                            version,
+                            Math::max
+                    )
+            );
+        }
+        if (current.isEmpty() && latestGenerationByTask.isEmpty()) {
+            return taskRuns();
+        }
+        Set<String> invalidatedTaskIds = current
+                .map(active -> {
+                    active.sourceTaskRunId().orElseThrow(() ->
+                            new IllegalStateException(
+                                    "Execution Generation current requires a source"
+                            )
+                    );
+                    String targetId = active.targetTaskRunId().orElseThrow(() ->
+                            new IllegalStateException(
+                                    "Execution Generation current requires a target"
+                            )
+                    );
+                    return taskRuns.subList(
+                                    indexOfTaskRun(targetId),
+                                    taskRuns.size()
+                            )
+                            .stream()
+                            .map(TaskRun::taskId)
+                            .collect(java.util.stream.Collectors.toSet());
+                })
+                .orElseGet(Set::of);
+        return taskRuns.stream()
+                .filter(taskRun -> {
+                    if (invalidatedTaskIds.contains(taskRun.taskId())) {
+                        return taskRun.executionGenerationVersion().orElse(-1)
+                                == current.orElseThrow().version();
+                    }
+                    Integer latest = latestGenerationByTask.get(
+                            taskRun.taskId()
+                    );
+                    return latest == null
+                            ? taskRun.executionGenerationVersion().isEmpty()
+                            : taskRun.executionGenerationVersion().orElse(-1)
+                                    == latest;
+                })
+                .toList();
+    }
+
+    private void completeRewindWhenSourceResumes(TaskRun resumed) {
+        Optional<Generation.Current> active = generation.current();
+        if (active.isEmpty()) {
+            return;
+        }
+        TaskRun originalSource = requireTaskRun(
+                active.orElseThrow().sourceTaskRunId().orElseThrow()
+        );
+        if (originalSource.taskId().equals(resumed.taskId())) {
+            generation.complete();
+        }
     }
 
     private void resumePausedAncestors(TaskRun taskRun) {
@@ -321,6 +528,7 @@ public class Execution extends BaseDomain {
         if (error == null || error.isBlank()) {
             throw new IllegalArgumentException("TaskRun error must not be blank");
         }
+        completeActiveGenerations();
         taskRun.fail(error);
         taskRuns.stream().filter(other -> other != taskRun).filter(TaskRun::isUnfinished).forEach(TaskRun::kill);
         state = state.failed();
@@ -343,7 +551,9 @@ public class Execution extends BaseDomain {
                     "Execution has unfinished TaskRun: " + id()
             );
         }
-        if (taskRuns.stream().noneMatch(taskRun -> taskRun.state().is(State.Type.WARNING))) {
+        if (effectiveTaskRuns().stream().noneMatch(taskRun ->
+                taskRun.state().is(State.Type.WARNING)
+        )) {
             throw new WorkflowException(
                     "Execution cannot finish with WARNING without a warning "
                             + "TaskRun: " + id()
@@ -365,6 +575,7 @@ public class Execution extends BaseDomain {
 
     public void beginKilling() {
         requireUnfinished();
+        completeActiveGenerations();
         state = state.killing();
     }
 
@@ -399,6 +610,7 @@ public class Execution extends BaseDomain {
                 flowKey,
                 flowVersion,
                 inputs,
+                generation,
                 state,
                 taskRuns
         );
@@ -426,10 +638,43 @@ public class Execution extends BaseDomain {
         if (state.isTerminal() && !unfinishedTaskRuns().isEmpty()) {
             throw new IllegalArgumentException("Terminal Execution must not have unfinished TaskRuns");
         }
+        if (state.isTerminal() && (generation.active()
+                || taskRuns.stream().anyMatch(taskRun ->
+                        taskRun.generation().active()
+                ))) {
+            throw new IllegalArgumentException(
+                    "Terminal Execution must not have an active Generation"
+            );
+        }
         if (state.is(State.Type.PAUSED) && (!activeTaskRuns().isEmpty() || pausedTaskRuns().isEmpty())) {
             throw new IllegalArgumentException("Paused Execution must be at a stable Pause TaskRun");
         }
+        validateExecutionGeneration();
         validateStateRoute();
+    }
+
+    private void validateExecutionGeneration() {
+        List<Generation.Current> currents = new ArrayList<>(
+                generation.history().currents()
+        );
+        generation.current().ifPresent(currents::add);
+        for (Generation.Current current : currents) {
+            String sourceId = current.sourceTaskRunId().orElseThrow(() ->
+                    new IllegalArgumentException(
+                            "Execution Generation requires a source TaskRun"
+                    )
+            );
+            String targetId = current.targetTaskRunId().orElseThrow(() ->
+                    new IllegalArgumentException(
+                            "Execution Generation requires a target TaskRun"
+                    )
+            );
+            if (indexOfTaskRun(targetId) >= indexOfTaskRun(sourceId)) {
+                throw new IllegalArgumentException(
+                        "Execution Generation target must precede its source"
+                );
+            }
+        }
     }
 
     private static final class TaskOccurrence {
@@ -437,15 +682,31 @@ public class Execution extends BaseDomain {
         private final String taskId;
         private final String parentTaskRunId;
         private final Integer iteration;
+        private final Integer executionGenerationVersion;
 
-        private TaskOccurrence(String taskId, String parentTaskRunId, Integer iteration) {
+        private TaskOccurrence(
+                String taskId,
+                String parentTaskRunId,
+                Integer iteration,
+                Integer executionGenerationVersion
+        ) {
             this.taskId = taskId;
             this.parentTaskRunId = parentTaskRunId;
             this.iteration = iteration;
+            this.executionGenerationVersion = executionGenerationVersion;
         }
 
         private static TaskOccurrence from(TaskRun taskRun) {
-            return new TaskOccurrence(taskRun.taskId(), taskRun.parentId().orElse(null), taskRun.iteration().isPresent() ? taskRun.iteration().getAsInt() : null);
+            return new TaskOccurrence(
+                    taskRun.taskId(),
+                    taskRun.parentId().orElse(null),
+                    taskRun.iteration().isPresent()
+                            ? taskRun.iteration().getAsInt()
+                            : null,
+                    taskRun.executionGenerationVersion().isPresent()
+                            ? taskRun.executionGenerationVersion().getAsInt()
+                            : null
+            );
         }
 
         @Override
@@ -456,13 +717,36 @@ public class Execution extends BaseDomain {
             if (!(value instanceof TaskOccurrence other)) {
                 return false;
             }
-            return Objects.equals(taskId, other.taskId) && Objects.equals(parentTaskRunId, other.parentTaskRunId) && Objects.equals(iteration, other.iteration);
+            return Objects.equals(taskId, other.taskId)
+                    && Objects.equals(parentTaskRunId, other.parentTaskRunId)
+                    && Objects.equals(iteration, other.iteration)
+                    && Objects.equals(
+                            executionGenerationVersion,
+                            other.executionGenerationVersion
+                    );
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(taskId, parentTaskRunId, iteration);
+            return Objects.hash(
+                    taskId,
+                    parentTaskRunId,
+                    iteration,
+                    executionGenerationVersion
+            );
         }
+    }
+
+    private int indexOfTaskRun(String taskRunId) {
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        return taskRuns.indexOf(taskRun);
+    }
+
+    private void completeActiveGenerations() {
+        if (generation.active()) {
+            generation.complete();
+        }
+        taskRuns.forEach(TaskRun::completeGenerationIfActive);
     }
 
     private void validateStateRoute() {
@@ -477,7 +761,7 @@ public class Execution extends BaseDomain {
                 case PAUSED -> target == State.Type.RESTARTED || target == State.Type.KILLING;
                 case RESTARTED -> target == State.Type.RUNNING || target == State.Type.KILLING;
                 case KILLING -> target == State.Type.KILLED;
-                case SUCCESS, WARNING, FAILED, KILLED -> false;
+                case SUCCESS, SKIPPED, WARNING, FAILED, KILLED -> false;
             };
             if (!valid) {
                 throw new IllegalArgumentException("Invalid Execution state transition from " + source + " to " + target);

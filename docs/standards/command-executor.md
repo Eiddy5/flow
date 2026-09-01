@@ -18,7 +18,8 @@ Controller（Core 外）
 ```
 
 Execution 的启动、外部 Resume 和 Cancel 是已确认的异步 Executor 链路：
-`ExecutionService` 直接构造 Executor Module 拥有的 `Create`、`Resume` 或 `Cancel`
+`ExecutionService` 通过统一的 `create(session, key, Optional<version>, inputs)` 入口
+选择最新或精确 Flow，并直接构造 Executor Module 拥有的 `Create`、`Resume` 或 `Cancel`
 Command，并投递到持久化
 `ExecutionCommand` Queue；`DefaultExecutor` 只把 Queue 消息路由给
 `ExecutionCommandEventHandler`，不进入 Core `CommandExecutor`。该 Handler 负责恢复

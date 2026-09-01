@@ -37,6 +37,16 @@ class ConditionalRouteResumeIntegrationTest {
                 State.Type.SUCCESS,
                 run(completed, task(scenario.flow(), "approve")).state().current()
             );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "route-decision"),
+                State.Type.SUCCESS
+            );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "reject-decision"),
+                State.Type.SKIPPED
+            );
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -64,6 +74,16 @@ class ConditionalRouteResumeIntegrationTest {
                 State.Type.SUCCESS,
                 run(completed, task(scenario.flow(), "reject")).state().current()
             );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "route-decision"),
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "reject-decision"),
+                State.Type.SUCCESS
+            );
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -71,7 +91,7 @@ class ConditionalRouteResumeIntegrationTest {
     }
 
     @Test
-    void unmatchedOutputCompletesRouteRunsWithoutChildRuns() {
+    void unmatchedOutputSkipsRouteRunsWithoutChildRuns() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             RouteScenario scenario = start(
                 fixture,
@@ -86,15 +106,15 @@ class ConditionalRouteResumeIntegrationTest {
             assertNoRun(completed, task(scenario.flow(), "reject"));
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(4, completed.taskRuns().size());
-            assertEquals(
-                State.Type.SUCCESS,
-                run(completed, task(scenario.flow(), "route-decision"))
-                    .state().current()
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "route-decision"),
+                State.Type.SKIPPED
             );
-            assertEquals(
-                State.Type.SUCCESS,
-                run(completed, task(scenario.flow(), "reject-decision"))
-                    .state().current()
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "reject-decision"),
+                State.Type.SKIPPED
             );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
@@ -117,6 +137,16 @@ class ConditionalRouteResumeIntegrationTest {
             assertTrue(
                 run(completed, task(scenario.flow(), "approval-decision"))
                     .outputs().isEmpty()
+            );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "route-decision"),
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "reject-decision"),
+                State.Type.SKIPPED
             );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -142,6 +172,16 @@ class ConditionalRouteResumeIntegrationTest {
             );
             assertNoRun(completed, task(scenario.flow(), "approve"));
             assertNoRun(completed, task(scenario.flow(), "reject"));
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "route-decision"),
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                task(scenario.flow(), "reject-decision"),
+                State.Type.SKIPPED
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
@@ -248,6 +288,29 @@ class ConditionalRouteResumeIntegrationTest {
     private static void assertNoRun(Execution execution, Task task) {
         assertTrue(execution.taskRuns().stream()
             .noneMatch(run -> run.taskId().equals(task.id())));
+    }
+
+    private static void assertRouteState(
+        Execution execution,
+        Task task,
+        State.Type expected
+    ) {
+        TaskRun taskRun = run(execution, task);
+        assertEquals(expected, taskRun.state().current());
+        assertEquals(
+            List.of(
+                State.Type.CREATED,
+                State.Type.RUNNING,
+                expected
+            ),
+            taskRun.state().history().stream()
+                .map(State.History::state)
+                .toList()
+        );
+        if (expected == State.Type.SKIPPED) {
+            assertTrue(taskRun.outputs().isEmpty());
+            assertTrue(taskRun.error().isEmpty());
+        }
     }
 
     private static String routeYaml(String key, String approveExpress) {

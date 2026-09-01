@@ -58,6 +58,24 @@ class WorkerDispatcherTest {
     }
 
     @Test
+    void runnableAndWorkerResultsRejectSkippedAsAWorkerOutcome() {
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> RunResult.from(State.Type.SKIPPED, Map.of(), null)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> WorkerTaskResult.from(
+                "execution-1",
+                "task-run-1",
+                State.Type.SKIPPED,
+                Map.of(),
+                null
+            )
+        );
+    }
+
+    @Test
     void propagatesUnexpectedTaskException() {
         FailingTask task = FailingTask.builder()
             .id("task-1")

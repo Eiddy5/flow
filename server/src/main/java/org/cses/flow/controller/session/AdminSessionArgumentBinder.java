@@ -30,7 +30,7 @@ import java.util.Optional;
     value = "true",
     defaultValue = "true"
 )
-@Replaces(SessionArgumentBinder.class)
+//@Replaces(SessionArgumentBinder.class)
 public final class AdminSessionArgumentBinder
     implements AnnotatedRequestArgumentBinder<
         UserSession,

@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,27 +32,42 @@ class FlowControllerTest {
     }
 
     @Test
-    void doesNotDefineControllerRequestModels() throws IOException {
+    void ownsOnlyFlowRoutesAndDoesNotDefineRequestModels()
+        throws IOException {
         Path controllerRoot = Path.of(
             "src/main/java/org/cses/flow/controller"
         );
-        String controller = Files.readString(
+        String flowController = Files.readString(
             controllerRoot.resolve("flow/FlowController.java")
+        );
+        String executionController = Files.readString(
+            controllerRoot.resolve("execution/ExecutionController.java")
         );
         String models = Files.readString(
             controllerRoot.resolve("flow/FlowModels.java")
         );
 
-        assertTrue(controller.contains("@Body PublishFlowCommand command"));
-        assertTrue(controller.contains("@Body Map<String, Object> body"));
-        assertTrue(controller.contains(
+        assertTrue(flowController.contains(
+            "@Body PublishFlowCommand command"
+        ));
+        assertTrue(flowController.contains(
             "@QueryValue(defaultValue = \"true\") Boolean draft"
         ));
-        assertFalse(controller.contains("/flows/{flowKey}/draft"));
-        assertFalse(controller.contains("SaveDraftRequest"));
-        assertFalse(controller.contains("StartRequest"));
-        assertFalse(controller.contains("ResumeRequest"));
+        assertFalse(flowController.contains("ExecutionService"));
+        assertFalse(flowController.contains("/executions"));
+        assertFalse(flowController.contains("/session"));
+        assertFalse(flowController.contains("/flows/{flowKey}/draft"));
+        assertFalse(flowController.contains("SaveDraftRequest"));
+        assertTrue(executionController.contains(
+            "@Body Map<String, Object> body"
+        ));
+        assertFalse(executionController.contains("FlowService"));
+        assertFalse(executionController.contains("StartRequest"));
+        assertFalse(executionController.contains("ResumeRequest"));
         assertFalse(models.contains("Request"));
+        assertTrue(Arrays.stream(FlowController.class.getDeclaredFields())
+            .noneMatch(field -> field.getType().getSimpleName()
+                .equals("ExecutionService")));
     }
 
     @Test

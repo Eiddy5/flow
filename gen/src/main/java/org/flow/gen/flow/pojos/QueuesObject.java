@@ -7,7 +7,6 @@ package org.flow.gen.flow.pojos;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import java.io.Serializable;
-import java.time.OffsetDateTime;
 import java.util.LinkedHashMap;
 
 import org.flow.gen.flow.Tables;
@@ -30,7 +29,7 @@ public class QueuesObject extends JooqPojo implements Serializable {
     public String queueName;
     public String eventKey;
     public JSONB payload;
-    public OffsetDateTime createdAt;
+    public Long createdAt;
 
     public QueuesObject() {}
 
@@ -49,7 +48,7 @@ public class QueuesObject extends JooqPojo implements Serializable {
         String queueName,
         String eventKey,
         JSONB payload,
-        OffsetDateTime createdAt
+        Long createdAt
     ) {
         this.id = id;
         this.queueType = queueType;
@@ -132,14 +131,14 @@ public class QueuesObject extends JooqPojo implements Serializable {
     /**
      * Getter for <code>public.queues.created_at</code>.
      */
-    public OffsetDateTime getCreatedAt() {
+    public Long getCreatedAt() {
         return this.createdAt;
     }
 
     /**
      * Setter for <code>public.queues.created_at</code>.
      */
-    public void setCreatedAt(OffsetDateTime createdAt) {
+    public void setCreatedAt(Long createdAt) {
         this.createdAt = createdAt;
     }
 

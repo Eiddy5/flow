@@ -1,4 +1,4 @@
-# ADR 0053：恢复正式 Flow 管理页面与 HTTP Controller
+# ADR 0053：恢复正式 Flow 管理页面与 HTTP Controllers
 
 ## 状态
 
@@ -34,8 +34,11 @@ PostgreSQL-only 以及宿主认证边界。
 采用方案三。
 
 - 管理页面发布在 `/flow/index.html`，资源位于 `server/src/main/resources/flow/`。
-- 真实 HTTP API 由 `org.cses.flow.controller.flow.FlowController` 提供，使用 `/api`
-  路径下的 FlowDraft、部署、Execution、取消和 Resume 路由。
+- 真实 HTTP API 按资源职责拆分，并共同使用 `/api` 前缀：
+  `org.cses.flow.controller.flow.FlowController` 只提供 FlowDraft、定义、部署和版本路由；
+  `org.cses.flow.controller.execution.ExecutionController` 提供 Execution 启动、查询、
+  取消、Resume 和 Rewind 路由；`org.cses.flow.controller.session.SessionController`
+  提供当前管理会话查询。拆分不改变已有 HTTP 路径和请求响应协议。
 - Controller 不使用 `flow.demo.*` 或 Demo 开关；身份仍由
   `@UserSession Session<User>` 绑定，并由 Core Service 校验租户归属和审计信息。当前
   独立 Flow Server 的临时默认 `admin` 身份由 ADR 0054 定义，可配置关闭。
@@ -56,7 +59,7 @@ CSES 的运行方式共享同一套 HTTP 契约，而不会复活 Memory Reposit
 - 独立运行时默认由 ADR 0054 提供 `admin` Session Binder，同时仍需要
   `datasources.flow.*`；接入真实认证前，该 binder 只能作为开发期临时身份。
 - 部署页面的宿主必须允许 `/flow/**` 静态资源，并为 `/api/**` 提供正常认证会话。
-- CSES 可以直接复用该 Controller 和页面，也可以只注入公开 Flow Service 实现自己的
-  UI；Flow Core 不依赖页面代码。
+- CSES 可以直接复用这些资源 Controller 和页面，也可以只注入公开 Flow Service 或
+  Execution Service 实现自己的 UI；Flow Core 不依赖页面代码。
 - ADR 0049 中关于 Demo/Memory 运行模式、独立 Adapter 和 `flow.memory.enabled` 的
   删除决定不变。

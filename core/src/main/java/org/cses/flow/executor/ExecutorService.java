@@ -3,6 +3,7 @@ package org.cses.flow.executor;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.conditions.ConditionContext;
 import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.Generation;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
@@ -11,6 +12,7 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.runner.RunVariables;
 import org.cses.flow.extensions.flow.Branch;
+import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
@@ -22,7 +24,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.OptionalInt;
 import java.util.Set;
 
 /**
@@ -183,12 +184,12 @@ public final class ExecutorService {
 
         Execution execution = context.execution();
         execution.startTaskRun(taskRun.id());
+        if (orchestrationTask.iteratesChildren()) {
+            execution.startTaskRunGeneration(taskRun.id(), "INITIAL");
+        }
         if (task instanceof Route route
             && !matchesRouteCondition(context, route, taskRun)) {
-            execution.succeedTaskRun(
-                taskRun.id(),
-                task.validateOutputs(Map.of())
-            );
+            execution.skipTaskRun(taskRun.id());
             context.captureState();
             return;
         }
@@ -222,12 +223,11 @@ public final class ExecutorService {
             return;
         }
         if (orchestrationTask.iteratesChildren()) {
-            int iteration = latestLoopIteration(
-                context.execution(),
-                taskRun.id()
-            ).orElseThrow(() -> new IllegalStateException(
-                "Loop scope has no completed iteration: " + taskRun.id()
-            ));
+            int iteration = taskRun.generation().current()
+                .orElseThrow(() -> new IllegalStateException(
+                    "Loop scope has no current Generation: " + taskRun.id()
+                ))
+                .version();
             OrchestrationTask.IterationDecision decision =
                 decideAfterIteration(
                     context,
@@ -245,8 +245,9 @@ public final class ExecutorService {
                             null
                         )
                     )
-                );
+            );
             if (decision == OrchestrationTask.IterationDecision.SUCCESS) {
+                context.execution().completeTaskRunGeneration(taskRun.id());
                 context.execution().succeedTaskRun(
                     taskRun.id(),
                     task.validateOutputs(Map.of())
@@ -254,6 +255,7 @@ public final class ExecutorService {
             } else if (
                 decision == OrchestrationTask.IterationDecision.FAILURE
             ) {
+                context.execution().completeTaskRunGeneration(taskRun.id());
                 context.execution().failTaskRun(
                     taskRun.id(),
                     orchestrationTask.iterationFailureMessage(iteration)
@@ -299,7 +301,7 @@ public final class ExecutorService {
                 execution.killUnfinishedTaskRuns();
                 execution.finishKilling();
             }
-            case CREATED, RUNNING, PAUSED, RESTARTED, KILLING ->
+            case CREATED, RUNNING, PAUSED, RESTARTED, SKIPPED, KILLING ->
                     throw new IllegalStateException("Worker cannot return " + result.targetState());
         }
         context.captureState();
@@ -325,7 +327,9 @@ public final class ExecutorService {
             return;
         }
         if (current.settled()) {
-            if (execution.taskRuns().stream().anyMatch(taskRun -> taskRun.state().is(State.Type.WARNING))) {
+            if (execution.effectiveTaskRuns().stream().anyMatch(taskRun ->
+                taskRun.state().is(State.Type.WARNING)
+            )) {
                 execution.warn();
             } else {
                 execution.succeed();
@@ -385,13 +389,19 @@ public final class ExecutorService {
 
     private static SearchResult searchTopLevel(ExecutorContext context, List<Task> tasks) {
         Map<String, Object> visibleOutputs = new LinkedHashMap<>();
-        for (Task task : tasks) {
+        Optional<RewindScope> rewind = RewindScope.from(context, tasks);
+        for (int index = 0; index < tasks.size(); index++) {
+            Task task = tasks.get(index);
+            Integer executionGenerationVersion = rewind.isPresent()
+                ? rewind.orElseThrow().versionFor(index)
+                : null;
             SearchResult result = searchTask(
                 context,
                 task,
                 null,
                 Map.copyOf(visibleOutputs),
                 null,
+                executionGenerationVersion,
                 null
             );
             if (result.hasPlannedEffects() || !result.settled()) {
@@ -402,6 +412,7 @@ public final class ExecutorService {
                 task,
                 null,
                 null,
+                executionGenerationVersion,
                 visibleOutputs
             );
         }
@@ -414,19 +425,28 @@ public final class ExecutorService {
         String parentTaskRunId,
         Map<String, ?> flowingContext,
         Integer iteration,
+        Integer executionGenerationVersion,
         IterationScope iterationScope
     ) {
-        Optional<TaskRun> taskRun = context.execution().taskRunForOccurrence(
-            task.id(),
-            parentTaskRunId,
-            iteration
-        );
+        Optional<TaskRun> taskRun = executionGenerationVersion == null
+            ? context.execution().taskRunForOccurrence(
+                task.id(),
+                parentTaskRunId,
+                iteration
+            )
+            : context.execution().taskRunForOccurrence(
+                task.id(),
+                parentTaskRunId,
+                iteration,
+                executionGenerationVersion
+            );
         if (taskRun.isEmpty()) {
             return SearchResult.nexts(List.of(candidate(
                 task,
                 parentTaskRunId,
                 flowingContext,
-                iteration
+                iteration,
+                executionGenerationVersion
             )));
         }
 
@@ -440,6 +460,7 @@ public final class ExecutorService {
                 iterationScope
             );
             case PAUSED -> SearchResult.unsettled();
+            case SKIPPED -> SearchResult.settledResult();
             case SUCCESS, WARNING -> task instanceof Route
                 || iteratesChildren(task)
                 ? SearchResult.settledResult()
@@ -476,6 +497,9 @@ public final class ExecutorService {
                 taskRun.id(),
                 taskRun.inputs(),
                 null,
+                taskRun.executionGenerationVersion().isPresent()
+                    ? taskRun.executionGenerationVersion().getAsInt()
+                    : null,
                 iterationScope
             );
             if (action.settled() && !action.hasPlannedEffects()) {
@@ -505,10 +529,11 @@ public final class ExecutorService {
         TaskRun loopRun,
         IterationScope parentScope
     ) {
-        int iteration = latestLoopIteration(
-            context.execution(),
-            loopRun.id()
-        ).orElse(1);
+        int iteration = loopRun.generation().current()
+            .orElseThrow(() -> new IllegalStateException(
+                "Loop scope has no current Generation: " + loopRun.id()
+            ))
+            .version();
         IterationScope scope = IterationScope.from(
             task,
             loopRun.id(),
@@ -543,6 +568,10 @@ public final class ExecutorService {
                     + loopRun.id()
             );
         }
+        context.execution().advanceTaskRunGeneration(
+            loopRun.id(),
+            iterationReason(task)
+        );
         IterationScope nextScope = IterationScope.from(
             task,
             loopRun.id(),
@@ -574,6 +603,9 @@ public final class ExecutorService {
                 loopRun.id(),
                 Map.copyOf(flowingContext),
                 scope.iteration(),
+                loopRun.executionGenerationVersion().isPresent()
+                    ? loopRun.executionGenerationVersion().getAsInt()
+                    : null,
                 scope
             );
             if (result.hasPlannedEffects() || !result.settled()) {
@@ -584,6 +616,9 @@ public final class ExecutorService {
                 child,
                 loopRun.id(),
                 scope.iteration(),
+                loopRun.executionGenerationVersion().isPresent()
+                    ? loopRun.executionGenerationVersion().getAsInt()
+                    : null,
                 flowingContext
             );
         }
@@ -616,17 +651,16 @@ public final class ExecutorService {
         );
     }
 
-    private static OptionalInt latestLoopIteration(
-        Execution execution,
-        String loopRunId
-    ) {
-        return execution.taskRuns().stream()
-            .filter(taskRun -> taskRun.parentId()
-                .map(loopRunId::equals)
-                .orElse(false))
-            .filter(taskRun -> taskRun.iteration().isPresent())
-            .mapToInt(taskRun -> taskRun.iteration().getAsInt())
-            .max();
+    private static String iterationReason(Task task) {
+        if (task instanceof Loop) {
+            return "FIXED_COUNT_NOT_REACHED";
+        }
+        if (task instanceof LoopUntil) {
+            return "CONDITION_NOT_SATISFIED";
+        }
+        throw new IllegalStateException(
+            "Unsupported iterative Task type: " + task.getType()
+        );
     }
 
     private static Map<String, Map<String, Object>> iterationOutputs(
@@ -693,6 +727,9 @@ public final class ExecutorService {
                 parentRun.id(),
                 Map.copyOf(flowingContext),
                 null,
+                parentRun.executionGenerationVersion().isPresent()
+                    ? parentRun.executionGenerationVersion().getAsInt()
+                    : null,
                 iterationScope
             );
             if (childResult.hasPlannedEffects() || !childResult.settled()) {
@@ -703,6 +740,9 @@ public final class ExecutorService {
                 child,
                 parentRun.id(),
                 null,
+                parentRun.executionGenerationVersion().isPresent()
+                    ? parentRun.executionGenerationVersion().getAsInt()
+                    : null,
                 flowingContext
             );
         }
@@ -726,6 +766,9 @@ public final class ExecutorService {
                 parentRun.id(),
                 flowingContext,
                 null,
+                parentRun.executionGenerationVersion().isPresent()
+                    ? parentRun.executionGenerationVersion().getAsInt()
+                    : null,
                 iterationScope
             );
             nexts.addAll(branch.nexts());
@@ -769,13 +812,22 @@ public final class ExecutorService {
         Task task,
         String parentTaskRunId,
         Integer iteration,
+        Integer executionGenerationVersion,
         Map<String, Object> target
     ) {
-        context.execution().taskRunForOccurrence(
-            task.id(),
-            parentTaskRunId,
-            iteration
-        ).filter(taskRun ->
+        Optional<TaskRun> completed = executionGenerationVersion == null
+            ? context.execution().taskRunForOccurrence(
+                task.id(),
+                parentTaskRunId,
+                iteration
+            )
+            : context.execution().taskRunForOccurrence(
+                task.id(),
+                parentTaskRunId,
+                iteration,
+                executionGenerationVersion
+            );
+        completed.filter(taskRun ->
             taskRun.state().is(State.Type.SUCCESS)
                 || taskRun.state().is(State.Type.WARNING)
         ).ifPresent(taskRun -> target.put(task.key(), taskRun.outputs()));
@@ -812,7 +864,8 @@ public final class ExecutorService {
         Task task,
         String parentTaskRunId,
         Map<String, ?> parentOutputs,
-        Integer iteration
+        Integer iteration,
+        Integer executionGenerationVersion
     ) {
         Map<String, Object> inputs = new LinkedHashMap<>();
         if (parentOutputs != null && !parentOutputs.isEmpty()) {
@@ -825,13 +878,86 @@ public final class ExecutorService {
             task.id(),
             parentTaskRunId,
             Map.copyOf(inputs),
-            iteration
+            iteration,
+            executionGenerationVersion
         );
     }
 
     private static void requireExecution(ExecutorContext context, String executionId) {
         if (!context.execution().identifiedBy(executionId)) {
             throw new IllegalArgumentException("Worker message belongs to another Execution");
+        }
+    }
+
+    private record RewindScope(
+        int version,
+        int targetIndex,
+        int sourceIndex
+    ) {
+
+        private static Optional<RewindScope> from(
+            ExecutorContext context,
+            List<Task> topLevelTasks
+        ) {
+            Optional<Generation.Current> current = context.execution()
+                .generation()
+                .current();
+            if (current.isEmpty()) {
+                return Optional.empty();
+            }
+            Generation.Current active = current.orElseThrow();
+            TaskRun source = context.execution().requireTaskRun(
+                active.sourceTaskRunId().orElseThrow(() ->
+                    new IllegalStateException(
+                        "Execution Generation current requires a source"
+                    )
+                )
+            );
+            TaskRun target = context.execution().requireTaskRun(
+                active.targetTaskRunId().orElseThrow(() ->
+                    new IllegalStateException(
+                        "Execution Generation current requires a target"
+                    )
+                )
+            );
+            int targetIndex = definitionIndex(topLevelTasks, target);
+            int sourceIndex = definitionIndex(topLevelTasks, source);
+            if (targetIndex >= sourceIndex) {
+                throw new IllegalStateException(
+                    "Rewind target must precede its source in the Flow"
+                );
+            }
+            return Optional.of(new RewindScope(
+                active.version(),
+                targetIndex,
+                sourceIndex
+            ));
+        }
+
+        private Integer versionFor(int taskIndex) {
+            return taskIndex >= targetIndex && taskIndex <= sourceIndex
+                ? version
+                : null;
+        }
+
+        private static int definitionIndex(
+            List<Task> topLevelTasks,
+            TaskRun taskRun
+        ) {
+            if (taskRun.parentId().isPresent()) {
+                throw new WorkflowException(
+                    "Rewind currently supports top-level serial TaskRuns only: "
+                        + taskRun.id()
+                );
+            }
+            for (int index = 0; index < topLevelTasks.size(); index++) {
+                if (topLevelTasks.get(index).identifiedBy(taskRun.taskId())) {
+                    return index;
+                }
+            }
+            throw new WorkflowException(
+                "Rewind TaskRun is not a top-level Flow Task: " + taskRun.id()
+            );
         }
     }
 

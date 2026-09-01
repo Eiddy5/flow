@@ -204,7 +204,7 @@ public class RunVariables {
                 return Map.of();
             }
             Map<String, Object> completed = new LinkedHashMap<>();
-            for (TaskRun completedRun : execution.taskRuns()) {
+            for (TaskRun completedRun : execution.effectiveTaskRuns()) {
                 if (!completedRun.state().is(State.Type.SUCCESS)
                         && !completedRun.state().is(State.Type.WARNING)) {
                     continue;

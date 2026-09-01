@@ -6,6 +6,7 @@ package org.flow.gen.flow;
 
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
+import org.flow.gen.flow.tables.FlowsTable;
 import org.flow.gen.flow.tables.QueuesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.jooq.Index;
@@ -26,7 +27,11 @@ public class Indexes {
 
     public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_KEY, ExecutionsTable.EXECUTIONS.FLOW_VERSION }, false);
     public static final Index IDX_FLOW_TASKS_TREE = Internal.createIndex(DSL.name("idx_flow_tasks_tree"), FlowTasksTable.FLOW_TASKS, new OrderField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_KEY, FlowTasksTable.FLOW_TASKS.FLOW_VERSION, FlowTasksTable.FLOW_TASKS.PARENT_ID, FlowTasksTable.FLOW_TASKS.POSITION }, false);
+    public static final Index IDX_FLOWS_ACTIVE_DRAFTS = Internal.createIndex(DSL.name("idx_flows_active_drafts"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.UPDATED_AT.desc(), FlowsTable.FLOWS.ID }, false);
+    public static final Index IDX_FLOWS_LATEST_DEPLOYED = Internal.createIndex(DSL.name("idx_flows_latest_deployed"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.KEY, FlowsTable.FLOWS.VERSION.desc() }, false);
     public static final Index IDX_QUEUES_PENDING = Internal.createIndex(DSL.name("idx_queues_pending"), QueuesTable.QUEUES, new OrderField[] { QueuesTable.QUEUES.QUEUE_TYPE, QueuesTable.QUEUES.QUEUE_NAME, QueuesTable.QUEUES.CREATED_AT, QueuesTable.QUEUES.ID }, false);
     public static final Index IDX_TASK_RUNS_PARENT = Internal.createIndex(DSL.name("idx_task_runs_parent"), TaskRunsTable.TASK_RUNS, new OrderField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.PARENT_ID, TaskRunsTable.TASK_RUNS.ITERATION, TaskRunsTable.TASK_RUNS.ORDER }, false);
     public static final Index IDX_TASK_RUNS_TASK = Internal.createIndex(DSL.name("idx_task_runs_task"), TaskRunsTable.TASK_RUNS, new OrderField[] { TaskRunsTable.TASK_RUNS.TASK_ID }, false);
+    public static final Index UQ_FLOWS_DEPLOYED_KEY_VERSION = Internal.createIndex(DSL.name("uq_flows_deployed_key_version"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.KEY, FlowsTable.FLOWS.VERSION }, true);
+    public static final Index UQ_FLOWS_DRAFT_KEY = Internal.createIndex(DSL.name("uq_flows_draft_key"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.KEY }, true);
 }

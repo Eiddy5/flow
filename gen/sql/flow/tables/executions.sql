@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS executions (
     flow_key         varchar(128) NOT NULL,
     flow_version      bigint NOT NULL,
     state            jsonb NOT NULL,
+    generation       jsonb NOT NULL DEFAULT '{"current": null, "history": []}'::jsonb,
     lock_version     bigint NOT NULL DEFAULT 0,
 
     creator          jsonb NOT NULL,

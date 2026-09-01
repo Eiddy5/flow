@@ -3,6 +3,7 @@ package org.cses.flow.infrastructure.repositories.executions.entries;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.infrastructure.repositories.executions.codec.ExecutionInputsJsonCodec;
+import org.cses.flow.infrastructure.repositories.executions.codec.GenerationJsonCodec;
 import org.cses.flow.infrastructure.repositories.executions.codec.StateJsonCodec;
 import org.cses.flow.infrastructure.repositories.flows.codec.ActorRefJsonCodec;
 import org.flow.gen.flow.pojos.ExecutionsObject;
@@ -19,10 +20,9 @@ public class ExecutionEntry extends ExecutionsObject {
         entry.flowVersion = execution.flowVersion();
         entry.inputs = ExecutionInputsJsonCodec.encode(execution.inputs());
         entry.state = StateJsonCodec.encode(execution.state());
+        entry.generation = GenerationJsonCodec.encode(execution.generation());
         entry.creator = ActorRefJsonCodec.encode(execution.creator());
-        entry.updater = ActorRefJsonCodec.encode(execution.creator());
         entry.createdAt = execution.createdAt();
-        entry.updatedAt = execution.createdAt();
         return entry;
     }
 
@@ -40,6 +40,7 @@ public class ExecutionEntry extends ExecutionsObject {
             flowKey,
             flowVersion,
             ExecutionInputsJsonCodec.decode(inputs),
+            GenerationJsonCodec.decode(generation),
             StateJsonCodec.decode(state),
             taskRuns
         );

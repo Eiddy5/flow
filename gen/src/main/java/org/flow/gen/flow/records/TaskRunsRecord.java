@@ -91,45 +91,45 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
     }
 
     /**
+     * Setter for <code>public.task_runs.execution_generation_version</code>.
+     */
+    public void setExecutionGenerationVersion(Integer value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.execution_generation_version</code>.
+     */
+    public Integer getExecutionGenerationVersion() {
+        return (Integer) get(5);
+    }
+
+    /**
+     * Setter for <code>public.task_runs.generation</code>.
+     */
+    public void setGeneration(JSONB value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.generation</code>.
+     */
+    public JSONB getGeneration() {
+        return (JSONB) get(6);
+    }
+
+    /**
      * Setter for <code>public.task_runs.state</code>.
      */
     public void setState(JSONB value) {
-        set(5, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.task_runs.state</code>.
      */
     public JSONB getState() {
-        return (JSONB) get(5);
-    }
-
-    /**
-     * Setter for <code>public.task_runs.start_at</code>.
-     */
-    public void setStartAt(Long value) {
-        set(6, value);
-    }
-
-    /**
-     * Getter for <code>public.task_runs.start_at</code>.
-     */
-    public Long getStartAt() {
-        return (Long) get(6);
-    }
-
-    /**
-     * Setter for <code>public.task_runs.end_at</code>.
-     */
-    public void setEndAt(Long value) {
-        set(7, value);
-    }
-
-    /**
-     * Getter for <code>public.task_runs.end_at</code>.
-     */
-    public Long getEndAt() {
-        return (Long) get(7);
+        return (JSONB) get(7);
     }
 
     /**
@@ -188,48 +188,6 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         return (Integer) get(11);
     }
 
-    /**
-     * Setter for <code>public.task_runs.created_at</code>.
-     */
-    public void setCreatedAt(Long value) {
-        set(12, value);
-    }
-
-    /**
-     * Getter for <code>public.task_runs.created_at</code>.
-     */
-    public Long getCreatedAt() {
-        return (Long) get(12);
-    }
-
-    /**
-     * Setter for <code>public.task_runs.updated_at</code>.
-     */
-    public void setUpdatedAt(Long value) {
-        set(13, value);
-    }
-
-    /**
-     * Getter for <code>public.task_runs.updated_at</code>.
-     */
-    public Long getUpdatedAt() {
-        return (Long) get(13);
-    }
-
-    /**
-     * Setter for <code>public.task_runs.deleted_at</code>.
-     */
-    public void setDeletedAt(Long value) {
-        set(14, value);
-    }
-
-    /**
-     * Getter for <code>public.task_runs.deleted_at</code>.
-     */
-    public Long getDeletedAt() {
-        return (Long) get(14);
-    }
-
     // -------------------------------------------------------------------------
     // Primary key information
     // -------------------------------------------------------------------------
@@ -253,7 +211,7 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
     /**
      * Create a detached, initialised TaskRunsRecord
      */
-    public TaskRunsRecord(String id, String executionId, String taskId, String parentId, Integer iteration, JSONB state, Long startAt, Long endAt, JsonObject inputs, JsonObject outputs, String error, Integer order, Long createdAt, Long updatedAt, Long deletedAt) {
+    public TaskRunsRecord(String id, String executionId, String taskId, String parentId, Integer iteration, Integer executionGenerationVersion, JSONB generation, JSONB state, JsonObject inputs, JsonObject outputs, String error, Integer order) {
         super(TaskRunsTable.TASK_RUNS);
 
         setId(id);
@@ -261,16 +219,13 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         setTaskId(taskId);
         setParentId(parentId);
         setIteration(iteration);
+        setExecutionGenerationVersion(executionGenerationVersion);
+        setGeneration(generation);
         setState(state);
-        setStartAt(startAt);
-        setEndAt(endAt);
         setInputs(inputs);
         setOutputs(outputs);
         setError(error);
         setOrder(order);
-        setCreatedAt(createdAt);
-        setUpdatedAt(updatedAt);
-        setDeletedAt(deletedAt);
     }
 
 
@@ -287,16 +242,13 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
             setTaskId(value.taskId);
             setParentId(value.parentId);
             setIteration(value.iteration);
+            setExecutionGenerationVersion(value.executionGenerationVersion);
+            setGeneration(value.generation);
             setState(value.state);
-            setStartAt(value.startAt);
-            setEndAt(value.endAt);
             setInputs(value.inputs);
             setOutputs(value.outputs);
             setError(value.error);
             setOrder(value.order);
-            setCreatedAt(value.createdAt);
-            setUpdatedAt(value.updatedAt);
-            setDeletedAt(value.deletedAt);
         }
     }
 
@@ -307,16 +259,13 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         object.taskId = getTaskId();
         object.parentId = getParentId();
         object.iteration = getIteration();
+        object.executionGenerationVersion = getExecutionGenerationVersion();
+        object.generation = getGeneration();
         object.state = getState();
-        object.startAt = getStartAt();
-        object.endAt = getEndAt();
         object.inputs = getInputs();
         object.outputs = getOutputs();
         object.error = getError();
         object.order = getOrder();
-        object.createdAt = getCreatedAt();
-        object.updatedAt = getUpdatedAt();
-        object.deletedAt = getDeletedAt();
         return object;
     }
 
@@ -332,16 +281,13 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         pojo.taskId = getTaskId();
         pojo.parentId = getParentId();
         pojo.iteration = getIteration();
+        pojo.executionGenerationVersion = getExecutionGenerationVersion();
+        pojo.generation = getGeneration();
         pojo.state = getState();
-        pojo.startAt = getStartAt();
-        pojo.endAt = getEndAt();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
         pojo.error = getError();
         pojo.order = getOrder();
-        pojo.createdAt = getCreatedAt();
-        pojo.updatedAt = getUpdatedAt();
-        pojo.deletedAt = getDeletedAt();
         return pojo;
     }
 }

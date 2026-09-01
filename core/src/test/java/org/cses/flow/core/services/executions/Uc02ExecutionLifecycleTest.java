@@ -11,6 +11,7 @@ import org.paas.session.Session;
 import org.paas.session.User;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -171,7 +172,12 @@ class Uc02ExecutionLifecycleTest {
                 other, PublishFlowCommand.from(otherDraft.key(), false)
             );
             assertThrows(WorkflowException.class, () -> fixture.executionService()
-                .create(fixture.session(), otherFlow.key()));
+                .create(
+                    fixture.session(),
+                    otherFlow.key(),
+                    Optional.empty(),
+                    Map.of()
+                ));
             assertTrue(fixture.executionService().executions(fixture.session())
                 .isEmpty());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -407,10 +413,15 @@ class Uc02ExecutionLifecycleTest {
 
     private static void assertRejectedStartAndNoRun(
         WorkflowUcFixture fixture,
-        String flowKey
+        String key
     ) {
         assertThrows(WorkflowException.class, () -> fixture.executionService()
-            .create(fixture.session(), flowKey));
+            .create(
+                fixture.session(),
+                key,
+                Optional.empty(),
+                Map.of()
+            ));
         assertTrue(fixture.executionService().executions(fixture.session())
             .isEmpty());
         assertTrue(fixture.pausedTaskRuns().isEmpty());

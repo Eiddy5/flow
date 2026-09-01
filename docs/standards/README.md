@@ -19,7 +19,7 @@
 
 | 规范 | 适用内容 |
 | --- | --- |
-| [`development.md`](development.md) | 技术 ID、Java 类型、timestamp、复用与重构 |
+| [`development.md`](development.md) | 技术 ID、Java 类型、timestamp、方法说明、复用与重构 |
 | [`domain-object-modeling.md`](domain-object-modeling.md) | 领域术语、对象角色、聚合、状态机、不变量和语义所有权的通用建模方法 |
 | [`command-executor.md`](command-executor.md) | 项目写操作、Session、Command、Handler 和事务约束 |
 | [`postgresql-schema.md`](postgresql-schema.md) | PostgreSQL 基线入口、表文件与命名、bigint 时间和数据库校验边界 |

@@ -9,6 +9,7 @@ import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -38,6 +39,18 @@ class Uc06ConditionalRouteTest {
                 run(completed, flow, "approval-decision").outputs());
             assertEquals(State.Type.SUCCESS,
                 run(completed, flow, "approve").state().current());
+            assertRouteState(
+                completed,
+                flow,
+                "route-decision",
+                State.Type.SUCCESS
+            );
+            assertRouteState(
+                completed,
+                flow,
+                "reject-decision",
+                State.Type.SKIPPED
+            );
             assertNoRun(completed, flow, "reject");
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -61,6 +74,18 @@ class Uc06ConditionalRouteTest {
                 run(completed, flow, "approval-decision").outputs());
             assertEquals(State.Type.SUCCESS,
                 run(completed, flow, "reject").state().current());
+            assertRouteState(
+                completed,
+                flow,
+                "route-decision",
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                flow,
+                "reject-decision",
+                State.Type.SUCCESS
+            );
             assertNoRun(completed, flow, "approve");
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -82,10 +107,18 @@ class Uc06ConditionalRouteTest {
 
             assertNoRun(completed, flow, "approve");
             assertNoRun(completed, flow, "reject");
-            assertEquals(State.Type.SUCCESS,
-                run(completed, flow, "route-decision").state().current());
-            assertEquals(State.Type.SUCCESS,
-                run(completed, flow, "reject-decision").state().current());
+            assertRouteState(
+                completed,
+                flow,
+                "route-decision",
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                flow,
+                "reject-decision",
+                State.Type.SKIPPED
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
@@ -130,6 +163,18 @@ class Uc06ConditionalRouteTest {
                 run(completed, flow, "approval-decision").outputs());
             assertNoRun(completed, flow, "approve");
             assertNoRun(completed, flow, "reject");
+            assertRouteState(
+                completed,
+                flow,
+                "route-decision",
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                flow,
+                "reject-decision",
+                State.Type.SKIPPED
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
@@ -152,6 +197,18 @@ class Uc06ConditionalRouteTest {
                 run(completed, flow, "approval-decision").outputs().get("decision"));
             assertNoRun(completed, flow, "approve");
             assertNoRun(completed, flow, "reject");
+            assertRouteState(
+                completed,
+                flow,
+                "route-decision",
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                completed,
+                flow,
+                "reject-decision",
+                State.Type.SKIPPED
+            );
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
@@ -178,6 +235,18 @@ class Uc06ConditionalRouteTest {
             assertEquals(State.Type.PAUSED, firstWaiting.state().current());
             assertEquals(Map.of(), fixture.taskRun(firstPause).outputs());
             assertNoRun(secondCompleted, flow, "reject");
+            assertRouteState(
+                secondCompleted,
+                flow,
+                "route-decision",
+                State.Type.SUCCESS
+            );
+            assertRouteState(
+                secondCompleted,
+                flow,
+                "reject-decision",
+                State.Type.SKIPPED
+            );
 
             fixture.restartServer();
             Execution firstCompleted = fixture.resume(
@@ -191,6 +260,19 @@ class Uc06ConditionalRouteTest {
                 run(firstCompleted, flow, "reject").state().current());
             assertEquals(State.Type.SUCCESS,
                 run(secondCompleted, flow, "approve").state().current());
+            assertNoRun(firstCompleted, flow, "approve");
+            assertRouteState(
+                firstCompleted,
+                flow,
+                "route-decision",
+                State.Type.SKIPPED
+            );
+            assertRouteState(
+                firstCompleted,
+                flow,
+                "reject-decision",
+                State.Type.SUCCESS
+            );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
@@ -210,6 +292,26 @@ class Uc06ConditionalRouteTest {
 
     private static void assertNoRun(Execution execution, Flow flow, String key) {
         assertEquals(0, execution.taskRunsForTask(task(flow, key).id()).size());
+    }
+
+    private static void assertRouteState(
+        Execution execution,
+        Flow flow,
+        String key,
+        State.Type expected
+    ) {
+        TaskRun taskRun = run(execution, flow, key);
+        assertEquals(expected, taskRun.state().current());
+        assertEquals(
+            List.of(
+                State.Type.CREATED,
+                State.Type.RUNNING,
+                expected
+            ),
+            taskRun.state().history().stream()
+                .map(State.History::state)
+                .toList()
+        );
     }
 
     private static String routeYaml(String key, String approveExpression) {

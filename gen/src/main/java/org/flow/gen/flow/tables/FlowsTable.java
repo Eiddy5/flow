@@ -4,13 +4,17 @@
 package org.flow.gen.flow.tables;
 
 
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
+import org.flow.gen.flow.Indexes;
 import org.flow.gen.flow.Keys;
 import org.flow.gen.flow.Public;
 import org.flow.gen.flow.records.FlowsRecord;
 import org.jooq.Condition;
 import org.jooq.Field;
+import org.jooq.Index;
 import org.jooq.JSONB;
 import org.jooq.Name;
 import org.jooq.PlainSQL;
@@ -166,6 +170,11 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     @Override
     public Schema getSchema() {
         return aliased() ? null : Public.PUBLIC;
+    }
+
+    @Override
+    public List<Index> getIndexes() {
+        return Arrays.asList(Indexes.IDX_FLOWS_ACTIVE_DRAFTS, Indexes.IDX_FLOWS_LATEST_DEPLOYED, Indexes.UQ_FLOWS_DEPLOYED_KEY_VERSION, Indexes.UQ_FLOWS_DRAFT_KEY);
     }
 
     @Override

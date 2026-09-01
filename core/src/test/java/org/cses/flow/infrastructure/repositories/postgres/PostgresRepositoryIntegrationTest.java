@@ -230,6 +230,13 @@ final class PostgresRepositoryIntegrationTest {
             );
             executionRepository.save(dsl, created);
             created.startTaskRun(createdTaskRun.id());
+            TaskRun skippedRouteRun = created.createTaskRun(
+                    approvalRoute.id(),
+                    null,
+                    Map.of("decision", "not-selected")
+            );
+            created.startTaskRun(skippedRouteRun.id());
+            created.skipTaskRun(skippedRouteRun.id());
             executionRepository.save(dsl, created);
             return created;
         });
@@ -257,6 +264,24 @@ final class PostgresRepositoryIntegrationTest {
                 execution.taskRuns().getFirst().state(),
                 restoredExecution.taskRuns().getFirst().state()
         );
+        TaskRun restoredSkippedRouteRun = restoredExecution.taskRuns()
+                .getLast();
+        assertEquals(
+                State.Type.SKIPPED,
+                restoredSkippedRouteRun.state().current()
+        );
+        assertEquals(
+                List.of(
+                        State.Type.CREATED,
+                        State.Type.RUNNING,
+                        State.Type.SKIPPED
+                ),
+                restoredSkippedRouteRun.state().history().stream()
+                        .map(State.History::state)
+                        .toList()
+        );
+        assertTrue(restoredSkippedRouteRun.outputs().isEmpty());
+        assertTrue(restoredSkippedRouteRun.error().isEmpty());
         JsonObject storedExecutionState = read(dsl -> JsonObject.Parse(
                 dsl.select(EXECUTIONS.STATE)
                         .from(EXECUTIONS)
@@ -290,6 +315,24 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(
                 execution.taskRuns().getFirst().state().history().size(),
                 storedTaskRunState.getObjects("history").size()
+        );
+        JsonObject storedSkippedRouteState = read(dsl -> JsonObject.Parse(
+                dsl.select(TASK_RUNS.STATE)
+                        .from(TASK_RUNS)
+                        .where(TASK_RUNS.EXECUTION_ID.eq(execution.id()))
+                        .and(TASK_RUNS.ID.eq(
+                                execution.taskRuns().getLast().id()
+                        ))
+                        .fetchOne(TASK_RUNS.STATE)
+                        .data()
+        ));
+        assertEquals(
+                State.Type.SKIPPED.name(),
+                storedSkippedRouteState.getString("current")
+        );
+        assertEquals(
+                3,
+                storedSkippedRouteState.getObjects("history").size()
         );
         long executionCount = read(dsl ->
                 executionRepository.count(dsl, companyId)

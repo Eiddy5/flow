@@ -52,10 +52,10 @@ _Avoid_: CLOSED status, FlowDefinitionStatus, physical deletion, version replace
 由 Flow 定义域的 `State` 统一定义、贯穿一次工作流运行的状态语言；
 State 对象以 `current` 表达当前状态，以 `history` 保存从创建开始的真实变化
 轨迹。`State.Type` 统一包含
-`CREATED/RUNNING/PAUSED/COMPLETED/WARNING/CANCELLED/FAILED/TERMINATED`。
-Execution 只使用 CREATED、RUNNING 和现有终态；PAUSED 只属于明确的 PAUSE
-TaskRun。WARNING、CANCELLED、FAILED 当前只作为 Pause 超时 Behavior 的目标契约，
-尚没有超时触发入口。
+`CREATED/RUNNING/PAUSED/RESTARTED/SUCCESS/SKIPPED/WARNING/FAILED/KILLING/KILLED`。
+Execution 使用除 SKIPPED 外的生命周期状态；RESTARTED 和 KILLING 只属于
+Execution。TaskRun 不使用 RESTARTED 或 KILLING；SKIPPED 只属于已实际进入判断、
+但条件未命中的 Route TaskRun，它是终态且没有 outputs 或 error。
 Execution、TaskRun 各自持有完整 State 并限制自己的合法路线；RunnableTask 只
 报告完成或失败事实，OrchestrationTask 的暂停和作用域收敛由 Executor 直接
 应用，全部历史仍由聚合产生。审批、表单或工单仍拥有自己的外部业务状态。
@@ -127,8 +127,9 @@ _Avoid_: WorkerContext, Persisted Execution Context, TaskRun Snapshot, State Mut
 
 **Ordered Task Children**:
 Branch 按定义顺序拥有的直接子 Task；前一个已选择子 Task 的完整子树收敛后才能进入
-下一个。Route 条件不成立时不产生该 Route 的运行事实。它是 Sequence、Route 和循环体
-的串行结构语义，不属于普通 Runnable Task，也不表示同级分支同时运行。
+下一个。Route 条件不成立时，其已创建并开始的 TaskRun 进入 SKIPPED，但该 Route 的
+子 Task 不产生 TaskRun。它是 Sequence、Route 和循环体的串行结构语义，不属于普通
+Runnable Task，也不表示同级分支同时运行。
 _Avoid_: Implicit parallel branches, sibling batch, unordered children
 
 **PARALLEL Task**:
@@ -264,7 +265,8 @@ Execution 实际执行某个 Task 时产生的真实实例。Executor Scheduling
 才成为真实历史。它通过 `taskId` 关联确定 Flow Reversion 中的 Task，通过
 `parentId` 关联真实父 TaskRun，并保存本次执行的状态、输入、输出和错误。循环体
 直接子 TaskRun 还以可空的正整数 iteration 表达所属轮次；同一 Task 可以因循环
-产生多个 TaskRun，其列表顺序表达真实运行顺序。
+产生多个 TaskRun，其列表顺序表达真实运行顺序。条件未命中的 Route 仍是已经判断过的
+真实 TaskRun，以 SKIPPED 保存；其未进入的子路径不伪造 TaskRun。
 _Avoid_: Activity, Task instance
 
 **PAUSE Task**:

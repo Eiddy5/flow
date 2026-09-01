@@ -26,7 +26,9 @@ flowchart LR
         subgraph inbound ["入站与应用装配"]
             micronautApp["Application / Micronaut Netty"]
             pluginController["PluginController"]
-            flowController["FlowController / /api"]
+            flowController["FlowController / Flow routes"]
+            executionController["ExecutionController / Execution routes"]
+            sessionController["SessionController / Session route"]
         end
     end
 
@@ -80,8 +82,10 @@ flowchart LR
     micronautApp --> pluginController
     pluginController --> pluginService
     micronautApp --> flowController
+    micronautApp --> executionController
+    micronautApp --> sessionController
     flowController --> flowService
-    flowController --> executionService
+    executionController --> executionService
     externalCaller -->|"executionId + taskRunId + outputs"| executionService
 
     flowService --> commandExecutor
@@ -193,7 +197,7 @@ flowchart TD
 
     orchestrationDispatch["ExecutorService 直接启动 OrchestrationTask"]
     orchestrationKind{"编排特征？"}
-    routeCondition["Route 使用已创建且 RUNNING 的当前 TaskRun 构建变量并计算 Condition；不匹配则完成自身且不进入子树"]
+    routeCondition["Route 使用已创建且 RUNNING 的当前 TaskRun 构建变量并计算 Condition；不匹配则以 SKIPPED 收敛且不进入子树"]
     parallelScope["Parallel TaskRun 保持 RUNNING；释放可运行直接分支"]
     pauseAction["Pause TaskRun 保持 RUNNING；无条件执行 pause Task 完整子树"]
     pausePersist["pause 子树收敛后，持久化 Pause TaskRun 与 Execution 的稳定暂停点"]
@@ -217,6 +221,13 @@ flowchart TD
     resumeAccepted(["返回当前 Execution 受理回执"])
     resumeConsume["ExecutionCommandEventHandler 路由 Resume；校验后投递 ExecutorEvent"]
     resumeTask["ExecutorEventHandler 锁定 Execution/Flow；通过 ExecutorContext 调用 ExecutorService.resume"]
+
+    rewindStart(["外部从当前 Pause 提交 Rewind"])
+    rewindAdmission["加载当前 Execution；校验源 Pause、当前有效历史目标和顶层串行边界；按回滚顺序计算受影响 TaskRun；构造 Rewind"]
+    enqueueRewind["写入 ExecutionCommand Queue"]
+    rewindAccepted(["返回提交时 Execution 快照与受影响 TaskRun 编号受理结果"])
+    rewindConsume["ExecutionCommandEventHandler 写入 Execution Generation Current 与 RESTARTED"]
+    rewindPlan["handleRestart 只恢复 RUNNING；handleNext 按 Current.version 重建 target 到 source 片段"]
 
     cancelStart(["用户取消 Execution"])
     cancelCommand["构造 Cancel；写入 ExecutionCommand Queue"]
@@ -280,6 +291,14 @@ flowchart TD
     resumeConsume --> resumeTask
     resumeTask --> handle
 
+    runningStable -.->|"用户选择历史 TaskRun"| rewindStart
+    rewindStart --> rewindAdmission
+    rewindAdmission --> enqueueRewind
+    enqueueRewind --> rewindAccepted
+    enqueueRewind -.->|"事务提交后异步消费"| rewindConsume
+    rewindConsume --> rewindPlan
+    rewindPlan --> handle
+
     cancelStart --> cancelCommand
     cancelCommand --> cancelConsume
     cancelConsume --> cancelExecution
@@ -292,8 +311,8 @@ flowchart TD
     classDef success fill:#E5F6E9,stroke:#3D9970,color:#173B2A
     classDef failure fill:#FFE3DE,stroke:#C7503E,color:#4A1812
 
-    class saveStart,deployStart,executeStart,acceptedEnd,resumeStart,resumeAccepted,cancelStart startEnd
-    class saveService,saveTransaction,saveDraft,parseDefinition,materializeFlow,persistFlow,createExecution,enqueueStart,consumeStart,drive,handle,plan,orchestrationDispatch,routeCondition,parallelScope,completeScope,pauseAction,pausePersist,runnableDispatch,workerRun,applyOutputs,resumeAdmission,enqueueResume,resumeConsume,resumeTask,cancelCommand,cancelConsume,cancelExecution,runningStable action
+    class saveStart,deployStart,executeStart,acceptedEnd,resumeStart,resumeAccepted,rewindStart,rewindAccepted,cancelStart startEnd
+    class saveService,saveTransaction,saveDraft,parseDefinition,materializeFlow,persistFlow,createExecution,enqueueStart,consumeStart,drive,handle,plan,orchestrationDispatch,routeCondition,parallelScope,completeScope,pauseAction,pausePersist,runnableDispatch,workerRun,applyOutputs,resumeAdmission,enqueueResume,resumeConsume,resumeTask,rewindAdmission,enqueueRewind,rewindConsume,rewindPlan,cancelCommand,cancelConsume,cancelExecution,runningStable action
     class hasNext,capability,orchestrationKind,workerResult,settled,scopeSettled,pausedLeaves decision
     class pausePersist waiting
     class completeExecution,completedEnd success
@@ -329,7 +348,9 @@ flowchart TD
    安全的完整 Map 路径语义。`build()` 在 Execution 分支中统一解析 execution、inputs、
    已完成 TaskRun outputs 和父链；Flow variables 仍由精确 Flow Reversion 提供，当前
    Task/TaskRun 不能在并行场景中通过“最后一次运行”猜测。Route 先创建并启动自己的
-   TaskRun，再计算 Condition。
+   TaskRun，再计算 Condition；未命中时该 Route TaskRun 进入 `SKIPPED`，不产生
+   outputs、error 或子 TaskRun，Execution 仍继续收敛。`SKIPPED` 不属于 Execution，
+   也不能由 Worker 上报。
 6. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
    同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。RunContext 通过 Builder 创建且
    只保存规范 variables，不保存 Session 或重复运行身份；常用身份通过
@@ -339,7 +360,19 @@ flowchart TD
    `ExecutionCommand` Queue，Command Handler 再次校验并投递 `ExecutorEvent`，内部
    Handler 从队列领取后通过 `ExecutorContext` 调用 `ExecutorService.resume`，因此不
    依赖原 Server 进程仍然存活，也不需要额外等待聚合。
-8. `ExecutorEventHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
+8. 稳定 Pause 还可通过 Rewind Command 退回到同一 Execution 的顶层串行历史
+   TaskRun。Execution Generation 的 Current 记录 version、源、目标、原因和日期；
+   Service 在受理时从当前有效运行路径计算 target 到 source（两端及真实后代均包含）
+   的影响 TaskRun，并按较晚记录和子节点优先的业务回滚顺序随 Execution 快照返回；
+   `SKIPPED` Route 作为真实叶子包含，未创建的子节点不出现。该结果只表示 Queue 已
+   接受已校验的拟退回范围，不表示异步命令或外部业务回滚已经完成。
+   Command Handler 只写入该事实并把 Execution 置为 RESTARTED，`handleRestart` 只恢复
+   RUNNING，`handleNext` 才重建目标到源 Pause 的片段。再次 rewind 会把上一 Current
+   移入 History；恢复新源 Pause 后清空 Current并沿最新有效输出继续。
+9. Loop 与 LoopUntil 的作用域 TaskRun 各自拥有 Generation：当前轮是 Current，完成
+   轮次进入 History，继续原因随新 Current 保存；直接子 TaskRun 的 iteration 等于
+   当轮 version，但不再作为推导循环游标的唯一来源。
+10. `ExecutorEventHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
    的 OrchestrationTask、同步调用 Worker、持久化本轮变化，并将仍可推进的下一周期
    重新投回 Event Queue。`DefaultExecutor` 不拥有状态机，只负责两条 Queue 路由。
 
@@ -347,12 +380,16 @@ flowchart TD
 
 - [`server/src/main/java/org/cses/flow/controller/plugins/PluginController.java`](../server/src/main/java/org/cses/flow/controller/plugins/PluginController.java)
 - [`server/src/main/java/org/cses/flow/controller/flow/FlowController.java`](../server/src/main/java/org/cses/flow/controller/flow/FlowController.java)
+- [`server/src/main/java/org/cses/flow/controller/execution/ExecutionController.java`](../server/src/main/java/org/cses/flow/controller/execution/ExecutionController.java)
+- [`server/src/main/java/org/cses/flow/controller/session/SessionController.java`](../server/src/main/java/org/cses/flow/controller/session/SessionController.java)
 - [`server/src/main/resources/flow/index.html`](../server/src/main/resources/flow/index.html)
 - [`../core/src/main/java/org/cses/flow/core/services/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/services/commands/CommandExecutor.java)
 - [`core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java`](../core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java)
+- [`core/src/main/java/org/cses/flow/core/services/executions/RewindResult.java`](../core/src/main/java/org/cses/flow/core/services/executions/RewindResult.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`](../core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/Create.java`](../core/src/main/java/org/cses/flow/executor/commands/Create.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/Resume.java`](../core/src/main/java/org/cses/flow/executor/commands/Resume.java)
+- [`core/src/main/java/org/cses/flow/executor/commands/Rewind.java`](../core/src/main/java/org/cses/flow/executor/commands/Rewind.java)
 - [`core/src/main/java/org/cses/flow/executor/DefaultExecutor.java`](../core/src/main/java/org/cses/flow/executor/DefaultExecutor.java)
 - [`core/src/main/java/org/cses/flow/executor/handlers/ExecutionCommandEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutionCommandEventHandler.java)
 - [`core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java)

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonSubTypes;
 import lombok.Getter;
 import lombok.Setter;
 import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.Generation;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Data;
@@ -14,12 +15,11 @@ import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.services.executions.RewindResult;
 import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
 import org.paas.json.SerializableObject;
-import org.paas.session.Session;
-import org.paas.session.User;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -32,45 +32,6 @@ import java.util.Map;
 public class FlowModels {
 
     private FlowModels() {
-    }
-
-    @Getter
-    @Setter
-    public static final class SessionView extends SerializableObject {
-
-        private final String companyId;
-        private final String userId;
-        private final String userName;
-
-        private SessionView(
-            String companyId,
-            String userId,
-            String userName
-        ) {
-            this.companyId = companyId;
-            this.userId = userId;
-            this.userName = userName;
-        }
-
-        public static SessionView from(Session<User> session) {
-            return new SessionView(
-                session.getCompanyId(),
-                session.getUserId(),
-                session.getName()
-            );
-        }
-
-        public String getCompanyId() {
-            return companyId;
-        }
-
-        public String getUserId() {
-            return userId;
-        }
-
-        public String getUserName() {
-            return userName;
-        }
     }
 
     @Getter
@@ -627,6 +588,7 @@ public class FlowModels {
         private final String state;
         private final long createdAt;
         private final long updatedAt;
+        private final GenerationView generation;
         private final List<HistoryView> history;
         private final List<TaskRunView> taskRuns;
 
@@ -637,6 +599,7 @@ public class FlowModels {
             String state,
             long createdAt,
             long updatedAt,
+            GenerationView generation,
             List<HistoryView> history,
             List<TaskRunView> taskRuns
         ) {
@@ -646,6 +609,7 @@ public class FlowModels {
             this.state = state;
             this.createdAt = createdAt;
             this.updatedAt = updatedAt;
+            this.generation = generation;
             this.history = List.copyOf(history);
             this.taskRuns = List.copyOf(taskRuns);
         }
@@ -660,6 +624,7 @@ public class FlowModels {
                 execution.state().current().name(),
                 stateHistory.getFirst().date(),
                 stateHistory.getLast().date(),
+                GenerationView.from(execution.generation()),
                 stateHistory.stream().map(HistoryView::from).toList(),
                 execution.taskRuns().stream()
                     .map(TaskRunView::from)
@@ -691,6 +656,10 @@ public class FlowModels {
             return updatedAt;
         }
 
+        public GenerationView getGeneration() {
+            return generation;
+        }
+
         public List<HistoryView> getHistory() {
             return history;
         }
@@ -702,12 +671,37 @@ public class FlowModels {
 
     @Getter
     @Setter
+    public static class RewindView extends SerializableObject {
+
+        ExecutionView execution;
+        List<String> affectedTaskRunIds;
+
+        private RewindView(
+                ExecutionView execution,
+                List<String> affectedTaskRunIds
+        ) {
+            this.execution = execution;
+            this.affectedTaskRunIds = List.copyOf(affectedTaskRunIds);
+        }
+
+        public static RewindView from(RewindResult result) {
+            return new RewindView(
+                    ExecutionView.from(result.execution()),
+                    result.affectedTaskRunIds()
+            );
+        }
+    }
+
+    @Getter
+    @Setter
     public static final class TaskRunView extends SerializableObject {
 
         private final String id;
         private final String taskId;
         private final String parentTaskRunId;
         private final Integer iteration;
+        private final Integer executionGenerationVersion;
+        private final GenerationView generation;
         private final String state;
         private final Map<String, Object> inputs;
         private final Map<String, Object> outputs;
@@ -721,6 +715,8 @@ public class FlowModels {
             String taskId,
             String parentTaskRunId,
             Integer iteration,
+            Integer executionGenerationVersion,
+            GenerationView generation,
             String state,
             Map<String, Object> inputs,
             Map<String, Object> outputs,
@@ -733,6 +729,8 @@ public class FlowModels {
             this.taskId = taskId;
             this.parentTaskRunId = parentTaskRunId;
             this.iteration = iteration;
+            this.executionGenerationVersion = executionGenerationVersion;
+            this.generation = generation;
             this.state = state;
             this.inputs = immutableMap(inputs);
             this.outputs = immutableMap(outputs);
@@ -751,6 +749,10 @@ public class FlowModels {
                 taskRun.iteration().isPresent()
                     ? taskRun.iteration().getAsInt()
                     : null,
+                taskRun.executionGenerationVersion().isPresent()
+                    ? taskRun.executionGenerationVersion().getAsInt()
+                    : null,
+                GenerationView.from(taskRun.generation()),
                 taskRun.state().current().name(),
                 taskRun.inputs(),
                 taskRun.outputs(),
@@ -775,6 +777,14 @@ public class FlowModels {
 
         public Integer getIteration() {
             return iteration;
+        }
+
+        public Integer getExecutionGenerationVersion() {
+            return executionGenerationVersion;
+        }
+
+        public GenerationView getGeneration() {
+            return generation;
         }
 
         public String getState() {
@@ -808,6 +818,99 @@ public class FlowModels {
 
     @Getter
     @Setter
+    public static final class GenerationView extends SerializableObject {
+
+        private final GenerationCurrentView current;
+        private final List<GenerationCurrentView> history;
+
+        private GenerationView(
+            GenerationCurrentView current,
+            List<GenerationCurrentView> history
+        ) {
+            this.current = current;
+            this.history = List.copyOf(history);
+        }
+
+        private static GenerationView from(Generation generation) {
+            return new GenerationView(
+                generation.current()
+                    .map(GenerationCurrentView::from)
+                    .orElse(null),
+                generation.history().currents().stream()
+                    .map(GenerationCurrentView::from)
+                    .toList()
+            );
+        }
+
+        public GenerationCurrentView getCurrent() {
+            return current;
+        }
+
+        public List<GenerationCurrentView> getHistory() {
+            return history;
+        }
+    }
+
+    @Getter
+    @Setter
+    public static final class GenerationCurrentView
+        extends SerializableObject {
+
+        private final int version;
+        private final String sourceTaskRunId;
+        private final String targetTaskRunId;
+        private final String reason;
+        private final long date;
+
+        private GenerationCurrentView(
+            int version,
+            String sourceTaskRunId,
+            String targetTaskRunId,
+            String reason,
+            long date
+        ) {
+            this.version = version;
+            this.sourceTaskRunId = sourceTaskRunId;
+            this.targetTaskRunId = targetTaskRunId;
+            this.reason = reason;
+            this.date = date;
+        }
+
+        private static GenerationCurrentView from(
+            Generation.Current current
+        ) {
+            return new GenerationCurrentView(
+                current.version(),
+                current.sourceTaskRunId().orElse(null),
+                current.targetTaskRunId().orElse(null),
+                current.reason(),
+                current.date()
+            );
+        }
+
+        public int getVersion() {
+            return version;
+        }
+
+        public String getSourceTaskRunId() {
+            return sourceTaskRunId;
+        }
+
+        public String getTargetTaskRunId() {
+            return targetTaskRunId;
+        }
+
+        public String getReason() {
+            return reason;
+        }
+
+        public long getDate() {
+            return date;
+        }
+    }
+
+    @Getter
+    @Setter
     public static final class HistoryView extends SerializableObject {
 
         private final String state;
@@ -831,21 +934,6 @@ public class FlowModels {
 
         public long getDate() {
             return date;
-        }
-    }
-
-    @Getter
-    @Setter
-    public static final class ErrorView extends SerializableObject {
-
-        private final String message;
-
-        public ErrorView(String message) {
-            this.message = message;
-        }
-
-        public String getMessage() {
-            return message;
         }
     }
 

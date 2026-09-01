@@ -390,7 +390,7 @@ final class ExecutorServiceTest {
     }
 
     @Test
-    void unmatchedRouteCompletesItsTaskRunWithoutCreatingChildren() {
+    void unmatchedRouteSkipsItsTaskRunWithoutCreatingChildren() {
         Flow flow = deploy(Map.of(
             "key", "unmatched-route",
             "variables", Map.of("environment", "staging"),
@@ -416,7 +416,19 @@ final class ExecutorServiceTest {
             "route",
             flow.findTask(routeRun.taskId()).orElseThrow().key()
         );
-        assertTrue(routeRun.state().is(State.Type.SUCCESS));
+        assertTrue(routeRun.state().is(State.Type.SKIPPED));
+        assertEquals(
+            List.of(
+                State.Type.CREATED,
+                State.Type.RUNNING,
+                State.Type.SKIPPED
+            ),
+            routeRun.state().history().stream()
+                .map(State.History::state)
+                .toList()
+        );
+        assertTrue(routeRun.outputs().isEmpty());
+        assertTrue(routeRun.error().isEmpty());
         assertTrue(execution.taskRuns().stream()
             .map(TaskRun::taskId)
             .map(taskId -> flow.findTask(taskId).orElseThrow().key())

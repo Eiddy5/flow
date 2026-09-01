@@ -13,12 +13,14 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.core.services.executions.ExecutionService;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorEvent;
 import org.cses.flow.executor.commands.Cancel;
 import org.cses.flow.executor.commands.Create;
 import org.cses.flow.executor.commands.ExecutionCommand;
 import org.cses.flow.executor.commands.Resume;
+import org.cses.flow.executor.commands.Rewind;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.DispatchQueue;
@@ -100,6 +102,18 @@ public class ExecutionCommandEventHandler implements
                     session,
                     resume,
                     () -> handleResume(dsl, resume)
+                );
+            }
+            case Rewind rewind -> {
+                Session<?> session = restoreSession(
+                    rewind.getCompanyId(),
+                    rewind.getActorId()
+                );
+                inCommandScope(
+                    dsl,
+                    session,
+                    rewind,
+                    () -> handleRewind(dsl, rewind)
                 );
             }
             case Cancel cancel -> {
@@ -257,6 +271,57 @@ public class ExecutionCommandEventHandler implements
             command.getOutputs()
         );
         execution.resumeTaskRun(taskRun.id(), normalizedOutputs);
+        executionRepository.save(dsl, execution);
+        eventQueue.emitInTransaction(
+            ExecutorEvent.from(
+                execution,
+                ExecutorEvent.EventType.UPDATED
+            ),
+            dsl
+        );
+    }
+
+    private void handleRewind(DSLContext dsl, Rewind command) {
+        Execution execution = executionRepository.findById(
+            dsl,
+            command.getCompanyId(),
+            command.getExecutionId()
+        ).orElseThrow(() -> new WorkflowException(
+            "Execution does not exist: " + command.getExecutionId()
+        ));
+
+        if (execution.isTerminal()
+            || !execution.state().is(State.Type.PAUSED)) {
+            return;
+        }
+        TaskRun source = execution.requireTaskRun(
+            command.getSourceTaskRunId()
+        );
+        if (!source.state().is(State.Type.PAUSED)) {
+            return;
+        }
+        Flow flow = flowRepository.findByFlowId(
+            dsl,
+            FlowId.from(
+                command.getCompanyId(),
+                execution.flowKey(),
+                execution.flowVersion()
+            )
+        ).orElseThrow(() -> new WorkflowException(
+            "Flow version does not exist: "
+                + execution.flowKey() + ":" + execution.flowVersion()
+        ));
+        ExecutionService.validateRewind(
+            flow,
+            execution,
+            command.getSourceTaskRunId(),
+            command.getTargetTaskRunId()
+        );
+        execution.rewindTaskRun(
+            command.getSourceTaskRunId(),
+            command.getTargetTaskRunId(),
+            command.getReason()
+        );
         executionRepository.save(dsl, execution);
         eventQueue.emitInTransaction(
             ExecutorEvent.from(

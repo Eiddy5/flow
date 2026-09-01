@@ -11,6 +11,7 @@ import org.paas.session.Session;
 import org.paas.session.User;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -233,7 +234,9 @@ class ExecutionPauseLifecycleIntegrationTest {
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    draft.key()
+                    draft.key(),
+                    Optional.empty(),
+                    Map.of()
                 )
             );
 
@@ -253,14 +256,18 @@ class ExecutionPauseLifecycleIntegrationTest {
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    deployed.key()
+                    deployed.key(),
+                    Optional.empty(),
+                    Map.of()
                 )
             );
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    "missing-flow-key"
+                    "missing-flow-key",
+                    Optional.empty(),
+                    Map.of()
                 )
             );
 
@@ -282,7 +289,9 @@ class ExecutionPauseLifecycleIntegrationTest {
                 WorkflowException.class,
                 () -> fixture.executionService().create(
                     fixture.session(),
-                    otherFlow.key()
+                    otherFlow.key(),
+                    Optional.empty(),
+                    Map.of()
                 )
             );
 
