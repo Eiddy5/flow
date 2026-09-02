@@ -1,6 +1,23 @@
 micronaut:
   application:
     name: flow
+  openapi:
+    tag:
+      generation:
+        by:
+          package:
+            enabled: true
+        remove:
+          prefixes:
+            - org.cses.server.service.
+        naming:
+          strategy: KEBAB_CASE
+  mcp:
+    server:
+      transport: HTTP
+      info:
+        name: cses-mcp-server
+        version: "${CSES_MCP_VERSION:1.0.0}"
   config-client:
     enabled: true
   metrics:
@@ -9,15 +26,19 @@ micronaut:
       jvm: true
       logback: true
       uptime: true
+      netty:
+        queues:
+          enabled: false
+        channels:
+          enabled: true
     export:
       prometheus:
         enabled: true
-        step: 5s   # 指标采集间隔
+        step: 5s
   server:
     thread-selection: AUTO
     idle-timeout: 3m
     port: 3434
-#    port: 3340
     notFoundOnMissingBody: false
     cors:
       enabled: true
@@ -35,19 +56,22 @@ micronaut:
       enabled: true
       default-version: v1
       parameter:
-        enabled: true   # 👈 如果你想用 ?api-version=v1 这种形式
-        names: 'v,api-version'
+        enabled: true
+        names: v,api-version
       header:
-        enabled: true   # 👈 如果你想用请求头 X-API-VERSION: v1 这种形式
+        enabled: true
         names:
-          - 'X-API-VERSION'
-          - 'Accept-Version'
-
+          - X-API-VERSION
+          - Accept-Version
     static-resources:
-      flow:
-        mapping: /flow/**
-        paths:
-          - classpath:flow
+      admin:
+        enabled: true
+        mapping: "/admin/**"
+        paths: classpath:admin
+  http:
+    services:
+      mattermost-http-im-local:
+        url: "http://cses-im-server.cses.svc.cluster.local:8066"
 
 flow:
   management:
@@ -62,12 +86,15 @@ jackson:
   serializationInclusion: NON_NULL
   serialization:
     WRITE_DATES_AS_TIMESTAMPS: false
-  mapper:
+  mapper-features:
     ACCEPT_CASE_INSENSITIVE_ENUMS: true
+    DETECT_PARAMETER_NAMES: false
 
 endpoints:
   health:
     elasticsearch:
+      enabled: false
+    discovery-client-health:
       enabled: false
   metrics:
     enabled: true
@@ -76,15 +103,114 @@ endpoints:
     enabled: true
     sensitive: false
 
+datapilot:
+  es:
+    fallback-scan:
+      enabled: false
+      auto-enable-indexed-collections: false
 
-path:
-  configPath: "/workspace/java/flow/server/conf/"
+redisson:
+  cluster-servers-config:
+    node-addresses:
+      - "redis://redis-cses-pre-redis-cluster-headless.redis-cses.svc.cluster.local:6379"
+    master-connection-pool-size: 256
+    master-connection-minimum-idle-size: 64
+    slave-connection-pool-size: 256
+    slave-connection-minimum-idle-size: 64
+    subscription-connection-pool-size: 100
+  codec1: org.redisson.codec.MsgPackJacksonCodec
 
+pulsar:
+  development: false
+  service-url: "pulsar://pulsar-cses-broker.pulsar-cses.svc.cluster.local:6650"
+
+elasticsearch:
+  http-hosts:
+    - "http://es940-es-http.elastic-cses-20260715.svc:9200"
+  default-headers:
+    - "Authorization: Basic ZWxhc3RpYzptQVo3ZnoxcVFYNVd0YUVqZUl5YmZDVWI="
+
+mongodb:
+  defaultDatabase: "okr"
+  uri: "mongodb://root:one.2013@mongodb-cses-mongodb-sharded.mongo-cses.svc.cluster.local:27017"
+
+
+datasources:
+  flow:
+    url: ${FLOW_DATASOURCE_URL:`jdbc:postgresql://127.0.0.1:5432/flow`}
+    username: ${FLOW_DATASOURCE_USERNAME:flow}
+    password: ${FLOW_DATASOURCE_PASSWORD:flow}
+    driver-class-name: org.postgresql.Driver
+    maximum-pool-size: ${FLOW_DATASOURCE_MAXIMUM_POOL_SIZE:10}
+    minimum-idle: ${FLOW_DATASOURCE_MINIMUM_IDLE:2}
+  mattermost:
+    url: jdbc:postgresql://postgresql-cses-pre-cnpg-rw.postgres-cses.svc.cluster.local:5432/mattermost-imv2?readOnlyMode=ignore
+    driverClassName: org.postgresql.Driver
+    autoCommit: false
+    maximum-pool-size: 300
+    minimum-idle: 1
+    idle-timeout: 300000
+    max-lifetime: 600000
+    connection-timeout: 30000
+    validation-timeout: 30000
+    leak-detection-threshold: 60000
+    password: "one.2013"
+    username: "postgres"
+  default:
+    url: jdbc:postgresql://postgresql-cses-pre-cnpg-rw.postgres-cses.svc.cluster.local:5432/cses?readOnlyMode=ignore
+    driverClassName: org.postgresql.Driver
+    autoCommit: true
+    maximum-pool-size: 300
+    minimum-idle: 1
+    idle-timeout: 300000
+    max-lifetime: 600000
+    connection-timeout: 30000
+    validation-timeout: 30000
+    leak-detection-threshold: 60000
+    password: "one.2013"
+    username: "postgres"
 jooq:
-  send-event: false
+  send-event: true
 
-# Flow Core does not consume PAAS RPC/message services or publish JOOQ
-# database events.
+neo4j:
+  uri: "bolt://memgraph-cses-pre.memgraph-cses.svc.cluster.local:7687"
+  hosts:
+    - "memgraph-cses-pre.memgraph-cses.svc.cluster.local:7687"
+  database: "neo4j"
+  config:
+    connection-timeout: 5000
+  password: "neo4j"
+  username: "neo4j"
+
+database:
+  mongo: "okr"
+  mysql: "okr"
+  neo4j: "okr"
+  postgresql: "mattermost"
+
+otel:
+  exclusions:
+    - "/v1/.*"
+    - "/health"
+  instrumentation:
+    jdbc:
+      enabled: true
+    mongodb:
+      enabled: false
+  traces:
+    exporter: otlp
+  exporter:
+    otlp:
+      endpoint: "http://opentelemetry-collector.monitoring.svc.cluster.local:4317"
+      protocol: grpc
+
+websocket:
+  reliable-message:
+    enabled: true
+    enabled-channels:
+    buffer-expire-ms: 60000
+    max-buffer-size: 500
+
 grpc:
   server:
     instance-id: 'flow-grpc'
@@ -106,6 +232,4 @@ thrift:
   client:
     discovery:
       enabled: false
-pulsar:
-  consumer:
-    enabled: false
+

@@ -3,13 +3,13 @@ package org.cses.flow.controller.flow;
 import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.annotation.*;
-import io.micronaut.http.annotation.Error;
 import io.micronaut.http.exceptions.HttpStatusException;
 import jakarta.inject.Inject;
-import org.cses.flow.controller.ApiModels.ErrorView;
-import org.cses.flow.controller.flow.FlowModels.*;
+import org.cses.flow.controller.flow.FlowModels.DefinitionView;
+import org.cses.flow.controller.flow.FlowModels.DraftView;
+import org.cses.flow.controller.flow.FlowModels.FlowView;
+import org.cses.flow.controller.flow.FlowModels.InputTypeView;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.services.flows.FlowService;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
@@ -155,23 +155,6 @@ public class FlowController {
     ) {
         flowService.delete(session, flowKey, draft);
         return HttpResponse.noContent();
-    }
-
-    @Error(exception = WorkflowException.class)
-    public HttpResponse<ErrorView> workflowError(
-            WorkflowException exception
-    ) {
-        return HttpResponse.status(HttpStatus.CONFLICT)
-                .body(new ErrorView(exception.getMessage()));
-    }
-
-    @Error(exception = IllegalArgumentException.class)
-    public HttpResponse<ErrorView> invalidArgument(
-            IllegalArgumentException exception
-    ) {
-        return HttpResponse.badRequest(
-                new ErrorView(exception.getMessage())
-        );
     }
 
     private DraftView draftView(

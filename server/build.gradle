@@ -64,11 +64,6 @@ application {
     mainClass = "org.cses.flow.Application"
 }
 
-java {
-    sourceCompatibility = JavaVersion.toVersion("21")
-    targetCompatibility = JavaVersion.toVersion("21")
-}
-
 graalvmNative.toolchainDetection = false
 
 micronaut {

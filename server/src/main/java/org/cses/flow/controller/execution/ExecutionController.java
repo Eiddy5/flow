@@ -10,7 +10,6 @@ import io.micronaut.http.annotation.Post;
 import io.micronaut.http.annotation.QueryValue;
 import io.micronaut.http.exceptions.HttpStatusException;
 import jakarta.inject.Inject;
-import org.cses.flow.controller.ApiModels.ErrorView;
 import org.cses.flow.controller.flow.FlowModels.ExecutionView;
 import org.cses.flow.controller.flow.FlowModels.RewindView;
 import org.cses.flow.core.domains.executions.Execution;
@@ -136,23 +135,6 @@ public class ExecutionController {
                 bodyText(body, "targetTaskRunId"),
                 bodyText(body, "reason")
         ));
-    }
-
-    @Error(exception = WorkflowException.class)
-    public HttpResponse<ErrorView> workflowError(
-            WorkflowException exception
-    ) {
-        return HttpResponse.status(HttpStatus.CONFLICT)
-                .body(new ErrorView(exception.getMessage()));
-    }
-
-    @Error(exception = IllegalArgumentException.class)
-    public HttpResponse<ErrorView> invalidArgument(
-            IllegalArgumentException exception
-    ) {
-        return HttpResponse.badRequest(
-                new ErrorView(exception.getMessage())
-        );
     }
 
     private Execution requireExecution(

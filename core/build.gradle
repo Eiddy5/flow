@@ -64,11 +64,6 @@ dependencies {
     testAnnotationProcessor(libs.micronaut.http.validation)
 }
 
-java {
-    sourceCompatibility = JavaVersion.toVersion("21")
-    targetCompatibility = JavaVersion.toVersion("21")
-}
-
 micronaut {
     testRuntime("junit5")
     processing {

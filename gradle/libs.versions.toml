@@ -1,6 +1,5 @@
 [versions]
 micronaut-plugins = "4.6.2"
-micronaut-platform = "4.10.6.488"
 shadow = "8.3.9"
 hikaricp = "7.1.0"
 cloud-datapilot = "2.0.48"
@@ -8,8 +7,7 @@ jsonschema-generator = "4.38.0"
 swagger-annotations = "2.2.43"
 
 [libraries]
-micronaut-platform = { module = "io.micronaut.platform:micronaut-platform", version.ref = "micronaut-platform" }
-micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" } # 可以看到这些依赖是没有版本号的，因为它们只接受我们平台管理
+micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" }
 micronaut-validation = { module = "io.micronaut.validation:micronaut-validation" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api" }
 micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
