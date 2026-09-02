@@ -7,7 +7,7 @@ import io.micronaut.core.convert.ArgumentConversionContext;
 import io.micronaut.http.HttpRequest;
 import io.micronaut.http.bind.binders.AnnotatedRequestArgumentBinder;
 import jakarta.inject.Singleton;
-import org.paas.session.Device;
+import org.paas.common.client.Device;
 import org.paas.session.OrganizeType;
 import org.paas.session.Session;
 import org.paas.session.User;
