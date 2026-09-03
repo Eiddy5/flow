@@ -176,6 +176,12 @@ class CoreArchitectureStandardTest {
         );
     }
 
+    /**
+     * Verifies that runtime ownership, command publication, and Execution
+     * creation entry points remain at their documented module boundaries.
+     *
+     * @throws IOException when an inspected source file cannot be read
+     */
     @Test
     void executorAndWorkerAreTopLevelPeersOfCore() throws IOException {
         Path taskDomain = CORE.resolve("domains/tasks");
@@ -306,9 +312,11 @@ class CoreArchitectureStandardTest {
             "(?m)^\\s*public\\s+.*\\sCreate\\s+create\\("
         ).matcher(executionService).results().count();
         assertTrue(
-            publicCreateMethods == 1
+            publicCreateMethods == 2
                 && executionService.contains("Create.from(")
                 && executionService.contains("normalizedInputs")
+                && executionService.contains("String executionId")
+                && executionService.contains("StringUtil.newId()")
                 && executionService.contains("executorCommandQueue.emit(command)")
                 && !executionService.contains("createPending")
                 && !executionService.contains("continueExecution")
@@ -346,7 +354,8 @@ class CoreArchitectureStandardTest {
                 && eventHandler.contains("executorService.process(context)")
                 && eventHandler.contains("eventQueue.emitInTransaction(")
                 && eventHandler.contains("new ExecutorContext(flow, execution)"),
-            "ExecutionService must publish Create, Resume and Cancel commands, "
+            "ExecutionService must support generated and preallocated "
+                + "Execution IDs while publishing Create, Resume and Cancel commands, "
                 + "the command handler must only publish ExecutorEvents, "
                 + "and the internal event handler must drive ExecutorContext"
         );

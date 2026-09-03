@@ -59,9 +59,39 @@ public class ExecutionService {
             Optional<Long> version,
             Map<String, ?> inputs
     ) {
+        return create(
+                session,
+                StringUtil.newId(),
+                key,
+                version,
+                inputs
+        );
+    }
+
+    /**
+     * 使用调用方预先分配的稳定 ID 启动一个 Execution。
+     *
+     * <p>该入口用于宿主系统先在自己的事务中持久化 Execution 引用，再在事务提交后
+     * 投递 Flow 启动命令。除 ID 已由调用方通过统一技术 ID 生成器分配外，Flow
+     * 选择、输入规范化和 Queue 受理语义与普通 {@link #create(Session, String,
+     * Optional, Map)} 完全一致；它不会提前物化一个待启动的 Execution。</p>
+     *
+     * @param session     发起启动请求的租户和用户上下文
+     * @param executionId 已预先分配且将由 Flow 持久化的 Execution 技术 ID
+     * @param key         Flow 的业务标识，用于确定要启动的逻辑 Flow
+     * @param version     要启动的 Flow 版本；为空表示使用最新版本
+     * @param inputs      针对选定 Flow 版本提交的启动输入
+     * @return Executor Command Queue 的受理回执
+     */
+    public <S extends Session<U>, U extends User> Create create(
+            S session,
+            String executionId,
+            String key,
+            Optional<Long> version,
+            Map<String, ?> inputs
+    ) {
         Flow flow = requireFlow(session, key, version);
         Map<String, Object> normalizedInputs = flow.normalizeInputs(inputs);
-        String executionId = StringUtil.newId();
         Create command = Create.from(
                 session,
                 executionId,
@@ -132,6 +162,14 @@ public class ExecutionService {
      * TaskRuns affected by this request in business rollback order. It proves
      * Queue acceptance only; asynchronous command consumption may not have
      * applied the rewind when this method returns.</p>
+     *
+     * @param session tenant and user context used to validate and enqueue rewind
+     * @param executionId Execution that is currently paused
+     * @param sourceTaskRunId current Pause TaskRun that requests the rewind
+     * @param targetTaskRunId completed historical TaskRun to restart from
+     * @param reason non-blank business reason recorded by the rewind command
+     * @return queue-accepted rewind result based on the validated snapshot
+     * @throws WorkflowException when the Execution or rewind path is invalid
      */
     public <S extends Session<U>, U extends User> RewindResult rewind(
             S session,
@@ -139,6 +177,47 @@ public class ExecutionService {
             String sourceTaskRunId,
             String targetTaskRunId,
             String reason
+    ) {
+        RewindPlan plan = planRewind(
+                session,
+                executionId,
+                sourceTaskRunId,
+                targetTaskRunId
+        );
+        executorCommandQueue.emit(Rewind.from(
+                session,
+                executionId,
+                sourceTaskRunId,
+                targetTaskRunId,
+                reason
+        ));
+        return RewindResult.from(
+                plan.execution(),
+                plan.affectedTaskRunIds()
+        );
+    }
+
+    /**
+     * Validates a prospective rewind and calculates its exact impact without
+     * writing to the Executor command queue.
+     *
+     * <p>The Execution and Flow are read before the plan is returned. No Flow
+     * mutation occurs, so a host can release this read and then commit its own
+     * local transaction before calling {@link #rewind(Session, String, String,
+     * String, String)}.</p>
+     *
+     * @param session tenant and user context used to read the Flow state
+     * @param executionId Execution that is currently paused
+     * @param sourceTaskRunId current Pause TaskRun that requests the rewind
+     * @param targetTaskRunId completed historical TaskRun to restart from
+     * @return validated read-only rewind plan and affected TaskRun IDs
+     * @throws WorkflowException when the Execution or rewind path is invalid
+     */
+    public <S extends Session<U>, U extends User> RewindPlan planRewind(
+            S session,
+            String executionId,
+            String sourceTaskRunId,
+            String targetTaskRunId
     ) {
         Execution current = queryHandler.execution(session, executionId)
                 .orElseThrow(() -> new WorkflowException(
@@ -156,14 +235,17 @@ public class ExecutionService {
                 sourceTaskRunId,
                 targetTaskRunId
         );
-        executorCommandQueue.emit(Rewind.from(
-                session,
-                executionId,
-                sourceTaskRunId,
-                targetTaskRunId,
-                reason
-        ));
-        return RewindResult.from(current, affectedTaskRunIds);
+        TaskRun target = current.requireTaskRun(targetTaskRunId);
+        String targetTaskKey = flow.findTask(target.taskId())
+                .map(Task::key)
+                .orElseThrow(() -> new WorkflowException(
+                        "Task definition does not exist: " + target.taskId()
+                ));
+        return RewindPlan.from(
+                current,
+                targetTaskKey,
+                affectedTaskRunIds
+        );
     }
 
     public <S extends Session<U>, U extends User>

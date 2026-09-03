@@ -10,6 +10,7 @@
 - JOOQ 生成代码的边界。
 - 生成类与 `XxxEntry` 的关系。
 - `XxxEntry` 与领域对象的转换。
+- Codec 的职责、局部放置与跨数据库对象复用。
 - `fetch`、`fetchInto`、`fetchOne` 和 `fetchOneInto` 的选择与映射条件。
 - `buildInsertMap()`、字段级 `set(...)` 和 `buildUpdateMap()` 的使用场景。
 
@@ -168,31 +169,41 @@ org.flow.gen.flow.*
 
 `XxxEntry` 必须放在它所属的具体数据库 Adapter 实现下面的 `entries` 子包中。
 
-推荐结构：
+推荐的 Entry 结构：
 
 ```text
 core/src/main/java/org/cses/flow/infrastructure/
 └── repositories/
     └── flows/
         ├── FlowRepositoryImpl.java
-        ├── entries/
-        │   ├── FlowEntry.java
-        │   └── FlowTaskEntry.java
-        └── codec/
-            ├── DataJsonCodec.java
-            └── TaskPropertiesCodec.java
+        └── entries/
+            ├── FlowEntry.java
+            └── FlowTaskEntry.java
 ```
 
-`codec` 只在 Entry 确实需要序列化或专用字段转换时创建，并且必须与 `entries`
-平级。具体使用规则见第 6 节。
+Codec 不与数据库表、生成的 `XxxObject` 或 `XxxEntry` 建立一一对应的目录关系，
+其位置由转换对象的复用范围决定：
 
-其他业务模块使用同样的 `entries` 与可选 `codec` 平级结构：
+- 只服务于一个具体数据库 Adapter 的 Codec，可以放在该 Adapter 的 `codec` 子包，
+  与 `entries` 平级。
+- 同一个对象或值类型在多个数据库对象中使用，并且存储转换语义一致时，可以把 Codec
+  提升到这些 Adapter 共同依赖的基础设施 `codec` 包，不必归属于任意一个具体数据库
+  对象或 Adapter。
 
 ```text
-infrastructure/repositories/executions/
-├── entries/
-└── codec/
+infrastructure/repositories/
+├── codec/                    # 多个 Repository Adapter 共享
+├── flows/
+│   ├── entries/
+│   └── codec/                # 只服务于 Flow PostgreSQL Adapter
+└── executions/
+    ├── entries/
+    └── codec/                # 只服务于 Execution PostgreSQL Adapter
 ```
+
+共享范围跨越不同类型的数据库 Adapter 时，应继续选择它们最近的共同基础设施边界，
+例如 `infrastructure/codec`；不能因为复用而把数据库存储格式或 JSONB 等技术类型
+泄漏到 Core Domain。具体职责和调用规则见第 6 节。
 
 非 Repository 的数据库 Adapter 同样把 Entry 放在自身实现下，例如：
 
@@ -338,14 +349,20 @@ public Domain to() { ... }
 public Domain to(List<ChildDomain> children) { ... }
 ```
 
-### 序列化转换统一放在同级 `codec`
+### 序列化转换统一封装在 `codec`
 
 `from(...)` 和 `to(...)` 的参数只能表达 Domain、子领域对象或持久化结构事实，不能
 接收 `JacksonMapper`、`ObjectMapper`、`JsonFactory`、序列化器或序列化策略。
 
-确实需要序列化、反序列化或数据库专属字段转换时，在 `entries` 的同级建立
-`codec` 子包。一个 Codec 只负责一种具体类型或字段的稳定转换，并提供静态方法；
-序列化工具、配置和转换过程全部封装在方法内部：
+确实需要序列化、反序列化或数据库专属字段转换时，必须交给 `codec` 包中的 Codec。
+Codec 的归属按被转换对象及其复用范围确定，而不是按数据库表、生成的 `XxxObject`、
+Entry 或字段使用点确定。只在一个 Adapter 内使用时，可以放在该 Adapter 与
+`entries` 平级的 `codec` 子包；同一个对象在多个数据库对象中使用且转换契约一致时，
+可以复用一个公共 Codec，并将其放在这些 Adapter 最近的共同基础设施 `codec` 包中，
+不必放在任意一个具体 Adapter 下面。
+
+一个 Codec 只负责一种明确对象或值语义的稳定转换，并提供静态方法；序列化工具、
+配置和转换过程全部封装在方法内部：
 
 ```java
 public class StateCodec {
@@ -367,8 +384,11 @@ entry.state = StateCodec.encode(execution.state());
 State state = StateCodec.decode(this.state);
 ```
 
-Codec 不执行 SQL、不查询关联 Entry、不装配聚合，也不实现领域行为。不同字段不能
-堆入 `EntryCodec`、`JsonHelper` 或其他职责不明确的通用类。
+Codec 不执行 SQL、不查询关联 Entry、不装配聚合，也不实现领域行为。不同对象或
+不同转换语义不能堆入 `EntryCodec`、`JsonHelper` 或其他职责不明确的通用类。同一个
+对象仅因出现在不同数据库对象或字段中，不应重复建立内容相同的 Codec；但同一 Java
+类型若对应不同的存储格式、兼容协议、空值语义或失败约定，应保留职责明确的独立
+Codec。
 
 Entry 和 Codec 中的 JSON/JSONB 转换必须同时遵守 [`json.md`](json.md)。一般字段
 统一使用 PAAS JSON；ADR 0026 确认的特殊序列化方式也必须封装在对应 Codec 内部，
@@ -412,16 +432,24 @@ Repository 的公开方法是 Core Repository Interface 在数据库 Adapter 上
 某个具体生命周期路径硬编码到方法名中。数据库实体与领域实体的转换名称和实现不
 属于 Repository 私有方法。
 
-同一个动作在不同阶段需要不同参数时，优先使用方法重载。重载必须满足“概念相同、
-上下文不同”的条件，不能仅为了减少字符把不同语义的操作合并为同名方法：
+Repository 私有方法应尽量围绕同一个技术动作组织成“方法簇”。一个方法簇由一组
+同名重载组成，通过参数数量、参数类型或参数组合表达不同输入形态和处理阶段；方法簇
+可以包含两个以上重载，并应在类中相邻放置。同一个动作在不同阶段需要不同参数时，
+优先扩展已有方法簇，而不是创建带场景前后缀的新方法名。
+
+方法簇中的重载必须满足“概念相同、上下文不同”的条件，不能仅为了减少字符把不同
+语义的操作合并为同名方法，也不能使用布尔开关或可空参数模拟不同重载：
 
 | 内部概念 | 推荐的重载形态 | 两个阶段的区别 |
 | --- | --- | --- |
 | 结果恢复 | `restore(dsl, entry)` / `restore(entry)` | 前者按需要读取关联数据，后者使用已完整的 Entry |
-| 保存 | `save(dsl, domain)` / `insert(dsl, entry)` | 由实体 ID 区分已有行更新和新行插入；聚合子记录只在需要时随新行写入 |
 | 插入 | `insert(dsl, domain)` / `insert(dsl, entry)` | 前者协调聚合及子记录，后者只写入一行 |
-| 聚合装配 | `restore(dsl, entry)` 或直接调用 `entry.to(children)` | Repository 查询关联数据，Entry 执行领域重建 |
 | 子集合读取或写入 | `readChildren(...)` / `readChildren(entries, ...)`，以及 `writeChildren(...)` 的对应重载 | 数据库查询阶段与内存递归或批量 `VALUES` 阶段 |
+
+方法簇只合并同一种技术动作。高层 `save(dsl, domain)` 判断后转入
+`insert(dsl, entry)` 或 `update(...)` 时，动作语义已经改变，应保留不同方法名，
+不能为了形成方法簇而强行使用同名重载。Repository 查询并装配关联数据后调用
+`entry.to(children)` 也属于 Repository 与 Entry 的职责衔接，不是同一个方法簇。
 
 例如，聚合插入可以由 `insert(dsl, Flow)` 调用 Entry 完成领域到 Entry 的转换并协调子集合，
 再由 `insert(dsl, FlowEntry)` 负责单行 JOOQ 写入；两个方法都是“插入”，但参数分别
@@ -432,8 +460,9 @@ Repository 的公开方法是 Core Repository Interface 在数据库 Adapter 上
 私有方法组织遵循以下规则：
 
 1. 首先按 `find`、`insert`、`update`、`delete`、`restore`、`read` 和 `write` 等
-   技术动作分组；状态差异只反映领域已经准备好的字段，不在 Repository 中实现领域
-   状态迁移或生命周期判断。领域转换方法不属于 Repository 的私有动作。
+   技术动作形成方法簇，并将同一方法簇的重载相邻排列；状态差异只反映领域已经准备好
+   的字段，不在 Repository 中实现领域状态迁移或生命周期判断。领域转换方法不属于
+   Repository 的私有动作。
 2. 同一动作的重载由高层编排逐步调用低层实现，避免在 `insert`、`update` 或查询
    的多个分支中重复构造 Entry、租户条件、子集合写入和异常转换。
 3. 一次性且没有复用价值的查询不要为了“看起来通用”额外包成私有方法；查询语义
@@ -451,8 +480,8 @@ Repository 的公开方法是 Core Repository Interface 在数据库 Adapter 上
    验证的局部性。
 
 审查 Repository 时，应能从私有方法名称看出“正在执行哪种技术动作”，而不需要先
-了解某个历史生命周期名称。若同一个概念出现多个带状态后缀的方法，应优先检查它们
-是否可以合并为一组重载。
+了解某个历史生命周期名称。若同一个技术动作出现多个带状态后缀的方法，应优先检查
+它们是否可以合并为一个方法簇。
 
 ## 7. 完整对象插入
 
@@ -780,13 +809,14 @@ Entry 列表暴露给 Core 调用方。
 19. 是否没有在 Repository 或数据库中实现 Flow 的版本递增、删除发布限制、正式定义
     不可变或审计状态变化等领域规则。
 20. Repository 私有方法是否按技术动作命名，而不是按草稿、版本或审计分支命名。
-21. 相同概念的不同阶段是否通过合理重载复用，是否避免了重复的 Entry 转换和 JOOQ
-    构造。
+21. 相同技术动作的不同参数形态和处理阶段是否组织为相邻的同名重载方法簇，是否避免
+    了场景化方法名、布尔开关、可空参数以及重复的 Entry 转换和 JOOQ 构造。
 22. 是否没有为一次性查询添加无复用价值的包装方法，也没有把私有方法误变成跨
     Repository 的通用工具接口。
 23. Repository 是否没有定义数据库实体与领域实体的转换方法，转换是否全部位于
     对应的 `XxxEntry`。
 24. 同一个 Entry 的不同转换情况是否使用 `from(...)` 或 `to(...)` 重载，而没有
     增加同义方法名、布尔开关或可空序列化参数。
-25. 序列化和专用字段转换是否位于与 `entries` 平级的 `codec` 中，Entry 是否只调用
-    Codec 的静态方法，并且没有把序列化方式暴露为转换参数。
+25. Codec 是否按被转换对象及复用范围放置；同一转换跨多个数据库对象复用时，是否
+    避免重复实现或被迫归属于某一个具体 Adapter；Entry 是否只调用 Codec 的静态
+    方法，并且没有把序列化方式暴露为转换参数。

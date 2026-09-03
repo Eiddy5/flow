@@ -113,8 +113,9 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
   持久化配置，按原值恢复已保存身份。调用方不得传递业务 reader attribute 或创建
   第二套 Mapper。
 - JOOQ Entry 中的 JSON/JSONB 字段转换必须使用 `JsonObject`、
-  `JsonObjects` 或 `JsonFactory`。需要序列化或专用字段转换时，Entry 只调用与
-  `entries` 平级的专用 Codec；目录和静态调用规则由 [`jooq.md`](jooq.md) 统一定义。
+  `JsonObjects` 或 `JsonFactory`。需要序列化或专用字段转换时，Entry 只调用专用
+  Codec；Codec 的局部放置、跨数据库对象复用和静态调用规则由
+  [`jooq.md`](jooq.md) 统一定义。
 - 测试代码解析请求、响应或构造 JSON 数据时同样使用 PAAS JSON，不能因为测试
   代码生命周期短而直接创建 `ObjectMapper`。
 - `org.flow.gen` 下的生成代码由生成器维护，不手工修改；生成类已经提供 PAAS
@@ -186,7 +187,8 @@ PAAS 公共能力演进。
    `JacksonMapper`。
 3. 是否避免在受控包之外新增 `ObjectMapper`、`JsonNode` 或私有 JSON 工具类。
 4. JSON 技术类型是否被限制在 HTTP、Serializer、Entry、Codec 等必要边界。
-5. JOOQ 的序列化和专用字段转换是否放在与 `entries` 平级的专用 Codec 中。
+5. JOOQ 的序列化和专用字段转换是否交给专用 Codec，并按 `jooq.md` 的复用范围规则
+   放置。
 6. 转换失败或公共方法返回 `null` 时是否按业务契约处理。
 7. 正常输入、缺失字段、错误类型、非法 JSON 和空值场景是否有测试。
 8. 如需例外，是否已有明确的 ADR，并且例外没有扩散。

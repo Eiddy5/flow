@@ -64,6 +64,12 @@
 - [`ADR 0080`](0080-start-execution-with-optional-flow-version.md)：Execution 启动统一
   使用 `create(session, key, Optional<version>, inputs)`；版本为空选择最新 Flow，版本
   不为空精确选择指定 Flow 版本，不保留旧启动重载。
+- [`ADR 0081`](0081-accept-preallocated-execution-id.md)：保留普通 Flow 启动入口，并
+  增加接受预分配稳定 Execution ID 的入口；宿主可先提交自身聚合引用，再通过同一条
+  校验与 Queue 链路完整启动 Flow，当前不增加跨库可靠启动协议。
+- [`ADR 0082`](0082-orchestrate-host-execution-actions-after-local-transactions.md)：
+  宿主事务 Handler 只提交本地聚合事实，Service 在事务返回后编排 Create、Cancel、
+  Resume 与 Rewind；Rewind 通过无副作用计划保留精确影响范围和本地先提交顺序。
 - [`ADR 0059`](0059-route-executor-state-handoffs-through-executor-event-queue.md)：
   保持泛型 `ExecutorEventHandler<T>` 契约不变；外部 Command 只进入
   `ExecutionCommandEventHandler`，内部状态交接统一使用 `ExecutorEvent` Queue，
@@ -193,6 +199,12 @@
   取代的外部业务两阶段精确物化方案。
 - [`ADR 0068`](0068-remove-two-phase-execution-start.md)：Execution 不再暴露 pending
   物化与继续启动，普通启动只选择当前可用 Flow 并通过单个 `Create` Command 完成。
+- [`ADR 0081`](0081-accept-preallocated-execution-id.md)：外部业务可先保存通过统一生成器
+  预分配的 Execution ID，并在本地事务提交后把同一个 ID 交给 Flow 的完整 `create`
+  链路；该能力不物化 pending Execution，也不提供跨库原子性。
+- [`ADR 0082`](0082-orchestrate-host-execution-actions-after-local-transactions.md)：
+  外部业务的 Create、Cancel、Resume 与 Rewind 统一由宿主 Service 在本地事务之外
+  编排；`planRewind` 只读返回精确影响范围，不投递 Queue 命令。
 - [`ADR 0002`](0002-workflow-core-runtime-class-design.md)：Execution 聚合、TaskRun
   真实历史和 Executor 状态机。
 - [`ADR 0006`](0006-single-execution-branch-routing-and-join.md)：单 Execution 分支、
