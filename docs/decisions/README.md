@@ -56,7 +56,7 @@
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：
   `ExecutionService` 构造并投递 Executor `Create` Command，普通启动返回 Queue 受理
   回执；外部命令由 `ExecutionCommandEventHandler` 校验并原子投递内部
-  `ExecutorEvent`，由 `ExecutorEventHandler` 负责一个周期的提交；Consumer 异常保留
+  `ExecutorEvent`，由 `ExecutorEventMessageHandler` 负责一个周期的提交；Consumer 异常保留
   消息重试，确定性 Task 异常落为 `FAILED`。两阶段启动条款由 ADR 0068 取代。
 - [`ADR 0068`](0068-remove-two-phase-execution-start.md)：删除 `createPending` 与
   `continueExecution`，Execution 只通过一次完整 `create` 受理；Service 在发布前确认
@@ -94,9 +94,13 @@
 
 ## Flow 定义与生命周期
 
+- [`ADR 0083`](0083-allocate-flow-version-in-repository.md)：每次保存都由 Repository
+  按全部历史版本分配 `company_id + key` 范围内的下一版本并追加新行；草稿、正式定义
+  和删除状态共享非空版本序列，`flows.id` 只标识数据库行。
 - [`ADR 0069`](0069-unify-flow-draft-and-deployed-definition.md)：草稿与正式版本统一为
   携带 `source` 的 `Flow` 聚合类型，以默认 `draft=true` 的布尔属性区分状态，
-  共用一个 Repository 和 `flows` 表；它取代独立 FlowDraft 聚合与表的方案。
+  共用一个 Repository 和 `flows` 表；它取代独立 FlowDraft 聚合与表的方案，版本与
+  追加保存条款由 ADR 0083 修订。
 - [`ADR 0004`](0004-use-yaml-and-exact-flow-reference.md)：YAML 定义和精确 Flow
   引用。
 - [`ADR 0008`](0008-separate-flow-source-from-deployed-flow.md)：分离 FlowDraft 与
@@ -113,7 +117,8 @@
   保留为技术行 ID，Task 不拥有独立版本。
 - [`ADR 0070`](0070-use-flow-id-for-flow-repository-selectors.md)：Flow Repository 统一
   使用 `FlowId(companyId, key, version)` 业务选择器；有 version 时精确查询正式版本，
-  无 version 时查询最新正式版本或唯一草稿，实体仍使用字符串 `Flow.id`。
+  无 version 时查询最新正式版本或最新活动草稿，实体仍使用字符串 `Flow.id`；草稿
+  选择语义由 ADR 0083 修订。
 - [`ADR 0071`](0071-remove-lockable-from-domain.md)：锁与并发协议不进入 Flow 领域；
   业务唯一键、行锁、CAS 和事务隔离由数据库 Schema、Repository 与 Queue Adapter
   在各自基础设施边界负责。
@@ -214,7 +219,7 @@
 - [`ADR 0034`](0034-persist-state-as-one-jsonb-value.md)：Execution 与 TaskRun 将完整
   `current + history` 作为单一 State JSONB 值对象持久化。
 - [`ADR 0020`](0020-stage-executor-cycle-effects.md)：ExecutorContext、nexts 两阶段
-  处理和运行提交边界；内部周期交接由 ADR 0059 修订为 `ExecutorEventHandler` 和
+  处理和运行提交边界；内部周期交接由 ADR 0059 修订为 `ExecutorEventMessageHandler` 和
   `ExecutorEvent` Queue。
 - [`ADR 0021`](0021-require-explicit-parallel-task.md)：串行与显式并行调度。
 - [`ADR 0024`](0024-separate-runnable-and-branch-task-capabilities.md)：运行能力分类和
@@ -256,6 +261,9 @@
 
 ## 持久化、时间与并发
 
+- [`ADR 0083`](0083-allocate-flow-version-in-repository.md)：`FlowRepository.save`
+  查询同租户同 key 的全部版本（包括草稿和删除），分配下一版本、生成新行 ID 并只
+  执行 INSERT；数据库以 `(company_id, key, version)` 统一保证业务唯一性。
 - [`ADR 0048`](0048-isolate-schema-ddl-and-pluralize-table-names.md)：保留单一开发期
   Schema 入口，按表隔离 DDL，表名使用小写蛇形且最后一个单词为以 `s` 结尾的复数；
   `task_runs` 同步进入 JOOQ 和 Adapter 边界；过渡性的 `external_tasks` 后续已按
@@ -274,7 +282,8 @@
   生成当前时间、操作者和独立审计列；Queue 排序时间仍属于基础设施。
 - [`ADR 0073`](0073-keep-flow-lifecycle-rules-in-domain.md)：Flow 版本、删除、定义
   不可变和正式 Flow 审计保存规则由领域拥有，Repository 只负责查询、聚合恢复和
-  持久化；正式版本 Task 快照只在新版本插入时追加。
+  持久化；其中版本分配和已有行更新条款已由 ADR 0083 取代，定义、Task 身份、删除
+  限制和审计事实仍由领域拥有。
 - [`ADR 0009`](0009-persist-current-core-in-postgresql.md)：Core 聚合 PostgreSQL
   持久化。
 - [`ADR 0026`](0026-use-task-class-as-in-project-plugin.md)：`flow_tasks.type`、
@@ -314,12 +323,12 @@
   Java record；事务资源、运行上下文、领域对象和持久化 Entry 保持各自的对象
   边界。
 - [`ADR 0062`](0062-use-company-flow-key-and-version-as-business-identity.md)：Flow
-  业务身份统一为 `companyId + key + version`；Draft 使用创建时提供的 key，
-  `flows.id` 是 Flow Domain 的稳定字符串实体 ID，但不参与 Execution 的版本绑定；
-  Executor Create 的当前字段由 ADR 0068 修订。
+  业务身份统一为 `companyId + key + version`；该身份已由 ADR 0083 扩展到草稿和
+  删除版本，`flows.id` 只标识单条数据库记录；Executor Create 的当前字段由
+  ADR 0068 修订。
 - [`ADR 0064`](0064-enforce-flow-draft-identity-by-company-key.md)：FlowDraft 按
-  `(company_id, flow_key)` 全量唯一；独立聚合与表已由 ADR 0069 取代，草稿 key
-  唯一规则保留在统一 `flows` 表中。
+  `(company_id, flow_key)` 全量唯一的历史方案；独立聚合与表由 ADR 0069 取代，单
+  草稿唯一与 upsert 规则由 ADR 0083 取代。
 
 通用实施方法仍以 [`development.md`](../standards/development.md)
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。

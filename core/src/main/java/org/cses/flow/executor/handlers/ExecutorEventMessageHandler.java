@@ -12,6 +12,7 @@ import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorEvent;
+import org.cses.flow.executor.ExecutorEventHandler;
 import org.cses.flow.executor.ExecutorService;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.DispatchQueue;
@@ -39,8 +40,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * Queue or retained between deliveries.</p>
  */
 @Singleton
-public class ExecutorEventHandler implements
-        org.cses.flow.executor.ExecutorEventHandler<ExecutorEvent> {
+public class ExecutorEventMessageHandler implements
+        ExecutorEventHandler<ExecutorEvent> {
 
     private JOOQ jooq;
     private SessionFactory<?, ?> sessionFactory;
@@ -51,7 +52,7 @@ public class ExecutorEventHandler implements
     private DispatchQueue<ExecutorEvent> eventQueue;
 
     @Inject
-    public ExecutorEventHandler(
+    public ExecutorEventMessageHandler(
             @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
             SessionFactory<?, ?> sessionFactory,
             FlowRepository flowRepository,
@@ -89,7 +90,7 @@ public class ExecutorEventHandler implements
      * Constructor for state-machine tests that exercise the handler's local
      * cycle without starting a database-backed Queue consumer.
      */
-    public ExecutorEventHandler(
+    public ExecutorEventMessageHandler(
             ExecutionRepository executionRepository,
             ExecutorService executorService,
             WorkerDispatcher workerDispatcher

@@ -12,6 +12,9 @@ Accepted
 本 ADR 中“不建立 `FlowId` 包装值”的 Repository 表达已由 ADR 0070 修订：`FlowId`
 现在仅作为 Flow Repository 的业务选择器，不能作为 Flow 实体身份或跨对象引用。
 
+ADR 0083 进一步规定所有 Flow 保存行（包括草稿和删除）共用该复合业务版本身份，
+并取代本 ADR 中按既有 `flows.id` 更新或删除物理行的条款。
+
 ## 背景
 
 Flow 的 `id` 在每次发布时重新生成，只能标识 `flows` 表中的一条技术行；稳定的

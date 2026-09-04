@@ -44,7 +44,7 @@ pending continuation 特例。
   `Cancel` 实现不再持有或设置事务；普通命令发布使用 Queue 自有事务。
 - 显式事务发布只在调用方已经持有事务时使用，Queue 不负责提交或回滚该事务。
 - Queue Entry 只序列化 Event 业务数据，不序列化调用方事务。
-- `ExecutionCommandEventHandler` 和 `ExecutorEventHandler` 在已有处理事务内通过
+- `ExecutionCommandEventHandler` 和 `ExecutorEventMessageHandler` 在已有处理事务内通过
   `ExecutorEvent.inTransaction(dsl)` 发布内部 Event，保持聚合写入和下一周期消息的
   原子性。
 - `Create` 不再继承 `SerializableObject`，也不携带 DSL，使用 Java `record` 表达不可变

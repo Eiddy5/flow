@@ -1,9 +1,9 @@
--- Draft rows are physically deleted; deployed rows retain soft-delete audit facts.
+-- Every save appends one versioned Flow row; id identifies only that row.
 CREATE TABLE IF NOT EXISTS flows (
     company_id     varchar(64) NOT NULL,
     id             varchar(64) NOT NULL,
     key            varchar(128) NOT NULL,
-    version        bigint,
+    version        bigint NOT NULL,
 
     draft          boolean NOT NULL,
     source         text NOT NULL,
@@ -26,18 +26,13 @@ CREATE TABLE IF NOT EXISTS flows (
         PRIMARY KEY (company_id, id)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_flows_draft_key
-    ON flows (company_id, key)
-    WHERE draft;
-
-CREATE UNIQUE INDEX IF NOT EXISTS uq_flows_deployed_key_version
-    ON flows (company_id, key, version)
-    WHERE NOT draft;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_flows_key_version
+    ON flows (company_id, key, version);
 
 CREATE INDEX IF NOT EXISTS idx_flows_latest_deployed
     ON flows (company_id, key, version DESC)
     WHERE NOT draft;
 
-CREATE INDEX IF NOT EXISTS idx_flows_active_drafts
-    ON flows (company_id, updated_at DESC, id)
+CREATE INDEX IF NOT EXISTS idx_flows_latest_draft
+    ON flows (company_id, key, version DESC)
     WHERE draft;

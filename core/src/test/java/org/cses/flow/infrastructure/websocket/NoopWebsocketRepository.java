@@ -15,7 +15,7 @@ import java.util.Collection;
  */
 @Primary
 @Singleton
-public final class NoopWebsocketRepository
+public class NoopWebsocketRepository
     implements WebsocketRepository {
 
     @Override
@@ -33,20 +33,45 @@ public final class NoopWebsocketRepository
     public void insert(SessionObject session) {
     }
 
+    /**
+     * Reports that the no-op repository did not delete a current session.
+     *
+     * @param session session candidate supplied by the WebSocket component;
+     *                must not be modified
+     * @return always {@code false} because this test replacement stores no
+     *         sessions
+     */
     @Override
-    public void delete(String deviceId) {
+    public boolean deleteIfCurrent(SessionObject session) {
+        return false;
     }
 
+    /**
+     * Accepts a subscription request without persisting it.
+     *
+     * @param session current session supplied by the WebSocket component;
+     *                must not be modified
+     * @param subscription subscription supplied by the WebSocket component;
+     *                     must not be modified
+     */
     @Override
-    public void subscribe(
-        String deviceId,
+    public void ensureSubscription(
+        SessionObject session,
         WebsocketSubscription subscription
     ) {
     }
 
+    /**
+     * Accepts an unsubscribe request without persisting it.
+     *
+     * @param session current session supplied by the WebSocket component;
+     *                must not be modified
+     * @param subscription subscription supplied by the WebSocket component;
+     *                     must not be modified
+     */
     @Override
-    public void unsubscribe(
-        String deviceId,
+    public void unsubscribeIfCurrent(
+        SessionObject session,
         WebsocketSubscription subscription
     ) {
     }

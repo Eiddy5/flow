@@ -20,6 +20,10 @@ class FlowEntryTest {
         JsonFactory.instance = JsonMapper.createDefault();
     }
 
+    /**
+     * Verifies that entry mapping uses Repository-assigned row identity and
+     * version while preserving Flow field codecs.
+     */
     @Test
     void roundTripsVariablesThroughTheFlowFieldCodec() {
         ActorRef actor = ActorRef.create("actor-1", "Flow User");
@@ -28,7 +32,7 @@ class FlowEntryTest {
             "company-1",
             "flow-key",
             true,
-            null,
+            3L,
             "description",
             Map.of(
                 "environment",
@@ -49,9 +53,10 @@ class FlowEntryTest {
             "key: flow-key"
         );
 
-        Flow restored = FlowEntry.from(flow).to();
+        Flow restored = FlowEntry.from(flow, "row-id", 4L).to();
 
-        assertEquals(flow.id(), restored.id());
+        assertEquals("row-id", restored.id());
+        assertEquals(4L, restored.version());
         assertEquals(flow.variables(), restored.variables());
         assertEquals(flow.creator(), restored.creator());
         assertEquals(flow.createdAt(), restored.createdAt());

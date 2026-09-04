@@ -43,6 +43,26 @@ public class YamlParser {
         return read(source, objectMapper.readerFor(type));
     }
 
+    /**
+     * Binds an already parsed YAML map with the source-definition mapper.
+     * The supplied map is read but not modified.
+     *
+     * @param source parsed YAML fields read without modification; must not be
+     *        {@code null}, while an empty map is allowed
+     * @param type target definition class; must not be {@code null}
+     * @param <T> target definition type
+     * @return a newly bound target object; container and element sharing is
+     *         determined by the target type's Jackson binding contract
+     * @throws NullPointerException when {@code source} or {@code type} is
+     *         {@code null}
+     * @throws IllegalArgumentException when the fields cannot be bound
+     */
+    public static <T> T bind(Map<String, ?> source, Class<T> type) {
+        Objects.requireNonNull(source, "parsed YAML fields");
+        Objects.requireNonNull(type, "target type");
+        return JacksonMapper.yamlMapper().convertValue(source, type);
+    }
+
     private static <T> T read(String source, ObjectReader reader) {
         requireSource(source);
         try {

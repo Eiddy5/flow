@@ -71,7 +71,7 @@ Executor 根据 Execution 和 TaskRun 事实完成状态推进。
 - `ExecutorService.handle(...)` 是 Task 能力分支的状态推进循环：每批 TaskRun
   并入 Execution 后，RunnableTask 暂存 WorkerTask 并返回提交边界；BranchTask
   直接完成或等待，非等待分支随后立即继续推导下一批 TaskRun。BranchTask 状态推进
-  由 `ExecutorEventHandler` 在 `ExecutorContext` 周期内完成，后续周期通过
+  由 `ExecutorEventMessageHandler` 在 `ExecutorContext` 周期内完成，后续周期通过
   `ExecutorEvent` Queue 交接；DefaultExecutor 的当前 Queue 路由职责由 ADR 0059 定义。
 - TaskExtension 与通用 Plugin 只负责类型注册、创建、重建和类型专有 properties，
   与 RunnableTask/BranchTask 的运行能力正交。外部 Runnable Task 插件把执行逻辑

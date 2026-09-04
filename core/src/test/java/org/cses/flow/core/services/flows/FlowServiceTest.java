@@ -6,6 +6,7 @@ import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.flows.commands.DeleteFlowCommand;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.junit.jupiter.api.Test;
+import org.paas.session.RecordState;
 import org.paas.session.Session;
 import org.paas.session.User;
 
@@ -14,7 +15,6 @@ import java.util.Arrays;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,8 +52,12 @@ class FlowServiceTest {
             .anyMatch(method -> method.getName().equals("deleteDraft")));
     }
 
+    /**
+     * Verifies that draft saves append tenant-scoped versions with distinct
+     * database row identities.
+     */
     @Test
-    void saveDraftCreatesOrUpdatesByCompanyAndFlowKey() {
+    void saveDraftAppendsByCompanyAndFlowKey() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             FlowService service = fixture.flowService();
             Session<User> companyOne = fixture.sessionFor("draft-key-one");
@@ -68,7 +72,7 @@ class FlowServiceTest {
             assertNotEquals(first.id(), first.key());
             assertTrue(first.draft());
             assertFalse(first.deployed());
-            assertNull(first.versionOrNull());
+            assertEquals(1L, first.version());
             assertEquals("initial", first.description());
             assertFalse(first.tasks().isEmpty());
             assertEquals(raw, first.source());
@@ -80,22 +84,64 @@ class FlowServiceTest {
                     validYaml("unique-draft-key", "revised")
                 )
             );
-            assertEquals(first.id(), revised.id());
+            assertNotEquals(first.id(), revised.id());
+            assertEquals(2L, revised.version());
 
             Flow otherCompany = service.save(
                 companyTwo,
                 PublishFlowCommand.from("unique-draft-key", raw)
             );
             assertNotEquals(first.id(), otherCompany.id());
+            assertEquals(1L, otherCompany.version());
 
-            service.delete(companyOne, first.key(), true);
-            assertThrows(
-                WorkflowException.class,
-                () -> service.save(
-                    companyOne,
-                    PublishFlowCommand.from("unique-draft-key", raw)
-                )
+            Flow deleted = service.delete(
+                companyOne,
+                first.key(),
+                true
             );
+            Flow replacement = service.save(
+                companyOne,
+                PublishFlowCommand.from("unique-draft-key", raw)
+            );
+            assertEquals(3L, deleted.version());
+            assertEquals(4L, replacement.version());
+        }
+    }
+
+    /**
+     * Saves a draft whose raw source declares tenant and audit status, then
+     * verifies both returned and queried Flow facts still come from the
+     * Session and domain initialization.
+     */
+    @Test
+    void companyAndStatusComeFromTheDomainInsteadOfDraftSource() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            FlowService service = fixture.flowService();
+            Session<User> session = fixture.sessionFor("domain-company");
+            String raw = """
+                companyId: source-company
+                key: domain-owned-fields
+                status: Delete
+                tasks:
+                  - key: start
+                    type: org.cses.flow.extensions.log.Log
+                    message: "test step"
+                """;
+
+            Flow saved = service.save(
+                session,
+                PublishFlowCommand.from("domain-owned-fields", raw)
+            );
+            Flow queried = service.draft(
+                session,
+                saved.key()
+            ).orElseThrow();
+
+            assertEquals(session.getCompanyId(), saved.companyId());
+            assertEquals(RecordState.Open, saved.status());
+            assertEquals(session.getCompanyId(), queried.companyId());
+            assertEquals(RecordState.Open, queried.status());
+            assertEquals(raw, queried.source());
         }
     }
 
@@ -135,6 +181,10 @@ class FlowServiceTest {
         }
     }
 
+    /**
+     * Verifies that a deleted latest deployed version is not replaced by an
+     * older active result when draft saves share the version sequence.
+     */
     @Test
     void deletedLatestReversionDoesNotFallBackToOlderFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -163,21 +213,26 @@ class FlowServiceTest {
 
             Flow deleted = service.delete(session, draft.key(), false);
 
-            assertEquals(1L, first.reversion());
-            assertEquals(2L, second.reversion());
-            assertEquals(2L, deleted.reversion());
+            assertEquals(2L, first.reversion());
+            assertEquals(4L, second.reversion());
+            assertEquals(5L, deleted.reversion());
             assertTrue(deleted.deleted());
             assertTrue(service.latestFlow(session, draft.key()).isEmpty());
             assertTrue(service.draft(session, draft.key()).isPresent());
-            assertFalse(service.flow(
+            assertTrue(service.flow(
                 session,
                 draft.key(),
                 1L
+            ).isEmpty());
+            assertFalse(service.flow(
+                session,
+                draft.key(),
+                2L
             ).orElseThrow().deleted());
             assertTrue(service.flow(
                 session,
                 draft.key(),
-                2L
+                5L
             ).orElseThrow().deleted());
             Flow deletedDraft = service.delete(session, draft.key(), true);
             assertTrue(deletedDraft.draft());
@@ -193,6 +248,10 @@ class FlowServiceTest {
         }
     }
 
+    /**
+     * Verifies Flow key resolution while draft and deployed saves consume
+     * successive Repository-assigned versions.
+     */
     @Test
     void prefersYamlKeysAndKeepsTheResolvedFlowKeyWhenLaterYamlOmitsIt() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -235,6 +294,7 @@ class FlowServiceTest {
                 description: key omitted on the next revision
                 tasks:
                   - type: org.cses.flow.extensions.log.Log
+                    message: "test step"
                 """)
             );
             Flow second = service.save(
@@ -243,12 +303,16 @@ class FlowServiceTest {
             );
 
             assertEquals("externally-owned-flow", second.key());
-            assertEquals(2L, second.reversion());
+            assertEquals(4L, second.reversion());
         }
     }
 
+    /**
+     * Verifies that draft and deployed saves share one increasing version
+     * sequence while every save receives a new row identity.
+     */
     @Test
-    void saveDraftKeepsTheExistingDraftIdentityAcrossReversions() {
+    void savesUseNewRowIdentityAndOneSharedVersionSequence() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             FlowService service = fixture.flowService();
             Session<User> session = fixture.session();
@@ -260,26 +324,26 @@ class FlowServiceTest {
                     message: "test step"
                 """;
 
-            Flow latest = fixture.deploy(yaml);
+            Flow deployed = fixture.deploy(yaml);
             Flow original = service.draft(
                 session,
-                latest.key()
+                deployed.key()
             ).orElseThrow();
-            for (int version = 2; version <= 10; version++) {
-                service.save(
-                    session,
-                    PublishFlowCommand.from(latest.key(), yaml)
-                );
-                latest = service.save(
-                    session,
-                    PublishFlowCommand.from(latest.key(), false)
-                );
-            }
             Flow saved = service.save(
                 session,
                 PublishFlowCommand.from("existing-flow-key", yaml)
             );
-            assertEquals(original.id(), saved.id());
+            Flow nextDeployed = service.save(
+                session,
+                PublishFlowCommand.from(saved.key(), false)
+            );
+
+            assertEquals(1L, original.version());
+            assertEquals(2L, deployed.version());
+            assertEquals(3L, saved.version());
+            assertEquals(4L, nextDeployed.version());
+            assertNotEquals(original.id(), saved.id());
+            assertNotEquals(saved.id(), nextDeployed.id());
         }
     }
 

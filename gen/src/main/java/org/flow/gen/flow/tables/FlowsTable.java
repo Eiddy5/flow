@@ -21,13 +21,14 @@ import org.jooq.PlainSQL;
 import org.jooq.QueryPart;
 import org.jooq.SQL;
 import org.jooq.Schema;
-import org.jooq.Select;
 import org.jooq.Stringly;
 import org.jooq.Table;
 import org.jooq.TableField;
+import org.jooq.TableLike;
 import org.jooq.TableOptions;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
+import org.jooq.impl.Internal;
 import org.jooq.impl.SQLDataType;
 import org.jooq.impl.TableImpl;
 
@@ -71,7 +72,7 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     /**
      * The column <code>public.flows.version</code>.
      */
-    public final TableField<FlowsRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT, this, "");
+    public final TableField<FlowsRecord, Long> VERSION = createField(DSL.name("version"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
      * The column <code>public.flows.draft</code>.
@@ -174,7 +175,7 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_FLOWS_ACTIVE_DRAFTS, Indexes.IDX_FLOWS_LATEST_DEPLOYED, Indexes.UQ_FLOWS_DEPLOYED_KEY_VERSION, Indexes.UQ_FLOWS_DRAFT_KEY);
+        return Arrays.asList(Indexes.IDX_FLOWS_LATEST_DEPLOYED, Indexes.IDX_FLOWS_LATEST_DRAFT, Indexes.UQ_FLOWS_KEY_VERSION);
     }
 
     @Override
@@ -226,7 +227,7 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
      */
     @Override
     public FlowsTable where(Condition condition) {
-        return new FlowsTable(getQualifiedName(), aliased() ? this : null, null, condition);
+        return new FlowsTable(getQualifiedName(), aliased() ? this : null, null, Internal.condition(this, condition));
     }
 
     /**
@@ -293,7 +294,7 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
      * Create an inline derived table from this table
      */
     @Override
-    public FlowsTable whereExists(Select<?> select) {
+    public FlowsTable whereExists(TableLike<?> select) {
         return where(DSL.exists(select));
     }
 
@@ -301,7 +302,7 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
      * Create an inline derived table from this table
      */
     @Override
-    public FlowsTable whereNotExists(Select<?> select) {
+    public FlowsTable whereNotExists(TableLike<?> select) {
         return where(DSL.notExists(select));
     }
 }

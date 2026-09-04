@@ -14,6 +14,7 @@ import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.runner.RunContext;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
+import org.cses.flow.executor.handlers.ExecutorEventMessageHandler;
 import org.cses.flow.worker.WorkerDispatcher;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
@@ -33,7 +34,7 @@ import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class ExecutorEventHandlerTest {
+final class ExecutorEventMessageHandlerTest {
 
     private static final AtomicReference<RunIdentity> CAPTURED_RUN =
         new AtomicReference<>();
@@ -102,8 +103,8 @@ final class ExecutorEventHandlerTest {
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
         TestExecutionRepository repository = new TestExecutionRepository();
-        org.cses.flow.executor.handlers.ExecutorEventHandler eventHandler =
-            new org.cses.flow.executor.handlers.ExecutorEventHandler(
+        ExecutorEventMessageHandler eventHandler =
+            new ExecutorEventMessageHandler(
             repository,
             new ExecutorService(),
             new WorkerDispatcher()
@@ -175,8 +176,8 @@ final class ExecutorEventHandlerTest {
         ExecutorContext context = new ExecutorContext(flow, execution);
         TestExecutionRepository executionRepository =
             new TestExecutionRepository();
-        org.cses.flow.executor.handlers.ExecutorEventHandler eventHandler =
-            new org.cses.flow.executor.handlers.ExecutorEventHandler(
+        ExecutorEventMessageHandler eventHandler =
+            new ExecutorEventMessageHandler(
             executionRepository,
             new ExecutorService(),
             new WorkerDispatcher()
@@ -233,8 +234,8 @@ final class ExecutorEventHandlerTest {
             flow.reversion(),
             Map.of()
         );
-        org.cses.flow.executor.handlers.ExecutorEventHandler executor =
-            new org.cses.flow.executor.handlers.ExecutorEventHandler(
+        ExecutorEventMessageHandler executor =
+            new ExecutorEventMessageHandler(
             new TestExecutionRepository(),
             new ExecutorService(),
             new WorkerDispatcher()

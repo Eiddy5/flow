@@ -167,13 +167,18 @@ class RunVariablesTest {
         assertFalse(containsDomainObject(variables));
     }
 
+    /**
+     * Builds one persisted-style Flow and runtime state for variable tests.
+     *
+     * @return fixture whose Flow has a positive persisted version
+     */
     private static Fixture fixture() {
         Session<User> session = session();
         Log root = task("root-id", "root");
         Log repeated = task("repeat-id", "repeat");
         Log parent = task("parent-id", "parent");
         Log current = task("current-id", "current");
-        Flow flow = Flow.deploy(
+        Flow transientFlow = Flow.deploy(
             session,
             "run-variables-flow",
             "",
@@ -183,6 +188,26 @@ class RunVariablesTest {
             List.of(root, repeated, parent, current),
             "source",
             null
+        );
+        Flow flow = Flow.rehydrate(
+            transientFlow.id(),
+            transientFlow.companyId(),
+            transientFlow.key(),
+            false,
+            1L,
+            transientFlow.description(),
+            transientFlow.variables(),
+            transientFlow.inputs(),
+            transientFlow.outputs(),
+            transientFlow.tasks(),
+            transientFlow.status(),
+            transientFlow.creator(),
+            transientFlow.updater(),
+            null,
+            transientFlow.createdAt(),
+            transientFlow.updatedAt(),
+            null,
+            transientFlow.source()
         );
         Execution execution = Execution.create(
             "execution-1",

@@ -2,7 +2,7 @@
 
 > 运行提交与内部状态交接的当前方案由 ADR 0059 修订：`ExecutionRunner` 已删除，
 > 外部 Command 由 `ExecutionCommandEventHandler` 处理，内部周期由
-> `ExecutorEventHandler` 通过 `ExecutorEvent` Queue 交接。本文保留领域模型和历史
+> `ExecutorEventMessageHandler` 通过 `ExecutorEvent` Queue 交接。本文保留领域模型和历史
 > 推导背景，涉及提交边界的旧描述以 ADR 0059 为准。
 
 ## 状态
@@ -83,7 +83,7 @@ ExecutionService
   `Execution.create(...)`，原子保存 CREATED Execution 并发布首个内部 Event。具体
   单一启动 Interface 由 ADR 0068 定义。
 - `ExecutorContext` 只保存精确 Flow、Execution 和本轮增量；
-  `ExecutorEventHandler` 管理单个 Event 周期内的中间聚合保存和 Worker 调用；
+  `ExecutorEventMessageHandler` 管理单个 Event 周期内的中间聚合保存和 Worker 调用；
   `DefaultExecutor` 的当前 Queue 路由职责由 ADR 0059 定义。
 - `ExecutorService` 只管理状态与编排，不访问 Repository，不执行 Task。
 - `handleNext()` 只暂存下一批 TaskRun 计划；`onNexts()` 才启动首次 Execution、
@@ -111,7 +111,7 @@ ExecutionService
 - 审批、表单、工单等外部能力保存 executionId 和 taskRunId，并通过
   `ExecutionService.resume(...)` 提交结果。
 - `ExecutionCommandEventHandler` 在 Command Queue 消费事务内校验并投递内部 Event；
-  `ExecutorEventHandler` 在 Event 消费事务内加载绑定的 Execution 与确定 Flow Reversion，
+  `ExecutorEventMessageHandler` 在 Event 消费事务内加载绑定的 Execution 与确定 Flow Reversion，
   校验 PauseTask 契约后调用 `ExecutorService.resume(...)`。
 - resume 直接完成原 WAITING PAUSE TaskRun，不能再次执行 PAUSE Worker。
 - TaskRun 完成后，`ExecutorService` 自动调用下一轮 `handleNext()`。
@@ -128,7 +128,7 @@ ExecutionService
 
 - JOOQ DSLContext 由 `CommandExecutor` 建立，命令是事务边界。
 - 一个命令可以连续执行多个同步 Task，直到遇到 PAUSE、失败或终态。
-- `ExecutorEventHandler` 可以在同一 Event 事务内中间保存 Execution/TaskRun，使
+- `ExecutorEventMessageHandler` 可以在同一 Event 事务内中间保存 Execution/TaskRun，使
   Worker 保存带外键的 Task 业务记录。
 - 中间保存不等于提交。
 - Execution 聚合只持有一个 `lockVersion`；修改已有 Execution 的命令最多

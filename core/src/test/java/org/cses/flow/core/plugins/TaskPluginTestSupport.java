@@ -4,6 +4,7 @@ import io.micronaut.validation.validator.Validator;
 import jakarta.validation.ConstraintViolationException;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.validations.ModelValidator;
@@ -85,6 +86,22 @@ public class TaskPluginTestSupport {
             );
         }
 
+        /**
+         * Parses and validates a deployed Flow, then returns a persisted-style
+         * fixture with the next synthetic version.
+         *
+         * @param source non-blank raw Flow source
+         * @param flowKey fallback Flow key; may be {@code null} when source or
+         *        latest provides a key
+         * @param latest latest deployed fixture read without modification, or
+         *        {@code null} for version one
+         * @param session non-null tenant and actor for the fixture
+         * @return detached deployed Flow with a positive synthetic test
+         *         version and shallow-copied definition containers
+         * @throws IllegalArgumentException when source or Task definitions
+         *         cannot be parsed or validated
+         * @throws WorkflowException when deployed Flow invariants fail
+         */
         public Flow deploy(
             String source,
             String flowKey,
@@ -112,7 +129,27 @@ public class TaskPluginTestSupport {
                 }
             });
             flow.initialize(session, false, latest, source);
-            return flow;
+            long version = latest == null ? 1 : latest.version() + 1;
+            return Flow.rehydrate(
+                flow.id(),
+                flow.companyId(),
+                flow.key(),
+                false,
+                version,
+                flow.description(),
+                flow.variables(),
+                flow.inputs(),
+                flow.outputs(),
+                flow.tasks(),
+                flow.status(),
+                flow.creator(),
+                flow.updater(),
+                null,
+                flow.createdAt(),
+                flow.updatedAt(),
+                null,
+                flow.source()
+            );
         }
 
         private static Session<User> session(

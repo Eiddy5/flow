@@ -2,6 +2,7 @@ package org.cses.flow.controller.flow;
 
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
+import org.cses.flow.controller.flow.FlowModels.DraftView;
 import org.cses.flow.controller.flow.FlowModels.FlowView;
 import org.cses.flow.controller.flow.FlowModels.TaskView;
 import org.junit.jupiter.api.Test;
@@ -117,6 +118,19 @@ class FlowControllerTest {
         assertEquals(
             String.class,
             FlowView.class.getMethod("getId").getReturnType()
+        );
+    }
+
+    /**
+     * Verifies that draft API responses expose the system-assigned version.
+     *
+     * @throws NoSuchMethodException when the draft version accessor is absent
+     */
+    @Test
+    void exposesTheDraftVersion() throws NoSuchMethodException {
+        assertEquals(
+            long.class,
+            DraftView.class.getMethod("getVersion").getReturnType()
         );
     }
 

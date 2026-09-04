@@ -39,7 +39,7 @@ RunContext 只提供 Session 和本次调用所需的不可变 variables；需�
 
 - 从 `RunContext` 移除 `DSLContext` 字段、`dsl()` 方法和 `create(...)` 参数。
 - `WorkerDispatcher.dispatch(...)` 只接收 Session 和 WorkerTask，不再转发 DSL。
-- `ExecutorEventHandler` 保留自己的 `DSLContext` 参数，用于 Execution 持久化、Worker
+- `ExecutorEventMessageHandler` 保留自己的 `DSLContext` 参数，用于 Execution 持久化、Worker
   调用和后续 Event 投递，不把事务资源放入 `ExecutorContext`。
 - RunnableTask 不得通过 RunContext 直接访问数据库；宿主业务能力通过明确的
   Service/Adapter 接口接入。

@@ -85,18 +85,18 @@ Command 时还会继续复制同样的入口。
 - 处理 `Resume` 时，Handler 锁定 execution id 对应的 Execution，加载其精确 Flow
   Reversion，复核目标 Pause TaskRun 和 outputs，然后调用既有 Resume 运行入口；重复或
   已失效的 Resume 是幂等空操作。Resume 运行入口内部先调用 `ExecutorService.resume`
-  再由 `ExecutorEvent` Queue 交给 `ExecutorEventHandler` 继续调度后续工作。
+  再由 `ExecutorEvent` Queue 交给 `ExecutorEventMessageHandler` 继续调度后续工作。
 - 原 `ExecutionCommandPublisher`、`ExecutionCommandConsumer`、
   `ExecutionStartCommand` 与 Core `RunExecutionCommand/Handler` 删除；Command 不再跨
   Executor/Core 来回转换。
 
 ### 运行提交
 
-- 原 `DefaultExecutor` 的状态机提交循环迁移到内部 `ExecutorEventHandler`。它调用
+- 原 `DefaultExecutor` 的状态机提交循环迁移到内部 `ExecutorEventMessageHandler`。它调用
   `ExecutorService`、保存 Execution、同步投递 WorkerTask、应用结果，并在需要时投递
   下一条 `ExecutorEvent`。
 - 首次异步推进和异步 Resume 期间，确定性的 `RunnableTask` 运行时异常由
-  `ExecutorEventHandler` 转换为失败结果，使 Execution 落为 `FAILED` 后正常确认 Queue
+  `ExecutorEventMessageHandler` 转换为失败结果，使 Execution 落为 `FAILED` 后正常确认 Queue
   Command；同步 `cancel` 仍保留异常传播与事务回滚语义。
 - `DefaultDispatchQueue` 只在 Handler 正常返回时删除消息；Handler 异常使领取事务回滚
   并重试。

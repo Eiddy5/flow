@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -24,6 +25,10 @@ import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTas
 
 class ExecutionPauseLifecycleIntegrationTest {
 
+    /**
+     * Verifies that the first publication is version 2 and remains available
+     * for exact lookup and Pause completion after a server restart.
+     */
     @Test
     void resumesLatestDeployedFlowAfterRestart() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -43,8 +48,9 @@ class ExecutionPauseLifecycleIntegrationTest {
                 1,
                 fixture.executionService().executions(fixture.session()).size()
             );
+            assertEquals(2, flow.version());
             assertEquals(flow.key(), started.flowKey());
-            assertEquals(1L, started.flowVersion());
+            assertEquals(2L, started.flowVersion());
             assertEquals(State.Type.PAUSED, started.state().current());
 
             fixture.restartServer();
@@ -92,29 +98,34 @@ class ExecutionPauseLifecycleIntegrationTest {
                 fixture.flowService().flow(
                     fixture.session(),
                     flow.key(),
-                    1L
+                    2L
                 ).orElseThrow()
             );
         }
     }
 
+    /**
+     * Verifies that Executions bind published versions 2 and 4 across server
+     * restarts while the intervening updated draft receives version 3.
+     */
     @Test
     void resumedExecutionsKeepTheirBoundReversion() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow reversion1 = fixture.deploy(
+            Flow reversion2 = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-reversion-flow",
                     "初始审批 Flow",
                     false
                 )
             );
-            Execution first = fixture.startAndAwait(reversion1);
-            String firstTaskId = reversion1.tasks().getFirst().id();
+            assertEquals(2, reversion2.version());
+            Execution first = fixture.startAndAwait(reversion2);
+            String firstTaskId = reversion2.tasks().getFirst().id();
 
-            fixture.flowService().save(
+            Flow draft3 = fixture.flowService().save(
                 fixture.session(),
                 PublishFlowCommand.from(
-                    reversion1.key(),
+                    reversion2.key(),
                     WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-reversion-flow",
                     "升级审批 Flow",
@@ -122,11 +133,13 @@ class ExecutionPauseLifecycleIntegrationTest {
                     )
                 )
             );
-            Flow reversion2 = fixture.flowService().save(
+            assertEquals(3, draft3.version());
+            Flow reversion4 = fixture.flowService().save(
                 fixture.session(),
-                PublishFlowCommand.from(reversion1.key(), false)
+                PublishFlowCommand.from(reversion2.key(), false)
             );
-            Execution second = fixture.startAndAwait(reversion2);
+            assertEquals(4, reversion4.version());
+            Execution second = fixture.startAndAwait(reversion4);
 
             Execution firstCompleted = fixture.resumeAfterRestart(
                 first.id(),
@@ -137,8 +150,8 @@ class ExecutionPauseLifecycleIntegrationTest {
                 Map.of("decision", "APPROVED")
             );
 
-            assertEquals(1L, firstCompleted.flowVersion());
-            assertEquals(2L, secondCompleted.flowVersion());
+            assertEquals(2L, firstCompleted.flowVersion());
+            assertEquals(4L, secondCompleted.flowVersion());
             assertEquals(State.Type.SUCCESS, firstCompleted.state().current());
             assertEquals(State.Type.SUCCESS, secondCompleted.state().current());
             assertNotEquals(first.id(), second.id());
@@ -147,25 +160,29 @@ class ExecutionPauseLifecycleIntegrationTest {
                 .noneMatch(secondCompleted.taskRuns().stream()
                     .map(taskRun -> taskRun.id())
                     .collect(java.util.stream.Collectors.toSet())::contains));
-            assertEquals(firstTaskId, reversion2.tasks().getFirst().id());
-            Flow storedReversion1 = fixture.flowService().flow(
+            assertEquals(firstTaskId, reversion4.tasks().getFirst().id());
+            Flow storedReversion2 = fixture.flowService().flow(
                 fixture.session(),
-                reversion1.key(),
-                1L
+                reversion2.key(),
+                2L
             ).orElseThrow();
-            assertTrue(!storedReversion1.deleted());
+            assertFalse(storedReversion2.deleted());
             assertEquals(
-                reversion2,
+                reversion4,
                 fixture.flowService().flow(
                     fixture.session(),
-                    reversion2.key(),
-                    2L
+                    reversion4.key(),
+                    4L
                 ).orElseThrow()
             );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
+    /**
+     * Verifies that canceling one of two version-2 Executions leaves the
+     * control Execution resumable and the published version queryable.
+     */
     @Test
     void cancelOnlyTargetsOnePausedExecution() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -176,6 +193,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                     false
                 )
             );
+            assertEquals(2, flow.version());
             Execution target = fixture.startAndAwait(flow);
             Execution control = fixture.startAndAwait(flow);
             fixture.restartServer();
@@ -212,13 +230,17 @@ class ExecutionPauseLifecycleIntegrationTest {
                 fixture.flowService().flow(
                     fixture.session(),
                     flow.key(),
-                    1L
+                    2L
                 ).orElseThrow()
             );
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
+    /**
+     * Verifies unavailable Flow start rejection and confirms that deletion of
+     * a first publication appends a distinct version-3 database row.
+     */
     @Test
     void createRejectsDraftDeletedMissingAndCrossTenantFlows() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -230,6 +252,7 @@ class ExecutionPauseLifecycleIntegrationTest {
                     false
                 ))
             );
+            assertEquals(1, draft.version());
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().create(
@@ -247,11 +270,15 @@ class ExecutionPauseLifecycleIntegrationTest {
                     false
                 )
             );
-            fixture.flowService().delete(
+            assertEquals(2, deployed.version());
+            Flow deletion = fixture.flowService().delete(
                 fixture.session(),
                 deployed.key(),
                 false
             );
+            assertNotEquals(deployed.id(), deletion.id());
+            assertEquals(3, deletion.version());
+            assertTrue(deletion.deleted());
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().create(
@@ -285,6 +312,8 @@ class ExecutionPauseLifecycleIntegrationTest {
                 otherCompany,
                 PublishFlowCommand.from(otherDraft.key(), false)
             );
+            assertEquals(1, otherDraft.version());
+            assertEquals(2, otherFlow.version());
             assertThrows(
                 WorkflowException.class,
                 () -> fixture.executionService().create(
@@ -305,8 +334,10 @@ class ExecutionPauseLifecycleIntegrationTest {
             Flow deletedFlow = fixture.flowService().flow(
                 fixture.session(),
                 deployed.key(),
-                1L
+                3L
             ).orElseThrow();
+            assertEquals(deletion.id(), deletedFlow.id());
+            assertEquals(3, deletedFlow.version());
             assertTrue(deletedFlow.deleted());
             assertTrue(
                 fixture.flowService().latestFlow(
@@ -396,22 +427,27 @@ class ExecutionPauseLifecycleIntegrationTest {
         }
     }
 
+    /**
+     * Verifies that a paused Execution stays bound to published version 2
+     * after an updated draft and publication append versions 3 and 4.
+     */
     @Test
     void pausedExecutionKeepsItsBoundReversionAfterDeployment() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow reversion1 = fixture.deploy(
+            Flow reversion2 = fixture.deploy(
                 WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-bound-reversion-flow",
                     "初始审批 Flow",
                     false
                 )
             );
-            Execution started = fixture.startAndAwait(reversion1);
+            assertEquals(2, reversion2.version());
+            Execution started = fixture.startAndAwait(reversion2);
 
-            fixture.flowService().save(
+            Flow draft3 = fixture.flowService().save(
                 fixture.session(),
                 PublishFlowCommand.from(
-                    reversion1.key(),
+                    reversion2.key(),
                     WorkflowUcFixture.pauseYaml(
                     "pause-lifecycle-bound-reversion-flow",
                     "升级审批 Flow",
@@ -419,31 +455,33 @@ class ExecutionPauseLifecycleIntegrationTest {
                     )
                 )
             );
-            Flow reversion2 = fixture.flowService().save(
+            assertEquals(3, draft3.version());
+            Flow reversion4 = fixture.flowService().save(
                 fixture.session(),
-                PublishFlowCommand.from(reversion1.key(), false)
+                PublishFlowCommand.from(reversion2.key(), false)
             );
+            assertEquals(4, reversion4.version());
 
             Execution completed = fixture.resumeAfterRestart(
                 started.id(),
                 Map.of("decision", "APPROVED")
             );
 
-            assertEquals(1L, completed.flowVersion());
+            assertEquals(2L, completed.flowVersion());
             assertEquals(started.id(), completed.id());
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(2, completed.taskRuns().size());
             assertEquals(
-                reversion1.tasks().getFirst().id(),
+                reversion2.tasks().getFirst().id(),
                 completed.taskRuns().getFirst().taskId()
             );
 
-            Execution newStarted = fixture.startAndAwait(reversion2);
+            Execution newStarted = fixture.startAndAwait(reversion4);
             Execution newCompleted = fixture.resumeAfterRestart(
                 newStarted.id(),
                 Map.of("decision", "APPROVED")
             );
-            assertEquals(2L, newCompleted.flowVersion());
+            assertEquals(4L, newCompleted.flowVersion());
             assertEquals(State.Type.SUCCESS, newCompleted.state().current());
             assertEquals(3, newCompleted.taskRuns().size());
             assertTrue(fixture.pausedTaskRuns().isEmpty());

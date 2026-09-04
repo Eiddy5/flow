@@ -148,6 +148,32 @@ public class Flow extends AbstractFlow {
         );
     }
 
+    /**
+     * Creates a transient deployed definition after validating it against the
+     * latest deployed Flow. The Repository assigns its persisted version.
+     *
+     * @param session non-null tenant and actor creating the definition
+     * @param key non-blank stable Flow key
+     * @param description description; {@code null} becomes empty text
+     * @param variables variables shallow-copied into an unmodifiable map;
+     *        {@code null} becomes empty and values remain shared
+     * @param inputs inputs shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @param outputs outputs shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @param tasks executable Task tree shallow-copied into an unmodifiable
+     *        list; {@code null} becomes empty and then fails deployed
+     *        validation, while elements remain shared
+     * @param source non-blank raw source definition retained as supplied
+     * @param latest latest deployed Flow, or {@code null} for the first one
+     * @return a transient deployed Flow without a persisted version
+     * @throws IllegalArgumentException when identity or definition values are
+     *         invalid
+     * @throws NullPointerException when a copied collection contains a null
+     *         element or a variable key is null
+     * @throws WorkflowException when the latest state or Task tree rejects the
+     *         new definition
+     */
     public static Flow deploy(
             Session<? extends User> session,
             String key,
@@ -163,7 +189,7 @@ public class Flow extends AbstractFlow {
         List<Task> boundTasks = tasks == null
                 ? List.of()
                 : List.copyOf(tasks);
-        long version = nextVersion(
+        validateNextDefinition(
                 session,
                 normalizedKey,
                 boundTasks,
@@ -172,7 +198,7 @@ public class Flow extends AbstractFlow {
         return new Flow(
                 StringUtil.newId(),
                 normalizedKey,
-                version,
+                null,
                 false,
                 session,
                 description,
@@ -184,6 +210,42 @@ public class Flow extends AbstractFlow {
         );
     }
 
+    /**
+     * Restores one persisted Flow row and its optional Task snapshot.
+     *
+     * @param id non-blank database row identifier
+     * @param companyId non-blank tenant identifier
+     * @param key non-blank stable Flow key
+     * @param draft {@code true} for a draft row or {@code false} for a
+     *        deployed row
+     * @param version positive persisted version
+     * @param description description; {@code null} becomes empty text
+     * @param variables variables shallow-copied into an unmodifiable map;
+     *        {@code null} becomes empty and values remain shared
+     * @param inputs inputs shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @param outputs outputs shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @param tasks Task snapshot shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @param status non-null persisted audit status
+     * @param creator non-null original creator
+     * @param updater non-null latest updater
+     * @param deleter deleter, or {@code null} for an active Flow
+     * @param createdAt non-negative creation timestamp in milliseconds
+     * @param updatedAt latest update timestamp in milliseconds, not before
+     *        {@code createdAt}
+     * @param deletedAt deletion timestamp in milliseconds, or {@code null}
+     *        for an active Flow
+     * @param source non-blank raw source definition
+     * @return a detached Flow whose maps and lists do not share mutable
+     *         containers with the supplied values; contained objects remain
+     *         shared
+     * @throws IllegalArgumentException when the persisted version is absent or
+     *         not positive, or another persisted invariant is invalid
+     * @throws NullPointerException when a required object is null or a copied
+     *         collection contains a null element
+     */
     public static Flow rehydrate(
             String id,
             String companyId,
@@ -204,6 +266,7 @@ public class Flow extends AbstractFlow {
             Long deletedAt,
             String source
     ) {
+        requirePersistedVersion(version);
         return new Flow(
                 id,
                 key,
@@ -230,6 +293,19 @@ public class Flow extends AbstractFlow {
      * Completes a Flow created by Jackson's no-args binding path.
      * YAML supplies the definition; this method supplies identity, tenant,
      * audit, lifecycle and raw source facts.
+     *
+     * @param session non-null tenant and actor initializing the Flow
+     * @param draft {@code true} to initialize a draft or {@code false} to
+     *        validate and initialize a deployed definition
+     * @param latest latest deployed Flow used for compatibility validation,
+     *        or {@code null} when no deployed version exists
+     * @param rawSource non-blank raw source definition retained as supplied
+     * @throws IllegalStateException when this Flow was already initialized
+     * @throws IllegalArgumentException when the Session or definition fields
+     *         are invalid
+     * @throws NullPointerException when a copied Task list contains a null
+     *         element
+     * @throws WorkflowException when deployed validation fails
      */
     public void initialize(
             Session<? extends User> session,
@@ -242,10 +318,9 @@ public class Flow extends AbstractFlow {
         }
         String normalizedKey = requireText(key, "Flow key");
         List<Task> boundTasks = immutableTasks(tasks);
-        long nextVersion = 0;
         if (!draft) {
             rebindTaskIds(latest, boundTasks);
-            nextVersion = nextVersion(
+            validateNextDefinition(
                     session,
                     normalizedKey,
                     boundTasks,
@@ -256,7 +331,7 @@ public class Flow extends AbstractFlow {
         initializeAudit(session);
         initializeDefinition(
                 normalizedKey,
-                draft ? null : nextVersion,
+                null,
                 draft,
                 description,
                 variables,
@@ -477,7 +552,20 @@ public class Flow extends AbstractFlow {
         );
     }
 
-    protected static long nextVersion(
+    /**
+     * Validates a deployed definition against the latest deployed Flow.
+     * The persisted version is assigned later by the Repository.
+     *
+     * @param session non-null tenant and actor for the new definition
+     * @param flowKey non-blank stable key of the definition
+     * @param tasks non-null Task list read without modifying it
+     * @param latest latest deployed Flow, or {@code null} for the first one
+     * @throws IllegalArgumentException when the latest Flow belongs to another
+     *         tenant
+     * @throws WorkflowException when the latest Flow is deleted, its key
+     *         differs, or a stable Task identity changes
+     */
+    protected static void validateNextDefinition(
             Session<? extends User> session,
             String flowKey,
             List<Task> tasks,
@@ -485,7 +573,7 @@ public class Flow extends AbstractFlow {
     ) {
         String companyId = SessionUtil.company(session);
         if (latest == null) {
-            return 1;
+            return;
         }
         if (!companyId.equals(latest.companyId())) {
             throw new IllegalArgumentException(
@@ -504,7 +592,21 @@ public class Flow extends AbstractFlow {
             );
         }
         requireStableTaskIds(latest, tasks);
-        return latest.version() + 1;
+    }
+
+    /**
+     * Validates that a rehydrated Flow has a positive persisted version.
+     *
+     * @param version persisted version to validate
+     * @throws IllegalArgumentException when the version is absent or not
+     *         positive
+     */
+    private static void requirePersistedVersion(Long version) {
+        if (version == null || version < 1) {
+            throw new IllegalArgumentException(
+                    "Persisted Flow version must be positive"
+            );
+        }
     }
 
     protected static void requireStableTaskIds(

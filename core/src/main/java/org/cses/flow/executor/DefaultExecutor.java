@@ -7,6 +7,7 @@ import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import org.cses.flow.executor.commands.ExecutionCommand;
 import org.cses.flow.executor.handlers.ExecutionCommandEventHandler;
+import org.cses.flow.executor.handlers.ExecutorEventMessageHandler;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
 import org.cses.flow.queues.DispatchQueue;
 import org.cses.flow.queues.QueueSubscription;
@@ -35,7 +36,7 @@ public final class DefaultExecutor implements AutoCloseable {
             ExecutionCommandEventHandler commandHandler,
             @Named(ExecutorEvent.QUEUE_NAME)
             DispatchQueue<ExecutorEvent> eventQueue,
-            org.cses.flow.executor.handlers.ExecutorEventHandler eventHandler
+            ExecutorEventMessageHandler eventHandler
     ) {
         Objects.requireNonNull(commandHandler, "commandHandler");
         commandSubscription = Objects.requireNonNull(

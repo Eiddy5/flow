@@ -3,7 +3,6 @@ package org.cses.flow.executor.handlers;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
-import org.cses.flow.core.services.CommandContext;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
@@ -13,14 +12,12 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.core.services.CommandContext;
 import org.cses.flow.core.services.executions.ExecutionService;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorEvent;
-import org.cses.flow.executor.commands.Cancel;
-import org.cses.flow.executor.commands.Create;
-import org.cses.flow.executor.commands.ExecutionCommand;
-import org.cses.flow.executor.commands.Resume;
-import org.cses.flow.executor.commands.Rewind;
+import org.cses.flow.executor.ExecutorEventHandler;
+import org.cses.flow.executor.commands.*;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.DispatchQueue;
@@ -45,7 +42,7 @@ import java.util.Optional;
  */
 @Singleton
 public class ExecutionCommandEventHandler implements
-    org.cses.flow.executor.ExecutorEventHandler<ExecutionCommand> {
+        ExecutorEventHandler<ExecutionCommand> {
 
     private JOOQ jooq;
     private SessionFactory<?, ?> sessionFactory;
@@ -55,25 +52,25 @@ public class ExecutionCommandEventHandler implements
 
     @Inject
     public ExecutionCommandEventHandler(
-        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
-        SessionFactory<?, ?> sessionFactory,
-        FlowRepository flowRepository,
-        ExecutionRepository executionRepository,
-        @Named(ExecutorEvent.QUEUE_NAME)
-        DispatchQueue<ExecutorEvent> eventQueue
+            @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
+            SessionFactory<?, ?> sessionFactory,
+            FlowRepository flowRepository,
+            ExecutionRepository executionRepository,
+            @Named(ExecutorEvent.QUEUE_NAME)
+            DispatchQueue<ExecutorEvent> eventQueue
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.sessionFactory = Objects.requireNonNull(
-            sessionFactory,
-            "sessionFactory"
+                sessionFactory,
+                "sessionFactory"
         );
         this.flowRepository = Objects.requireNonNull(
-            flowRepository,
-            "flowRepository"
+                flowRepository,
+                "flowRepository"
         );
         this.executionRepository = Objects.requireNonNull(
-            executionRepository,
-            "executionRepository"
+                executionRepository,
+                "executionRepository"
         );
         this.eventQueue = Objects.requireNonNull(eventQueue, "eventQueue");
     }
@@ -81,8 +78,8 @@ public class ExecutionCommandEventHandler implements
     @Override
     public Optional<ExecutorContext> handle(ExecutionCommand command) {
         ExecutionCommand accepted = Objects.requireNonNull(
-            command,
-            "command"
+                command,
+                "command"
         );
         accepted.validate();
         jooq.run(dsl -> route(dsl, accepted));
@@ -90,39 +87,39 @@ public class ExecutionCommandEventHandler implements
     }
 
     private void route(
-        DSLContext dsl,
-        ExecutionCommand command
+            DSLContext dsl,
+            ExecutionCommand command
     ) {
         switch (command) {
             case Create create -> handleCreate(dsl, create);
             case Resume resume -> {
                 Session<?> session = restoreSession(resume);
                 inCommandScope(
-                    dsl,
-                    session,
-                    resume,
-                    () -> handleResume(dsl, resume)
+                        dsl,
+                        session,
+                        resume,
+                        () -> handleResume(dsl, resume)
                 );
             }
             case Rewind rewind -> {
                 Session<?> session = restoreSession(
-                    rewind.getCompanyId(),
-                    rewind.getActorId()
+                        rewind.getCompanyId(),
+                        rewind.getActorId()
                 );
                 inCommandScope(
-                    dsl,
-                    session,
-                    rewind,
-                    () -> handleRewind(dsl, rewind)
+                        dsl,
+                        session,
+                        rewind,
+                        () -> handleRewind(dsl, rewind)
                 );
             }
             case Cancel cancel -> {
                 Session<?> session = restoreSession(cancel);
                 inCommandScope(
-                    dsl,
-                    session,
-                    cancel,
-                    () -> handleCancel(dsl, cancel)
+                        dsl,
+                        session,
+                        cancel,
+                        () -> handleCancel(dsl, cancel)
                 );
             }
         }
@@ -130,217 +127,217 @@ public class ExecutionCommandEventHandler implements
 
     private void handleCancel(DSLContext dsl, Cancel command) {
         Execution execution = executionRepository.findById(
-            dsl,
-            command.getCompanyId(),
-            command.getExecutionId()
+                dsl,
+                command.getCompanyId(),
+                command.getExecutionId()
         ).orElseThrow(() -> new WorkflowException(
-            "Execution does not exist: " + command.getExecutionId()
+                "Execution does not exist: " + command.getExecutionId()
         ));
 
         if (execution.isTerminal()
-            || execution.state().is(State.Type.KILLING)) {
+                || execution.state().is(State.Type.KILLING)) {
             return;
         }
         execution.beginKilling();
         executionRepository.save(dsl, execution);
         eventQueue.emitInTransaction(
-            ExecutorEvent.from(
-                execution,
-                ExecutorEvent.EventType.TERMINATED
-            ),
-            dsl
+                ExecutorEvent.from(
+                        execution,
+                        ExecutorEvent.EventType.TERMINATED
+                ),
+                dsl
         );
     }
 
     private void handleCreate(DSLContext dsl, Create command) {
         Session<?> session = restoreSession(
-            command.getCompanyId(),
-            command.getActorId()
+                command.getCompanyId(),
+                command.getActorId()
         );
         inCommandScope(
-            dsl,
-            session,
-            command,
-            () -> {
-                Optional<Execution> existing = executionRepository.findById(
-                    dsl,
-                    command.getCompanyId(),
-                    command.getExecutionId()
-                );
-                if (existing.isPresent()) {
-                    validateRepeatedCreate(existing.orElseThrow(), command);
-                    return;
-                }
-                Flow flow = flowRepository.findByFlowId(
-                    dsl,
-                    FlowId.from(
-                        command.getCompanyId(),
-                        command.getFlowKey(),
-                        command.getFlowVersion()
-                    )
-                ).orElseThrow(() -> new WorkflowException(
-                    "Flow version does not exist: "
-                        + command.getFlowKey() + ":"
-                        + command.getFlowVersion()
-                ));
-                if (flow.deleted()) {
-                    throw new WorkflowException(
-                        "Only an undeleted Flow can start an Execution: "
-                            + flow.key() + "@" + flow.reversion()
+                dsl,
+                session,
+                command,
+                () -> {
+                    Optional<Execution> existing = executionRepository.findById(
+                            dsl,
+                            command.getCompanyId(),
+                            command.getExecutionId()
+                    );
+                    if (existing.isPresent()) {
+                        validateRepeatedCreate(existing.orElseThrow(), command);
+                        return;
+                    }
+                    Flow flow = flowRepository.findByFlowId(
+                            dsl,
+                            FlowId.from(
+                                    command.getCompanyId(),
+                                    command.getFlowKey(),
+                                    command.getFlowVersion()
+                            )
+                    ).orElseThrow(() -> new WorkflowException(
+                            "Flow version does not exist: "
+                                    + command.getFlowKey() + ":"
+                                    + command.getFlowVersion()
+                    ));
+                    if (flow.deleted()) {
+                        throw new WorkflowException(
+                                "Only an undeleted Flow can start an Execution: "
+                                        + flow.key() + "@" + flow.reversion()
+                        );
+                    }
+                    Map<String, Object> normalizedInputs = flow.normalizeInputs(
+                            command.getInputs()
+                    );
+                    Execution execution = Execution.create(
+                            command.getExecutionId(),
+                            session,
+                            flow.key(),
+                            flow.reversion(),
+                            normalizedInputs
+                    );
+                    executionRepository.save(dsl, execution);
+                    eventQueue.emitInTransaction(
+                            ExecutorEvent.from(
+                                    execution,
+                                    ExecutorEvent.EventType.CREATED
+                            ),
+                            dsl
                     );
                 }
-                Map<String, Object> normalizedInputs = flow.normalizeInputs(
-                    command.getInputs()
-                );
-                Execution execution = Execution.create(
-                    command.getExecutionId(),
-                    session,
-                    flow.key(),
-                    flow.reversion(),
-                    normalizedInputs
-                );
-                executionRepository.save(dsl, execution);
-                eventQueue.emitInTransaction(
-                    ExecutorEvent.from(
-                        execution,
-                        ExecutorEvent.EventType.CREATED
-                    ),
-                    dsl
-                );
-            }
         );
     }
 
     private static void validateRepeatedCreate(
-        Execution execution,
-        Create command
+            Execution execution,
+            Create command
     ) {
         if (!execution.flowKey().equals(command.getFlowKey())
-            || execution.flowVersion() != command.getFlowVersion()
-            || !execution.inputs().equals(command.getInputs())) {
+                || execution.flowVersion() != command.getFlowVersion()
+                || !execution.inputs().equals(command.getInputs())) {
             throw new WorkflowException(
-                "Execution id already belongs to another start request: "
-                    + command.getExecutionId()
+                    "Execution id already belongs to another start request: "
+                            + command.getExecutionId()
             );
         }
     }
 
     private void handleResume(DSLContext dsl, Resume command) {
         Execution execution = executionRepository.findById(
-            dsl,
-            command.getCompanyId(),
-            command.getExecutionId()
+                dsl,
+                command.getCompanyId(),
+                command.getExecutionId()
         ).orElseThrow(() -> new WorkflowException(
-            "Execution does not exist: " + command.getExecutionId()
+                "Execution does not exist: " + command.getExecutionId()
         ));
 
         // A duplicate delivery can observe the state written by a previous
         // Resume. Acknowledge it instead of retrying an already stale command.
         if (execution.isTerminal()
-            || !execution.state().is(State.Type.PAUSED)) {
+                || !execution.state().is(State.Type.PAUSED)) {
             return;
         }
 
         Flow flow = flowRepository.findByFlowId(
-            dsl,
-            FlowId.from(
-                command.getCompanyId(),
-                execution.flowKey(),
-                execution.flowVersion()
-            )
+                dsl,
+                FlowId.from(
+                        command.getCompanyId(),
+                        execution.flowKey(),
+                        execution.flowVersion()
+                )
         ).orElseThrow(() -> new WorkflowException(
-            "Flow version does not exist: "
-                + execution.flowKey() + ":" + execution.flowVersion()
+                "Flow version does not exist: "
+                        + execution.flowKey() + ":" + execution.flowVersion()
         ));
         TaskRun taskRun = execution.requireTaskRun(command.getTaskRunId());
         if (!taskRun.state().is(State.Type.PAUSED)) {
             return;
         }
         Task task = flow.findTask(taskRun.taskId()).orElseThrow(() ->
-            new WorkflowException(
-                "Task definition does not exist: " + taskRun.taskId()
-            )
+                new WorkflowException(
+                        "Task definition does not exist: " + taskRun.taskId()
+                )
         );
         if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
             throw new WorkflowException(
-                "Only a paused Orchestration TaskRun can be resumed: "
-                    + taskRun.id()
+                    "Only a paused Orchestration TaskRun can be resumed: "
+                            + taskRun.id()
             );
         }
         Map<String, Object> normalizedOutputs = pause.validateResume(
-            command.getOutputs()
+                command.getOutputs()
         );
         execution.resumeTaskRun(taskRun.id(), normalizedOutputs);
         executionRepository.save(dsl, execution);
         eventQueue.emitInTransaction(
-            ExecutorEvent.from(
-                execution,
-                ExecutorEvent.EventType.UPDATED
-            ),
-            dsl
+                ExecutorEvent.from(
+                        execution,
+                        ExecutorEvent.EventType.UPDATED
+                ),
+                dsl
         );
     }
 
     private void handleRewind(DSLContext dsl, Rewind command) {
         Execution execution = executionRepository.findById(
-            dsl,
-            command.getCompanyId(),
-            command.getExecutionId()
+                dsl,
+                command.getCompanyId(),
+                command.getExecutionId()
         ).orElseThrow(() -> new WorkflowException(
-            "Execution does not exist: " + command.getExecutionId()
+                "Execution does not exist: " + command.getExecutionId()
         ));
 
         if (execution.isTerminal()
-            || !execution.state().is(State.Type.PAUSED)) {
+                || !execution.state().is(State.Type.PAUSED)) {
             return;
         }
         TaskRun source = execution.requireTaskRun(
-            command.getSourceTaskRunId()
+                command.getSourceTaskRunId()
         );
         if (!source.state().is(State.Type.PAUSED)) {
             return;
         }
         Flow flow = flowRepository.findByFlowId(
-            dsl,
-            FlowId.from(
-                command.getCompanyId(),
-                execution.flowKey(),
-                execution.flowVersion()
-            )
+                dsl,
+                FlowId.from(
+                        command.getCompanyId(),
+                        execution.flowKey(),
+                        execution.flowVersion()
+                )
         ).orElseThrow(() -> new WorkflowException(
-            "Flow version does not exist: "
-                + execution.flowKey() + ":" + execution.flowVersion()
+                "Flow version does not exist: "
+                        + execution.flowKey() + ":" + execution.flowVersion()
         ));
         ExecutionService.validateRewind(
-            flow,
-            execution,
-            command.getSourceTaskRunId(),
-            command.getTargetTaskRunId()
+                flow,
+                execution,
+                command.getSourceTaskRunId(),
+                command.getTargetTaskRunId()
         );
         execution.rewindTaskRun(
-            command.getSourceTaskRunId(),
-            command.getTargetTaskRunId(),
-            command.getReason()
+                command.getSourceTaskRunId(),
+                command.getTargetTaskRunId(),
+                command.getReason()
         );
         executionRepository.save(dsl, execution);
         eventQueue.emitInTransaction(
-            ExecutorEvent.from(
-                execution,
-                ExecutorEvent.EventType.UPDATED
-            ),
-            dsl
+                ExecutorEvent.from(
+                        execution,
+                        ExecutorEvent.EventType.UPDATED
+                ),
+                dsl
         );
     }
 
     private static void inCommandScope(
-        DSLContext dsl,
-        Session<?> session,
-        ExecutionCommand command,
-        Runnable action
+            DSLContext dsl,
+            Session<?> session,
+            ExecutionCommand command,
+            Runnable action
     ) {
         Object previousSession = dsl.configuration().data(Session.class);
         Object previousContext = dsl.configuration().data(
-            CommandContext.class
+                CommandContext.class
         );
         dsl.configuration().data(Session.class, session);
         dsl.configuration().data(CommandContext.class, command);
@@ -353,9 +350,9 @@ public class ExecutionCommandEventHandler implements
     }
 
     private static void restoreScope(
-        DSLContext dsl,
-        Class<?> key,
-        Object previous
+            DSLContext dsl,
+            Class<?> key,
+            Object previous
     ) {
         if (previous == null) {
             dsl.configuration().data().remove(key);
@@ -366,8 +363,8 @@ public class ExecutionCommandEventHandler implements
 
     @SuppressWarnings({"rawtypes", "unchecked"})
     private Session<?> restoreSession(
-        String companyId,
-        String actorId
+            String companyId,
+            String actorId
     ) {
         Session restored = sessionFactory.session();
         User user = restoreUser(actorId);
@@ -391,7 +388,7 @@ public class ExecutionCommandEventHandler implements
     @SuppressWarnings({"rawtypes", "unchecked"})
     private User restoreUser(String actorId) {
         List<? extends User> users = ((SessionFactory) sessionFactory)
-            .buildSessionUser(List.of(actorId));
+                .buildSessionUser(List.of(actorId));
         if (users != null && !users.isEmpty()) {
             return users.getFirst();
         }

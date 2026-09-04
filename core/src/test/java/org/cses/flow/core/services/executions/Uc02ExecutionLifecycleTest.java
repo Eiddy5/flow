@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -27,6 +28,10 @@ import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTas
  */
 class Uc02ExecutionLifecycleTest {
 
+    /**
+     * Verifies that the initial draft is published as version 2 and that its
+     * Execution remains bound to that version through Pause completion.
+     */
     @Test
     void s1UserStartsCurrentVersionAndCompletesItThroughPause() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -41,8 +46,9 @@ class Uc02ExecutionLifecycleTest {
 
             assertEquals(1, fixture.executionService()
                 .executions(fixture.session()).size());
+            assertEquals(2, flow.version());
             assertEquals(flow.key(), queried.flowKey());
-            assertEquals(1L, queried.flowVersion());
+            assertEquals(2L, queried.flowVersion());
             assertEquals(State.Type.PAUSED, waiting.state().current());
 
             PausedTaskRunRef pause = fixture.waitingForExecution(accepted.id());
@@ -55,7 +61,7 @@ class Uc02ExecutionLifecycleTest {
 
             assertEquals(State.Type.SUCCESS, completed.state().current());
             assertEquals(State.Type.SUCCESS, reloaded.state().current());
-            assertEquals(1L, reloaded.flowVersion());
+            assertEquals(2L, reloaded.flowVersion());
             assertEquals(Map.of("decision", "APPROVED"),
                 reloaded.requireTaskRun(pause.taskRunId()).outputs());
             assertEquals(3, reloaded.taskRuns().size());
@@ -64,23 +70,30 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /**
+     * Verifies the shared v1 draft, v2 publication, v3 draft, and v4
+     * publication sequence while old and new Executions stay isolated.
+     */
     @Test
     void s2OldAndNewVersionsRunIndependently() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow version1 = fixture.deploy(WorkflowUcFixture.pauseYaml(
+            Flow version2 = fixture.deploy(WorkflowUcFixture.pauseYaml(
                 "uc02-s2-flow", "版本一", false
             ));
-            Execution old = fixture.startAndAwait(version1);
-            Flow draft2 = fixture.flowService().save(
+            assertEquals(2, version2.version());
+            Execution old = fixture.startAndAwait(version2);
+            Flow draft3 = fixture.flowService().save(
                 fixture.session(),
-                PublishFlowCommand.from(version1.key(), WorkflowUcFixture.pauseYaml(
+                PublishFlowCommand.from(version2.key(), WorkflowUcFixture.pauseYaml(
                     "uc02-s2-flow", "版本二", true
                 ))
             );
-            Flow version2 = fixture.flowService().save(
-                fixture.session(), PublishFlowCommand.from(draft2.key(), false)
+            assertEquals(3, draft3.version());
+            Flow version4 = fixture.flowService().save(
+                fixture.session(), PublishFlowCommand.from(draft3.key(), false)
             );
-            Execution fresh = fixture.startAndAwait(version2);
+            assertEquals(4, version4.version());
+            Execution fresh = fixture.startAndAwait(version4);
 
             fixture.restartServer();
             PausedTaskRunRef oldPause = fixture.waitingForExecution(old.id());
@@ -94,8 +107,8 @@ class Uc02ExecutionLifecycleTest {
                 Map.of("decision", "NEW")
             );
 
-            assertEquals(1L, oldCompleted.flowVersion());
-            assertEquals(2L, freshCompleted.flowVersion());
+            assertEquals(2L, oldCompleted.flowVersion());
+            assertEquals(4L, freshCompleted.flowVersion());
             assertEquals(State.Type.SUCCESS, oldCompleted.state().current());
             assertEquals(State.Type.SUCCESS, freshCompleted.state().current());
             assertEquals(Map.of("decision", "OLD"),
@@ -145,6 +158,10 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /**
+     * Verifies that draft-only, deleted, missing, and cross-tenant Flows
+     * cannot start, and that deployed deletion appends version 3.
+     */
     @Test
     void s4UnavailableOrInvisibleFlowsAreRejectedWithoutRuns() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -153,13 +170,35 @@ class Uc02ExecutionLifecycleTest {
                     "uc02-s4-draft", "未发布", false
                 ))
             );
+            assertEquals(1, draft.version());
             assertRejectedStartAndNoRun(fixture, draft.key());
 
-            Flow deleted = fixture.deploy(WorkflowUcFixture.pauseYaml(
+            Flow deployed = fixture.deploy(WorkflowUcFixture.pauseYaml(
                 "uc02-s4-deleted", "已删除", false
             ));
-            fixture.flowService().delete(fixture.session(), deleted.key(), false);
-            assertRejectedStartAndNoRun(fixture, deleted.key());
+            assertEquals(2, deployed.version());
+            Flow deleted = fixture.flowService().delete(
+                fixture.session(),
+                deployed.key(),
+                false
+            );
+            assertNotEquals(deployed.id(), deleted.id());
+            assertEquals(3, deleted.version());
+            assertTrue(deleted.deleted());
+            Flow storedPublished = fixture.flowService().flow(
+                fixture.session(),
+                deployed.key(),
+                2L
+            ).orElseThrow();
+            assertFalse(storedPublished.deleted());
+            Flow storedDeletion = fixture.flowService().flow(
+                fixture.session(),
+                deployed.key(),
+                3L
+            ).orElseThrow();
+            assertEquals(deleted.id(), storedDeletion.id());
+            assertTrue(storedDeletion.deleted());
+            assertRejectedStartAndNoRun(fixture, deployed.key());
             assertRejectedStartAndNoRun(fixture, "uc02-s4-missing");
 
             Session<User> other = fixture.sessionFor("other");
@@ -171,6 +210,8 @@ class Uc02ExecutionLifecycleTest {
             Flow otherFlow = fixture.flowService().save(
                 other, PublishFlowCommand.from(otherDraft.key(), false)
             );
+            assertEquals(1, otherDraft.version());
+            assertEquals(2, otherFlow.version());
             assertThrows(WorkflowException.class, () -> fixture.executionService()
                 .create(
                     fixture.session(),
@@ -240,35 +281,42 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /**
+     * Verifies that an Execution bound to published version 2 does not switch
+     * after the next draft and publication append versions 3 and 4.
+     */
     @Test
     void s6PausedOldVersionDoesNotSwitchAfterNewVersionIsPublished() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow version1 = fixture.deploy(WorkflowUcFixture.pauseYaml(
+            Flow version2 = fixture.deploy(WorkflowUcFixture.pauseYaml(
                 "uc02-s6-flow", "旧版本", false
             ));
-            Execution old = fixture.startAndAwait(version1);
-            Flow draft2 = fixture.flowService().save(
-                fixture.session(), PublishFlowCommand.from(version1.key(),
+            assertEquals(2, version2.version());
+            Execution old = fixture.startAndAwait(version2);
+            Flow draft3 = fixture.flowService().save(
+                fixture.session(), PublishFlowCommand.from(version2.key(),
                     WorkflowUcFixture.pauseYaml("uc02-s6-flow", "新版本", true))
             );
-            Flow version2 = fixture.flowService().save(
-                fixture.session(), PublishFlowCommand.from(draft2.key(), false)
+            assertEquals(3, draft3.version());
+            Flow version4 = fixture.flowService().save(
+                fixture.session(), PublishFlowCommand.from(draft3.key(), false)
             );
+            assertEquals(4, version4.version());
 
             fixture.restartServer();
             PausedTaskRunRef oldPause = fixture.waitingForExecution(old.id());
             Execution oldCompleted = fixture.resume(
                 oldPause, Map.of("decision", "OLD")
             );
-            Execution fresh = fixture.startAndAwait(version2);
+            Execution fresh = fixture.startAndAwait(version4);
             fixture.restartServer();
             Execution freshCompleted = fixture.resume(
                 fixture.waitingForExecution(fresh.id()),
                 Map.of("decision", "NEW")
             );
 
-            assertEquals(1L, oldCompleted.flowVersion());
-            assertEquals(2L, freshCompleted.flowVersion());
+            assertEquals(2L, oldCompleted.flowVersion());
+            assertEquals(4L, freshCompleted.flowVersion());
             assertEquals(2, oldCompleted.taskRuns().size());
             assertEquals(3, freshCompleted.taskRuns().size());
             assertEquals(State.Type.SUCCESS, oldCompleted.state().current());
@@ -333,6 +381,10 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /**
+     * Verifies that two independent Executions both bind the current
+     * publication at version 2 while retaining disjoint histories.
+     */
     @Test
     void s8TwoExecutionsOfOneFlowKeepIndependentCompleteHistories() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -357,11 +409,12 @@ class Uc02ExecutionLifecycleTest {
             Execution secondQueried = fixture.executionService().execution(
                 fixture.session(), second.id()).orElseThrow();
 
+            assertEquals(2, flow.version());
             assertNotEquals(firstQueried.id(), secondQueried.id());
             assertEquals(State.Type.SUCCESS, firstQueried.state().current());
             assertEquals(State.Type.SUCCESS, secondQueried.state().current());
-            assertEquals(1L, firstQueried.flowVersion());
-            assertEquals(1L, secondQueried.flowVersion());
+            assertEquals(2L, firstQueried.flowVersion());
+            assertEquals(2L, secondQueried.flowVersion());
             assertEquals(3, firstQueried.taskRuns().size());
             assertEquals(3, secondQueried.taskRuns().size());
             assertTrue(disjointTaskRunIds(firstQueried, secondQueried));
@@ -370,6 +423,10 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /**
+     * Verifies that publication version 2 survives a server restart and is
+     * used for the next Execution without skipped or duplicated Tasks.
+     */
     @Test
     void s9FreshServerStartsPersistedPublishedFlowInOrder() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -398,7 +455,9 @@ class Uc02ExecutionLifecycleTest {
                 fixture.session(), completed.id()).orElseThrow();
 
             assertEquals(flowId, persisted.id());
-            assertEquals(1L, persisted.reversion());
+            assertEquals(2, persisted.version());
+            assertEquals(2L, persisted.reversion());
+            assertEquals(2L, reloaded.flowVersion());
             assertEquals(State.Type.SUCCESS, reloaded.state().current());
             assertEquals(3, reloaded.taskRuns().size());
             assertEquals(
@@ -408,6 +467,91 @@ class Uc02ExecutionLifecycleTest {
             assertTrue(reloaded.taskRuns().stream().allMatch(taskRun ->
                 taskRun.state().current() == State.Type.SUCCESS));
             assertTrue(reloaded.activeTaskRuns().isEmpty());
+        }
+    }
+
+    /**
+     * Starts explicit historical version 2 after version 4 becomes current,
+     * then verifies the completed Execution exposes only version 2 history
+     * and Resume output through public service queries.
+     */
+    @Test
+    void s10UserExplicitlyStartsHistoricalPublishedVersion() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow version2 = fixture.deploy(WorkflowUcFixture.pauseYaml(
+                "uc02-s10-flow", "historical version two", true
+            ));
+            Flow draft3 = fixture.flowService().save(
+                fixture.session(),
+                PublishFlowCommand.from(version2.key(), """
+                    key: uc02-s10-flow
+                    description: current version four
+                    tasks:
+                      - key: version-four-only
+                        type: org.cses.flow.extensions.log.Log
+                        message: "version 4 only"
+                    """)
+            );
+            Flow version4 = fixture.flowService().save(
+                fixture.session(),
+                PublishFlowCommand.from(draft3.key(), false)
+            );
+            Flow historical = fixture.flowService().flow(
+                fixture.session(), version2.key(), 2L
+            ).orElseThrow();
+            Flow current = fixture.flowService().latestFlow(
+                fixture.session(), version2.key()
+            ).orElseThrow();
+
+            assertEquals(2, version2.version());
+            assertEquals(3, draft3.version());
+            assertEquals(4, version4.version());
+            assertEquals(2, historical.version());
+            assertEquals(4, current.version());
+            assertEquals("historical version two", historical.description());
+            assertEquals("current version four", current.description());
+
+            var accepted = fixture.executionService().create(
+                fixture.session(),
+                historical.key(),
+                Optional.of(2L),
+                Map.of()
+            );
+            Execution waiting = fixture.awaitStable(
+                accepted.getExecutionId()
+            );
+            PausedTaskRunRef pause = fixture.waitingForExecution(
+                accepted.getExecutionId()
+            );
+            Execution completed = fixture.resume(
+                pause, Map.of("decision", "V2-HISTORY")
+            );
+            Execution queried = fixture.executionService().execution(
+                fixture.session(), accepted.getExecutionId()
+            ).orElseThrow();
+            var historicalTaskIds = historical.allTasks().stream()
+                .map(task -> task.id())
+                .toList();
+            var currentTaskIds = current.allTasks().stream()
+                .map(task -> task.id())
+                .toList();
+            var executedTaskIds = queried.taskRuns().stream()
+                .map(TaskRun::taskId)
+                .toList();
+
+            assertEquals(1, fixture.executionService()
+                .executions(fixture.session()).size());
+            assertEquals(State.Type.PAUSED, waiting.state().current());
+            assertEquals(State.Type.SUCCESS, completed.state().current());
+            assertEquals(State.Type.SUCCESS, queried.state().current());
+            assertEquals(2L, queried.flowVersion());
+            assertEquals(historicalTaskIds, executedTaskIds);
+            assertTrue(executedTaskIds.stream()
+                .noneMatch(currentTaskIds::contains));
+            assertEquals(Map.of("decision", "V2-HISTORY"),
+                queried.requireTaskRun(pause.taskRunId()).outputs());
+            assertTrue(queried.activeTaskRuns().isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 

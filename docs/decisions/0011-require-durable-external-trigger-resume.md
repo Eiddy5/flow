@@ -40,7 +40,7 @@ Execution、TaskRun 和绑定的 Flow Reversion。
 - 阶段之间只传递外部能力持有的 companyId、executionId、taskRunId 和业务结果。
 - 新 Server 通过 `ExecutionService.resume(...)` 提交结果。
 - `ExecutionCommandEventHandler` 消费 `Resume` 后在一个 PostgreSQL 领取事务中校验
-  并投递 `ExecutorEvent`；随后 `ExecutorEventHandler` 在自己的 PostgreSQL Event
+  并投递 `ExecutorEvent`；随后 `ExecutorEventMessageHandler` 在自己的 PostgreSQL Event
   事务中：
   1. 按 companyId 和 executionId 加载 Execution。
   2. 加载 Execution 永久绑定的 Flow Reversion。

@@ -2,8 +2,8 @@
 
 ## 目的
 
-验证 Flow、Execution 和 TaskRun 的真实 PostgreSQL 往返、JSONB 转换、跨版本
-Task id 复用，以及业务唯一键冲突。
+验证 Flow、Execution 和 TaskRun 的真实 PostgreSQL 往返、JSONB 转换、Flow 追加
+版本、跨版本 Task id 复用，以及业务唯一键冲突。
 
 当前完整关系模型：
 
@@ -18,9 +18,9 @@ erDiagram
 
     FLOWS {
         varchar company_id PK
-        varchar id PK "领域 Entity ID"
+        varchar id PK "数据库行 ID"
         varchar key UK "稳定 Flow key"
-        bigint version "草稿为空"
+        bigint version UK "Repository 分配，非空"
         boolean draft "默认 true"
         text source "原始 YAML"
         varchar status
@@ -73,10 +73,10 @@ erDiagram
 ```
 
 图中的关系都是逻辑关系。数据库不创建外键，由复合身份、唯一约束、应用校验和
-同事务写入保证。`flows` 同时保存草稿与正式版本：草稿满足
-`draft = true AND version IS NULL`，正式版本满足
-`draft = false AND version > 0`；两者都保存原始 YAML `source`。`flows.id` 是 Flow
-Domain 的稳定 Entity ID；Flow、Task 快照和 Execution 的版本绑定统一使用
+同事务写入保证。`flows` 同时保存草稿与正式版本：两者的 `version` 都非空，并在
+同一个 `company_id + key` 序列中由 Repository 按全部历史行分配；删除状态也追加
+新版本且参与后续分配。两者都保存原始 YAML `source`。`flows.id` 只标识一次保存的
+数据库行；Flow、Task 快照和 Execution 的版本绑定统一使用
 `(company_id, flow_key, flow_version)`。Flow/Task 的
 Input、Output 和 Plugin properties 没有独立身份或
 生命周期，作为不可变定义快照保存在 JSONB 中；Execution 与 TaskRun 的 inputs、

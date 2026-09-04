@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PROTOTYPE — CAS 聚合保存模型</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --ink: #17202a;
+            --muted: #667085;
+            --line: #d8dee8;
+            --panel: #f7f9fc;
+            --accent: #2855d9;
+            --ok: #147d57;
+            --bad: #b42318;
+            --warn: #a15c00;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            background: #fff;
+            color: var(--ink);
+            font: 15px/1.55 system-ui, -apple-system, BlinkMacSystemFont,
+                "Segoe UI", sans-serif;
+        }
+
+        main {
+            width: min(1120px, calc(100% - 32px));
+            margin: 40px auto 72px;
+        }
+
+        h1, h2, h3 { line-height: 1.2; }
+        h1 { margin-bottom: 8px; }
+        h2 { margin-top: 36px; }
+        p { max-width: 880px; }
+
+        .notice {
+            border-left: 4px solid var(--warn);
+            padding: 10px 14px;
+            background: #fff8eb;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 14px;
+        }
+
+        .card {
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            background: var(--panel);
+        }
+
+        .card h3 { margin: 0 0 12px; }
+
+        dl {
+            display: grid;
+            grid-template-columns: max-content 1fr;
+            gap: 6px 14px;
+            margin: 0;
+        }
+
+        dt { color: var(--muted); }
+        dd { margin: 0; overflow-wrap: anywhere; }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        button {
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 8px 12px;
+            background: #fff;
+            color: var(--ink);
+            cursor: pointer;
+            font: inherit;
+        }
+
+        button:hover { border-color: var(--accent); }
+        button:focus-visible { outline: 3px solid #9db5ff; outline-offset: 2px; }
+        button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+        button:disabled { cursor: default; opacity: .45; }
+
+        .status { font-weight: 650; }
+        .success { color: var(--ok); }
+        .conflict { color: var(--bad); }
+        .neutral { color: var(--muted); }
+
+        .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+            border-radius: 999px;
+            padding: 2px 9px;
+            background: #e9eef9;
+        }
+
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 8px;
+        }
+
+        .tabs button[aria-selected="true"] {
+            border-color: var(--accent);
+            color: var(--accent);
+            font-weight: 650;
+        }
+
+        .walkthrough { margin-top: 16px; }
+        .steps { display: grid; gap: 8px; margin-top: 14px; }
+        .step {
+            display: grid;
+            grid-template-columns: 34px 1fr max-content;
+            gap: 10px;
+            align-items: center;
+            text-align: left;
+        }
+
+        .step strong {
+            display: grid;
+            place-items: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #e9eef9;
+        }
+
+        .step.done strong { background: #d9f2e8; color: var(--ok); }
+
+        pre {
+            overflow-x: auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 14px;
+            background: #101828;
+            color: #e6edf7;
+        }
+
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border-bottom: 1px solid var(--line); padding: 10px; text-align: left; }
+        th { color: var(--muted); font-weight: 650; }
+
+        #history { max-height: 260px; overflow: auto; }
+        #history li { margin-bottom: 6px; }
+
+        @media (max-width: 620px) {
+            main { width: min(100% - 20px, 1120px); margin-top: 22px; }
+            .step { grid-template-columns: 30px 1fr; }
+            .step button { grid-column: 2; width: max-content; }
+        }
+    </style>
+</head>
+<body>
+<main>
+    <h1>PROTOTYPE — CAS 聚合保存模型</h1>
+    <p class="notice">
+        要回答的问题：在 <code>lock_version</code> 不进入领域对象的前提下，Repository
+        能否用“加载时版本”拒绝陈旧写，并让 Execution 根行与 TaskRun 子记录保持原子一致？
+        这是一次性逻辑原型，不是生产实现。
+    </p>
+
+    <h2>当前状态</h2>
+    <div class="grid">
+        <section class="card" aria-labelledby="database-title">
+            <h3 id="database-title">PostgreSQL 中的聚合</h3>
+            <div id="database-state"></div>
+        </section>
+        <section class="card" aria-labelledby="client-a-title">
+            <h3 id="client-a-title">保存上下文 A</h3>
+            <div id="client-a-state"></div>
+        </section>
+        <section class="card" aria-labelledby="client-b-title">
+            <h3 id="client-b-title">保存上下文 B</h3>
+            <div id="client-b-state"></div>
+        </section>
+    </div>
+
+    <h2>自由试验</h2>
+    <div class="actions">
+        <button data-action="reset">重置已有 Execution</button>
+        <button data-action="reset-empty">重置为空库</button>
+    </div>
+    <div class="grid" style="margin-top: 14px">
+        <section class="card">
+            <h3>上下文 A</h3>
+            <div class="actions" data-client-actions="A"></div>
+        </section>
+        <section class="card">
+            <h3>上下文 B</h3>
+            <div class="actions" data-client-actions="B"></div>
+        </section>
+    </div>
+
+    <h2>引导场景</h2>
+    <div class="tabs" role="tablist" aria-label="CAS 测试场景" id="scenario-tabs"></div>
+    <section class="walkthrough card" id="scenario-panel" role="tabpanel"></section>
+
+    <h2>动作记录</h2>
+    <ol id="history" class="card" aria-live="polite"></ol>
+
+    <h2>拟定保存协议</h2>
+    <table>
+        <thead>
+        <tr><th>情况</th><th>Repository 行为</th><th>可观察结果</th></tr>
+        </thead>
+        <tbody>
+        <tr><td>首次保存</td><td>直接 INSERT，<code>lock_version = 0</code></td><td>主键/唯一键竞争只有一个成功</td></tr>
+        <tr><td>已有聚合保存</td><td>使用加载时版本执行单条 CAS UPDATE</td><td>恰好更新一行才成功</td></tr>
+        <tr><td>陈旧版本</td><td>根行 UPDATE 返回零行，立即停止</td><td>抛持久化冲突，子记录不变</td></tr>
+        <tr><td>同一上下文再次保存</td><td>以上一次 RETURNING 的新版本继续 CAS</td><td>每次实际 flush 递增一次</td></tr>
+        <tr><td>未在当前事务加载</td><td>不得猜测最新版本或执行无条件 UPDATE</td><td>按新建 INSERT；重复 ID 转持久化冲突</td></tr>
+        </tbody>
+    </table>
+
+    <pre><code>UPDATE executions
+SET state = :state,
+    generation = :generation,
+    lock_version = lock_version + 1
+WHERE company_id = :company_id
+  AND id = :id
+  AND lock_version = :expected_lock_version
+RETURNING lock_version;
+
+-- 只有上面的 UPDATE 返回一行后，才在同一事务替换 task_runs。</code></pre>
+
+    <pre><code>erDiagram
+    EXECUTIONS ||--o{ TASK_RUNS : "逻辑拥有；数据库不建外键"
+    EXECUTIONS {
+        varchar company_id PK
+        varchar id PK
+        bigint lock_version
+        jsonb state
+        jsonb generation
+    }
+    TASK_RUNS {
+        varchar id PK
+        varchar execution_id UK
+        jsonb state
+        integer order
+    }</code></pre>
+</main>
+
+<script>
+const CasModel = (() => {
+    const copy = value => JSON.parse(JSON.stringify(value));
+
+    const emptyClient = name => ({
+        name,
+        expectedVersion: null,
+        draftValue: null,
+        draftChildren: [],
+        editCount: 0,
+        lastResult: "尚未操作",
+        resultType: "neutral"
+    });
+
+    const initial = (empty = false) => ({
+        database: empty ? null : {
+            companyId: "company-1",
+            id: "execution-1",
+            lockVersion: 0,
+            value: "CREATED",
+            children: ["task-run-1"]
+        },
+        clients: {A: emptyClient("A"), B: emptyClient("B")},
+        history: [empty ? "空库已就绪" : "已有 Execution v0 已就绪"]
+    });
+
+    const record = (state, message) => {
+        state.history.push(message);
+        return state;
+    };
+
+    const reduce = (current, action) => {
+        if (action.type === "RESET") return initial(false);
+        if (action.type === "RESET_EMPTY") return initial(true);
+
+        const state = copy(current);
+        const client = state.clients[action.client];
+
+        if (action.type === "LOAD") {
+            if (!state.database) {
+                client.lastResult = "加载失败：Execution 不存在";
+                client.resultType = "conflict";
+                return record(state, `${client.name} 加载失败：数据库为空`);
+            }
+            client.expectedVersion = state.database.lockVersion;
+            client.draftValue = state.database.value;
+            client.draftChildren = copy(state.database.children);
+            client.lastResult = `已加载 v${client.expectedVersion}`;
+            client.resultType = "success";
+            return record(state, `${client.name} 加载 Execution v${client.expectedVersion}`);
+        }
+
+        if (action.type === "PREPARE") {
+            client.expectedVersion = null;
+            client.draftValue = `CREATED-BY-${client.name}`;
+            client.draftChildren = [`task-run-${client.name.toLowerCase()}-1`];
+            client.lastResult = "已准备新聚合（无加载版本）";
+            client.resultType = "neutral";
+            return record(state, `${client.name} 准备一个新 Execution`);
+        }
+
+        if (action.type === "EDIT" || action.type === "ADD_CHILD") {
+            if (client.draftValue === null) {
+                client.lastResult = "修改失败：请先加载或准备聚合";
+                client.resultType = "conflict";
+                return record(state, `${client.name} 修改失败：没有工作副本`);
+            }
+            client.editCount += 1;
+            if (action.type === "EDIT") {
+                client.draftValue = `UPDATED-BY-${client.name}-${client.editCount}`;
+                client.lastResult = "已修改根状态，尚未保存";
+                return record(state, `${client.name} 修改根状态为 ${client.draftValue}`);
+            }
+            const child = `task-run-${client.name.toLowerCase()}-${client.draftChildren.length + 1}`;
+            client.draftChildren.push(child);
+            client.lastResult = `已添加 ${child}，尚未保存`;
+            return record(state, `${client.name} 添加子记录 ${child}`);
+        }
+
+        if (action.type === "CREATE") {
+            if (client.draftValue === null) {
+                client.lastResult = "创建失败：请先准备新聚合";
+                client.resultType = "conflict";
+                return record(state, `${client.name} 创建失败：没有新聚合`);
+            }
+            if (state.database) {
+                client.lastResult = "持久化冲突：主键已存在";
+                client.resultType = "conflict";
+                return record(state, `${client.name} INSERT 冲突；数据库未改变`);
+            }
+            state.database = {
+                companyId: "company-1",
+                id: "execution-1",
+                lockVersion: 0,
+                value: client.draftValue,
+                children: copy(client.draftChildren)
+            };
+            client.expectedVersion = 0;
+            client.lastResult = "创建成功，当前版本 v0";
+            client.resultType = "success";
+            return record(state, `${client.name} INSERT 成功；Execution 为 v0`);
+        }
+
+        if (action.type === "SAVE") {
+            if (client.expectedVersion === null) {
+                client.lastResult = "拒绝更新：当前上下文没有加载时版本";
+                client.resultType = "conflict";
+                return record(state, `${client.name} 保存被拒绝：禁止猜测 expected version`);
+            }
+            if (!state.database || state.database.lockVersion !== client.expectedVersion) {
+                const actual = state.database ? `v${state.database.lockVersion}` : "不存在";
+                client.lastResult = `CAS 冲突：期望 v${client.expectedVersion}，实际 ${actual}`;
+                client.resultType = "conflict";
+                return record(state, `${client.name} CAS 返回零行；根行与子记录均未改变`);
+            }
+            state.database.value = client.draftValue;
+            state.database.children = copy(client.draftChildren);
+            state.database.lockVersion += 1;
+            client.expectedVersion = state.database.lockVersion;
+            client.lastResult = `保存成功，版本推进到 v${client.expectedVersion}`;
+            client.resultType = "success";
+            return record(state, `${client.name} CAS 成功；根行与子记录原子保存为 v${client.expectedVersion}`);
+        }
+
+        return state;
+    };
+
+    return {initial, reduce};
+})();
+
+const scenarios = [
+    {
+        name: "正常保存",
+        description: "加载版本、修改根状态和子记录，再用同一个 expected version 保存。",
+        steps: [
+            ["重置", {type: "RESET"}],
+            ["A 加载", {type: "LOAD", client: "A"}],
+            ["A 修改根状态", {type: "EDIT", client: "A"}],
+            ["A 添加 TaskRun", {type: "ADD_CHILD", client: "A"}],
+            ["A 保存", {type: "SAVE", client: "A"}]
+        ]
+    },
+    {
+        name: "陈旧写竞争",
+        description: "A、B 都加载 v0；A 先保存后，B 的旧快照必须冲突且不能覆盖 A。",
+        steps: [
+            ["重置", {type: "RESET"}],
+            ["A 加载 v0", {type: "LOAD", client: "A"}],
+            ["B 加载 v0", {type: "LOAD", client: "B"}],
+            ["A 修改", {type: "EDIT", client: "A"}],
+            ["B 修改", {type: "EDIT", client: "B"}],
+            ["A 保存为 v1", {type: "SAVE", client: "A"}],
+            ["B 用 v0 保存", {type: "SAVE", client: "B"}]
+        ]
+    },
+    {
+        name: "冲突后重试",
+        description: "陈旧保存失败后必须重新加载最新状态，再重新应用动作。",
+        steps: [
+            ["重置", {type: "RESET"}],
+            ["A 加载", {type: "LOAD", client: "A"}],
+            ["B 加载", {type: "LOAD", client: "B"}],
+            ["A 修改", {type: "EDIT", client: "A"}],
+            ["A 保存", {type: "SAVE", client: "A"}],
+            ["B 修改", {type: "EDIT", client: "B"}],
+            ["B 冲突", {type: "SAVE", client: "B"}],
+            ["B 重新加载", {type: "LOAD", client: "B"}],
+            ["B 重新修改", {type: "EDIT", client: "B"}],
+            ["B 保存", {type: "SAVE", client: "B"}]
+        ]
+    },
+    {
+        name: "创建竞争",
+        description: "新聚合没有 expected version，依靠主键唯一性决定唯一胜者。",
+        steps: [
+            ["重置为空库", {type: "RESET_EMPTY"}],
+            ["A 准备新聚合", {type: "PREPARE", client: "A"}],
+            ["B 准备同 ID 聚合", {type: "PREPARE", client: "B"}],
+            ["A INSERT", {type: "CREATE", client: "A"}],
+            ["B INSERT", {type: "CREATE", client: "B"}]
+        ]
+    },
+    {
+        name: "连续 flush",
+        description: "同一个保存上下文用 RETURNING 的新版本继续保存，不复用旧 token。",
+        steps: [
+            ["重置", {type: "RESET"}],
+            ["A 加载", {type: "LOAD", client: "A"}],
+            ["A 修改", {type: "EDIT", client: "A"}],
+            ["A 第一次保存", {type: "SAVE", client: "A"}],
+            ["A 再次修改", {type: "EDIT", client: "A"}],
+            ["A 第二次保存", {type: "SAVE", client: "A"}]
+        ]
+    },
+    {
+        name: "无 token 更新",
+        description: "未在当前保存上下文加载的对象不能执行无条件 UPDATE。",
+        steps: [
+            ["重置", {type: "RESET"}],
+            ["B 准备一个对象", {type: "PREPARE", client: "B"}],
+            ["B 尝试 UPDATE", {type: "SAVE", client: "B"}]
+        ]
+    }
+];
+
+let state = CasModel.initial();
+let activeScenario = 0;
+let completedSteps = 0;
+
+const labels = [
+    ["加载", "LOAD"],
+    ["修改根状态", "EDIT"],
+    ["添加 TaskRun", "ADD_CHILD"],
+    ["CAS 保存", "SAVE"],
+    ["准备新聚合", "PREPARE"],
+    ["INSERT 新聚合", "CREATE"]
+];
+
+function dispatch(action) {
+    state = CasModel.reduce(state, action);
+    render();
+}
+
+function stateList(entries) {
+    return `<dl>${entries.map(([key, value]) => `<dt>${key}</dt><dd>${value}</dd>`).join("")}</dl>`;
+}
+
+function childChips(children) {
+    if (!children.length) return '<span class="neutral">无</span>';
+    return `<span class="chips">${children.map(value => `<span class="chip">${value}</span>`).join("")}</span>`;
+}
+
+function renderDatabase() {
+    const target = document.querySelector("#database-state");
+    if (!state.database) {
+        target.innerHTML = '<p class="status neutral">当前为空库</p>';
+        return;
+    }
+    target.innerHTML = stateList([
+        ["身份", `${state.database.companyId} / ${state.database.id}`],
+        ["根状态", state.database.value],
+        ["lock_version", `v${state.database.lockVersion}`],
+        ["TaskRun", childChips(state.database.children)]
+    ]);
+}
+
+function renderClient(name) {
+    const client = state.clients[name];
+    const target = document.querySelector(`#client-${name.toLowerCase()}-state`);
+    target.innerHTML = stateList([
+        ["expected version", client.expectedVersion === null ? "无" : `v${client.expectedVersion}`],
+        ["工作副本", client.draftValue ?? "无"],
+        ["TaskRun", childChips(client.draftChildren)],
+        ["结果", `<span class="status ${client.resultType}">${client.lastResult}</span>`]
+    ]);
+}
+
+function renderHistory() {
+    document.querySelector("#history").innerHTML = state.history
+        .map(message => `<li>${message}</li>`)
+        .join("");
+}
+
+function renderScenario() {
+    const scenario = scenarios[activeScenario];
+    document.querySelector("#scenario-panel").innerHTML = `
+        <h3>${scenario.name}</h3>
+        <p>${scenario.description}</p>
+        <button class="primary" data-start-scenario>从头开始</button>
+        <div class="steps">
+            ${scenario.steps.map(([label], index) => `
+                <div class="step ${index < completedSteps ? "done" : ""}">
+                    <strong>${index + 1}</strong>
+                    <span>${label}</span>
+                    <button data-step="${index}" ${index !== completedSteps ? "disabled" : ""}>执行</button>
+                </div>
+            `).join("")}
+        </div>`;
+}
+
+function render() {
+    renderDatabase();
+    renderClient("A");
+    renderClient("B");
+    renderHistory();
+    renderScenario();
+}
+
+document.querySelectorAll("[data-client-actions]").forEach(container => {
+    const client = container.dataset.clientActions;
+    container.innerHTML = labels
+        .map(([label, type]) => `<button data-action="${type}" data-client="${client}">${label}</button>`)
+        .join("");
+});
+
+document.querySelector("#scenario-tabs").innerHTML = scenarios
+    .map((scenario, index) => `<button role="tab" aria-selected="${index === 0}" data-scenario="${index}">${scenario.name}</button>`)
+    .join("");
+
+document.addEventListener("click", event => {
+    const button = event.target.closest("button");
+    if (!button) return;
+
+    if (button.dataset.action) {
+        const type = button.dataset.action.replace("reset-empty", "RESET_EMPTY").replace("reset", "RESET");
+        dispatch({type: type.toUpperCase(), client: button.dataset.client});
+        return;
+    }
+
+    if (button.dataset.scenario !== undefined) {
+        activeScenario = Number(button.dataset.scenario);
+        completedSteps = 0;
+        document.querySelectorAll("[role=tab]").forEach((tab, index) => {
+            tab.setAttribute("aria-selected", String(index === activeScenario));
+        });
+        renderScenario();
+        return;
+    }
+
+    if (button.hasAttribute("data-start-scenario")) {
+        completedSteps = 0;
+        state = CasModel.initial();
+        render();
+        return;
+    }
+
+    if (button.dataset.step !== undefined) {
+        const index = Number(button.dataset.step);
+        if (index !== completedSteps) return;
+        state = CasModel.reduce(state, scenarios[activeScenario].steps[index][1]);
+        completedSteps += 1;
+        render();
+    }
+});
+
+render();
+</script>
+</body>
+</html>

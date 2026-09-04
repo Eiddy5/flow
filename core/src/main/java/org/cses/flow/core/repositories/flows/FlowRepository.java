@@ -11,6 +11,11 @@ public interface FlowRepository {
 
     /**
      * Restores one exact aggregate state by its persisted identity.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param companyId non-blank tenant boundary
+     * @param id non-blank database row identifier
+     * @return a detached Flow when the tenant and row exist, otherwise empty
      */
     Optional<Flow> findById(
             DSLContext dsl,
@@ -20,6 +25,12 @@ public interface FlowRepository {
 
     /**
      * Restores one exact deployed Flow version.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param flowId non-null tenant, key and positive-version selector
+     * @return the detached deployed version, including a deleted version, or
+     *         empty when no exact row exists
+     * @throws IllegalArgumentException when the selector has no version
      */
     Optional<Flow> findByFlowId(
             DSLContext dsl,
@@ -32,6 +43,12 @@ public interface FlowRepository {
      * <p>
      * Callers must inspect {@link Flow#deleted()} after selection so a
      * deleted maximum version cannot fall back to an older version.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param flowId non-null tenant and key selector without a version
+     * @return the detached maximum deployed version, including a deleted
+     *         version, or empty when none exists
+     * @throws IllegalArgumentException when the selector contains a version
      */
     Optional<Flow> findLatestByFlowId(
             DSLContext dsl,
@@ -39,7 +56,12 @@ public interface FlowRepository {
     );
 
     /**
-     * Lists all active drafts for one tenant.
+     * Lists the latest active draft for each logical Flow in one tenant.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param companyId non-blank tenant boundary
+     * @return an unmodifiable list of detached active drafts, or an empty list
+     *         when the tenant has none
      */
     List<Flow> findDrafts(
             DSLContext dsl,
@@ -47,7 +69,13 @@ public interface FlowRepository {
     );
 
     /**
-     * Restores the unique active draft for one logical Flow key.
+     * Restores the latest draft when that version remains active.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param flowId non-null tenant and key selector without a version
+     * @return the detached latest draft, or empty when absent or when its
+     *         latest draft version is deleted
+     * @throws IllegalArgumentException when the selector contains a version
      */
     Optional<Flow> findDraftByFlowId(
             DSLContext dsl,
@@ -55,12 +83,17 @@ public interface FlowRepository {
     );
 
     /**
-     * Persists the Flow state prepared by the domain/application layer.
+     * Appends one Flow record using the next version for its tenant and key.
+     * The supplied Flow provides definition and audit facts; the Repository
+     * assigns the row id and version and returns the persisted snapshot.
      *
-     * <p>This method does not decide Flow lifecycle rules. When the entity ID
-     * already exists, only the Flow row is updated. Task definitions are
-     * inserted only together with a newly inserted deployed Flow and are not
-     * replaced during later Flow saves.</p>
+     * @param dsl caller-owned transaction context; must not be {@code null}
+     * @param flow Flow state to append; must not be {@code null} and is read
+     *        without modification
+     * @return detached Flow snapshot containing the assigned row id and version
+     * @throws org.cses.flow.core.exceptions.WorkflowException when the database
+     *         rejects the new row or its Task snapshot
+     * @throws NullPointerException when {@code dsl} or {@code flow} is null
      */
-    void save(DSLContext dsl, Flow flow);
+    Flow save(DSLContext dsl, Flow flow);
 }

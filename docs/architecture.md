@@ -158,7 +158,7 @@ Core 提供类型化 Dispatch Queue Interface，并已把 Execution 启动接入
 Event 不携带事务状态，需要与业务写入原子提交时，调用方通过 Queue 的显式发布方法
 传入事务。Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
 `Create`、`Resume`、`Cancel`、具名 Queue Bean、只做两条 Queue 路由的 eager `DefaultExecutor`、
-`ExecutionCommandEventHandler` 和内部 `ExecutorEventHandler` 已连线；Broadcast
+`ExecutionCommandEventHandler` 和内部 `ExecutorEventMessageHandler` 已连线；Broadcast
 Interface、消费游标或保留清理仍未实现。
 
 `DefaultDispatchQueue` 的普通同步与异步发布都使用 Queue 自有事务；需要加入调用方
@@ -174,15 +174,15 @@ Interface、消费游标或保留清理仍未实现。
 
 ```mermaid
 flowchart TD
-    saveStart(["用户保存或更新 Flow 草稿"])
+    saveStart(["用户保存 Flow 草稿"])
     saveService["FlowService.save：draft=true/false"]
     saveTransaction["CommandExecutor 开启 JOOQ 写事务"]
-    saveDraft["PublishFlowHandler：draft=true 保存草稿并校验乐观锁"]
+    saveDraft["PublishFlowHandler：draft=true 形成最新草稿状态"]
 
     deployStart(["用户部署 Flow"])
     parseDefinition["PublishFlowHandler：draft=false 加载 source 并完整解析 YAML"]
-    materializeFlow["YamlParser.parse(source, Flow.class)；PluginDeserializer 按注册类递归绑定；Flow.initialize 形成草稿或精确 Reversion"]
-    persistFlow["保存 Flow 与 FlowTasks"]
+    materializeFlow["YamlParser.parse(source, Flow.class)；PluginDeserializer 按注册类递归绑定；Flow.initialize 形成暂态定义"]
+    persistFlow["FlowRepository 查询全部历史版本、分配下一版本并追加 Flow；正式定义同时追加 FlowTasks"]
 
     executeStart(["用户启动最新且未删除的 Flow"])
     createExecution["ExecutionService 解析 companyId + flowKey + flowVersion，构造 Create"]
@@ -322,12 +322,12 @@ flowchart TD
 流程图强调当前实现中的关键事实：
 
 1. 草稿和 Flow Reversion 都由 `Flow` 表达并保留原始 YAML `source`。
-   草稿以 `companyId + key` 选择，同公司同 key 只有一个 `draft=true` 对象；保存时
-   存在则修订，不存在则创建，只抽取公共字段而不物化 Task。正式业务版本由
+   草稿以 `companyId + key` 选择最新活动版本；Repository 每次保存都查询同租户、同
+   key 的全部历史版本（包括草稿和删除），分配下一版本并追加新行。正式业务版本由
    `companyId + key + version` 精确选择，部署完整解析 Task 并创建同类型的
-   `draft=false` 快照。每个对象都有独立稳定的字符串 `id`，由 Domain 创建并由
-   PostgreSQL Adapter 原样保存，不存在 `recordId`。修订 YAML 可以省略顶层 `key`，
-   但如果提供必须与草稿 key 一致。
+   `draft=false` 快照。`flows.id` 由 Repository 为每次保存生成，只标识数据库行，
+   不参与业务版本选择。修订 YAML 可以省略顶层 `key`，但如果提供必须与草稿 key
+   一致。
 2. 普通启动由 `ExecutionService` 选择当前 Flow、规范化 inputs，并构造包含稳定
    `executionId`、`company`、`actorId`、`flowKey`、`flowVersion` 和 `inputs` 的
    `Create` 写入 Executor Command Queue；Service 返回只代表队列受理。
@@ -372,7 +372,7 @@ flowchart TD
 9. Loop 与 LoopUntil 的作用域 TaskRun 各自拥有 Generation：当前轮是 Current，完成
    轮次进入 History，继续原因随新 Current 保存；直接子 TaskRun 的 iteration 等于
    当轮 version，但不再作为推导循环游标的唯一来源。
-10. `ExecutorEventHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
+10. `ExecutorEventMessageHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
    的 OrchestrationTask、同步调用 Worker、持久化本轮变化，并将仍可推进的下一周期
    重新投回 Event Queue。`DefaultExecutor` 不拥有状态机，只负责两条 Queue 路由。
 

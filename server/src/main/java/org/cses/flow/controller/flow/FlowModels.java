@@ -40,6 +40,7 @@ public class FlowModels {
 
         private String id;
         private String flowKey;
+        private long version;
         private String raw;
         private long createdAt;
         private long updatedAt;
@@ -47,9 +48,24 @@ public class FlowModels {
         private String updatedBy;
         private FlowView deployedFlow;
 
+        /**
+         * Creates one HTTP draft view from persisted Flow facts.
+         *
+         * @param id non-blank database row identifier
+         * @param flowKey non-blank stable Flow key
+         * @param version positive Repository-assigned draft version
+         * @param raw non-blank raw Flow source retained as supplied
+         * @param createdAt non-negative creation timestamp in milliseconds
+         * @param updatedAt latest update timestamp in milliseconds
+         * @param createdBy non-null display name of the creator
+         * @param updatedBy non-null display name of the latest updater
+         * @param deployedFlow independently mapped latest deployed Flow view,
+         *        or {@code null} when none is active
+         */
         private DraftView(
             String id,
             String flowKey,
+            long version,
             String raw,
             long createdAt,
             long updatedAt,
@@ -59,6 +75,7 @@ public class FlowModels {
         ) {
             this.id = id;
             this.flowKey = flowKey;
+            this.version = version;
             this.raw = raw;
             this.createdAt = createdAt;
             this.updatedAt = updatedAt;
@@ -67,6 +84,16 @@ public class FlowModels {
             this.deployedFlow = deployedFlow;
         }
 
+        /**
+         * Maps a persisted draft and optional deployed Flow to an HTTP view.
+         *
+         * @param draft non-null persisted draft read without modification
+         * @param deployedFlow latest deployed Flow read without modification,
+         *        or {@code null}
+         * @return a new draft view containing copied scalar facts and an
+         *         independently mapped deployed view
+         * @throws NullPointerException when {@code draft} is {@code null}
+         */
         public static DraftView from(
             Flow draft,
             Flow deployedFlow
@@ -74,6 +101,7 @@ public class FlowModels {
             return new DraftView(
                 draft.id(),
                 draft.key(),
+                draft.version(),
                 draft.source(),
                 draft.createdAt(),
                 draft.updatedAt(),
@@ -89,6 +117,15 @@ public class FlowModels {
 
         public String getFlowKey() {
             return flowKey;
+        }
+
+        /**
+         * Returns the Repository-assigned version of this draft row.
+         *
+         * @return positive draft version
+         */
+        public long getVersion() {
+            return version;
         }
 
         public String getRaw() {

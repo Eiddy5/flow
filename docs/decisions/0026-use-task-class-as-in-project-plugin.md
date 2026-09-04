@@ -14,6 +14,10 @@ ADR 0027 修订本 ADR 中 `@Plugin` 不携带元数据、注册表只保存类�
 ADR 0028 增加新 Task 扩展按能力名称建立独立目录的约定；现有已进入类型协议的
 内置类地址不在该次变更中迁移。
 
+ADR 0083 进一步规定 Flow 版本和行 ID 由 Repository 分配，并修订本文中
+`PublishFlowHandler` 只执行一次直接绑定的条款：草稿允许先移除 Flow 系统字段，
+再通过同一个 YAML Mapper 绑定剩余定义字段。
+
 本次实现修订多态绑定的局部职责：`PluginDeserializer` 通过构造器接收
 `PluginRegistry`，注册中心解析具体类后由 Jackson 递归绑定；`PluginModule` 负责将
 它注册到 `Task.class`。通用 `YamlParser` 不解析插件类型、不反射扫描插件字段，也不
@@ -88,8 +92,9 @@ Jackson 先读取 `type`，再通过注册表选择具体类并执行严格字�
 - `core/serializers/JacksonMapper` 集中创建项目受控的 JSON/YAML ObjectMapper，
   注册 `PluginModule`，并统一开启未知字段、重复 YAML key 和尾随内容的严格拒绝。
 - `YamlParser` 负责严格 YAML 读取，可返回通用只读 Map，也可按调用方给出的目标类型
-  执行绑定。它不导入 Flow、Task 或插件绑定上下文；`PublishFlowHandler` 只调用
-  `parse(source, Flow.class)`，再补充 Flow 生命周期与原始 source 事实。
+  执行绑定。它不导入 Flow、Task 或插件绑定上下文；`PublishFlowHandler` 对正式定义
+  调用 `parse(source, Flow.class)`，对草稿可先从通用 Map 移除 Flow 系统字段，再调用
+  `bind(...)`，最后补充 Flow 生命周期与原始 source 事实。
 - 每个 Task 的 `type` 必须与注册表中的 canonical class name 完全相同，区分大小写，
   不执行 trim、大小写归一化、别名解析或短类型回退。`AUTO`、`PAUSE`、
   `PARALLEL` 以及其大小写变体均为未知类型。

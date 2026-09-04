@@ -8,9 +8,9 @@ import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
-import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
 import org.cses.flow.infrastructure.repositories.flows.FlowRepositoryImpl;
 import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
@@ -40,7 +40,7 @@ import java.util.function.Function;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
@@ -52,17 +52,17 @@ import static org.flow.gen.flow.Tables.TASK_RUNS;
         named = "FLOW_POSTGRES_TEST_URL",
         matches = ".+"
 )
-final class PostgresRepositoryIntegrationTest {
+class PostgresRepositoryIntegrationTest {
 
-    private final Context plugins = builtInContext(
+    private Context plugins = builtInContext(
             new TestNotificationTask()
     );
-    private final FlowRepositoryImpl flowRepository =
+    private FlowRepositoryImpl flowRepository =
             new FlowRepositoryImpl();
     private FlowRepositoryImpl draftRepository = flowRepository;
-    private final ExecutionRepositoryImpl executionRepository =
+    private ExecutionRepositoryImpl executionRepository =
             new ExecutionRepositoryImpl();
-    private final String companyId = "repository-test-" + StringUtil.newId();
+    private String companyId = "repository-test-" + StringUtil.newId();
 
     @BeforeAll
     static void initializeJsonMapper() {
@@ -92,6 +92,10 @@ final class PostgresRepositoryIntegrationTest {
         });
     }
 
+    /**
+     * Verifies Flow and Execution aggregate round trips across versioned Flow
+     * rows and deployed Task snapshots.
+     */
     @Test
     void persistsAndRehydratesCurrentCoreAggregates() {
         ActorRef actor = ActorRef.create(
@@ -105,11 +109,8 @@ final class PostgresRepositoryIntegrationTest {
                 "key: postgres-flow"
         );
         long createdAt = draft.createdAt();
-        write(dsl -> {
-            draftRepository.save(dsl, draft);
-            return null;
-        });
-        draft.revise(
+        Flow savedDraft = save(draft);
+        savedDraft.revise(
                 "revised",
                 Map.of(),
                 List.of(),
@@ -118,32 +119,29 @@ final class PostgresRepositoryIntegrationTest {
                 actorSession,
                 createdAt + 1_000L
         );
-        write(dsl -> {
-            draftRepository.save(dsl, draft);
-            return null;
-        });
+        Flow revisedDraft = save(savedDraft);
         Flow restoredDraft = read(dsl ->
                 draftRepository.findById(
                         dsl,
                         companyId,
-                        draft.id()
+                        revisedDraft.id()
                 ).orElseThrow()
         );
-        assertEquals(draft, restoredDraft);
+        assertEquals(revisedDraft, restoredDraft);
+        assertEquals(1L, savedDraft.version());
+        assertEquals(2L, revisedDraft.version());
+        assertNotEquals(savedDraft.id(), revisedDraft.id());
 
         Flow first = plugins.deploy(
                 companyId,
-                draft.key(),
+                revisedDraft.key(),
                 definition("postgres-flow", "first", "prepare"),
                 null,
                 actor,
                 createdAt + 2_000L
         );
-        write(dsl -> {
-            flowRepository.save(dsl, first);
-            return null;
-        });
-        String stableTaskId = first.allTasks().stream()
+        Flow savedFirst = save(first);
+        String stableTaskId = savedFirst.allTasks().stream()
                 .filter(task -> task.key().equals("prepare"))
                 .findFirst()
                 .orElseThrow()
@@ -151,26 +149,23 @@ final class PostgresRepositoryIntegrationTest {
 
         Flow second = plugins.deploy(
                 companyId,
-                draft.key(),
+                revisedDraft.key(),
                 definition("postgres-flow", "second", "prepare"),
-                first,
+                savedFirst,
                 actor,
                 createdAt + 3_000L
         );
-        write(dsl -> {
-            flowRepository.save(dsl, second);
-            return null;
-        });
+        Flow savedSecond = save(second);
 
         Flow restoredFlow = read(dsl -> flowRepository.findLatestByFlowId(
                 dsl,
-                FlowId.from(companyId, first.key())
+                FlowId.from(companyId, savedFirst.key())
         ).orElseThrow());
         assertFalse(restoredFlow.deleted());
-        assertEquals(2, restoredFlow.reversion());
+        assertEquals(4, restoredFlow.reversion());
         assertEquals(
                 stableTaskId,
-                second.allTasks().stream()
+                savedSecond.allTasks().stream()
                         .filter(task -> task.key().equals("prepare"))
                         .findFirst()
                         .orElseThrow()
@@ -209,7 +204,7 @@ final class PostgresRepositoryIntegrationTest {
         );
         Flow restoredFirst = read(dsl -> flowRepository.findByFlowId(
                 dsl,
-                FlowId.from(companyId, first.key(), 1)
+                FlowId.from(companyId, savedFirst.key(), 3)
         ).orElseThrow());
         assertFalse(restoredFirst.deleted());
 
@@ -218,7 +213,7 @@ final class PostgresRepositoryIntegrationTest {
                     null,
                     actorSession,
                     restoredFlow.key(),
-                    2,
+                    restoredFlow.version(),
                     Map.of("amount", 1200)
             );
             created.start();
@@ -377,6 +372,10 @@ final class PostgresRepositoryIntegrationTest {
 
     }
 
+    /**
+     * Verifies that compatible audit states append as new versions and remain
+     * scoped to their tenant.
+     */
     @Test
     void persistsCompatibleAuditStatesAndScopesFlowLookupByTenant() {
         ActorRef actor = ActorRef.create(
@@ -390,64 +389,64 @@ final class PostgresRepositoryIntegrationTest {
                 "key: audit-state-flow"
         );
         long createdAt = draft.createdAt();
-        write(dsl -> {
-            draftRepository.save(dsl, draft);
-            return null;
-        });
+        Flow savedDraft = save(draft);
 
-        draft.withState(
+        savedDraft.withState(
                 RecordState.Archive,
                 actorSession,
                 createdAt + 1_000L
         );
-        write(dsl -> {
-            draftRepository.save(dsl, draft);
-            return null;
-        });
+        Flow archivedDraft = save(savedDraft);
 
         Flow restoredDraft = read(dsl ->
                 draftRepository.findDraftByFlowId(
                         dsl,
-                        FlowId.from(companyId, draft.key())
+                        FlowId.from(companyId, archivedDraft.key())
                 ).orElseThrow()
         );
         assertEquals(RecordState.Archive, restoredDraft.status());
 
         Flow flow = plugins.deploy(
                 companyId,
-                draft.key(),
+                archivedDraft.key(),
                 definition("audit-state-flow", "audited", "prepare"),
                 null,
                 actor,
                 createdAt + 2_000L
         );
-        write(dsl -> {
-            flowRepository.save(dsl, flow);
-            return null;
-        });
-        flow.withState(
+        Flow savedFlow = save(flow);
+        savedFlow.withState(
                 RecordState.Close,
                 actorSession,
-                flow.createdAt() + 1_000L
+                savedFlow.createdAt() + 1_000L
         );
-        write(dsl -> {
-            flowRepository.save(dsl, flow);
-            return null;
-        });
+        Flow closedFlow = save(savedFlow);
 
         Flow restoredFlow = read(dsl -> flowRepository.findByFlowId(
                 dsl,
-                FlowId.from(companyId, flow.key(), flow.version())
+                FlowId.from(
+                        companyId,
+                        closedFlow.key(),
+                        closedFlow.version()
+                )
         ).orElseThrow());
         assertEquals(RecordState.Close, restoredFlow.status());
         assertTrue(read(dsl -> flowRepository.findByFlowId(
                 dsl,
-                FlowId.from(companyId + "-another", flow.key(), flow.version())
+                FlowId.from(
+                        companyId + "-another",
+                        closedFlow.key(),
+                        closedFlow.version()
+                )
         )).isEmpty());
     }
 
+    /**
+     * Verifies that every save appends a new row and that deleted versions
+     * remain part of the tenant-and-key version sequence.
+     */
     @Test
-    void enforcesCompanyFlowKeyUniquenessIncludingDeletedDrafts() {
+    void appendsVersionsIncludingDeletedDrafts() {
         ActorRef actor = ActorRef.create(
                 "unique-key-user",
                 "Unique Key Test"
@@ -458,44 +457,54 @@ final class PostgresRepositoryIntegrationTest {
                 "unique-repository-flow",
                 "key: unique-repository-flow"
         );
-        write(dsl -> {
-            draftRepository.save(dsl, first);
-            return null;
-        });
+        Flow savedFirst = save(first);
 
         Flow duplicate = draft(
                 actorSession,
                 first.key(),
                 first.source()
         );
-        assertThrows(
-                WorkflowException.class,
-                () -> write(dsl -> {
-                    draftRepository.save(dsl, duplicate);
-                    return null;
-                })
-        );
+        Flow savedSecond = save(duplicate);
 
-        first.delete(actorSession, first.createdAt() + 2_000L);
-        write(dsl -> {
-            draftRepository.save(dsl, first);
-            return null;
-        });
+        savedSecond.delete(
+                actorSession,
+                savedSecond.createdAt() + 2_000L
+        );
+        Flow deleted = save(savedSecond);
 
         Flow replacement = draft(
                 actorSession,
                 first.key(),
                 first.source()
         );
-        assertThrows(
-                WorkflowException.class,
-                () -> write(dsl -> {
-                    draftRepository.save(dsl, replacement);
-                    return null;
-                })
+        Flow savedReplacement = save(replacement);
+
+        assertEquals(1L, savedFirst.version());
+        assertEquals(2L, savedSecond.version());
+        assertEquals(3L, deleted.version());
+        assertEquals(4L, savedReplacement.version());
+        int savedRowCount = read(dsl -> dsl.fetchCount(
+                FLOWS,
+                FLOWS.COMPANY_ID.eq(companyId)
+                        .and(FLOWS.KEY.eq(first.key()))
+        ));
+        assertEquals(4, savedRowCount);
+        assertEquals(
+                savedReplacement.id(),
+                read(dsl -> draftRepository.findDraftByFlowId(
+                        dsl,
+                        FlowId.from(companyId, first.key())
+                ).orElseThrow()).id()
         );
+        assertNotEquals(savedFirst.id(), savedSecond.id());
+        assertNotEquals(savedSecond.id(), deleted.id());
+        assertNotEquals(deleted.id(), savedReplacement.id());
     }
 
+    /**
+     * Verifies that plugin-specific Task properties use the Repository-
+     * assigned deployed Flow version.
+     */
     @Test
     void roundTripsAPluginSpecificFieldThroughTaskPropertiesCodec() {
         ActorRef actor = ActorRef.create(
@@ -523,14 +532,11 @@ final class PostgresRepositoryIntegrationTest {
                 1_785_312_000_000L
         );
 
-        write(dsl -> {
-            flowRepository.save(dsl, flow);
-            return null;
-        });
+        Flow savedFlow = save(flow);
 
         Flow restored = read(dsl -> flowRepository.findByFlowId(
                 dsl,
-                FlowId.from(companyId, flow.key(), 1L)
+                FlowId.from(companyId, savedFlow.key(), savedFlow.version())
         ).orElseThrow());
         assertEquals(
                 Map.of("environment", "prod", "retryLimit", 3),
@@ -551,20 +557,27 @@ final class PostgresRepositoryIntegrationTest {
                         dsl.select(FLOW_TASKS.PROPERTIES)
                                 .from(FLOW_TASKS)
                                 .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
-                                .and(FLOW_TASKS.FLOW_KEY.eq(flow.key()))
-                                .and(FLOW_TASKS.FLOW_VERSION.eq(flow.reversion()))
+                                .and(FLOW_TASKS.FLOW_KEY.eq(savedFlow.key()))
+                                .and(FLOW_TASKS.FLOW_VERSION.eq(
+                                        savedFlow.version()
+                                ))
                                 .fetchOne(FLOW_TASKS.PROPERTIES)
                                 .data()
                 ).getString("channel"))
         );
     }
 
+    /**
+     * Verifies the manually provisioned schema types, including the required
+     * non-null Flow version column.
+     */
     @Test
     void schemaUsesAggregateAndPluginTypes() {
         var columns = DSL.table(DSL.name(
                 "information_schema",
                 "columns"
         ));
+        var indexes = DSL.table(DSL.name("pg_indexes"));
         var tableSchema = DSL.field(
                 DSL.name("table_schema"),
                 String.class
@@ -579,6 +592,22 @@ final class PostgresRepositoryIntegrationTest {
         );
         var dataType = DSL.field(
                 DSL.name("data_type"),
+                String.class
+        );
+        var isNullable = DSL.field(
+                DSL.name("is_nullable"),
+                String.class
+        );
+        var schemaName = DSL.field(
+                DSL.name("schemaname"),
+                String.class
+        );
+        var indexTableName = DSL.field(
+                DSL.name("tablename"),
+                String.class
+        );
+        var indexName = DSL.field(
+                DSL.name("indexname"),
                 String.class
         );
 
@@ -659,6 +688,19 @@ final class PostgresRepositoryIntegrationTest {
                                 "deleter_id"
                         ))
         ));
+        int requiredFlowVersionColumnCount = read(dsl -> dsl.fetchCount(
+                columns,
+                tableSchema.eq("public")
+                        .and(tableName.eq("flows"))
+                        .and(columnName.eq("version"))
+                        .and(isNullable.eq("NO"))
+        ));
+        int flowVersionUniqueIndexCount = read(dsl -> dsl.fetchCount(
+                indexes,
+                schemaName.eq("public")
+                        .and(indexTableName.eq("flows"))
+                        .and(indexName.eq("uq_flows_key_version"))
+        ));
 
         assertEquals(1, draftColumnCount);
         assertEquals(1, auditStatusColumnCount);
@@ -670,6 +712,8 @@ final class PostgresRepositoryIntegrationTest {
         assertEquals(4, executionAuditColumnCount);
         assertEquals(5, taskRunAuditColumnCount);
         assertEquals(0, flowDerivedAuditColumnCount);
+        assertEquals(1, requiredFlowVersionColumnCount);
+        assertEquals(1, flowVersionUniqueIndexCount);
         assertEquals(
                 "text",
                 read(dsl -> dsl.select(dataType)
@@ -681,6 +725,10 @@ final class PostgresRepositoryIntegrationTest {
         );
     }
 
+    /**
+     * Verifies that deletion appends new draft and deployed versions without
+     * causing latest queries to fall back to older active rows.
+     */
     @Test
     void persistsDeletionFactsWithoutFallingBackFromDeletedLatest() {
         ActorRef actor = ActorRef.create(
@@ -694,69 +742,68 @@ final class PostgresRepositoryIntegrationTest {
                 "key: lifecycle-flow"
         );
         long createdAt = draft.createdAt();
-        write(dsl -> {
-            draftRepository.save(dsl, draft);
-            return null;
-        });
+        Flow savedDraft = save(draft);
 
         Flow first = plugins.deploy(
                 companyId,
-                draft.key(),
+                savedDraft.key(),
                 definition("lifecycle-flow", "first", "prepare"),
                 null,
                 actor,
                 createdAt + 1_000L
         );
-        write(dsl -> {
-            flowRepository.save(dsl, first);
-            return null;
-        });
+        Flow savedFirst = save(first);
         Flow second = plugins.deploy(
                 companyId,
-                draft.key(),
+                savedDraft.key(),
                 definition("lifecycle-flow", "second", "prepare"),
-                first,
+                savedFirst,
                 actor,
                 createdAt + 2_000L
         );
-        write(dsl -> {
-            flowRepository.save(dsl, second);
-            return null;
-        });
+        Flow savedSecond = save(second);
 
-        long deletedAt = Math.max(draft.updatedAt(), second.updatedAt())
+        long deletedAt = Math.max(
+                savedDraft.updatedAt(),
+                savedSecond.updatedAt()
+        )
                 + 3_000L;
-        draft.delete(actorSession, deletedAt);
-        second.delete(actorSession, deletedAt);
-        write(dsl -> {
-            draftRepository.save(dsl, draft);
-            flowRepository.save(dsl, second);
-            return null;
-        });
+        savedDraft.delete(actorSession, deletedAt);
+        savedSecond.delete(actorSession, deletedAt);
+        Flow deletedDraft = save(savedDraft);
+        Flow deletedFlow = save(savedSecond);
 
-        Flow deletedDraft = read(dsl ->
+        Flow restoredDeletedDraft = read(dsl ->
                 draftRepository.findById(
                         dsl,
                         companyId,
-                        draft.id()
+                        deletedDraft.id()
                 ).orElseThrow()
         );
-        assertTrue(deletedDraft.deleted());
+        assertTrue(restoredDeletedDraft.deleted());
         assertTrue(read(dsl -> draftRepository.findById(
                 dsl,
                 companyId,
-                draft.id()
+                deletedDraft.id()
         )).orElseThrow().deleted());
         Flow latest = read(dsl -> flowRepository.findLatestByFlowId(
                 dsl,
-                FlowId.from(companyId, second.key())
+                FlowId.from(companyId, deletedFlow.key())
         ).orElseThrow());
-        assertEquals(2L, latest.reversion());
+        assertEquals(5L, latest.reversion());
         assertTrue(latest.deleted());
+        assertTrue(read(dsl -> draftRepository.findDraftByFlowId(
+                dsl,
+                FlowId.from(companyId, deletedDraft.key())
+        )).isEmpty());
+        assertTrue(read(dsl -> draftRepository.findDrafts(
+                dsl,
+                companyId
+        )).isEmpty());
 
         Flow historical = read(dsl -> flowRepository.findByFlowId(
                 dsl,
-                FlowId.from(companyId, second.key(), 1L)
+                FlowId.from(companyId, deletedFlow.key(), 2L)
         ).orElseThrow());
         assertFalse(historical.deleted());
         assertEquals(
@@ -764,7 +811,7 @@ final class PostgresRepositoryIntegrationTest {
                 read(dsl -> dsl.select(FLOWS.STATUS)
                         .from(FLOWS)
                         .where(FLOWS.COMPANY_ID.eq(companyId))
-                        .and(FLOWS.ID.eq(draft.id()))
+                        .and(FLOWS.ID.eq(deletedDraft.id()))
                         .fetchOne(FLOWS.STATUS))
         );
     }
@@ -831,6 +878,18 @@ final class PostgresRepositoryIntegrationTest {
                 List.of(),
                 source
         );
+    }
+
+    /**
+     * Saves one Flow in a committed transaction and returns the persisted
+     * snapshot produced by the Repository.
+     *
+     * @param flow non-null Flow state read without modification
+     * @return persisted Flow with its assigned row id and version
+     * @throws WorkflowException when the database rejects the append
+     */
+    private Flow save(Flow flow) {
+        return write(dsl -> flowRepository.save(dsl, flow));
     }
 
     private <T> T read(Function<DSLContext, T> operation) {

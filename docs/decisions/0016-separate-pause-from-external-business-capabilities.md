@@ -56,14 +56,14 @@ PAUSE TaskRun 进入 WAITING。外部能力保存 `executionId + taskRunId`，�
   恢复流程的唯一公开 Core 用例。
 - Service 校验并规范化 Resume 数据后构造 Executor `Resume` Command，投递到持久化
   `ExecutionCommand` Queue；`ExecutionCommandEventHandler` 消费消息后校验并投递
-  `ExecutorEvent`，由 `ExecutorEventHandler` 加载 Execution 及其绑定的 Flow Reversion。
+  `ExecutorEvent`，由 `ExecutorEventMessageHandler` 加载 Execution 及其绑定的 Flow Reversion。
 - Resume Handler 必须校验：
   - 调用租户与 Execution 一致。
   - Execution 与目标 TaskRun 存在。
   - Execution 和目标 TaskRun 的 `state.current()` 均为 `WAITING`。
   - TaskRun 对应的 Task 类型是 PAUSE。
   - outputs 满足该 PAUSE Task 的输出契约。
-- 校验通过后，`ExecutorEventHandler` 通过 `ExecutorContext` 调用
+- 校验通过后，`ExecutorEventMessageHandler` 通过 `ExecutorContext` 调用
   `ExecutorService.resume(...)` 完成原 TaskRun，并推进到下一稳定态或终态。
 - 外部能力不能提交 Flow Reversion、路由结果、下一 Task 或目标 Execution
   状态，也不能直接调用 Handler、Repository 或 Executor。

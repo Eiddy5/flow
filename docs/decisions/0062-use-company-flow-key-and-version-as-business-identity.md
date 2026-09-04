@@ -4,6 +4,9 @@
 
 Accepted
 
+ADR 0083 将该业务身份扩展到包括草稿和删除在内的每次保存，并取代本 ADR 中“一个
+key 只有一个草稿”、Domain 分配正式版本以及 Flow 行 ID 跨保存稳定的条款。
+
 本 ADR 修订此前把 Flow `id` 当作跨版本业务标识的约定；历史 ADR 中的
 `flowId + flowReversion` 表述仅在明确指向已持久化 Flow 修订行时保留。
 领域方法的命名已由 ADR 0067 进一步修订：`id()` 返回稳定字符串实体 ID；

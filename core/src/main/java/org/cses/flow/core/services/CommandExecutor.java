@@ -21,13 +21,13 @@ public final class CommandExecutor {
     private final CommandHandlerRegistry handlerRegistry;
 
     public CommandExecutor(
-        @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
-        CommandHandlerRegistry handlerRegistry
+            @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
+            CommandHandlerRegistry handlerRegistry
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.handlerRegistry = Objects.requireNonNull(
-            handlerRegistry,
-            "handlerRegistry"
+                handlerRegistry,
+                "handlerRegistry"
         );
     }
 
@@ -35,26 +35,26 @@ public final class CommandExecutor {
      * Executes a command and preserves its generic result type.
      */
     public <
-        S extends Session<U>,
-        U extends User,
-        R,
-        C extends Command<R>
-        > R execute(
-        S session,
-        C command
+            S extends Session<U>,
+            U extends User,
+            R,
+            C extends Command<R>
+            > R execute(
+            S session,
+            C command
     ) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(command, "command");
         command.validate();
 
         CommandHandler<S, U, R, C> handler =
-            handlerRegistry.require(command);
+                handlerRegistry.require(command);
         return jooq.runReturn(dsl -> inScope(
-            session,
-            command,
-            handler,
-            dsl,
-            null
+                session,
+                command,
+                handler,
+                dsl,
+                null
         ));
     }
 
@@ -67,14 +67,14 @@ public final class CommandExecutor {
      * of Queue infrastructure and still cannot nest CommandExecutor calls.</p>
      */
     public <
-        S extends Session<U>,
-        U extends User,
-        R,
-        C extends Command<R>
-        > R execute(
-        S session,
-        C command,
-        BiConsumer<R, org.jooq.DSLContext> completion
+            S extends Session<U>,
+            U extends User,
+            R,
+            C extends Command<R>
+            > R execute(
+            S session,
+            C command,
+            BiConsumer<R, org.jooq.DSLContext> completion
     ) {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(command, "command");
@@ -82,37 +82,37 @@ public final class CommandExecutor {
         command.validate();
 
         CommandHandler<S, U, R, C> handler =
-            handlerRegistry.require(command);
+                handlerRegistry.require(command);
         return jooq.runReturn(dsl -> inScope(
-            session,
-            command,
-            handler,
-            dsl,
-            completion
+                session,
+                command,
+                handler,
+                dsl,
+                completion
         ));
     }
 
     private static <
-        S extends Session<U>,
-        U extends User,
-        R,
-        C extends Command<R>
-        > R inScope(
-        S session,
-        C command,
-        CommandHandler<S, U, R, C> handler,
-        org.jooq.DSLContext dsl,
-        BiConsumer<R, org.jooq.DSLContext> completion
+            S extends Session<U>,
+            U extends User,
+            R,
+            C extends Command<R>
+            > R inScope(
+            S session,
+            C command,
+            CommandHandler<S, U, R, C> handler,
+            org.jooq.DSLContext dsl,
+            BiConsumer<R, org.jooq.DSLContext> completion
     ) {
         Object previousSession = dsl.configuration().data(Session.class);
         Object previousContext = dsl.configuration().data(
-            CommandContext.class
+                CommandContext.class
         );
         dsl.configuration().data(Session.class, session);
         CommandContext<S, U, R, C> context = CommandContext.from(
-            command,
-            session,
-            dsl
+                command,
+                session,
+                dsl
         );
         dsl.configuration().data(CommandContext.class, context);
         try {
@@ -128,9 +128,9 @@ public final class CommandExecutor {
     }
 
     private static void restore(
-        org.jooq.DSLContext dsl,
-        Class<?> key,
-        Object previous
+            org.jooq.DSLContext dsl,
+            Class<?> key,
+            Object previous
     ) {
         if (previous == null) {
             dsl.configuration().data().remove(key);

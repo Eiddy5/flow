@@ -64,6 +64,44 @@ class YamlParserTest {
         assertFalse(flow.tasks().getFirst().id().isBlank());
     }
 
+    /**
+     * Binds parsed source maps, including an empty map, and rejects null
+     * arguments or fields whose types cannot be bound.
+     */
+    @Test
+    void bindsParsedMapsAndRejectsInvalidArguments() {
+        builtInContext();
+        Map<String, Object> fields = Map.of(
+            "key", "bound-flow",
+            "tasks", List.of(Map.of(
+                "key", "prepare",
+                "type", Log.class.getName()
+            ))
+        );
+
+        Flow bound = YamlParser.bind(fields, Flow.class);
+        Flow empty = YamlParser.bind(Map.of(), Flow.class);
+
+        assertEquals("bound-flow", bound.key());
+        assertEquals("prepare", bound.tasks().getFirst().key());
+        assertNull(empty.key());
+        assertThrows(
+            NullPointerException.class,
+            () -> YamlParser.bind(null, Flow.class)
+        );
+        assertThrows(
+            NullPointerException.class,
+            () -> YamlParser.bind(fields, null)
+        );
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> YamlParser.bind(
+                Map.of("tasks", "not-a-list"),
+                Flow.class
+            )
+        );
+    }
+
     @Test
     void rejectsDuplicateKeysAndNonMappingDocuments() {
         builtInContext();

@@ -4,6 +4,9 @@
 
 Accepted（2026-08-27）
 
+ADR 0083 取代本 ADR 中由 Domain 计算版本、按 Flow 行 ID 更新以及 Repository 不读取
+版本历史的条款。删除限制、定义校验、Task 身份和审计事实仍由领域与 Handler 负责。
+
 ## 背景
 
 Flow 的 PostgreSQL Repository 曾在保存时读取已有版本并判断版本递增、删除状态、

@@ -102,7 +102,7 @@ Context 的调度字段为 `execution`、`flow`、`nexts`、`workerTasks`、
 外部恢复的结构节点完成后，`handle` 立即进入下一轮 `handleNext`。PAUSE 先进入
 WAITING，再由下一轮空批次使 Execution 收敛到 WAITING。BranchTask 不形成
 WorkerTask，也不由外部 Command Handler 调用第二个状态推进入口；后续周期统一由
-`ExecutorEvent` Queue 交给 `ExecutorEventHandler`。
+`ExecutorEvent` Queue 交给 `ExecutorEventMessageHandler`。
 
 `ExecutorService.handleNext(context)` 只执行以下动作：
 
@@ -135,12 +135,12 @@ TaskRun 或非 CREATED TaskRun 都不能留下部分聚合变化。
 `handleNext` 与 `onNexts` 是 Executor 模块内部阶段，统一由
 `ExecutorService.process(context)` 在一个 Event 周期内按顺序调用。外部命令只通过
 `ExecutionCommandEventHandler` 进入 Executor；后续内部周期由
-`ExecutorEventHandler` 领取 Event 并推进。DefaultExecutor 的当前职责由 ADR 0059
+`ExecutorEventMessageHandler` 领取 Event 并推进。DefaultExecutor 的当前职责由 ADR 0059
 修订为两条 Queue 路由。
 
 ### ExecutorEventHandler
 
-`ExecutorEventHandler` 是当前内部运行组件的单 Event 提交边界。外部
+`ExecutorEventMessageHandler` 是当前内部运行组件的单 Event 提交边界。外部
 `ExecutionCommandEventHandler` 负责校验、物化/锁定和投递 `ExecutorEvent`；内部处理器
 通过 `ExecutionRepository.lockById(...)` 按租户锁定读取已有 Execution，再加载其精确
 Flow Reversion，创建纯 ExecutorContext。内部处理器负责：
@@ -153,7 +153,7 @@ Flow Reversion，创建纯 ExecutorContext。内部处理器负责：
 5. 若 Execution 仍可推进，在同一事务投递下一条 `ExecutorEvent`，而不是在同一个
    调用栈中继续复用 Context。
 6. 统一处理取消；Queue 领取的 `PROCESS`、`RESUME` 和 `CANCEL` 都在
-   `ExecutorEventHandler` 的独立事务中完成。启动、恢复和取消中的确定性
+   `ExecutorEventMessageHandler` 的独立事务中完成。启动、恢复和取消中的确定性
    RunnableTask 异常按 ADR 0051 记录为失败结果。
 
 Core 中不再保留另一个 `ExecutionHandler` 协调器，避免两个对象共同拥有保存和
@@ -172,7 +172,7 @@ PostgreSQL Repository 的 `lockById` 使用 Execution 行的 `FOR UPDATE` 锁，
 
 本决策没有实现远程 Worker 或 exactly-once。ADR 0051 让普通启动先由 Service 投递
 `Create`，再由 Handler 创建 Execution；ADR 0068 已删除可信 pending continuation，
-启动只保留一条完整 Command 链。运行提交边界由 `ExecutorEventHandler` 保持。
+启动只保留一条完整 Command 链。运行提交边界由 `ExecutorEventMessageHandler` 保持。
 
 ## 调用顺序
 

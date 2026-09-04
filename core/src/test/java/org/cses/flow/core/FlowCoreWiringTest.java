@@ -18,6 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FlowCoreWiringTest {
 
+    /**
+     * Verifies that Micronaut wiring persists a draft and then a deployed Flow
+     * using successive Repository-assigned versions.
+     */
     @Test
     void micronautWiresPostgresCommandAndQueryChains() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -58,10 +62,10 @@ class FlowCoreWiringTest {
             var current = service.flow(
                 session,
                 draft.key(),
-                1L
+                2L
             ).orElseThrow();
             assertTrue(!current.deleted());
-            assertEquals(1L, current.reversion());
+            assertEquals(2L, current.reversion());
             assertEquals(
                 Log.class.getName(),
                 current.tasks().getFirst().getType()

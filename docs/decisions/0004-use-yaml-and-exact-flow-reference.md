@@ -4,7 +4,8 @@
 
 Accepted（Flow 来源草稿、`reversion` 与查询契约部分由 ADR 0008 修订；
 YAML 解析位置与 Flow 物化边界由 ADR 0013 修订；FlowDraft 的业务身份与
-唯一性由 ADR 0062、ADR 0063 和 ADR 0064 修订）
+唯一性由 ADR 0062、ADR 0063 和 ADR 0064 修订；草稿非空版本与追加保存由
+ADR 0083 修订）
 
 ## 决策
 

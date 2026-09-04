@@ -206,9 +206,10 @@ Worker 调度与异步消息传输契约不放在 `core`，分别由同级的 `e
 和 `queues` 包负责。
 
 Flow 的草稿与正式版本统一由 `Flow` 表达，并始终保留原始 YAML `source`。
-草稿由默认 `draft=true` 表达，创建时必须提供业务 key，同一个 `companyId + key`
-只能有一个草稿；正式版本由 `companyId + key + version` 精确选择。Flow、Execution、Task 与
-TaskRun 都通过 `String id()` 暴露稳定实体标识；跨对象引用使用 `executionId`、
+草稿由默认 `draft=true` 表达，创建时必须提供业务 key；草稿和正式定义的每次保存
+都由 Repository 在同一个 `companyId + key` 序列中分配非空版本并追加新行，精确
+业务版本由 `companyId + key + version` 选择。`flows.id` 只标识该次保存的数据库行；
+Execution、Task 与 TaskRun 通过各自 `String id()` 暴露稳定实体标识，跨对象引用使用 `executionId`、
 `taskId`、`taskRunId` 等明确字符串字段；`FlowId` 仅在 Flow Repository 中表达业务
 选择器，不建立实体 `*Id` 包装领域。Execution 始终通过
 `companyId + key + version` 恢复历史 Flow，不使用 `flows.id` 作为业务选择器。
@@ -255,8 +256,11 @@ core/
 Mapper，负责严格 YAML 树、只读 Map 和通用目标类型解析。它不导入或创建
 Flow、Task 等业务类型。`PluginModule` 在 Mapper 创建时注册
 `PluginDeserializer`；YAML Mapper 使用其 source 定义配置，自动拒绝 Task 系统字段
-并生成首次身份，JSON Mapper 则按原值恢复持久化身份。`PublishFlowHandler` 只调用
-`parse(source, Flow.class)`，并在绑定后补充 Session、状态、版本和原始 source；
+并生成首次身份，JSON Mapper 则按原值恢复持久化身份。`PublishFlowHandler` 对正式
+定义调用 `parse(source, Flow.class)`；保存草稿时先通过通用 Map 去除 Flow 的行 ID、
+版本、租户、状态和审计等系统字段，再用 `YamlParser.bind(...)` 绑定其余定义字段，
+无法绑定的 Task 只保留在原始 source。绑定完成后由 Flow Domain 补充 Session、状态
+和原始 source，Flow 版本由 Repository 保存时分配；
 `PluginDeserializer` 通过构造器接收注册中心，解析具体 Task 并由 Jackson 自然
 递归绑定嵌套插件，不再由 Flow 反射扫描插件字段。
 `plugins` 的运行机制放在包根，只有注解位于 `plugins/annotations`；
@@ -342,7 +346,7 @@ Execution 编排推进组件。它与 `core` 平级，负责：
   Pause 前置 Task 子树执行、Pause TaskRun 暂停、编排作用域推进和收敛；Pause
   自身不形成 WorkerTask，其 `pause` 字段中的 RunnableTask 仍按正常 Worker 链路执行。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
-- 内部 `ExecutorEventHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
+- 内部 `ExecutorEventMessageHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
   Worker 结果应用后通过新的 `ExecutorEvent` 再次进入下一周期。`ExecutorContext` 不
   跨 Queue、不进入持久化载荷。
 
@@ -350,7 +354,7 @@ Execution 编排推进组件。它与 `core` 平级，负责：
 套状态类型、不直接修改 State、不访问 Repository/JOOQ，也不执行 RunnableTask。
 `ExecutionCommandEventHandler` 依赖 Repository 端口和内部 Event Queue，负责 Command
 分派、输入规范化、创建或锁定 Execution 以及加载精确 Flow Reversion；内部
-`ExecutorEventHandler` 依赖当前 DSLContext、ExecutorService、WorkerDispatcher 和
+`ExecutorEventMessageHandler` 依赖当前 DSLContext、ExecutorService、WorkerDispatcher 和
 Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor` 只负责两条 Queue
 的生命周期和路由。Context 自身仍不保存任何可持久化状态；恢复时由内部 Handler
 重新从 Execution.inputs 读取 Flow inputs。

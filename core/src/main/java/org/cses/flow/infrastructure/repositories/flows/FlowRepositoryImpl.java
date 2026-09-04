@@ -4,16 +4,17 @@ import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowEntry;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowTaskEntry;
 import org.flow.gen.flow.records.FlowTasksRecord;
-import org.jooq.Condition;
+import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.DSLContext;
 import org.jooq.InsertValuesStepN;
 import org.jooq.exception.DataAccessException;
+import org.paas.common.util.StringUtil;
 import org.paas.session.RecordState;
 
 import java.util.Comparator;
@@ -76,15 +77,30 @@ public class FlowRepositoryImpl implements FlowRepository {
         return restore(dsl, entry);
     }
 
+    /**
+     * Lists only the latest active draft row for each tenant-scoped Flow key.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param companyId non-blank tenant whose drafts are listed
+     * @return an unmodifiable list of detached latest active drafts ordered by
+     *         update time, or an empty list when none exist
+     */
     @Override
     public List<Flow> findDrafts(
             DSLContext dsl,
             String companyId
     ) {
+        FlowsTable newer = FLOWS.as("newer_draft");
         return dsl.select()
                 .from(FLOWS)
                 .where(FLOWS.COMPANY_ID.eq(companyId))
                 .and(FLOWS.DRAFT.eq(true))
+                .andNotExists(dsl.selectOne()
+                        .from(newer)
+                        .where(newer.COMPANY_ID.eq(FLOWS.COMPANY_ID))
+                        .and(newer.KEY.eq(FLOWS.KEY))
+                        .and(newer.DRAFT.eq(true))
+                        .and(newer.VERSION.gt(FLOWS.VERSION)))
                 .and(FLOWS.STATUS.ne(RecordState.Delete.getName()))
                 .orderBy(FLOWS.UPDATED_AT.desc(), FLOWS.ID.asc())
                 .fetchInto(FlowEntry.class)
@@ -93,6 +109,14 @@ public class FlowRepositoryImpl implements FlowRepository {
                 .toList();
     }
 
+    /**
+     * Loads the latest draft row and suppresses it when that row is deleted.
+     *
+     * @param dsl non-null caller-owned database context used only for reads
+     * @param flowId non-null tenant and Flow key selector without a version
+     * @return the latest active draft, or empty when absent or deleted
+     * @throws IllegalArgumentException when the selector contains a version
+     */
     @Override
     public Optional<Flow> findDraftByFlowId(
             DSLContext dsl,
@@ -104,30 +128,51 @@ public class FlowRepositoryImpl implements FlowRepository {
                 .where(FLOWS.COMPANY_ID.eq(flowId.companyId()))
                 .and(FLOWS.KEY.eq(flowId.key()))
                 .and(FLOWS.DRAFT.eq(true))
-                .and(FLOWS.STATUS.ne(RecordState.Delete.getName()))
+                .orderBy(FLOWS.VERSION.desc())
+                .limit(1)
                 .fetchOneInto(FlowEntry.class);
-        return Optional.ofNullable(entry).map(FlowEntry::to);
+        return Optional.ofNullable(entry)
+                .map(FlowEntry::to)
+                .filter(flow -> !flow.deleted());
     }
 
+    /**
+     * Appends a Flow row after assigning the next version across all rows for
+     * the same tenant and key. Deployed rows also append their Task snapshot.
+     *
+     * @param dsl non-null caller-owned transaction context used for the
+     *        version read and all inserts
+     * @param flow non-null Flow whose definition and domain-owned tenant,
+     *        status and audit facts are read without modifying the object
+     * @return a detached Flow containing the assigned row id and version; its
+     *         mutable containers are independent of the input Flow
+     * @throws WorkflowException when the database rejects the appended rows
+     * @throws ArithmeticException when the stored version is
+     *         {@link Long#MAX_VALUE}
+     */
     @Override
-    public void save(DSLContext dsl, Flow flow) {
-        FlowEntry entry = FlowEntry.from(flow);
+    public Flow save(DSLContext dsl, Flow flow) {
         try {
-            int updated = dsl.update(FLOWS)
-                    .set(entry.buildUpdateMap())
-                    .where(FLOWS.COMPANY_ID.eq(entry.companyId))
-                    .and(FLOWS.ID.eq(entry.id))
-                    .execute();
-            if (updated == 1) {
-                return;
+            Long latest = dsl.select(FLOWS.VERSION)
+                    .from(FLOWS)
+                    .where(FLOWS.COMPANY_ID.eq(flow.companyId()))
+                    .and(FLOWS.KEY.eq(flow.key()))
+                    .orderBy(FLOWS.VERSION.desc())
+                    .limit(1)
+                    .fetchOne(FLOWS.VERSION);
+            long version = latest == null
+                    ? 1
+                    : Math.addExact(latest, 1);
+            FlowEntry entry = FlowEntry.from(
+                    flow,
+                    StringUtil.newId(),
+                    version
+            );
+            insert(dsl, entry);
+            if (flow.deployed()) {
+                writeTasks(dsl, flow, version);
             }
-            if (updated != 0) {
-                throw new WorkflowException(
-                        "Flow update affected unexpected row count: "
-                                + updated
-                );
-            }
-            insert(dsl, flow, entry);
+            return entry.to(flow.tasks());
         } catch (DataAccessException exception) {
             throw persistenceConflict(flow, exception);
         }
@@ -168,55 +213,16 @@ public class FlowRepositoryImpl implements FlowRepository {
         )));
     }
 
-    private void insert(
-            DSLContext dsl,
-            Flow flow,
-            FlowEntry entry
-    ) {
-        ensureLogicalIdentityIsAvailable(dsl, entry);
-        insert(dsl, entry);
-        if (flow.deployed()) {
-            writeTasks(dsl, flow);
-        }
-    }
-
+    /**
+     * Inserts one already prepared Flow entry.
+     *
+     * @param dsl non-null caller-owned transaction context
+     * @param entry non-null complete versioned row read without modification
+     */
     private void insert(DSLContext dsl, FlowEntry entry) {
         dsl.insertInto(FLOWS)
                 .set(entry.buildInsertMap())
                 .execute();
-    }
-
-    private void ensureLogicalIdentityIsAvailable(
-            DSLContext dsl,
-            FlowEntry entry
-    ) {
-        Condition identity = FLOWS.COMPANY_ID.eq(entry.companyId)
-                .and(FLOWS.KEY.eq(entry.key));
-        if (Boolean.TRUE.equals(entry.draft)) {
-            identity = identity.and(FLOWS.DRAFT.eq(true));
-        } else {
-            if (entry.version == null) {
-                throw new WorkflowException(
-                        "Deployed Flow version must not be null"
-                );
-            }
-            identity = identity
-                    .and(FLOWS.DRAFT.eq(false))
-                    .and(FLOWS.VERSION.eq(entry.version));
-        }
-        if (dsl.selectOne()
-                .from(FLOWS)
-                .where(identity)
-                .fetchOptional()
-                .isPresent()) {
-            String logicalId = Boolean.TRUE.equals(entry.draft)
-                    ? entry.companyId + ":" + entry.key
-                    : entry.companyId + ":" + entry.key + ":"
-                        + entry.version;
-            throw new WorkflowException(
-                    "Flow logical identity already exists: " + logicalId
-            );
-        }
     }
 
     private List<Task> readTasks(
@@ -264,7 +270,18 @@ public class FlowRepositoryImpl implements FlowRepository {
                 .toList();
     }
 
-    private void writeTasks(DSLContext dsl, Flow flow) {
+    /**
+     * Appends the Task snapshot for one deployed Flow version.
+     *
+     * @param dsl non-null caller-owned transaction context
+     * @param flow non-null deployed Flow whose immutable Task tree is read
+     * @param flowVersion positive Repository-assigned Flow version
+     */
+    private void writeTasks(
+            DSLContext dsl,
+            Flow flow,
+            long flowVersion
+    ) {
         if (flow.tasks().isEmpty()) {
             return;
         }
@@ -275,7 +292,7 @@ public class FlowRepositoryImpl implements FlowRepository {
                 values,
                 flow.companyId(),
                 flow.key(),
-                flow.version(),
+                flowVersion,
                 null,
                 flow.tasks()
         );
@@ -313,15 +330,20 @@ public class FlowRepositoryImpl implements FlowRepository {
         }
     }
 
+    /**
+     * Wraps a database write failure with the affected logical Flow key.
+     *
+     * @param flow non-null Flow whose company and key identify the failed save
+     * @param exception non-null database failure retained as the cause
+     * @return a new workflow-layer persistence exception
+     */
     private static WorkflowException persistenceConflict(
             Flow flow,
             DataAccessException exception
     ) {
-        String subject = flow.draft()
-                ? flow.companyId() + ":" + flow.key()
-                : flow.key() + ":" + flow.version();
         return new WorkflowException(
-                "Flow persistence conflict for " + subject,
+                "Flow persistence conflict for "
+                        + flow.companyId() + ":" + flow.key(),
                 exception
         );
     }

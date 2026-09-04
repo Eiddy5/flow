@@ -7,7 +7,7 @@ Accepted（Worker 结果状态类型由 ADR 0017 修订；单轮上下文与 Def
 替代）
 
 DefaultExecutor 的提交职责已由 ADR 0051 迁移到 Executor Event Queue；外部 Command
-由 `ExecutionCommandEventHandler` 处理，内部周期由 `ExecutorEventHandler` 负责。
+由 `ExecutionCommandEventHandler` 处理，内部周期由 `ExecutorEventMessageHandler` 负责。
 DefaultExecutor 当前只负责两条 Queue 路由。
 
 ## 背景
@@ -56,7 +56,7 @@ Repository 协调，具体 Task 与 WorkerTaskHandler 实现继续作为扩展�
   完整 State 与 History 由 Execution 聚合中的运行对象持有，不再定义 Worker
   专属 outcome 枚举。
 - `ExecutionCommandEventHandler` 负责外部 Command 的校验、Execution 物化/锁定和
-  内部 Event 投递；`ExecutorEventHandler` 负责当前 Event 事务内的聚合中间保存、
+  内部 Event 投递；`ExecutorEventMessageHandler` 负责当前 Event 事务内的聚合中间保存、
   Executor 驱动和 Worker 派发。Core CommandHandler 不直接进入 Executor 状态机。
 - AUTO、PAUSE 等具体 Task 类型及 WorkerTaskHandler 实现继续放在
   `extensions`，顶层运行组件不依赖具体扩展实现。

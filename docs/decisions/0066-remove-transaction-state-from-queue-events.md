@@ -43,7 +43,7 @@ ADR 0060 已确认事务是一次 Queue 发布的基础设施元数据，不是 
 - `ExecutionCommand` 删除空的 `dsl()` 默认实现；`Create`、`Resume` 和 `Cancel` 继续
   作为可持久化纯 payload。
 - `ExecutorEvent` 删除瞬时 `DSLContext` 字段、`dsl()` 和 `inTransaction(...)`；
-  `ExecutionCommandEventHandler`、`ExecutorEventHandler` 通过
+  `ExecutionCommandEventHandler`、`ExecutorEventMessageHandler` 通过
   `emitInTransaction(event, dsl)` 保持聚合写入与下一条 Event 原子提交。
 - `DefaultDispatchQueue` 不再检查 Event 事务或比较批量 Event 的事务实例。普通发布
   直接进入 Queue 自有事务，显式事务发布直接使用调用参数。

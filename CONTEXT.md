@@ -5,11 +5,11 @@
 ## Language
 
 **Entity ID**:
-一个领域实体创建时产生并在保存、恢复和状态变化中保持不变的非空字符串标识；对象自身称为 `id`，被其他对象引用时使用 `executionId`、`taskId`、`taskRunId` 等明确名称。Entity ID 不替代租户、业务 key 或 version 组成的业务选择器。`FlowId` 不是 Entity ID，而是 Flow Repository 的业务查询选择器。
+一个领域实体创建时产生并在保存、恢复和状态变化中保持不变的非空字符串标识；对象自身称为 `id`，被其他对象引用时使用 `executionId`、`taskId`、`taskRunId` 等明确名称。Flow 不使用跨版本稳定的 Entity ID：它的 `id` 只标识一次保存形成的记录，业务身份由租户、key 和 version 组成。
 _Avoid_: recordId, identifier, entity-id wrapper, business key as entity id
 
 **Flow**:
-可保存、可部署和可恢复的工作流定义，由具体聚合 `Flow` 统一表达。它拥有稳定 Entity ID、稳定 key、原始 YAML `source` 和明确的 `draft` 状态；草稿的 version 为空，正式版本持有正整数 version，二者都可在创建时绑定 YAML 定义。Flow 不保存某次 Execution 的运行 State。
+可保存、可部署和可恢复的工作流定义，由具体聚合 `Flow` 统一表达。它拥有稳定 key、原始 YAML `source` 和明确的 `draft` 状态；每次保存都形成带正整数 version 的 Flow，`companyId` 和 Audit Status 由领域维护而不属于 `source`。Flow 不保存某次 Execution 的运行 State。
 _Avoid_: separate source aggregate, recordId, Process
 
 **Flow Creation**:
@@ -21,16 +21,20 @@ _Avoid_: source-only draft, parser-specific aggregate
 _Avoid_: recreate, redeploy, source reparse
 
 **Flow ID**:
-用于 Flow Repository 查询的业务选择器，包含 `companyId`、`key` 和可空 `version`。`version` 存在时指向精确正式版本；`version` 为空时用于逻辑 Flow 的最新正式版本或唯一草稿选择。它不等于 `Flow.id`，不作为实体身份或跨对象引用。
+用于 Flow Repository 查询的业务选择器，包含 `companyId`、`key` 和可空 `version`。`companyId + key + version` 唯一标识一次已保存的 Flow 状态；省略 version 时选择相应查询语义下的当前状态。它不等于 `Flow.id`，不作为数据库行标识。
 _Avoid_: Flow entity id, recordId, FlowDraft id
 
 **Flow Draft**:
-`Flow` 的可编辑状态，由 `draft=true` 明确表达并默认创建于该状态。它按租户和稳定 Flow key 唯一，`version` 为空，`source` 原样保存 YAML；创建时可以直接物化 YAML 中的公共字段和 Task，完整部署校验留到发布正式版本时执行。部署从同一类型创建正式版本快照。
+`Flow` 的可编辑状态，由 `draft=true` 明确表达并默认创建于该状态。每次成功保存草稿都会形成新的 Flow Version，当前草稿是同一租户和 key 下最新的草稿状态；`source` 原样保存定义，完整部署校验留到发布正式版本时执行。
 _Avoid_: separate FlowDraft entity, generic Draft, Draft status enum, recordId
 
+**Flow Version**:
+同一租户和稳定 key 下每次成功保存 Flow（草稿、发布或删除）形成的正整数内部版本，沿同一序列递增。`companyId + key + version` 唯一确定该次保存，version 不由 `source` 声明或覆盖。
+_Avoid_: source version, draftless version, mutable version
+
 **Flow Reversion**:
-同一逻辑 Flow 的一次成功部署所形成的、具有正式 `reversion` 且可独立读取的不可变 Flow 快照。
-_Avoid_: Flow Version, Revision, Draft, mutable Flow
+同一逻辑 Flow 的一次成功部署所形成的、具有正式 Flow Version 且可独立读取的不可变 Flow 快照。
+_Avoid_: Revision, Draft, mutable Flow
 
 **Flow Variable**:
 由 Flow Reversion 持有的、供该版本所有 Execution 共享读取的流程级键值；它属于流程定义配置，不是某次 Execution 产生的运行结果，也不能在 Task 之间隐式累积或写回。

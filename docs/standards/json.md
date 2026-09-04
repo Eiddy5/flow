@@ -98,12 +98,15 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
 - Core 优先接收领域对象和值类型。JSON 只是 HTTP、配置或持久化格式时，应在
   Controller、Serializer、Entry 或其他边界完成转换，不能让 JSON 技术类型扩散
   为领域模型。
-- Flow YAML 由 `YamlParser.parse(source, Flow.class)` 直接绑定；Input/Output 和
-  Task 由受控 `JacksonMapper` 配置的 Mapper 绑定。`Task.class` 已通过
+- 正式 Flow YAML 由 `YamlParser.parse(source, Flow.class)` 直接绑定；草稿先由
+  `YamlParser.parse(source)` 形成通用 Map，去除不属于定义的 Flow 系统字段后再由
+  `YamlParser.bind(...)` 绑定。Input/Output 和 Task 由受控 `JacksonMapper` 配置的
+  Mapper 绑定。`Task.class` 已通过
   `PluginModule` 注册 `PluginDeserializer`，它从
   `type` 读取精确插件标识、通过注册中心解析具体类，再让 Jackson 递归绑定所有
-  Task 字段。`PublishFlowHandler` 在补充 Session、draft、版本和 source 后调用
-  `ModelValidator`，校验失败的部署对象不能进入聚合。持久化 Input 继续由
+  Task 字段。`PublishFlowHandler` 在补充 Session、draft、状态和 source 后调用
+  `ModelValidator`；版本只由 Repository 保存时分配，校验失败的部署对象不能进入
+  聚合。持久化 Input 继续由
   Repository Codec 使用 PAAS JSON 恢复。
 - Task 插件 properties 的拆分与合并统一由 Repository Adapter 的
   `TaskPropertiesCodec` 完成。Codec 通过 `JacksonMapper` 内部的持久化转换入口复用

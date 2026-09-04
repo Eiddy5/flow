@@ -126,7 +126,7 @@ sequenceDiagram
 
 ## 后果
 
-- `ExecutionRunner` 删除，运行提交边界由 `ExecutorEventHandler` 的单 Event 事务
+- `ExecutionRunner` 删除，运行提交边界由 `ExecutorEventMessageHandler` 的单 Event 事务
   承担，状态机本身仍由 `ExecutorService` 实现。
 - 内部状态交接具备持久消息、崩溃恢复和清晰的重试边界；代价是一次流程推进可能
   产生多个 Event 和多个事务提交。

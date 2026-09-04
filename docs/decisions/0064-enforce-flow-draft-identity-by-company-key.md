@@ -2,10 +2,13 @@
 
 ## 状态
 
-Accepted
+Superseded（由 ADR 0069 与 ADR 0083 取代）
 
 领域方法的命名已由 ADR 0067 修订：`FlowDraft.id()` 返回稳定字符串实体 ID，
 `flowKey()` 返回业务 key；本 ADR 的唯一性与查询选择器保持不变。
+
+ADR 0083 已取消单草稿唯一约束和草稿 upsert；当前每次保存都按
+`company_id + key + version` 追加新行。
 
 ## 背景
 

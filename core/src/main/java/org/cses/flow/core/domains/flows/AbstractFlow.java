@@ -164,16 +164,42 @@ public abstract class AbstractFlow extends Audited {
         }
     }
 
+    /**
+     * Returns the version assigned when this Flow was persisted.
+     *
+     * @return the positive persisted version
+     * @throws IllegalStateException when the Flow has not been persisted yet
+     */
     protected long requireVersion() {
-        requireDeployed();
         if (version == null) {
             throw new IllegalStateException(
-                    "Deployed Flow has no version: " + key
+                    "Flow has not been assigned a persisted version: " + key
             );
         }
         return version;
     }
 
+    /**
+     * Initializes definition fields for a transient or rehydrated Flow.
+     * Collection inputs are shallow-copied and the supplied containers are
+     * not modified; contained domain objects and variable values are shared.
+     *
+     * @param key non-blank stable Flow key, trimmed before storage
+     * @param version positive persisted version, or {@code null} before
+     *        persistence
+     * @param draft {@code true} for an editable definition or {@code false}
+     *        for a deployed definition
+     * @param description Flow description; {@code null} becomes empty text
+     * @param variables variables shallow-copied into an unmodifiable map;
+     *        {@code null} becomes empty and values remain shared
+     * @param inputs inputs shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @param outputs outputs shallow-copied into an unmodifiable list;
+     *        {@code null} becomes empty and elements remain shared
+     * @throws IllegalArgumentException when the key or version is invalid, or
+     *         an input/output list contains null or duplicate-key elements
+     * @throws NullPointerException when a variable key is {@code null}
+     */
     protected void initializeDefinition(
             String key,
             Long version,
@@ -184,7 +210,7 @@ public abstract class AbstractFlow extends Audited {
             List<? extends Output> outputs
     ) {
         this.key = requireKey(key);
-        this.version = requireVersion(draft, version);
+        this.version = normalizeVersion(version);
         this.draft = draft;
         this.description = normalizeDescription(description);
         this.variables = immutableVariables(variables);
@@ -242,18 +268,17 @@ public abstract class AbstractFlow extends Audited {
         return value.trim();
     }
 
-    private static Long requireVersion(boolean draft, Long value) {
-        if (draft) {
-            if (value != null) {
-                throw new IllegalArgumentException(
-                        "Draft Flow must not have a version"
-                );
-            }
-            return null;
-        }
-        if (value == null || value < 1) {
+    /**
+     * Accepts an unassigned version or validates a persisted positive version.
+     *
+     * @param value version to validate, or {@code null} before persistence
+     * @return the supplied version
+     * @throws IllegalArgumentException when a supplied version is not positive
+     */
+    private static Long normalizeVersion(Long value) {
+        if (value != null && value < 1) {
             throw new IllegalArgumentException(
-                    "Deployed Flow version must be positive"
+                    "Flow version must be positive"
             );
         }
         return value;
