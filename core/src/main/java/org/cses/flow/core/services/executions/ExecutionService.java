@@ -24,9 +24,9 @@ import java.util.stream.Collectors;
 @Singleton
 public class ExecutionService {
 
-    private final ExecutionQueryHandler queryHandler;
-    private final FlowQueryHandler flowQueryHandler;
-    private final DispatchQueue<ExecutionCommand> executorCommandQueue;
+    private ExecutionQueryHandler queryHandler;
+    private FlowQueryHandler flowQueryHandler;
+    private DispatchQueue<ExecutionCommand> executorCommandQueue;
 
     @Inject
     public ExecutionService(
@@ -128,12 +128,60 @@ public class ExecutionService {
     /**
      * Validates and submits one durable Resume command for an exact paused
      * TaskRun. Returning means Queue acceptance, not workflow completion.
+     *
+     * @param <S>         session type
+     * @param <U>         session user type
+     * @param session     current tenant and actor
+     * @param executionId exact execution
+     * @param taskRunId   exact paused occurrence
+     * @param outputs     outputs validated against the Pause definition
+     * @return queue-accepted current execution snapshot
+     * @throws WorkflowException when the execution or occurrence cannot resume
      */
     public <S extends Session<U>, U extends User> Execution resume(
+            S session, String executionId, String taskRunId, Map<String, ?> outputs
+    ) {
+        return submitResume(session, executionId, taskRunId, outputs, false);
+    }
+
+    /**
+     * Accepts a resume during a Pause's pre-action and applies it after that action completes.
+     * This supports automatic decisions without bypassing the mandatory pre-pause action.
+     *
+     * @param <S>         session type
+     * @param <U>         session user type
+     * @param session     current tenant and actor
+     * @param executionId exact execution
+     * @param taskRunId   exact Pause occurrence
+     * @param outputs     outputs validated against the Pause resume contract
+     * @return queue-accepted current execution snapshot
+     * @throws WorkflowException when the target is neither paused nor awaiting its first pause
+     */
+    public <S extends Session<U>, U extends User> Execution resumeWhenPaused(
+            S session, String executionId, String taskRunId, Map<String, ?> outputs
+    ) {
+        return submitResume(session, executionId, taskRunId, outputs, true);
+    }
+
+    /**
+     * Validates an exact occurrence and publishes its durable resume command.
+     *
+     * @param <S>          session type
+     * @param <U>          session user type
+     * @param session      current tenant and actor
+     * @param executionId  exact execution
+     * @param taskRunId    exact Pause occurrence
+     * @param outputs      requested resume outputs
+     * @param waitForPause whether a pre-pause action may finish before application
+     * @return queue-accepted current execution snapshot
+     * @throws WorkflowException when the request is invalid
+     */
+    private <S extends Session<U>, U extends User> Execution submitResume(
             S session,
             String executionId,
             String taskRunId,
-            Map<String, ?> outputs
+            Map<String, ?> outputs,
+            boolean waitForPause
     ) {
         Execution current = queryHandler.execution(session, executionId)
                 .orElseThrow(() -> new WorkflowException(
@@ -143,7 +191,8 @@ public class ExecutionService {
                 session,
                 current,
                 taskRunId,
-                outputs
+                outputs,
+                waitForPause
         );
         executorCommandQueue.emit(Resume.from(
                 session,
@@ -163,11 +212,11 @@ public class ExecutionService {
      * Queue acceptance only; asynchronous command consumption may not have
      * applied the rewind when this method returns.</p>
      *
-     * @param session tenant and user context used to validate and enqueue rewind
-     * @param executionId Execution that is currently paused
+     * @param session         tenant and user context used to validate and enqueue rewind
+     * @param executionId     nonterminal Execution with a paused source occurrence
      * @param sourceTaskRunId current Pause TaskRun that requests the rewind
      * @param targetTaskRunId completed historical TaskRun to restart from
-     * @param reason non-blank business reason recorded by the rewind command
+     * @param reason          non-blank business reason recorded by the rewind command
      * @return queue-accepted rewind result based on the validated snapshot
      * @throws WorkflowException when the Execution or rewind path is invalid
      */
@@ -206,8 +255,8 @@ public class ExecutionService {
      * local transaction before calling {@link #rewind(Session, String, String,
      * String, String)}.</p>
      *
-     * @param session tenant and user context used to read the Flow state
-     * @param executionId Execution that is currently paused
+     * @param session         tenant and user context used to read the Flow state
+     * @param executionId     nonterminal Execution with a paused source occurrence
      * @param sourceTaskRunId current Pause TaskRun that requests the rewind
      * @param targetTaskRunId completed historical TaskRun to restart from
      * @return validated read-only rewind plan and affected TaskRun IDs
@@ -299,16 +348,30 @@ public class ExecutionService {
         return flow;
     }
 
+    /**
+     * Validates the exact paused occurrence even while a parallel branch is running.
+     *
+     * @param <S>          session type
+     * @param <U>          session user type
+     * @param session      current tenant and actor
+     * @param execution    complete execution snapshot
+     * @param taskRunId    exact paused occurrence
+     * @param outputs      caller-provided resume outputs
+     * @param waitForPause whether to accept the first pre-pause interval
+     * @return outputs validated against the bound Pause definition
+     * @throws WorkflowException when the execution or selected occurrence cannot resume
+     */
     private <S extends Session<U>, U extends User>
     Map<String, Object> validateResume(
             S session,
             Execution execution,
             String taskRunId,
-            Map<String, ?> outputs
+            Map<String, ?> outputs,
+            boolean waitForPause
     ) {
-        if (!execution.state().is(State.Type.PAUSED)) {
+        if (!execution.canResumeTaskRun()) {
             throw new WorkflowException(
-                    "Only a PAUSED Execution can resume a Pause TaskRun: "
+                    "Only a RUNNING, RESTARTED or PAUSED Execution can resume a Pause TaskRun: "
                             + execution.id()
             );
         }
@@ -322,7 +385,8 @@ public class ExecutionService {
                                 + "@" + execution.flowVersion()
                 ));
         TaskRun taskRun = execution.requireTaskRun(taskRunId);
-        if (!taskRun.state().is(State.Type.PAUSED)) {
+        if (!taskRun.state().is(State.Type.PAUSED)
+                && !(waitForPause && execution.isAwaitingPause(taskRunId))) {
             throw new WorkflowException(
                     "Only a PAUSED TaskRun can be resumed: " + taskRun.id()
             );
@@ -341,17 +405,22 @@ public class ExecutionService {
         return pause.validateResume(outputs);
     }
 
+    /**
+     * Loads the execution-bound Flow and validates the requested effective rewind path.
+     *
+     * @param session         authenticated tenant context used for the read
+     * @param execution       current snapshot to validate
+     * @param sourceTaskRunId effective paused source occurrence ID
+     * @param targetTaskRunId effective completed preceding occurrence ID
+     * @return the exact Flow version bound to the execution
+     * @throws WorkflowException when the Flow or rewind path is unavailable
+     */
     private <S extends Session<U>, U extends User> Flow validateRewind(
             S session,
             Execution execution,
             String sourceTaskRunId,
             String targetTaskRunId
     ) {
-        if (!execution.state().is(State.Type.PAUSED)) {
-            throw new WorkflowException(
-                    "Only a PAUSED Execution can rewind: " + execution.id()
-            );
-        }
         Flow flow = flowQueryHandler.flow(
                         session,
                         execution.flowKey(),
@@ -365,6 +434,15 @@ public class ExecutionService {
         return flow;
     }
 
+    /**
+     * Validates a paused source and completed causal predecessor without mutating either snapshot.
+     *
+     * @param flow            execution-bound definition tree
+     * @param execution       current snapshot to read
+     * @param sourceTaskRunId effective paused source occurrence ID
+     * @param targetTaskRunId effective completed preceding occurrence ID
+     * @throws WorkflowException when the endpoints are stale, unordered, unsupported or the execution is terminal
+     */
     public static void validateRewind(
             Flow flow,
             Execution execution,
@@ -394,17 +472,13 @@ public class ExecutionService {
                     "Rewind target must be a completed TaskRun: " + target.id()
             );
         }
-        if (source.parentId().isPresent() || target.parentId().isPresent()) {
-            throw new WorkflowException(
-                    "Rewind currently supports top-level serial TaskRuns only"
-            );
+        if (execution.isTerminal() || execution.state().is(State.Type.KILLING)) {
+            throw new WorkflowException("Execution cannot rewind: " + execution.id());
         }
-        int sourceIndex = topLevelIndex(flow, source);
-        int targetIndex = topLevelIndex(flow, target);
-        if (targetIndex >= sourceIndex) {
-            throw new WorkflowException(
-                    "Rewind target must precede its source in the Flow"
-            );
+        RewindPath.requireNonIterated(flow, source);
+        RewindPath.requireNonIterated(flow, target);
+        if (!RewindPath.precedes(flow, target.taskId(), source.taskId())) {
+            throw new WorkflowException("Rewind target must precede its source on the same execution path");
         }
         Set<String> effectiveTaskRunIds = execution.effectiveTaskRuns().stream()
                 .map(TaskRun::id)
@@ -418,72 +492,55 @@ public class ExecutionService {
         }
     }
 
-    private static List<String> affectedTaskRunIds(
+    /**
+     * Validates a rewind and returns the precise business invalidation scope.
+     *
+     * @param flow            execution-bound definition tree
+     * @param execution       current snapshot to read
+     * @param sourceTaskRunId effective paused source occurrence ID
+     * @param targetTaskRunId effective completed preceding occurrence ID
+     * @return immutable affected occurrence IDs in rollback order
+     * @throws WorkflowException when the requested path cannot rewind
+     */
+    public static List<String> affectedTaskRunIds(
             Flow flow,
             Execution execution,
             String sourceTaskRunId,
             String targetTaskRunId
     ) {
-        TaskRun source = execution.requireTaskRun(sourceTaskRunId);
-        TaskRun target = execution.requireTaskRun(targetTaskRunId);
-        int sourceIndex = topLevelIndex(flow, source);
-        int targetIndex = topLevelIndex(flow, target);
-        Set<String> affectedTopLevelTaskIds = flow.tasks().subList(
-                        targetIndex,
-                        sourceIndex + 1
-                ).stream()
-                .map(Task::id)
-                .collect(Collectors.toCollection(HashSet::new));
-        Map<String, TaskRun> taskRunsById = execution.taskRuns().stream()
-                .collect(Collectors.toMap(
-                        TaskRun::id,
-                        taskRun -> taskRun,
-                        (first, ignored) -> first,
-                        LinkedHashMap::new
-                ));
-        List<TaskRun> effectiveTaskRuns = new ArrayList<>(
-                execution.effectiveTaskRuns()
-        );
-        Collections.reverse(effectiveTaskRuns);
-        return effectiveTaskRuns.stream()
-                .filter(taskRun -> affectedTopLevelTaskIds.contains(
-                        topLevelTaskRun(taskRun, taskRunsById).taskId()
-                ))
-                .map(TaskRun::id)
-                .toList();
+        validateRewind(flow, execution, sourceTaskRunId, targetTaskRunId);
+        return RewindPath.affectedTaskRunIds(flow, execution, targetTaskRunId);
     }
 
-    private static TaskRun topLevelTaskRun(
-            TaskRun taskRun,
-            Map<String, TaskRun> taskRunsById
+    /**
+     * Reads the nearest completed host-selected tasks on the effective branch path.
+     *
+     * @param session         authenticated tenant context used for reads
+     * @param executionId     nonterminal execution to inspect
+     * @param sourceTaskRunId currently paused effective source occurrence ID
+     * @param taskKeys        host-owned candidate definition keys to read without mutation
+     * @return immutable list from the loaded snapshot; empty when the source is no longer effective or no predecessor exists
+     * @throws WorkflowException when execution, Flow or source is missing
+     */
+    public <S extends Session<U>, U extends User> List<TaskRun> previousCompletedTaskRuns(
+            S session, String executionId, String sourceTaskRunId, Set<String> taskKeys
     ) {
-        TaskRun current = taskRun;
-        Set<String> visited = new HashSet<>();
-        while (current.parentId().isPresent()) {
-            if (!visited.add(current.id())) {
-                throw new IllegalStateException(
-                        "TaskRun parent chain contains a cycle: "
-                                + taskRun.id()
-                );
-            }
-            String parentId = current.parentId().orElseThrow();
-            current = Optional.ofNullable(taskRunsById.get(parentId))
-                    .orElseThrow(() -> new IllegalStateException(
-                            "TaskRun parent does not exist: " + parentId
-                    ));
+        Execution execution = queryHandler.execution(session, executionId).orElseThrow(() ->
+                new WorkflowException("Execution does not exist: " + executionId));
+        Flow flow = flowQueryHandler.flow(session, execution.flowKey(), execution.flowVersion())
+                .orElseThrow(() -> new WorkflowException("Flow does not exist: " + execution.flowKey()));
+        TaskRun source = execution.requireTaskRun(sourceTaskRunId);
+        if (!source.isPaused() || execution.isTerminal()
+                || execution.effectiveTaskRuns().stream().noneMatch(run -> run.identifiedBy(sourceTaskRunId))) {
+            return List.of();
         }
-        return current;
-    }
-
-    private static int topLevelIndex(Flow flow, TaskRun taskRun) {
-        for (int index = 0; index < flow.tasks().size(); index++) {
-            if (flow.tasks().get(index).identifiedBy(taskRun.taskId())) {
-                return index;
-            }
-        }
-        throw new WorkflowException(
-                "Rewind TaskRun is not a top-level Flow Task: " + taskRun.id()
-        );
+        List<TaskRun> candidates = execution.effectiveTaskRuns().stream()
+                .filter(run -> run.state().is(State.Type.SUCCESS) || run.state().is(State.Type.WARNING))
+                .filter(run -> flow.findTask(run.taskId()).map(task -> taskKeys.contains(task.key())).orElse(false))
+                .filter(run -> RewindPath.precedesInBranch(flow, run.taskId(), source.taskId()))
+                .toList();
+        return candidates.stream().filter(candidate -> candidates.stream().noneMatch(later ->
+                RewindPath.precedesInBranch(flow, candidate.taskId(), later.taskId()))).toList();
     }
 
 }

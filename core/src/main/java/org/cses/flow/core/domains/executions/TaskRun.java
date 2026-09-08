@@ -15,14 +15,14 @@ import java.util.OptionalInt;
 /**
  * One Task execution occurrence, transient until accepted by Execution.
  */
-public final class TaskRun implements Identified {
+public class TaskRun implements Identified {
 
-    private final String id;
-    private final String taskId;
-    private final String parentId;
-    private final Integer iteration;
-    private final Integer executionGenerationVersion;
-    private final Map<String, Object> inputs;
+    private String id;
+    private String taskId;
+    private String parentId;
+    private Integer iteration;
+    private Integer executionGenerationVersion;
+    private Map<String, Object> inputs;
     private Generation generation;
     private State state;
     private Map<String, Object> outputs;
@@ -287,6 +287,21 @@ public final class TaskRun implements Identified {
         state = state.running();
     }
 
+    /**
+     * Clears previous outputs and appends RUNNING when a partially affected ancestor must resume.
+     *
+     * @throws WorkflowException when the ancestor is neither running, paused nor successfully completed
+     */
+    void reopenForRewind() {
+        if (state.is(State.Type.RUNNING)) return;
+        if (!state.is(State.Type.PAUSED) && !state.is(State.Type.SUCCESS) && !state.is(State.Type.WARNING)) {
+            throw new WorkflowException("Rewind ancestor cannot reopen: " + id);
+        }
+        outputs = Map.of();
+        error = null;
+        state = state.running();
+    }
+
     void fail(String failure) {
         requireState(State.Type.RUNNING);
         if (failure == null || failure.isBlank()) {
@@ -347,6 +362,12 @@ public final class TaskRun implements Identified {
         }
     }
 
+    /**
+     * Checks persisted TaskRun transitions, including successful ancestors reopened by rewind.
+     *
+     * @param state complete persisted state history to read
+     * @throws IllegalArgumentException when a recorded transition is invalid
+     */
     private static void validateStateRoute(State state) {
         java.util.List<State.History> history = state.history();
         for (int index = 1; index < history.size(); index++) {
@@ -366,8 +387,8 @@ public final class TaskRun implements Identified {
                 case PAUSED ->
                     target == State.Type.RUNNING
                         || target == State.Type.KILLED;
-                case RESTARTED, SUCCESS, SKIPPED, WARNING, FAILED, KILLING,
-                    KILLED -> false;
+                case SUCCESS, WARNING -> target == State.Type.RUNNING;
+                case RESTARTED, SKIPPED, FAILED, KILLING, KILLED -> false;
             };
             if (!valid) {
                 throw new IllegalArgumentException(

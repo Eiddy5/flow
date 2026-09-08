@@ -7,255 +7,140 @@ import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.infrastructure.repositories.executions.entries.ExecutionEntry;
 import org.cses.flow.infrastructure.repositories.executions.entries.TaskRunEntry;
-import org.flow.gen.flow.records.TaskRunsRecord;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.InsertValuesStepN;
-import org.jooq.JSONB;
 import org.jooq.exception.DataAccessException;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
+import static org.jooq.impl.DSL.*;
 
+/** Loads and stores the complete Execution snapshot without locking reads. */
 @Singleton
-public final class ExecutionRepositoryImpl
-    implements ExecutionRepository {
+public class ExecutionRepositoryImpl implements ExecutionRepository {
 
+    private Map<Execution, String> versions = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+    private static Field<String> storageVersion = field("{0}.xmin::text", String.class, EXECUTIONS);
+
+    /**
+     * Loads one aggregate and its ordered children from one database snapshot.
+     * @param dsl database context
+     * @param companyId tenant identity
+     * @param executionId exact execution identity
+     * @return the complete execution when present
+     */
     @Override
-    public Optional<Execution> findById(
-        DSLContext dsl,
-        String companyId,
-        String executionId
-    ) {
-        ExecutionEntry entry = dsl.select()
-            .from(EXECUTIONS)
-            .where(EXECUTIONS.COMPANY_ID.eq(companyId))
-            .and(EXECUTIONS.ID.eq(executionId))
-            .forShare()
-            .fetchOneInto(ExecutionEntry.class);
-        return restore(dsl, entry);
+    public Optional<Execution> findById(DSLContext dsl, String companyId, String executionId) {
+        return find(dsl, EXECUTIONS.COMPANY_ID.eq(companyId)
+                .and(EXECUTIONS.ID.eq(executionId))).stream().findFirst();
     }
 
+    /**
+     * Loads the tenant's executions with their ordered children.
+     * @param dsl database context
+     * @param companyId tenant identity
+     * @return complete aggregates in creation order
+     */
     @Override
-    public List<Execution> findAll(
-        DSLContext dsl,
-        String companyId
-    ) {
-        List<ExecutionEntry> entries = dsl.select()
-            .from(EXECUTIONS)
-            .where(EXECUTIONS.COMPANY_ID.eq(companyId))
-            .orderBy(
-                EXECUTIONS.CREATED_AT.asc(),
-                EXECUTIONS.ID.asc()
-            )
-            .fetchInto(ExecutionEntry.class);
-        Map<String, List<TaskRun>> taskRunsByExecutionId = readTaskRuns(
-            dsl,
-            entries.stream().map(entry -> entry.id).toList()
-        );
-        return entries.stream()
-            .map(entry -> entry.to(taskRunsByExecutionId.getOrDefault(
-                entry.id,
-                List.of()
-            )))
-            .toList();
+    public List<Execution> findAll(DSLContext dsl, String companyId) {
+        return find(dsl, EXECUTIONS.COMPANY_ID.eq(companyId));
     }
 
-    private Map<String, List<TaskRun>> readTaskRuns(
-        DSLContext dsl,
-        List<String> executionIds
-    ) {
-        if (executionIds.isEmpty()) {
-            return Map.of();
-        }
-        return dsl.select()
-            .from(TASK_RUNS)
-            .where(TASK_RUNS.EXECUTION_ID.in(executionIds))
-            .orderBy(
-                TASK_RUNS.EXECUTION_ID.asc(),
-                TASK_RUNS.ORDER.asc()
-            )
-            .fetchInto(TaskRunEntry.class)
-            .stream()
-            .collect(Collectors.groupingBy(
-                entry -> entry.executionId,
-                LinkedHashMap::new,
-                Collectors.mapping(
-                    TaskRunEntry::to,
-                    Collectors.toList()
-                )
-            ));
+    /**
+     * Reads a parent and child collection in one query so callbacks never see half a save.
+     * @param dsl database context
+     * @param condition complete tenant and optional execution selection
+     * @return reconstructed domain aggregates
+     */
+    private List<Execution> find(DSLContext dsl, Condition condition) {
+        dsl = dsl.configuration().derive(new org.jooq.impl.DefaultRecordUnmapperProvider()).dsl();
+        var children = multiset(select(TASK_RUNS.fields()).from(TASK_RUNS)
+                .where(TASK_RUNS.EXECUTION_ID.eq(EXECUTIONS.ID))
+                .orderBy(TASK_RUNS.ORDER.asc()))
+                .convertFrom(rows -> rows.into(TaskRunEntry.class));
+        return dsl.select(EXECUTIONS.fields()).select(storageVersion.as("storage_version"), children)
+                .from(EXECUTIONS).where(condition)
+                .orderBy(EXECUTIONS.CREATED_AT.asc(), EXECUTIONS.ID.asc())
+                .fetch(row -> {
+                    ExecutionEntry entry = row.into(ExecutionEntry.class);
+                    Execution execution = entry.to(row.get(children).stream().map(TaskRunEntry::to).toList());
+                    versions.put(execution, entry.storageVersion);
+                    return execution;
+                });
     }
 
+    /**
+     * Counts executions within one tenant.
+     * @param dsl database context
+     * @param companyId tenant identity
+     * @return number of stored executions
+     */
     @Override
     public long count(DSLContext dsl, String companyId) {
-        return dsl.selectCount()
-            .from(EXECUTIONS)
-            .where(EXECUTIONS.COMPANY_ID.eq(companyId))
-            .fetchOne(0, long.class);
+        return dsl.fetchCount(EXECUTIONS, EXECUTIONS.COMPANY_ID.eq(companyId));
     }
 
+    /**
+     * Writes the already changed domain and all children in one SQL statement.
+     * No state transition or business decision is performed by this storage operation.
+     * @param dsl database context without a caller-owned business transaction
+     * @param execution complete domain snapshot to store
+     * @throws org.jooq.exception.DataChangedException when the loaded snapshot has become stale
+     * @throws WorkflowException when storage rejects the aggregate
+     */
     @Override
     public void save(DSLContext dsl, Execution execution) {
+        ExecutionEntry entry = ExecutionEntry.from(execution);
+        var fields = entry.toMap();
+        fields.remove("lock_version");
+        String expected = versions.get(execution);
+        var parent = name("stored_execution").as(dsl.insertInto(EXECUTIONS)
+                .set(fields).onConflict(EXECUTIONS.COMPANY_ID, EXECUTIONS.ID)
+                .doUpdate().set(fields)
+                .where(expected == null ? falseCondition() : storageVersion.eq(expected))
+                .returningResult(EXECUTIONS.ID, storageVersion.as("storage_version")));
+        List<String> ids = execution.taskRuns().stream().map(TaskRun::id).toList();
+        var removed = name("removed_task_runs").as(dsl.deleteFrom(TASK_RUNS)
+                .where(TASK_RUNS.EXECUTION_ID.in(select(parent.field(EXECUTIONS.ID)).from(parent)))
+                .and(TASK_RUNS.ID.notIn(ids)).returning(TASK_RUNS.ID));
         try {
-            ExecutionEntry stored = dsl.select()
-                .from(EXECUTIONS)
-                .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
-                .and(EXECUTIONS.ID.eq(execution.id()))
-                .fetchOneInto(ExecutionEntry.class);
-
-            if (stored == null) {
-                insert(dsl, execution);
-            } else {
-                update(dsl, execution);
+            var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
+            statements.add(parent);
+            statements.add(removed);
+            if (!ids.isEmpty()) {
+                var records = new java.util.ArrayList<org.jooq.RowN>();
+                for (int index = 0; index < execution.taskRuns().size(); index++) {
+                    var taskFields = TaskRunEntry.from(execution.id(), execution.taskRuns().get(index), index).toMap();
+                    records.add(row(java.util.Arrays.stream(TASK_RUNS.fields())
+                            .map(field -> val(taskFields.get(field.getName()), field))
+                            .toArray(Field<?>[]::new)));
+                }
+                var incoming = values(records.toArray(org.jooq.RowN[]::new)).as("incoming",
+                        java.util.Arrays.stream(TASK_RUNS.fields()).map(Field::getName).toArray(String[]::new));
+                Map<Field<?>, Object> updates = new LinkedHashMap<>();
+                for (Field<?> field : TASK_RUNS.fields()) {
+                    updates.put(field, excluded(field));
+                }
+                statements.add(name("stored_task_runs").as(dsl.insertInto(TASK_RUNS).columns(TASK_RUNS.fields())
+                        .select(select(incoming.fields()).from(incoming).where(exists(selectOne().from(parent))))
+                        .onConflict(TASK_RUNS.ID).doUpdate().set(updates).returning(TASK_RUNS.ID)));
             }
-
-            replace(dsl, execution);
+            var saved = dsl.with(statements).selectFrom(parent).fetchOne();
+            if (saved == null) {
+                throw new org.jooq.exception.DataChangedException("Execution snapshot changed; reload before saving");
+            }
+            versions.put(execution, saved.get("storage_version", String.class));
+        } catch (org.jooq.exception.DataChangedException conflict) {
+            throw conflict;
         } catch (DataAccessException exception) {
-            throw persistenceConflict(execution, exception);
+            throw new WorkflowException("Execution persistence conflict for "
+                    + execution.companyId() + ":" + execution.id(), exception);
         }
     }
-
-    private Optional<Execution> restore(
-        DSLContext dsl,
-        ExecutionEntry entry
-    ) {
-        return Optional.ofNullable(entry)
-            .map(value -> value.to(readTaskRuns(dsl, value.id)));
-    }
-
-    private List<TaskRun> readTaskRuns(
-        DSLContext dsl,
-        String executionId
-    ) {
-        return dsl.select()
-            .from(TASK_RUNS)
-            .where(TASK_RUNS.EXECUTION_ID.eq(executionId))
-            .orderBy(TASK_RUNS.ORDER.asc())
-            .fetchInto(TaskRunEntry.class)
-            .stream()
-            .map(TaskRunEntry::to)
-            .toList();
-    }
-
-    private void insert(
-        DSLContext dsl,
-        Execution execution
-    ) {
-        insert(dsl, ExecutionEntry.from(execution));
-    }
-
-    private void insert(
-        DSLContext dsl,
-        ExecutionEntry entry
-    ) {
-        dsl.insertInto(EXECUTIONS)
-            .set(entry.buildInsertMap())
-            .execute();
-    }
-
-    private void update(
-        DSLContext dsl,
-        Execution execution
-    ) {
-        int updated = dsl.update(EXECUTIONS)
-            .set(ExecutionEntry.from(execution).buildUpdateMap())
-            .where(EXECUTIONS.COMPANY_ID.eq(execution.companyId()))
-            .and(EXECUTIONS.ID.eq(execution.id()))
-            .execute();
-        if (updated != 1) {
-            throw new WorkflowException(
-                "Execution was not updated: " + execution.id()
-            );
-        }
-    }
-
-    private void replace(
-        DSLContext dsl,
-        Execution execution
-    ) {
-        dsl.deleteFrom(TASK_RUNS)
-            .where(TASK_RUNS.EXECUTION_ID.eq(execution.id()))
-            .execute();
-        writeTaskRuns(dsl, execution);
-    }
-
-    private void writeTaskRuns(
-        DSLContext dsl,
-        Execution execution
-    ) {
-        List<TaskRun> taskRuns = execution.taskRuns();
-        if (taskRuns.isEmpty()) {
-            return;
-        }
-        Field<?>[] taskRunColumns = {
-            TASK_RUNS.ID,
-            TASK_RUNS.EXECUTION_ID,
-            TASK_RUNS.TASK_ID,
-            TASK_RUNS.PARENT_ID,
-            TASK_RUNS.ITERATION,
-            TASK_RUNS.EXECUTION_GENERATION_VERSION,
-            TASK_RUNS.GENERATION,
-            TASK_RUNS.STATE,
-            TASK_RUNS.INPUTS,
-            TASK_RUNS.OUTPUTS,
-            TASK_RUNS.ERROR,
-            TASK_RUNS.ORDER
-        };
-        InsertValuesStepN<TaskRunsRecord> values = dsl
-            .insertInto(TASK_RUNS)
-            .columns(taskRunColumns);
-        writeTaskRuns(values, execution.id(), taskRuns);
-        values.execute();
-    }
-
-    private void writeTaskRuns(
-        InsertValuesStepN<TaskRunsRecord> values,
-        String executionId,
-        List<TaskRun> taskRuns
-    ) {
-        for (int index = 0; index < taskRuns.size(); index++) {
-            TaskRunEntry entry = TaskRunEntry.from(
-                executionId,
-                taskRuns.get(index),
-                index
-            );
-            values.values(
-                entry.id,
-                entry.executionId,
-                entry.taskId,
-                entry.parentId,
-                entry.iteration,
-                entry.executionGenerationVersion,
-                entry.generation,
-                entry.state,
-                jsonb(entry.inputs),
-                jsonb(entry.outputs),
-                entry.error,
-                entry.order
-            );
-        }
-    }
-
-    private static JSONB jsonb(org.paas.json.JsonObject value) {
-        return value == null ? null : JSONB.valueOf(value.toJson());
-    }
-
-    private static WorkflowException persistenceConflict(
-        Execution execution,
-        DataAccessException exception
-    ) {
-        return new WorkflowException(
-            "Execution persistence conflict for "
-                + execution.companyId() + ":" + execution.id(),
-            exception
-        );
-    }
-
 }

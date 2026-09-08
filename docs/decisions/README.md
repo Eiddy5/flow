@@ -1,5 +1,9 @@
 # Flow 架构决策索引
 
+当前运行时持久化边界以 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md) 为准：
+普通读取领域、调用领域方法、完整快照保存；不使用业务事务或锁定读取。
+下列早期 ADR 的事务表述按该决策修订，Queue 传输事务保留。
+
 ## 文档定位
 
 本目录记录 Flow 已经作出的具体架构和领域设计选择。通用开发与建模方法位于
@@ -332,3 +336,5 @@
 
 通用实施方法仍以 [`development.md`](../standards/development.md)
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。
+
+- [ADR 0085：跨嵌套编排作用域退回](0085-rewind-across-nested-orchestration-scopes.md)

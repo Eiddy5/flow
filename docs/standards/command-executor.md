@@ -13,8 +13,9 @@ Controller（Core 外）
   -> CommandExecutor(Session, Command)
   -> CommandHandlerRegistry
   -> 具体 CommandHandler
-  -> Repository
-  -> Domain
+  -> Repository 加载领域
+  -> Domain 执行业务行为
+  -> Repository 保存完整领域
 ```
 
 Execution 的启动、外部 Resume 和 Cancel 是已确认的异步 Executor 链路：
@@ -23,13 +24,13 @@ Execution 的启动、外部 Resume 和 Cancel 是已确认的异步 Executor �
 Command，并投递到持久化
 `ExecutionCommand` Queue；`DefaultExecutor` 只把 Queue 消息路由给
 `ExecutionCommandEventHandler`，不进入 Core `CommandExecutor`。该 Handler 负责恢复
-外部命令上下文、校验并物化或更新 Execution，然后在同一事务中投递只携带生命周期
+外部命令上下文、校验并物化或更新 Execution，保存成功后投递只携带生命周期
 身份的内部 `ExecutorEvent`；它不创建 `ExecutorContext` 或调用 `ExecutorService`。
 Resume Command 只携带
 `company`、`actorId`、`executionId`、`taskRunId` 和规范化 outputs；Cancel Command
 只携带 `company`、`actorId` 和 `executionId`；消费者从
 Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Execution 时，Service
-使用 `CommandExecutor.execute(..., completion)` 在同一命令事务内完成 Create Queue
+使用 `CommandExecutor.execute(..., completion)` 在领域保存后完成 Create Queue
 投递；Handler 仍不得嵌套调用 CommandExecutor。
 
 复杂读取不进入 CommandExecutor，固定由 Service 调用 QueryHandler。
@@ -52,25 +53,22 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
   `S = CsesSession`、`U = CsesUser`。
 - Controller 从 PAAS Session 参数绑定能力获取 Session，Service 原样传给 CommandExecutor。
 - Session 不属于前端可控的 Command 参数，不得把 `userId` 从请求体复制进 Command 代替 Session。
-- CommandExecutor 将 Session 和事务 DSL 一起放入 `CommandContext`。
+- CommandExecutor 将 Session 和普通 DSL 一起放入 `CommandContext`。
 - Handler 通过 `CommandContext.getSession()` 获取原始具体 Session，
   因而可以直接使用 `CsesSession` 或 `XpaSession` 的扩展能力。
 - 系统任务统一传入 PAAS 提供的 `Session.Robot`，不得传入 `null`。
 
-## 事务规则
+## 持久化边界
 
-- 事务只由 `CommandExecutor` 使用具名 `@Named("flow")` 的
-  `org.x9.jooq.JOOQ.runReturn` 开启。
-- Flow 事务只允许使用 `datasources.flow` 自动装配的具名 `flow` 数据库；不得注入或回退到宿主的 `default`、
-  `mattermost` 等 JOOQ Bean。
-- `CommandContext` 保存当前事务派生出的 `DSLContext`。
-- Handler 和 Repository 必须使用 `CommandContext.getDsl()`。
-- Handler、Domain 和 Repository 不得自行开启新事务。
-- Handler 内不得再次调用 `CommandExecutor`。
-- `CommandExecutor.execute(..., BiConsumer<R, DSLContext>)` 只用于 Service 在
-  Handler 返回后、事务提交前补充必须与 Core 写操作原子完成的传输受理；回调不得
-  再次执行领域写逻辑或嵌套 CommandExecutor。
-- Command 校验、Handler 执行或 Repository 操作抛出异常时，异常继续传播并回滚事务。
+- CommandExecutor 使用具名 `@Named("flow")` JOOQ 创建普通 DSLContext，不开启业务事务。
+- Handler、Domain、Repository 不打开跨调用事务；按加载、领域行为、完整保存的顺序处理。
+- Repository 使用传入的 DSLContext，不能回退到宿主数据源，不能用 SQL 业务条件替代领域行为。
+- 完整聚合的父子保存由仓储以单个 SQL 保证；并发旧快照冲突必须显式反馈，不能静默覆盖。
+- `execute(..., completion)` 在 Handler 返回后调用传输动作，不再承诺与领域写入原子提交。
+  回调不能嵌套命令或再次修改领域。
+- 异常继续传播；已完成的其他保存或外部调用不会因为异常自动回滚。
+- Execution 快照、Worker 回调与 Queue 传输边界见
+  [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
 
 ## Command 规则
 

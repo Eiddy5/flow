@@ -201,7 +201,7 @@ Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 
 ### `core/`
 
 工作流核心。它保存与 HTTP、数据库产品和外部中间件无关的业务模型、统一 State
-及迁移规则、用例入口、事务内 Handler 和持久化端口。Execution 的编排推进计算、
+及迁移规则、用例入口、领域命令 Handler 和持久化端口。Execution 的编排推进计算、
 Worker 调度与异步消息传输契约不放在 `core`，分别由同级的 `executor`、`worker`
 和 `queues` 包负责。
 
@@ -241,7 +241,7 @@ core/
 | `commands` | 表达一次写操作的意图和参数 | 查询实现、领域状态修改逻辑 |
 | `domains` | 保存共享领域能力与 ActorRef 值对象，以及 Flow、Execution、TaskRun 等领域对象、Task 能力及状态规则 | DTO、数据库 Record、Controller 模型 |
 | `exceptions` | 保存稳定的核心业务异常 | HTTP 响应和数据库厂商异常 |
-| `handlers` | 执行 Command，协调领域、Repository 和事务内运行流程 | HTTP 协议处理 |
+| `handlers` | 执行 Command，协调领域、Repository 和完整对象保存 | HTTP 协议处理 |
 | `plugins` | 提供 Plugin 契约、`@Plugin`、Micronaut 编译期发现、按真实 Java 包分组的两级只读目录、精确类注册和 Jackson 多态绑定 | 具体 Task、RunnableTask 执行逻辑、OrchestrationTask 编排逻辑、页面布局元数据 |
 | `queries` | 执行只读查询并维护查询边界 | 写状态和推进 Execution |
 | `repositories` | 定义 Core 所需的持久化接口 | DataPilot/JOOQ Record 等具体技术实现 |
@@ -329,9 +329,9 @@ Execution 编排推进组件。它与 `core` 平级，负责：
   `ExecutionService` 只等待 Queue 接受，不等待 Execution 创建或运行完成。
 - `DefaultExecutor` 同时订阅外部 Executor Command Queue 和内部 Executor Event Queue。
   外部消息只路由给 `executor/handlers/ExecutionCommandEventHandler`；该 Handler 恢复
-  宿主 Session、校验并物化 Execution，然后原子投递 `ExecutorEvent`。
+  宿主 Session、校验并物化 Execution，保存后投递 `ExecutorEvent`。
 - `executor/handlers/ExecutorEventHandler` 是内部状态循环的唯一处理器：每次领取一个
-  `ExecutorEvent`，从 Repository 锁定并加载精确 Flow/Execution，创建一个
+  `ExecutorEvent`，从 Repository 普通读取精确 Flow/Execution 的完整快照，创建一个
   `ExecutorContext`，推进一个周期，保存本轮变化，再把后续周期投回 Event Queue。
 - 使用 `ExecutorContext` 组合 Execution、精确 Flow、nexts、workerTasks、
   orchestrationCompletions、本轮 states 与变更标记；Session 和 DSLContext 不进入
@@ -391,8 +391,10 @@ Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护�
 `queue_type + queue_name` 逻辑隔离；未来专属消费状态可以独立建表，但不拆分载荷表。
 
 当前 Execution 启动和内部周期交接均依赖 Dispatch Queue；外部 Command Handler 与
-内部 Event Handler 各自在一个消费事务中完成自己的边界，Worker 在 Event 周期内同步
-调用。具体 Queue Adapter 放入对应基础设施目录；Default Adapter 负责事务内持久化和
+内部 Event Handler 分别加载领域、执行领域方法并完整保存，Worker 回调不持有业务事务。
+Execution 的完整快照保存与冲突检测见 [ADR 0084](decisions/0084-save-domain-snapshots-without-business-transactions.md)。
+`core/services/executions/RewindPath` 负责嵌套路径的前驱与影响范围计算；精确 Generation 失效范围和部分祖先重开见 [ADR 0085](decisions/0085-rewind-across-nested-orchestration-scopes.md)。
+具体 Queue Adapter 放入对应基础设施目录；Default Adapter 负责消息自己的传输事务和
 周期轮询消费生命周期。完整决策见
 [`ADR 0046`](decisions/0046-define-typed-dispatch-queue-framework.md) 与
 [`ADR 0047`](decisions/0047-implement-default-dispatch-queue.md)，Execution 接入见

@@ -11,15 +11,20 @@ import java.util.Objects;
 import java.util.function.BiConsumer;
 
 /**
- * Validates and dispatches commands inside a JOOQ-managed transaction.
+ * Validates commands and saves domain changes without a business transaction.
  */
 @Singleton
-public final class CommandExecutor {
+public class CommandExecutor {
 
-    private final JOOQ jooq;
+    private JOOQ jooq;
 
-    private final CommandHandlerRegistry handlerRegistry;
+    private CommandHandlerRegistry handlerRegistry;
 
+    /**
+     * Creates the command boundary with its named database and handler registry.
+     * @param jooq named Flow database access
+     * @param handlerRegistry command-to-handler mapping
+     */
     public CommandExecutor(
             @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
             CommandHandlerRegistry handlerRegistry
@@ -32,7 +37,15 @@ public final class CommandExecutor {
     }
 
     /**
-     * Executes a command and preserves its generic result type.
+     * Loads and changes domains through a handler without opening a business transaction.
+     * @param <S> session type
+     * @param <U> session user type
+     * @param <R> command result type
+     * @param <C> command type
+     * @param session current tenant and actor
+     * @param command command to validate and apply
+     * @return saved domain result
+     * @throws RuntimeException when validation or persistence fails
      */
     public <
             S extends Session<U>,
@@ -49,22 +62,27 @@ public final class CommandExecutor {
 
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
-        return jooq.runReturn(dsl -> inScope(
+        return inScope(
                 session,
                 command,
                 handler,
-                dsl,
+                jooq.createDSLContext(),
                 null
-        ));
+        );
     }
 
     /**
-     * Executes a command and completes one caller-owned transaction step
-     * before committing it.
-     *
-     * <p>The completion is intended for transport acceptance that must share
-     * the command write transaction. Domain command handlers remain unaware
-     * of Queue infrastructure and still cannot nest CommandExecutor calls.</p>
+     * Executes a domain command, then invokes its transport completion after persistence.
+     * The callback uses the same context, without a shared business transaction.
+     * @param <S> session type
+     * @param <U> session user type
+     * @param <R> command result type
+     * @param <C> command type
+     * @param session current tenant and actor
+     * @param command command to validate and apply
+     * @param completion transport action after the handler returns
+     * @return saved domain result
+     * @throws RuntimeException when validation, persistence or completion fails
      */
     public <
             S extends Session<U>,
@@ -83,13 +101,13 @@ public final class CommandExecutor {
 
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
-        return jooq.runReturn(dsl -> inScope(
+        return inScope(
                 session,
                 command,
                 handler,
-                dsl,
+                jooq.createDSLContext(),
                 completion
-        ));
+        );
     }
 
     private static <

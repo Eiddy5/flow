@@ -285,6 +285,10 @@ Task 的普通可配置输出契约；`resume` 只定义外部回调输入，不
 也不要求两者字段一致。它不定义审批人、表单、工单或其他外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
 
+**Execution Rewind**:
+从有效暂停节点退回到定义因果路径上的已完成前驱，跨越 Sequence、Route 与 Parallel 的嵌套作用域。Generation 保存精确受影响 TaskRun IDs；只部分受影响的祖先编排容器沿原 ID 重开，无关并行分支保留。审批节点含义、最近审批候选许可与用户权限属于宿主；循环内部端点不在本次支持范围。见 [ADR 0085](docs/decisions/0085-rewind-across-nested-orchestration-scopes.md)。
+_Avoid_: global suffix invalidation, top-level-only rewind, append order as branch order
+
 **Execution Resume**:
 Flow Core 接受一个确定 PAUSE TaskRun 的外部回调，按该 Pause 的具体 resume Input
 校验并规范化数据，再把原 TaskRun 从 `PAUSED` 恢复为 `RUNNING`，由 Executor
@@ -337,5 +341,6 @@ _Avoid_: Writable shared variables
 Execution 当前没有需要同步继续推进的自动工作、可以安全提交的运行事实组合，
 例如全部未完成叶子 TaskRun 都是 PAUSED，或 Execution 已失败、取消、完成。
 稳定点由 TaskRun 事实判断，不新增 Execution 等待状态。一个命令可以连续推进多个
-同步 Task，直到到达下一稳定点，整个过程属于同一个数据库事务。
-_Avoid_: One transaction per Task
+同步 Task，直到到达下一稳定点；每次变更先调用领域方法，再保存完整快照。
+Worker 回调不持有 Execution 业务事务。并行分支允许在整体 RUNNING 时恢复精确 PAUSED 节点。
+_Avoid_: Cross-service transaction, SQL-driven state transition

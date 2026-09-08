@@ -140,8 +140,7 @@ public class FlowRepositoryImpl implements FlowRepository {
      * Appends a Flow row after assigning the next version across all rows for
      * the same tenant and key. Deployed rows also append their Task snapshot.
      *
-     * @param dsl non-null caller-owned transaction context used for the
-     *        version read and all inserts
+     * @param dsl ordinary database context; the parent and Task inserts share one SQL statement
      * @param flow non-null Flow whose definition and domain-owned tenant,
      *        status and audit facts are read without modifying the object
      * @return a detached Flow containing the assigned row id and version; its
@@ -168,9 +167,12 @@ public class FlowRepositoryImpl implements FlowRepository {
                     StringUtil.newId(),
                     version
             );
-            insert(dsl, entry);
-            if (flow.deployed()) {
-                writeTasks(dsl, flow, version);
+            var parent = org.jooq.impl.DSL.name("stored_flow").as(
+                    dsl.insertInto(FLOWS).set(entry.toMap()).returning(FLOWS.ID));
+            if (flow.deployed() && !flow.tasks().isEmpty()) {
+                writeTasks(dsl.with(parent), flow, version);
+            } else {
+                dsl.with(parent).selectFrom(parent).fetch();
             }
             return entry.to(flow.tasks());
         } catch (DataAccessException exception) {
@@ -211,18 +213,6 @@ public class FlowRepositoryImpl implements FlowRepository {
                 entry.key,
                 entry.version
         )));
-    }
-
-    /**
-     * Inserts one already prepared Flow entry.
-     *
-     * @param dsl non-null caller-owned transaction context
-     * @param entry non-null complete versioned row read without modification
-     */
-    private void insert(DSLContext dsl, FlowEntry entry) {
-        dsl.insertInto(FLOWS)
-                .set(entry.buildInsertMap())
-                .execute();
     }
 
     private List<Task> readTasks(
@@ -273,12 +263,12 @@ public class FlowRepositoryImpl implements FlowRepository {
     /**
      * Appends the Task snapshot for one deployed Flow version.
      *
-     * @param dsl non-null caller-owned transaction context
+     * @param dsl pending statement containing the complete parent insert
      * @param flow non-null deployed Flow whose immutable Task tree is read
      * @param flowVersion positive Repository-assigned Flow version
      */
     private void writeTasks(
-            DSLContext dsl,
+            org.jooq.WithStep dsl,
             Flow flow,
             long flowVersion
     ) {

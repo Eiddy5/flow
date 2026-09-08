@@ -191,11 +191,16 @@ public class Execution extends BaseDomain {
     }
 
     /**
-     * Locates the TaskRun for one concrete definition occurrence.
+     * Reads the latest effective occurrence for the given parent and iteration.
+     *
+     * @param taskId nonblank definition ID
+     * @param parentTaskRunId exact parent occurrence ID, or null for a root
+     * @param iteration positive loop iteration, or null outside a loop
+     * @return the owned occurrence, or empty when absent or invalidated
      */
     public Optional<TaskRun> taskRunForOccurrence(String taskId, String parentTaskRunId, Integer iteration) {
         String normalizedTaskId = requireText(taskId, "Task id");
-        List<TaskRun> matches = taskRuns.stream()
+        List<TaskRun> matches = effectiveTaskRuns().stream()
                 .filter(taskRun -> taskRun.taskId().equals(normalizedTaskId))
                 .filter(taskRun -> Objects.equals(
                         taskRun.parentId().orElse(null),
@@ -213,6 +218,15 @@ public class Execution extends BaseDomain {
                 : Optional.of(matches.getLast());
     }
 
+    /**
+     * Reads an effective occurrence in one exact execution generation.
+     *
+     * @param taskId nonblank definition ID
+     * @param parentTaskRunId exact parent occurrence ID, or null for a root
+     * @param iteration positive loop iteration, or null outside a loop
+     * @param executionGenerationVersion exact execution generation, or null for an original occurrence
+     * @return the owned occurrence, or empty when absent or invalidated
+     */
     public Optional<TaskRun> taskRunForOccurrence(
             String taskId,
             String parentTaskRunId,
@@ -220,7 +234,7 @@ public class Execution extends BaseDomain {
             Integer executionGenerationVersion
     ) {
         String normalizedTaskId = requireText(taskId, "Task id");
-        return taskRuns.stream()
+        return effectiveTaskRuns().stream()
                 .filter(taskRun -> taskRun.taskId().equals(normalizedTaskId))
                 .filter(taskRun -> Objects.equals(
                         taskRun.parentId().orElse(null),
@@ -379,45 +393,113 @@ public class Execution extends BaseDomain {
         pausing.forEach(TaskRun::pause);
     }
 
-    public void resumeTaskRun(String taskRunId, Map<String, ?> outputs) {
-        requireState(State.Type.PAUSED);
+    /**
+     * Reports whether the execution can accept completion of a waiting branch.
+     * @return true while running, restarting or paused; false during cancellation or after termination
+     */
+    public boolean canResumeTaskRun() {
+        return state.is(State.Type.PAUSED) || state.is(State.Type.RUNNING) || state.is(State.Type.RESTARTED);
+    }
+
+    /**
+     * Recognizes a started occurrence that has not reached its first pause yet.
+     * The service additionally checks that the bound task definition is a Pause.
+     * @param taskRunId exact occurrence whose pre-pause action is running
+     * @return whether a deferred resume may wait for the first paused state
+     * @throws WorkflowException when the occurrence does not exist
+     */
+    public boolean isAwaitingPause(String taskRunId) {
         TaskRun taskRun = requireTaskRun(taskRunId);
+        return canResumeTaskRun() && taskRun.state().is(State.Type.RUNNING)
+                && taskRun.state().history().stream().noneMatch(change -> change.state() == State.Type.PAUSED);
+    }
+
+    /**
+     * Resumes the exact waiting TaskRun without requiring sibling branches to stop.
+     * @param taskRunId identity of the waiting TaskRun
+     * @param outputs validated external outputs for this occurrence
+     * @throws WorkflowException when the execution or target cannot resume
+     */
+    public void resumeTaskRun(String taskRunId, Map<String, ?> outputs) {
+        if (!canResumeTaskRun()) {
+            throw new WorkflowException("Execution cannot resume a TaskRun: " + id());
+        }
+        TaskRun taskRun = requireTaskRun(taskRunId);
+        if (effectiveTaskRuns().stream().noneMatch(run -> run.identifiedBy(taskRunId))) {
+            throw new WorkflowException("TaskRun no longer belongs to the effective execution path: " + taskRunId);
+        }
         requireTaskRunState(taskRun, State.Type.PAUSED);
         taskRun.resume(outputs);
         resumePausedAncestors(taskRun);
         completeRewindWhenSourceResumes(taskRun);
-        state = state.restarted();
+        if (state.is(State.Type.PAUSED)) {
+            state = state.restarted();
+        }
     }
 
+    /**
+     * Replays the effective serial suffix for callers without a Flow path plan.
+     *
+     * @param sourceTaskRunId effective paused source occurrence ID
+     * @param targetTaskRunId effective completed preceding occurrence ID
+     * @param reason nonblank rewind reason, trimmed before storage
+     * @throws WorkflowException when source, target or current execution cannot rewind
+     */
+    public void rewindTaskRun(String sourceTaskRunId, String targetTaskRunId, String reason) {
+        rewindTaskRun(sourceTaskRunId, targetTaskRunId, reason,
+                effectiveTaskRuns().stream().filter(run -> indexOfTaskRun(run.id()) >= indexOfTaskRun(targetTaskRunId))
+                        .map(TaskRun::id).toList());
+    }
+
+    /**
+     * Invalidates the planned occurrences and reopens only their shared ancestors.
+     *
+     * @param sourceTaskRunId effective paused source occurrence ID
+     * @param targetTaskRunId effective completed preceding occurrence ID
+     * @param reason nonblank rewind reason, trimmed before storage
+     * @param affectedTaskRunIds unique effective IDs including source and target, defensively copied into Generation
+     * @throws WorkflowException when the plan is stale or the execution cannot rewind
+     */
     public void rewindTaskRun(
-            String sourceTaskRunId,
-            String targetTaskRunId,
-            String reason
+            String sourceTaskRunId, String targetTaskRunId, String reason,
+            List<String> affectedTaskRunIds
     ) {
-        requireState(State.Type.PAUSED);
+        if (!canResumeTaskRun()) {
+            throw new WorkflowException("Execution cannot rewind: " + id());
+        }
         String normalizedReason = requireText(reason, "Rewind reason");
         TaskRun source = requireTaskRun(sourceTaskRunId);
         TaskRun target = requireTaskRun(targetTaskRunId);
         requireTaskRunState(source, State.Type.PAUSED);
-        if (!target.state().is(State.Type.SUCCESS)
-                && !target.state().is(State.Type.WARNING)) {
-            throw new WorkflowException(
-                    "Rewind target TaskRun must be completed: " + target.id()
-            );
+        if (!target.state().is(State.Type.SUCCESS) && !target.state().is(State.Type.WARNING)) {
+            throw new WorkflowException("Rewind target TaskRun must be completed: " + target.id());
         }
-        if (taskRuns.indexOf(target) >= taskRuns.indexOf(source)) {
-            throw new WorkflowException(
-                    "Rewind target TaskRun must precede its source: "
-                            + target.id()
-            );
+        Set<String> affected = new HashSet<>(affectedTaskRunIds);
+        Set<String> effective = effectiveTaskRuns().stream().map(TaskRun::id)
+                .collect(java.util.stream.Collectors.toSet());
+        if (!affected.contains(source.id()) || !affected.contains(target.id())
+                || affected.size() != affectedTaskRunIds.size() || !effective.containsAll(affected)
+                || indexOfTaskRun(target.id()) >= indexOfTaskRun(source.id())) {
+            throw new WorkflowException("Rewind requires an effective source, preceding target and affected path");
         }
-        unfinishedTaskRuns().forEach(TaskRun::kill);
+        Set<String> ancestors = new HashSet<>();
+        for (String id : affected) {
+            TaskRun run = requireTaskRun(id);
+            Optional<String> parent = run.parentId();
+            while (parent.isPresent()) {
+                String parentId = parent.orElseThrow();
+                if (!affected.contains(parentId)) ancestors.add(parentId);
+                parent = requireTaskRun(parentId).parentId();
+            }
+        }
         if (generation.active()) {
-            generation.advance(source.id(), target.id(), normalizedReason);
+            generation.advance(source.id(), target.id(), normalizedReason, affectedTaskRunIds);
         } else {
-            generation.start(source.id(), target.id(), normalizedReason);
+            generation.start(source.id(), target.id(), normalizedReason, affectedTaskRunIds);
         }
-        state = state.restarted();
+        affected.stream().map(this::requireTaskRun).filter(TaskRun::isUnfinished).forEach(TaskRun::kill);
+        ancestors.stream().map(this::requireTaskRun).forEach(TaskRun::reopenForRewind);
+        if (state.is(State.Type.PAUSED)) state = state.restarted();
     }
 
     public void startTaskRunGeneration(String taskRunId, String reason) {
@@ -438,57 +520,72 @@ public class Execution extends BaseDomain {
         taskRun.completeGeneration();
     }
 
+    /**
+     * Excludes all occurrences invalidated by current or archived rewind generations.
+     *
+     * @return an unmodifiable list of owned TaskRuns still on the effective path
+     */
     public List<TaskRun> effectiveTaskRuns() {
-        Optional<Generation.Current> current = generation.current();
-        Map<String, Integer> latestGenerationByTask = new HashMap<>();
-        for (TaskRun taskRun : taskRuns) {
-            taskRun.executionGenerationVersion().ifPresent(version ->
-                    latestGenerationByTask.merge(
-                            taskRun.taskId(),
-                            version,
-                            Math::max
-                    )
-            );
+        Set<String> invalidated = new HashSet<>();
+        for (Generation.Current version : executionGenerations()) {
+            invalidated.addAll(invalidatedTaskRunIds(version));
         }
-        if (current.isEmpty() && latestGenerationByTask.isEmpty()) {
-            return taskRuns();
+        return taskRuns.stream().filter(run -> !invalidated.contains(run.id())).toList();
+    }
+
+    /**
+     * Finds the latest generation invalidating this exact occurrence before scheduling its replacement.
+     *
+     * @param taskId definition ID to locate
+     * @param parentId exact parent occurrence ID, or null for a root
+     * @param iteration loop iteration, or null outside a loop
+     * @param inherited parent execution generation, or null for an original parent
+     * @return the newest relevant version, or null when no generation applies
+     */
+    public Integer replayGenerationVersion(String taskId, String parentId, Integer iteration, Integer inherited) {
+        Integer version = inherited;
+        for (Generation.Current current : executionGenerations()) {
+            for (String id : invalidatedTaskRunIds(current)) {
+                TaskRun run = requireTaskRun(id);
+                if (run.taskId().equals(taskId) && Objects.equals(run.parentId().orElse(null), parentId)
+                        && Objects.equals(run.iteration().isPresent() ? run.iteration().getAsInt() : null, iteration)) {
+                    version = version == null ? current.version() : Math.max(version, current.version());
+                }
+            }
         }
-        Set<String> invalidatedTaskIds = current
-                .map(active -> {
-                    active.sourceTaskRunId().orElseThrow(() ->
-                            new IllegalStateException(
-                                    "Execution Generation current requires a source"
-                            )
-                    );
-                    String targetId = active.targetTaskRunId().orElseThrow(() ->
-                            new IllegalStateException(
-                                    "Execution Generation current requires a target"
-                            )
-                    );
-                    return taskRuns.subList(
-                                    indexOfTaskRun(targetId),
-                                    taskRuns.size()
-                            )
-                            .stream()
-                            .map(TaskRun::taskId)
-                            .collect(java.util.stream.Collectors.toSet());
-                })
-                .orElseGet(Set::of);
-        return taskRuns.stream()
-                .filter(taskRun -> {
-                    if (invalidatedTaskIds.contains(taskRun.taskId())) {
-                        return taskRun.executionGenerationVersion().orElse(-1)
-                                == current.orElseThrow().version();
-                    }
-                    Integer latest = latestGenerationByTask.get(
-                            taskRun.taskId()
-                    );
-                    return latest == null
-                            ? taskRun.executionGenerationVersion().isEmpty()
-                            : taskRun.executionGenerationVersion().orElse(-1)
-                                    == latest;
-                })
-                .toList();
+        return version;
+    }
+
+    /**
+     * Combines archived and active generation records for effective-path reads.
+     *
+     * @return a new ordered list sharing immutable generation records
+     */
+    private List<Generation.Current> executionGenerations() {
+        List<Generation.Current> versions = new ArrayList<>(generation.history().currents());
+        generation.current().ifPresent(versions::add);
+        return versions;
+    }
+
+    /**
+     * Reads precise invalidations or interprets a legacy top-level serial interval.
+     *
+     * @param version persisted execution generation whose source and target exist
+     * @return invalidated occurrence IDs without changing the snapshot
+     */
+    private List<String> invalidatedTaskRunIds(Generation.Current version) {
+        if (!version.affectedTaskRunIds().isEmpty()) return version.affectedTaskRunIds();
+        // Older persisted generations described a top-level serial interval.
+        int first = indexOfTaskRun(version.targetTaskRunId().orElseThrow());
+        int last = indexOfTaskRun(version.sourceTaskRunId().orElseThrow());
+        Set<String> roots = taskRuns.subList(first, last + 1).stream()
+                .filter(run -> run.parentId().isEmpty()).map(TaskRun::taskId)
+                .collect(java.util.stream.Collectors.toSet());
+        return taskRuns.stream().filter(run -> {
+            TaskRun root = run;
+            while (root.parentId().isPresent()) root = requireTaskRun(root.parentId().orElseThrow());
+            return roots.contains(root.taskId()) && root.executionGenerationVersion().orElse(0) < version.version();
+        }).map(TaskRun::id).toList();
     }
 
     private void completeRewindWhenSourceResumes(TaskRun resumed) {
@@ -653,6 +750,11 @@ public class Execution extends BaseDomain {
         validateStateRoute();
     }
 
+    /**
+     * Validates persisted generation references, affected paths and source-target order.
+     *
+     * @throws IllegalArgumentException when generation coordinates contradict the snapshot
+     */
     private void validateExecutionGeneration() {
         List<Generation.Current> currents = new ArrayList<>(
                 generation.history().currents()
@@ -669,6 +771,11 @@ public class Execution extends BaseDomain {
                             "Execution Generation requires a target TaskRun"
                     )
             );
+            if (!current.affectedTaskRunIds().isEmpty()
+                    && (!current.affectedTaskRunIds().contains(sourceId) || !current.affectedTaskRunIds().contains(targetId))) {
+                throw new IllegalArgumentException("Execution Generation affected path requires source and target");
+            }
+            current.affectedTaskRunIds().forEach(this::requireTaskRun);
             if (indexOfTaskRun(targetId) >= indexOfTaskRun(sourceId)) {
                 throw new IllegalArgumentException(
                         "Execution Generation target must precede its source"
@@ -677,12 +784,12 @@ public class Execution extends BaseDomain {
         }
     }
 
-    private static final class TaskOccurrence {
+    private static class TaskOccurrence {
 
-        private final String taskId;
-        private final String parentTaskRunId;
-        private final Integer iteration;
-        private final Integer executionGenerationVersion;
+        private String taskId;
+        private String parentTaskRunId;
+        private Integer iteration;
+        private Integer executionGenerationVersion;
 
         private TaskOccurrence(
                 String taskId,

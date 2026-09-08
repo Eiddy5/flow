@@ -7,6 +7,9 @@ Accepted（2026-09-03）
 本决策扩展 ADR 0081 的“本地提交后启动 Execution”边界，并为 Cancel、Resume 与
 Rewind 采用相同的宿主事务隔离原则。Rewind 影响范围的定义仍以 ADR 0078 为准。
 
+本决策的事务与加锁条款已由 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md)
+修订：宿主先调用领域方法并整存，返回后编排 Flow；不再开启宿主业务事务。
+
 ## 背景
 
 宿主审批模块通过 JOOQ Command Executor 为每个 Handler 打开本地数据库事务。

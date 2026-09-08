@@ -41,11 +41,11 @@ public class DeleteFlowHandler implements CommandHandler<
      * as a new version.
      *
      * @param context non-null command, Session and caller-owned transaction;
-     *        {@code command.draft=true} selects the latest draft and
-     *        {@code false} selects the latest deployed definition
+     *                {@code command.draft=true} selects the latest draft and
+     *                {@code false} selects the latest deployed definition
      * @return the appended deleted Flow with its assigned id and version
      * @throws WorkflowException when the selected Flow does not exist, was
-     *         already deleted, belongs to another tenant, or cannot be saved
+     *                           already deleted, belongs to another tenant, or cannot be saved
      */
     @Override
     public Flow handle(
@@ -63,18 +63,18 @@ public class DeleteFlowHandler implements CommandHandler<
         String flowKey = command.key().trim();
         FlowId flowId = FlowId.from(companyId, flowKey);
         Flow flow = command.draft()
-            ? flowRepository.findDraftByFlowId(
+                ? flowRepository.findDraftByFlowId(
                 context.dsl(),
                 flowId
-            ).orElseThrow(() -> new WorkflowException(
+        ).orElseThrow(() -> new WorkflowException(
                 "Draft Flow does not exist: " + flowKey
-            ))
-            : flowRepository.findLatestByFlowId(
+        ))
+                : flowRepository.findLatestByFlowId(
                 context.dsl(),
                 flowId
-            ).orElseThrow(() -> new WorkflowException(
+        ).orElseThrow(() -> new WorkflowException(
                 "Flow does not exist: " + flowKey
-            ));
+        ));
         flow.delete(context.session(), TimeUtil.now());
         return flowRepository.save(context.dsl(), flow);
     }

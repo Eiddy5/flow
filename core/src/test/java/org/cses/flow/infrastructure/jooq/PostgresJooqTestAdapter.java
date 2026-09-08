@@ -1,5 +1,6 @@
 package org.cses.flow.infrastructure.jooq;
 
+import com.zaxxer.hikari.util.DriverDataSource;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.cses.flow.executor.commands.ExecutionCommand;
@@ -12,6 +13,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Properties;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
@@ -20,22 +22,38 @@ import static org.flow.gen.flow.Tables.QUEUES;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 /**
- * Test transaction boundary backed by the PostgreSQL UC database.
+ * PostgreSQL UC adapter with direct auto-commit access and explicit transaction helpers.
  */
-public final class PostgresJooqTestAdapter extends JOOQ {
+public class PostgresJooqTestAdapter extends JOOQ {
 
-    private final String url;
-    private final String user;
-    private final String password;
-    private final boolean cleanupEnabled;
+    private String url;
+    private String user;
+    private String password;
+    private boolean cleanupEnabled;
 
+    /**
+     * Configures direct SQL and explicit transaction helpers for the same test
+     * database, using production Entry mappers without retaining a connection.
+     *
+     * @param url non-blank PostgreSQL JDBC URL selected by the test environment
+     * @param user database login user; never used as a business actor
+     * @param password database login password; not logged by this adapter
+     * @param cleanupEnabled whether fixture close removes its own tenant data
+     */
     private PostgresJooqTestAdapter(
         String url,
         String user,
         String password,
         boolean cleanupEnabled
     ) {
-        super(DSL.using(SQLDialect.POSTGRES).configuration(), null);
+        super(
+            FlowJooqTestConfiguration.configure(
+                DSL.using(SQLDialect.POSTGRES)
+            ).configuration(),
+            new DriverDataSource(
+                url, "org.postgresql.Driver", new Properties(), user, password
+            )
+        );
         this.url = url;
         this.user = user;
         this.password = password;

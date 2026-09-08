@@ -113,6 +113,12 @@ public class ExecutorEventMessageHandler implements
         this.eventQueue = null;
     }
 
+    /**
+     * Runs one scheduling delivery without holding a business transaction across Worker callbacks.
+     * @param event durable scheduling identity
+     * @return current execution context when present
+     * @throws RuntimeException when loading, scheduling or persistence fails
+     */
     @Override
     public Optional<ExecutorContext> handle(ExecutorEvent event) {
         ExecutorEvent accepted = Objects.requireNonNull(
@@ -120,10 +126,7 @@ public class ExecutorEventMessageHandler implements
                 "event"
         );
         requireProductionRuntime();
-        AtomicReference<ExecutorContext> processed =
-                new AtomicReference<>();
-        jooq.run(dsl -> processed.set(process(dsl, accepted)));
-        return Optional.ofNullable(processed.get());
+        return Optional.ofNullable(process(jooq.createDSLContext(), accepted));
     }
 
     /**
@@ -197,6 +200,16 @@ public class ExecutorEventMessageHandler implements
         return processed.get();
     }
 
+    /**
+     * Applies domain scheduling and reloads before every Worker claim and result save.
+     * @param session restored execution session
+     * @param dsl ordinary database context
+     * @param flow immutable bound definition
+     * @param execution loaded complete execution
+     * @param event scheduling identity
+     * @return the latest processed execution context
+     * @throws RuntimeException when scheduling, dispatch or persistence fails
+     */
     private ExecutorContext process(
             Session<?> session,
             DSLContext dsl,
@@ -217,31 +230,73 @@ public class ExecutorEventMessageHandler implements
         List<WorkerTask> workerTasks = context.takeWorkerTasks();
         if (workerTasks.isEmpty()) {
             if (executionUpdated && context.canBeProcessed()) {
-                emitNext(dsl, event);
+                emitNext(event);
             }
             return context;
         }
 
         for (WorkerTask workerTask : workerTasks) {
+            context = reload(dsl, flow, event);
+            if (context.execution().isTerminal() || context.execution().state().is(State.Type.KILLING)) {
+                return context;
+            }
+            if (!context.execution().requireTaskRun(workerTask.taskRunId()).state().is(State.Type.CREATED)) {
+                continue;
+            }
             workerTask = executorService.dispatch(context, workerTask);
-            executionUpdated |= persistIfUpdated(dsl, context);
-
+            persistIfUpdated(dsl, context);
             WorkerTaskResult result = dispatchWorkerTask(
-                    workerTask,
-                    event.eventType() != ExecutorEvent.EventType.TERMINATED
-            );
-            executorService.applyResult(context, result);
-            executionUpdated |= persistIfUpdated(dsl, context);
-            if (result.targetState() == State.Type.FAILED
-                    || result.targetState() == State.Type.KILLED) {
+                    workerTask, event.eventType() != ExecutorEvent.EventType.TERMINATED);
+            context = applyResult(dsl, flow, event, result);
+            executionUpdated = true;
+            if (result.targetState() == State.Type.FAILED || result.targetState() == State.Type.KILLED) {
                 return context;
             }
         }
 
         if (executionUpdated && context.canBeProcessed()) {
-            emitNext(dsl, event);
+            emitNext(event);
         }
         return context;
+    }
+
+    /**
+     * Reloads the complete aggregate before applying a worker result or claiming another task.
+     * @param dsl database context
+     * @param flow bound immutable definition
+     * @param event current scheduling identity
+     * @return context containing the latest persisted execution
+     */
+    private ExecutorContext reload(DSLContext dsl, Flow flow, ExecutorEvent event) {
+        Execution execution = executionRepository.findById(dsl, event.companyId(), event.executionId())
+                .orElseThrow(() -> new WorkflowException("Execution does not exist: " + event.executionId()));
+        return new ExecutorContext(flow, execution);
+    }
+
+    /**
+     * Merges one completed worker result into the latest aggregate without rerunning the worker.
+     * @param dsl database context
+     * @param flow bound immutable definition
+     * @param event scheduling identity
+     * @param result completed worker output
+     * @return updated or already terminated execution context
+     * @throws RuntimeException when persistence fails for a reason other than a stale snapshot
+     */
+    private ExecutorContext applyResult(DSLContext dsl, Flow flow, ExecutorEvent event, WorkerTaskResult result) {
+        while (true) {
+            ExecutorContext current = reload(dsl, flow, event);
+            if (current.execution().isTerminal() || current.execution().state().is(State.Type.KILLING)
+                    || !current.execution().requireTaskRun(result.taskRunId()).state().is(State.Type.RUNNING)) {
+                return current;
+            }
+            executorService.applyResult(current, result);
+            try {
+                persistIfUpdated(dsl, current);
+                return current;
+            } catch (org.jooq.exception.DataChangedException conflict) {
+                // Preserve this completed output; retry its domain application without rerunning the Worker.
+            }
+        }
     }
 
     private boolean applyEvent(
@@ -262,8 +317,12 @@ public class ExecutorEventMessageHandler implements
         };
     }
 
-    private void emitNext(DSLContext dsl, ExecutorEvent event) {
-        eventQueue.emitInTransaction(event.nextUpdate(), dsl);
+    /**
+     * Publishes the next scheduling cycle after domain persistence has completed.
+     * @param event current durable scheduling identity
+     */
+    private void emitNext(ExecutorEvent event) {
+        eventQueue.emit(event.nextUpdate());
     }
 
     private boolean persistIfUpdated(

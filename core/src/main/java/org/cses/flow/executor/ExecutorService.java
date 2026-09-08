@@ -34,7 +34,7 @@ import java.util.Set;
  * cycle.</p>
  */
 @Singleton
-public final class ExecutorService {
+public class ExecutorService {
 
     public ExecutorContext process(ExecutorContext context) {
         java.util.Objects.requireNonNull(context, "context");
@@ -387,14 +387,18 @@ public final class ExecutorService {
         return context.flow().findTask(taskRun.taskId()).orElseThrow(() -> new IllegalStateException("TaskRun references a missing Task: " + taskRun.taskId()));
     }
 
+    /**
+     * Plans the first unsettled root task using the execution effective occurrences.
+     *
+     * @param context executor snapshot and definition to read
+     * @param tasks ordered root definitions to traverse
+     * @return planned tasks or completion markers; no task runs are persisted here
+     */
     private static SearchResult searchTopLevel(ExecutorContext context, List<Task> tasks) {
         Map<String, Object> visibleOutputs = new LinkedHashMap<>();
-        Optional<RewindScope> rewind = RewindScope.from(context, tasks);
         for (int index = 0; index < tasks.size(); index++) {
             Task task = tasks.get(index);
-            Integer executionGenerationVersion = rewind.isPresent()
-                ? rewind.orElseThrow().versionFor(index)
-                : null;
+            Integer executionGenerationVersion = null;
             SearchResult result = searchTask(
                 context,
                 task,
@@ -419,6 +423,19 @@ public final class ExecutorService {
         return SearchResult.settledResult();
     }
 
+    /**
+     * Finds the effective occurrence or plans its replacement in the applicable rewind generation.
+     *
+     * @param context executor state used by recursive orchestration
+     * @param task definition to visit
+     * @param parentTaskRunId exact parent occurrence, or null for a root
+     * @param flowingContext read-only outputs available at this position
+     * @param iteration loop iteration, or null outside a loop
+     * @param executionGenerationVersion inherited generation, or null for the original path
+     * @param iterationScope enclosing loop scope, or null outside a loop
+     * @return the next work or settled state for the requested task
+     * @throws IllegalStateException when an occurrence has an execution-only state
+     */
     private static SearchResult searchTask(
         ExecutorContext context,
         Task task,
@@ -428,18 +445,10 @@ public final class ExecutorService {
         Integer executionGenerationVersion,
         IterationScope iterationScope
     ) {
-        Optional<TaskRun> taskRun = executionGenerationVersion == null
-            ? context.execution().taskRunForOccurrence(
-                task.id(),
-                parentTaskRunId,
-                iteration
-            )
-            : context.execution().taskRunForOccurrence(
-                task.id(),
-                parentTaskRunId,
-                iteration,
-                executionGenerationVersion
-            );
+        Optional<TaskRun> taskRun = context.execution().taskRunForOccurrence(task.id(), parentTaskRunId, iteration);
+        executionGenerationVersion = context.execution().replayGenerationVersion(
+            task.id(), parentTaskRunId, iteration, executionGenerationVersion
+        );
         if (taskRun.isEmpty()) {
             return SearchResult.nexts(List.of(candidate(
                 task,
@@ -807,6 +816,16 @@ public final class ExecutorService {
         return route.matches(ConditionContext.from(variables));
     }
 
+    /**
+     * Adds the effective completed occurrence output to the current serial visibility map.
+     *
+     * @param context executor snapshot to read
+     * @param task definition whose output is requested
+     * @param parentTaskRunId exact parent occurrence, or null for a root
+     * @param iteration loop iteration, or null outside a loop
+     * @param executionGenerationVersion inherited generation; effective occurrence selection already resolves rewinds
+     * @param target mutable visibility map receiving the task-key output when completed
+     */
     private static void appendCompletedOutput(
         ExecutorContext context,
         Task task,
@@ -815,18 +834,7 @@ public final class ExecutorService {
         Integer executionGenerationVersion,
         Map<String, Object> target
     ) {
-        Optional<TaskRun> completed = executionGenerationVersion == null
-            ? context.execution().taskRunForOccurrence(
-                task.id(),
-                parentTaskRunId,
-                iteration
-            )
-            : context.execution().taskRunForOccurrence(
-                task.id(),
-                parentTaskRunId,
-                iteration,
-                executionGenerationVersion
-            );
+        Optional<TaskRun> completed = context.execution().taskRunForOccurrence(task.id(), parentTaskRunId, iteration);
         completed.filter(taskRun ->
             taskRun.state().is(State.Type.SUCCESS)
                 || taskRun.state().is(State.Type.WARNING)
@@ -889,78 +897,6 @@ public final class ExecutorService {
         }
     }
 
-    private record RewindScope(
-        int version,
-        int targetIndex,
-        int sourceIndex
-    ) {
-
-        private static Optional<RewindScope> from(
-            ExecutorContext context,
-            List<Task> topLevelTasks
-        ) {
-            Optional<Generation.Current> current = context.execution()
-                .generation()
-                .current();
-            if (current.isEmpty()) {
-                return Optional.empty();
-            }
-            Generation.Current active = current.orElseThrow();
-            TaskRun source = context.execution().requireTaskRun(
-                active.sourceTaskRunId().orElseThrow(() ->
-                    new IllegalStateException(
-                        "Execution Generation current requires a source"
-                    )
-                )
-            );
-            TaskRun target = context.execution().requireTaskRun(
-                active.targetTaskRunId().orElseThrow(() ->
-                    new IllegalStateException(
-                        "Execution Generation current requires a target"
-                    )
-                )
-            );
-            int targetIndex = definitionIndex(topLevelTasks, target);
-            int sourceIndex = definitionIndex(topLevelTasks, source);
-            if (targetIndex >= sourceIndex) {
-                throw new IllegalStateException(
-                    "Rewind target must precede its source in the Flow"
-                );
-            }
-            return Optional.of(new RewindScope(
-                active.version(),
-                targetIndex,
-                sourceIndex
-            ));
-        }
-
-        private Integer versionFor(int taskIndex) {
-            return taskIndex >= targetIndex && taskIndex <= sourceIndex
-                ? version
-                : null;
-        }
-
-        private static int definitionIndex(
-            List<Task> topLevelTasks,
-            TaskRun taskRun
-        ) {
-            if (taskRun.parentId().isPresent()) {
-                throw new WorkflowException(
-                    "Rewind currently supports top-level serial TaskRuns only: "
-                        + taskRun.id()
-                );
-            }
-            for (int index = 0; index < topLevelTasks.size(); index++) {
-                if (topLevelTasks.get(index).identifiedBy(taskRun.taskId())) {
-                    return index;
-                }
-            }
-            throw new WorkflowException(
-                "Rewind TaskRun is not a top-level Flow Task: " + taskRun.id()
-            );
-        }
-    }
-
     private record IterationScope(
         Task loop,
         String loopRunId,
@@ -978,11 +914,11 @@ public final class ExecutorService {
         }
     }
 
-    private static final class SearchResult {
+    private static class SearchResult {
 
-        private final List<TaskRun> nexts;
-        private final List<String> orchestrationCompletions;
-        private final boolean settled;
+        private List<TaskRun> nexts;
+        private List<String> orchestrationCompletions;
+        private boolean settled;
 
         private SearchResult(List<TaskRun> nexts, List<String> orchestrationCompletions, boolean settled) {
             this.nexts = List.copyOf(nexts);

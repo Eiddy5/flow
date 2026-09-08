@@ -14,10 +14,12 @@ import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
 import org.cses.flow.infrastructure.repositories.flows.FlowRepositoryImpl;
 import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
+import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
+import org.jooq.exception.DataChangedException;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -42,6 +44,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
@@ -94,7 +97,8 @@ class PostgresRepositoryIntegrationTest {
 
     /**
      * Verifies Flow and Execution aggregate round trips across versioned Flow
-     * rows and deployed Task snapshots.
+     * rows and deployed Task snapshots. Two independent repositories then reject
+     * a stale write and permit a complete domain update after reloading.
      */
     @Test
     void persistsAndRehydratesCurrentCoreAggregates() {
@@ -334,42 +338,110 @@ class PostgresRepositoryIntegrationTest {
         );
         assertEquals(1L, executionCount);
 
-        Execution staleFirst = read(dsl ->
-                executionRepository.findById(
-                        dsl,
-                        companyId,
-                        execution.id()
-                ).orElseThrow()
-        );
-        Execution staleSecond = read(dsl ->
-                executionRepository.findById(
-                        dsl,
-                        companyId,
-                        execution.id()
-                ).orElseThrow()
-        );
+        DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+        direct.configuration().data(Session.class, actorSession);
+        ExecutionRepositoryImpl firstWriter = new ExecutionRepositoryImpl();
+        ExecutionRepositoryImpl secondWriter = new ExecutionRepositoryImpl();
+        Execution staleFirst = firstWriter.findById(direct, companyId, execution.id()).orElseThrow();
+        Execution staleSecond = secondWriter.findById(direct, companyId, execution.id()).orElseThrow();
         staleFirst.beginKilling();
-        staleSecond.beginKilling();
-        write(dsl -> {
-            executionRepository.save(dsl, staleFirst);
-            return null;
-        });
-        write(dsl -> {
-            executionRepository.save(dsl, staleSecond);
-            return null;
-        });
-        Execution restoredAfterStaleWrites = read(dsl ->
-                executionRepository.findById(
-                        dsl,
-                        companyId,
-                        execution.id()
-                ).orElseThrow()
-        );
-        assertEquals(
-                State.Type.KILLING,
-                restoredAfterStaleWrites.state().current()
+        staleFirst.killUnfinishedTaskRuns();
+        staleSecond.succeedTaskRun(execution.taskRuns().getFirst().id(), Map.of("approved", "stale"));
+        firstWriter.save(direct, staleFirst);
+
+        assertThrows(DataChangedException.class, () -> secondWriter.save(direct, staleSecond));
+        Execution retained = secondWriter.findById(direct, companyId, execution.id()).orElseThrow();
+        assertEquals(staleFirst.state(), retained.state());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::id).toList(),
+                retained.taskRuns().stream().map(TaskRun::id).toList());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::state).toList(),
+                retained.taskRuns().stream().map(TaskRun::state).toList());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::inputs).toList(),
+                retained.taskRuns().stream().map(TaskRun::inputs).toList());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::outputs).toList(),
+                retained.taskRuns().stream().map(TaskRun::outputs).toList());
+
+        retained.finishKilling();
+        secondWriter.save(direct, retained);
+        Execution completed = firstWriter.findById(direct, companyId, execution.id()).orElseThrow();
+        assertEquals(State.Type.KILLED, completed.state().current());
+        assertEquals(retained.taskRuns().stream().map(TaskRun::id).toList(),
+                completed.taskRuns().stream().map(TaskRun::id).toList());
+        assertEquals(retained.taskRuns().stream().map(TaskRun::state).toList(),
+                completed.taskRuns().stream().map(TaskRun::state).toList());
+        assertTrue(completed.unfinishedTaskRuns().isEmpty());
+
+    }
+
+    /**
+     * Saves Flow and Execution aggregates through an auto-commit DSL and forces
+     * a child storage failure. A failed creation must leave no rows; a failed update must retain
+     * the prior parent state and child identity, state and input.
+     */
+    @Test
+    void childSaveFailureDoesNotPersistHalfAnAggregateWithoutCallerTransaction() {
+        DSLContext dsl = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+        dsl.configuration().data(Session.class, session());
+        Flow rejectedFlow = plugins.deploy(
+                companyId,
+                "atomic-flow",
+                Map.of(
+                        "key", "atomic-flow",
+                        "tasks", List.of(Map.of(
+                                "key", "x".repeat(FLOW_TASKS.KEY.getDataType().length() + 1),
+                                "type", org.cses.flow.extensions.log.Log.class.getName(),
+                                "message", "test step"
+                        ))
+                ),
+                null,
+                ActorRef.create("repository-user", "Repository Test"),
+                1_785_312_000_000L
         );
 
+        assertThrows(WorkflowException.class, () -> flowRepository.save(dsl, rejectedFlow));
+        assertEquals(0, dsl.fetchCount(FLOWS,
+                FLOWS.COMPANY_ID.eq(companyId).and(FLOWS.KEY.eq(rejectedFlow.key()))));
+        assertEquals(0, dsl.fetchCount(FLOW_TASKS,
+                FLOW_TASKS.COMPANY_ID.eq(companyId).and(FLOW_TASKS.FLOW_KEY.eq(rejectedFlow.key()))));
+
+        String oversizedTaskId = "x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1);
+        Execution rejected = Execution.create(
+                null, session(), "atomic-create", 1L, Map.of("request", "new")
+        );
+        rejected.start();
+        rejected.createTaskRun(StringUtil.newId(), null, Map.of("step", "valid"));
+        rejected.createTaskRun(oversizedTaskId, null, Map.of());
+
+        assertThrows(WorkflowException.class, () -> executionRepository.save(dsl, rejected));
+        assertTrue(executionRepository.findById(dsl, companyId, rejected.id()).isEmpty());
+        assertEquals(0, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(rejected.id())));
+
+        Execution original = Execution.create(
+                null, session(), "atomic-update", 1L, Map.of("request", "existing")
+        );
+        original.start();
+        TaskRun originalRun = original.createTaskRun(
+                StringUtil.newId(), null, Map.of("step", "original")
+        );
+        original.startTaskRun(originalRun.id());
+        executionRepository.save(dsl, original);
+        Execution changed = executionRepository.findById(dsl, companyId, original.id())
+                .orElseThrow();
+        changed.createTaskRun(oversizedTaskId, null, Map.of());
+        changed.beginKilling();
+        changed.killUnfinishedTaskRuns();
+        changed.finishKilling();
+
+        assertThrows(WorkflowException.class, () -> executionRepository.save(dsl, changed));
+        Execution retained = executionRepository.findById(dsl, companyId, original.id())
+                .orElseThrow();
+        assertEquals(original.state(), retained.state());
+        assertEquals(original.inputs(), retained.inputs());
+        assertEquals(List.of(originalRun.id()), retained.taskRuns().stream().map(TaskRun::id).toList());
+        assertEquals(originalRun.state(), retained.requireTaskRun(originalRun.id()).state());
+        assertEquals(originalRun.inputs(), retained.requireTaskRun(originalRun.id()).inputs());
+        assertEquals(originalRun.outputs(), retained.requireTaskRun(originalRun.id()).outputs());
+        assertEquals(1, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(original.id())));
     }
 
     /**

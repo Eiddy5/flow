@@ -12,6 +12,10 @@ import java.util.List;
 
 public class ExecutionEntry extends ExecutionsObject {
 
+    /** PostgreSQL snapshot token used only by the repository, outside the domain model. */
+    public String storageVersion;
+
+
     public static ExecutionEntry from(Execution execution) {
         ExecutionEntry entry = new ExecutionEntry();
         entry.id = execution.id();

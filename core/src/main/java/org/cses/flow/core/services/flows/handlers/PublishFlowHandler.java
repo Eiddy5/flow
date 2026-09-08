@@ -35,10 +35,10 @@ public class PublishFlowHandler implements CommandHandler<
      * Creates a publish handler backed by the Flow Repository and Task model
      * validator.
      *
-     * @param repository Repository used for all Flow reads and appended saves;
-     *        must not be {@code null}
+     * @param repository     Repository used for all Flow reads and appended saves;
+     *                       must not be {@code null}
      * @param modelValidator validator used for deployed Task definitions; must
-     *        not be {@code null}
+     *                       not be {@code null}
      */
     public PublishFlowHandler(
             FlowRepository repository,
@@ -65,9 +65,9 @@ public class PublishFlowHandler implements CommandHandler<
      * @param context non-null command, Session and transaction context
      * @return a detached Flow with the new database row id and version
      * @throws IllegalArgumentException when source fields or Task definitions
-     *         are invalid
-     * @throws WorkflowException when a referenced draft is absent, a deployed
-     *         lifecycle rule fails, or persistence rejects the new row
+     *                                  are invalid
+     * @throws WorkflowException        when a referenced draft is absent, a deployed
+     *                                  lifecycle rule fails, or persistence rejects the new row
      */
     @Override
     public Flow handle(
@@ -99,15 +99,15 @@ public class PublishFlowHandler implements CommandHandler<
      * Creates or revises the current draft state and appends it through the
      * Repository.
      *
-     * @param context non-null command context and caller-owned transaction
+     * @param context   non-null command context and caller-owned transaction
      * @param companyId non-blank tenant identifier from the Session
-     * @param source non-blank raw draft source retained without modification
-     * @param parsed non-null transient parsed fields; when no active draft
-     *        exists this object is initialized in place, otherwise its fields
-     *        are only read while the restored draft is revised
+     * @param source    non-blank raw draft source retained without modification
+     * @param parsed    non-null transient parsed fields; when no active draft
+     *                  exists this object is initialized in place, otherwise its fields
+     *                  are only read while the restored draft is revised
      * @return the appended draft with its Repository-assigned id and version
      * @throws WorkflowException when the existing draft cannot be revised or
-     *         the appended row is rejected
+     *                           the appended row is rejected
      */
     private Flow saveDraft(
             CommandContext<Session<User>, User, Flow, PublishFlowCommand>
@@ -143,15 +143,15 @@ public class PublishFlowHandler implements CommandHandler<
      * Validates a deployed definition against the latest deployed Flow and
      * appends it through the Repository.
      *
-     * @param context non-null command context and caller-owned transaction
+     * @param context   non-null command context and caller-owned transaction
      * @param companyId non-blank tenant identifier from the Session
-     * @param flowKey non-blank stable Flow key
-     * @param source non-blank raw source retained without modification
-     * @param parsed non-null transient parsed definition initialized in place
-     *        before a detached persisted snapshot is returned
+     * @param flowKey   non-blank stable Flow key
+     * @param source    non-blank raw source retained without modification
+     * @param parsed    non-null transient parsed definition initialized in place
+     *                  before a detached persisted snapshot is returned
      * @return the appended deployed Flow with its assigned id and version
      * @throws WorkflowException when the latest deployed state rejects the
-     *         definition or persistence rejects the new row
+     *                           definition or persistence rejects the new row
      */
     private Flow saveDeployed(
             CommandContext<Session<User>, User, Flow, PublishFlowCommand>
@@ -173,18 +173,17 @@ public class PublishFlowHandler implements CommandHandler<
      * Uses the command source when present, otherwise restores the latest
      * active draft source in the same tenant.
      *
-     * @param context non-null command context and caller-owned transaction
+     * @param context   non-null command context and caller-owned transaction
      * @param companyId non-blank tenant identifier from the Session
-     * @param command non-null publish command
+     * @param command   non-null publish command
      * @return the command source as supplied, or the stored draft source
      * @throws IllegalArgumentException when both source and usable key are
-     *         absent
-     * @throws WorkflowException when source is omitted and no active draft
-     *         exists for the key
+     *                                  absent
+     * @throws WorkflowException        when source is omitted and no active draft
+     *                                  exists for the key
      */
     private String resolveSource(
-            CommandContext<Session<User>, User, Flow, PublishFlowCommand>
-                    context,
+            CommandContext<Session<User>, User, Flow, PublishFlowCommand> context,
             String companyId,
             PublishFlowCommand command
     ) {
@@ -209,12 +208,12 @@ public class PublishFlowHandler implements CommandHandler<
      * only when accepting a draft.
      *
      * @param source non-blank raw Flow source
-     * @param draft {@code true} to ignore Flow system fields and allow an
-     *        unbindable Task list in raw draft source; {@code false} to bind
-     *        the complete deployed definition strictly
+     * @param draft  {@code true} to ignore Flow system fields and allow an
+     *               unbindable Task list in raw draft source; {@code false} to bind
+     *               the complete deployed definition strictly
      * @return parsed user-managed Flow definition fields
      * @throws RuntimeException when deployed source or public Flow fields
-     *         cannot be bound
+     *                          cannot be bound
      */
     private Flow parse(String source, boolean draft) {
         if (draft) {
@@ -232,7 +231,7 @@ public class PublishFlowHandler implements CommandHandler<
      * @param source non-blank raw draft source
      * @return parsed draft containing only source-owned definition fields
      * @throws RuntimeException when the YAML or public Flow fields cannot be
-     *         bound
+     *                          bound
      */
     private Flow parseDraft(String source) {
         // A draft keeps the source even when a Task plugin is not currently
@@ -285,7 +284,7 @@ public class PublishFlowHandler implements CommandHandler<
      *
      * @param flow non-null deployed definition candidate
      * @throws IllegalArgumentException when a Task violates its model
-     *         constraints
+     *                                  constraints
      */
     private void validateTasks(Flow flow) {
         flow.tasks().forEach(task -> {

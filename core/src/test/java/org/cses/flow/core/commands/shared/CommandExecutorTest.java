@@ -10,9 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.x9.jooq.JOOQ;
-import org.x9.jooq.intf.JooqRunnableResult;
+import org.x9.jooq.JooqDSLContext;
 
-import java.sql.SQLException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -26,11 +25,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommandExecutorTest {
 
+    /**
+     * Executes the exact handler and verifies that its direct DSL scope binds
+     * the supplied session only for the duration of the command.
+     */
     @Test
     void executesExactHandlerAndPreservesGenericResultType() {
         TextHandler handler = new TextHandler();
         CommandHandlerRegistry registry = new CommandHandlerRegistry(List.of(handler));
-        DSLContext dsl = mockDsl();
+        JooqDSLContext dsl = mockDsl();
         CommandExecutor executor = commandExecutor(mockJooq(dsl), registry);
         TestSession session = session("user-1");
 
@@ -63,10 +66,14 @@ class CommandExecutorTest {
         assertFalse(handled.get());
     }
 
+    /**
+     * Runs the transport acceptance callback in the same direct DSL scope and
+     * verifies that command and session bindings are removed afterward.
+     */
     @Test
     void completesTransportAcceptanceInsideTheCommandScope() {
         TextHandler handler = new TextHandler();
-        DSLContext dsl = mockDsl();
+        JooqDSLContext dsl = mockDsl();
         CommandExecutor executor = commandExecutor(
             mockJooq(dsl),
             new CommandHandlerRegistry(List.of(handler))
@@ -122,22 +129,37 @@ class CommandExecutorTest {
         assertTrue(exception.getMessage().contains(MissingCommand.class.getName()));
     }
 
-    private static DSLContext mockDsl() {
+    /**
+     * Creates an isolated DSL whose mock connection returns no rows.
+     *
+     * @return a fresh DSL with its own command and session configuration scope
+     */
+    private static JooqDSLContext mockDsl() {
         MockConnection connection = new MockConnection(
             context -> new MockResult[0]
         );
-        return DSL.using(connection, SQLDialect.POSTGRES);
+        return new JooqDSLContext(
+            DSL.using(connection, SQLDialect.POSTGRES).configuration(), null
+        );
     }
 
-    private static JOOQ mockJooq(DSLContext dsl) {
+    /**
+     * Returns the supplied DSL directly so command scope assertions observe
+     * exactly the same configuration as the handler.
+     *
+     * @param dsl non-null mock DSL retained only by this test
+     * @return a JOOQ facade sharing the supplied DSL without opening a transaction
+     */
+    private static JOOQ mockJooq(JooqDSLContext dsl) {
         return new JOOQ(dsl.configuration(), null) {
+            /**
+             * Exposes the test's direct DSL without allocating database resources.
+             *
+             * @return the same DSL supplied to the test facade
+             */
             @Override
-            public <T> T runReturn(JooqRunnableResult<T> runnable) {
-                try {
-                    return runnable.run(dsl);
-                } catch (SQLException exception) {
-                    throw new IllegalStateException(exception);
-                }
+            public JooqDSLContext createDSLContext() {
+                return dsl;
             }
         };
     }

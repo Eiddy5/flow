@@ -36,7 +36,7 @@ import java.util.Optional;
  * The only external command entry into the Executor.
  *
  * <p>This handler validates command facts, materializes or updates the durable
- * Execution as necessary, and atomically publishes an internal
+ * Execution as necessary, and then publishes an internal
  * {@link ExecutorEvent}. It does not create an {@link ExecutorContext} or
  * drive the scheduling cycle.</p>
  */
@@ -75,6 +75,13 @@ public class ExecutionCommandEventHandler implements
         this.eventQueue = Objects.requireNonNull(eventQueue, "eventQueue");
     }
 
+    /**
+     * Applies the command to a complete domain snapshot, saves it, then signals scheduling.
+     * Redelivery also signals an already saved nonterminal execution after a prior publish failure.
+     * @param command accepted external execution command
+     * @return empty because this handler does not run a scheduling cycle
+     * @throws RuntimeException when command validation, persistence or publication fails
+     */
     @Override
     public Optional<ExecutorContext> handle(ExecutionCommand command) {
         ExecutionCommand accepted = Objects.requireNonNull(
@@ -82,8 +89,33 @@ public class ExecutionCommandEventHandler implements
                 "command"
         );
         accepted.validate();
-        jooq.run(dsl -> route(dsl, accepted));
+        DSLContext dsl = jooq.createDSLContext();
+        route(dsl, accepted);
+        Execution execution = executionRepository.findById(dsl, companyId(accepted), accepted.key())
+                .orElseThrow(() -> new WorkflowException("Execution does not exist: " + accepted.key()));
+        if (!execution.isTerminal()) {
+            ExecutorEvent.EventType type = switch (execution.state().current()) {
+                case CREATED -> ExecutorEvent.EventType.CREATED;
+                case KILLING -> ExecutorEvent.EventType.TERMINATED;
+                default -> ExecutorEvent.EventType.UPDATED;
+            };
+            eventQueue.emit(ExecutorEvent.from(execution, type));
+        }
         return Optional.empty();
+    }
+
+    /**
+     * Extracts the tenant carried by each accepted command without widening the public protocol.
+     * @param command validated external command
+     * @return tenant owning the execution
+     */
+    private static String companyId(ExecutionCommand command) {
+        return switch (command) {
+            case Create value -> value.getCompanyId();
+            case Resume value -> value.getCompanyId();
+            case Cancel value -> value.getCompanyId();
+            case Rewind value -> value.getCompanyId();
+        };
     }
 
     private void route(
@@ -125,6 +157,12 @@ public class ExecutionCommandEventHandler implements
         }
     }
 
+    /**
+     * Applies cancellation to the loaded Execution domain and saves its complete snapshot.
+     * @param dsl ordinary database context
+     * @param command exact execution cancellation request
+     * @throws WorkflowException when the execution does not exist
+     */
     private void handleCancel(DSLContext dsl, Cancel command) {
         Execution execution = executionRepository.findById(
                 dsl,
@@ -140,15 +178,14 @@ public class ExecutionCommandEventHandler implements
         }
         execution.beginKilling();
         executionRepository.save(dsl, execution);
-        eventQueue.emitInTransaction(
-                ExecutorEvent.from(
-                        execution,
-                        ExecutorEvent.EventType.TERMINATED
-                ),
-                dsl
-        );
     }
 
+    /**
+     * Materializes a new execution or verifies the facts of the existing same-ID execution.
+     * @param dsl ordinary database context
+     * @param command frozen creation identity and inputs
+     * @throws WorkflowException when repeated identity conflicts with stored facts
+     */
     private void handleCreate(DSLContext dsl, Create command) {
         Session<?> session = restoreSession(
                 command.getCompanyId(),
@@ -197,13 +234,6 @@ public class ExecutionCommandEventHandler implements
                             normalizedInputs
                     );
                     executionRepository.save(dsl, execution);
-                    eventQueue.emitInTransaction(
-                            ExecutorEvent.from(
-                                    execution,
-                                    ExecutorEvent.EventType.CREATED
-                            ),
-                            dsl
-                    );
                 }
         );
     }
@@ -222,6 +252,12 @@ public class ExecutionCommandEventHandler implements
         }
     }
 
+    /**
+     * Resumes the exact paused domain occurrence while preserving other branch states.
+     * @param dsl ordinary database context
+     * @param command target occurrence and validated outputs
+     * @throws WorkflowException when the bound definition or occurrence is invalid
+     */
     private void handleResume(DSLContext dsl, Resume command) {
         Execution execution = executionRepository.findById(
                 dsl,
@@ -233,8 +269,7 @@ public class ExecutionCommandEventHandler implements
 
         // A duplicate delivery can observe the state written by a previous
         // Resume. Acknowledge it instead of retrying an already stale command.
-        if (execution.isTerminal()
-                || !execution.state().is(State.Type.PAUSED)) {
+        if (!execution.canResumeTaskRun()) {
             return;
         }
 
@@ -250,6 +285,9 @@ public class ExecutionCommandEventHandler implements
                         + execution.flowKey() + ":" + execution.flowVersion()
         ));
         TaskRun taskRun = execution.requireTaskRun(command.getTaskRunId());
+        if (execution.isAwaitingPause(taskRun.id())) {
+            throw new WorkflowException("Resume is waiting for the pre-pause action: " + taskRun.id());
+        }
         if (!taskRun.state().is(State.Type.PAUSED)) {
             return;
         }
@@ -269,15 +307,14 @@ public class ExecutionCommandEventHandler implements
         );
         execution.resumeTaskRun(taskRun.id(), normalizedOutputs);
         executionRepository.save(dsl, execution);
-        eventQueue.emitInTransaction(
-                ExecutorEvent.from(
-                        execution,
-                        ExecutorEvent.EventType.UPDATED
-                ),
-                dsl
-        );
     }
 
+    /**
+     * Applies a rewind through the complete Execution domain before saving its new snapshot.
+     * @param dsl ordinary database context
+     * @param command rewind occurrence and reason
+     * @throws WorkflowException when the rewind cannot be applied
+     */
     private void handleRewind(DSLContext dsl, Rewind command) {
         Execution execution = executionRepository.findById(
                 dsl,
@@ -287,8 +324,7 @@ public class ExecutionCommandEventHandler implements
                 "Execution does not exist: " + command.getExecutionId()
         ));
 
-        if (execution.isTerminal()
-                || !execution.state().is(State.Type.PAUSED)) {
+        if (execution.isTerminal() || execution.state().is(State.Type.KILLING)) {
             return;
         }
         TaskRun source = execution.requireTaskRun(
@@ -317,16 +353,10 @@ public class ExecutionCommandEventHandler implements
         execution.rewindTaskRun(
                 command.getSourceTaskRunId(),
                 command.getTargetTaskRunId(),
-                command.getReason()
+                command.getReason(),
+                ExecutionService.affectedTaskRunIds(flow, execution, command.getSourceTaskRunId(), command.getTargetTaskRunId())
         );
         executionRepository.save(dsl, execution);
-        eventQueue.emitInTransaction(
-                ExecutorEvent.from(
-                        execution,
-                        ExecutorEvent.EventType.UPDATED
-                ),
-                dsl
-        );
     }
 
     private static void inCommandScope(

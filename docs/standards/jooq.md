@@ -749,7 +749,8 @@ Entry 列表暴露给 Core 调用方。
 - 领域确认的业务唯一键必须由 PostgreSQL 主键或唯一索引保护；首次插入发生竞争时，
   Repository 将数据库唯一冲突转换为稳定的持久化冲突，Domain 不承担竞争检测。
 - 更新必须显式指定租户、主键或已确认的业务身份。若业务还要求发现同一已有行的
-  并发覆盖，由 Repository 根据 ADR 选择行锁、CAS 或事务隔离实现。
+  并发覆盖，由 Repository 根据 ADR 实现技术冲突检查；当前 Execution 使用完整快照 CAS，
+  不使用锁定读取，见 [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
 - `lockVersion` 等纯技术并发字段只属于 Schema、Entry 和 Repository 更新条件，不
   进入 Domain，也不能与业务版本混用。
 - `buildUpdateMap()` 自动排除主键，不代表更新语句可以省略主键条件。
@@ -803,7 +804,7 @@ Entry 列表暴露给 Core 调用方。
     `execute()`。
 15. 查询、更新和删除是否包含租户及主键/业务身份；已确认的并发协议是否完全由
     Schema、Entry 和 Repository 实现。
-16. 是否复用了传入的 `DSLContext` 和已有事务。
+16. 是否复用了传入的 `DSLContext`，并避免跨服务业务事务。
 17. 是否为转换、Map 内容、查询重建和保存行为补充了对应测试。
 18. JSON/JSONB 转换是否遵守 `json.md` 并统一使用 PAAS JSON。
 19. Flow 版本是否按当前 ADR 在指定边界分配；Repository 是否没有实现删除发布限制、

@@ -1,0 +1,25 @@
+gradle.projectsEvaluated {
+    if (gradle.rootProject.findProject(':server') == null) return
+    def server = gradle.rootProject.project(':server')
+    def core = gradle.rootProject.project(':core')
+    def probeRoot = gradle.rootProject.file('docs/harness/flow-operation-cost')
+    def classesRoot = server.layout.buildDirectory.dir('flow-operation-cost/classes').get().asFile
+    def compilation = server.tasks.register('compileFlowQueryProbe', JavaCompile) {
+        dependsOn(server.tasks.named('classes'))
+        source(server.file("${probeRoot}/FlowQueryProbe.java"))
+        source(core.file('src/test/java/org/cses/flow/infrastructure/jooq/FlowJooqTestConfiguration.java'))
+        classpath = server.sourceSets.main.runtimeClasspath
+        destinationDirectory = classesRoot
+        options.encoding = 'UTF-8'
+        options.compilerArgs += ['-proc:none']
+    }
+    server.tasks.register('flowQueryProbe', JavaExec) {
+        dependsOn(compilation)
+        outputs.upToDateWhen { false }
+        mainClass = 'FlowQueryProbe'
+        classpath = server.files(classesRoot) + server.sourceSets.main.runtimeClasspath
+        systemProperty('org.jooq.no-logo', 'true')
+        systemProperty('org.jooq.no-tips', 'true')
+        if (System.getProperty('probe.check') == 'true') args('--check')
+    }
+}

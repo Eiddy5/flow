@@ -518,6 +518,13 @@ class CoreArchitectureStandardTest {
         );
     }
 
+    /**
+     * Keeps generated Record conversion chains out of repositories and checks
+     * Flow definition Entry mapping. Real PostgreSQL round trips verify the
+     * complete Execution snapshot mapping without prescribing its query shape.
+     *
+     * @throws IOException when a repository source cannot be read
+     */
     @Test
     void postgresTableReadsMapDirectlyIntoEntries() throws IOException {
         Path repositories = FLOW.resolve("infrastructure/repositories");
@@ -549,19 +556,11 @@ class CoreArchitectureStandardTest {
         String flows = Files.readString(FLOW.resolve(
             "infrastructure/repositories/flows/FlowRepositoryImpl.java"
         ));
-        String executions = Files.readString(FLOW.resolve(
-            "infrastructure/repositories/executions/"
-                + "ExecutionRepositoryImpl.java"
-        ));
         assertTrue(
             invalid.isEmpty()
                 && flows.contains("fetchOneInto(FlowEntry.class)")
                 && flows.contains("fetchInto(FlowEntry.class)")
-                && flows.contains("fetchInto(FlowTaskEntry.class)")
-                && executions.contains(
-                    "fetchOneInto(ExecutionEntry.class)"
-                )
-                && executions.contains("fetchInto(TaskRunEntry.class)"),
+                && flows.contains("fetchInto(FlowTaskEntry.class)"),
             () -> "PostgreSQL table reads must map directly into Entries: "
                 + invalid
         );
@@ -641,6 +640,13 @@ class CoreArchitectureStandardTest {
         );
     }
 
+    /**
+     * Preserves Flow and Queue batching and rejects generated Record allocation
+     * in batch writers. Real PostgreSQL tests verify Execution snapshot
+     * atomicity and stale-write rejection without prescribing SQL syntax.
+     *
+     * @throws IOException when a repository or queue source cannot be read
+     */
     @Test
     void postgresBatchWritesBuildOneValuesInsert() throws IOException {
         String flows = Files.readString(FLOW.resolve(
@@ -658,9 +664,6 @@ class CoreArchitectureStandardTest {
             flows.contains("values(FlowTaskEntry.from(")
                 && flows.contains("values.execute()")
                 && !flows.contains("newRecord()")
-                && executions.contains("TaskRunEntry entry = TaskRunEntry.from(")
-                && executions.contains("values.values(")
-                && executions.contains("values.execute()")
                 && !executions.contains("newRecord()")
                 && queue.contains("values.values(")
                 && queue.contains("values.execute()")

@@ -16,7 +16,7 @@ import java.util.Optional;
  * a rewind range, while an iterative orchestration TaskRun uses it for its
  * loop rounds.</p>
  */
-public final class Generation {
+public class Generation {
 
     private Current current;
     private History history;
@@ -51,10 +51,36 @@ public final class Generation {
         start(null, null, reason);
     }
 
+    /**
+     * Starts a new generation; an existing active generation must first complete. This overload keeps the legacy interval contract.
+     *
+     * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+     * @param targetTaskRunId target occurrence ID, or null together with source
+     * @param reason nonblank reason, trimmed before storage
+     * @throws WorkflowException when active-generation state does not permit the transition
+     */
     public void start(
             String sourceTaskRunId,
             String targetTaskRunId,
             String reason
+    ) {
+        start(sourceTaskRunId, targetTaskRunId, reason, List.of());
+    }
+
+    /**
+     * Starts a new generation; an existing active generation must first complete.
+     *
+     * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+     * @param targetTaskRunId target occurrence ID, or null together with source
+     * @param reason nonblank reason, trimmed before storage
+     * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+     * @throws WorkflowException when active-generation state does not permit the transition
+     */
+    public void start(
+            String sourceTaskRunId,
+            String targetTaskRunId,
+            String reason,
+            List<String> affectedTaskRunIds
     ) {
         if (current != null) {
             throw new WorkflowException(
@@ -66,7 +92,8 @@ public final class Generation {
                 nextVersion(),
                 sourceTaskRunId,
                 targetTaskRunId,
-                reason
+                reason,
+                affectedTaskRunIds
         );
     }
 
@@ -74,17 +101,44 @@ public final class Generation {
         advance(null, null, reason);
     }
 
+    /**
+     * Archives the current generation and starts the next version. This overload keeps the legacy interval contract.
+     *
+     * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+     * @param targetTaskRunId target occurrence ID, or null together with source
+     * @param reason nonblank reason, trimmed before storage
+     * @throws WorkflowException when active-generation state does not permit the transition
+     */
     public void advance(
             String sourceTaskRunId,
             String targetTaskRunId,
             String reason
+    ) {
+        advance(sourceTaskRunId, targetTaskRunId, reason, List.of());
+    }
+
+    /**
+     * Archives the current generation and starts the next version.
+     *
+     * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+     * @param targetTaskRunId target occurrence ID, or null together with source
+     * @param reason nonblank reason, trimmed before storage
+     * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+     * @throws WorkflowException when active-generation state does not permit the transition
+     */
+    public void advance(
+            String sourceTaskRunId,
+            String targetTaskRunId,
+            String reason,
+            List<String> affectedTaskRunIds
     ) {
         requireCurrent();
         Current next = Current.now(
                 nextVersion(),
                 sourceTaskRunId,
                 targetTaskRunId,
-                reason
+                reason,
+                affectedTaskRunIds
         );
         archiveCurrent();
         current = next;
@@ -134,20 +188,33 @@ public final class Generation {
         }
     }
 
-    public static final class Current {
+    public static class Current {
 
-        private final int version;
-        private final String sourceTaskRunId;
-        private final String targetTaskRunId;
-        private final String reason;
-        private final long date;
+        private int version;
+        private String sourceTaskRunId;
+        private String targetTaskRunId;
+        private String reason;
+        private long date;
+        private List<String> affectedTaskRunIds;
 
+        /**
+         * Validates and copies one persisted generation record.
+         *
+         * @param version positive generation number
+         * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+         * @param targetTaskRunId target occurrence ID, or null together with source
+         * @param reason nonblank reason, trimmed before storage
+         * @param date nonnegative creation time in Unix epoch milliseconds
+         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+         * @throws IllegalArgumentException when coordinates, reason, version or affected IDs are invalid
+         */
         private Current(
                 int version,
                 String sourceTaskRunId,
                 String targetTaskRunId,
                 String reason,
-                long date
+                long date,
+                List<String> affectedTaskRunIds
         ) {
             if (version < 1) {
                 throw new IllegalArgumentException(
@@ -171,23 +238,52 @@ public final class Generation {
             this.targetTaskRunId = target;
             this.reason = requireText(reason, "Generation reason");
             this.date = date;
+            this.affectedTaskRunIds = List.copyOf(affectedTaskRunIds);
+            if (this.affectedTaskRunIds.stream().anyMatch(id -> id == null || id.isBlank())
+                    || this.affectedTaskRunIds.stream().distinct().count() != this.affectedTaskRunIds.size()) {
+                throw new IllegalArgumentException("Affected TaskRun IDs must be nonblank and unique");
+            }
         }
 
+        /**
+         * Creates a validated generation record using the current epoch millisecond timestamp.
+         *
+         * @param version positive generation number
+         * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+         * @param targetTaskRunId target occurrence ID, or null together with source
+         * @param reason nonblank reason, trimmed before storage
+         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+         * @return a new immutable record
+         * @throws IllegalArgumentException when coordinates or affected IDs are invalid
+         */
         private static Current now(
                 int version,
                 String sourceTaskRunId,
                 String targetTaskRunId,
-                String reason
+                String reason,
+                List<String> affectedTaskRunIds
         ) {
             return new Current(
                     version,
                     sourceTaskRunId,
                     targetTaskRunId,
                     reason,
-                    TimeUtil.now()
+                    TimeUtil.now(),
+                    affectedTaskRunIds
             );
         }
 
+        /**
+         * Restores a legacy generation without an explicit affected-occurrence set.
+         *
+         * @param version positive generation number
+         * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+         * @param targetTaskRunId target occurrence ID, or null together with source
+         * @param reason nonblank reason, trimmed before storage
+         * @param date nonnegative creation time in Unix epoch milliseconds
+         * @return a new validated record with an empty explicit affected set
+         * @throws IllegalArgumentException when persisted values are invalid
+         */
         public static Current rehydrate(
                 int version,
                 String sourceTaskRunId,
@@ -195,13 +291,35 @@ public final class Generation {
                 String reason,
                 long date
         ) {
-            return new Current(
-                    version,
-                    sourceTaskRunId,
-                    targetTaskRunId,
-                    reason,
-                    date
-            );
+            return rehydrate(version, sourceTaskRunId, targetTaskRunId, reason, date, List.of());
+        }
+
+        /**
+         * Restores the exact persisted generation and its copied affected-occurrence set.
+         *
+         * @param version positive generation number
+         * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
+         * @param targetTaskRunId target occurrence ID, or null together with source
+         * @param reason nonblank reason, trimmed before storage
+         * @param date nonnegative creation time in Unix epoch milliseconds
+         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+         * @return a new validated record
+         * @throws IllegalArgumentException when persisted values are invalid
+         */
+        public static Current rehydrate(
+                int version, String sourceTaskRunId, String targetTaskRunId,
+                String reason, long date, List<String> affectedTaskRunIds
+        ) {
+            return new Current(version, sourceTaskRunId, targetTaskRunId, reason, date, affectedTaskRunIds);
+        }
+
+        /**
+         * Exposes the exact recorded invalidation set without permitting collection mutation.
+         *
+         * @return the immutable ID list; empty denotes a loop or legacy record
+         */
+        public List<String> affectedTaskRunIds() {
+            return affectedTaskRunIds;
         }
 
         public int version() {
@@ -224,6 +342,12 @@ public final class Generation {
             return date;
         }
 
+        /**
+         * Compares every persisted generation field including exact invalidations.
+         *
+         * @param value other value, or null
+         * @return true only for equal generation records
+         */
         @Override
         public boolean equals(Object value) {
             return this == value
@@ -232,9 +356,15 @@ public final class Generation {
                     && date == other.date
                     && Objects.equals(sourceTaskRunId, other.sourceTaskRunId)
                     && Objects.equals(targetTaskRunId, other.targetTaskRunId)
-                    && reason.equals(other.reason);
+                    && reason.equals(other.reason)
+                    && affectedTaskRunIds.equals(other.affectedTaskRunIds);
         }
 
+        /**
+         * Hashes every persisted field used by equality.
+         *
+         * @return hash consistent with the full generation record
+         */
         @Override
         public int hashCode() {
             return Objects.hash(
@@ -242,14 +372,15 @@ public final class Generation {
                     sourceTaskRunId,
                     targetTaskRunId,
                     reason,
-                    date
+                    date,
+                    affectedTaskRunIds
             );
         }
     }
 
-    public static final class History {
+    public static class History {
 
-        private final List<Current> currents;
+        private List<Current> currents;
 
         private History(List<Current> currents) {
             Objects.requireNonNull(currents, "Generation history currents");

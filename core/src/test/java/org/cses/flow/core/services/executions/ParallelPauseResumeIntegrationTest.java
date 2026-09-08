@@ -8,16 +8,120 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTaskRunRef;
 
 class ParallelPauseResumeIntegrationTest {
+
+    /**
+     * Resumes a queried parallel Pause while another branch is running. The
+     * running branch is released afterward; both results must be retained and
+     * the join must execute once.
+     *
+     * @throws InterruptedException when the controlled Worker wait is interrupted
+     */
+    @Test
+    void resumesPausedBranchWhileSiblingWorkerIsRunning()
+        throws InterruptedException {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.openWithProperties(
+            Map.of("flow.test.workflow-task", true)
+        )) {
+            Flow flow = fixture.deploy("""
+                key: parallel-running-sibling-resume
+                description: resume one Pause while its sibling is running
+                tasks:
+                  - key: start-checks
+                    type: org.cses.flow.extensions.flow.Parallel
+                    tasks:
+                      - key: backend-check
+                        type: org.cses.flow.extensions.flow.Pause
+                        pause:
+                          key: create-backend-check
+                          type: org.cses.flow.extensions.log.Log
+                          message: "backend ready"
+                        resume:
+                          - key: backendResult
+                            type: STRING
+                        outputs:
+                          - key: backendResult
+                            type: STRING
+                      - key: frontend-branch
+                        type: org.cses.flow.extensions.flow.Sequence
+                        tasks:
+                          - key: frontend-check
+                            type: org.cses.flow.extensions.flow.Pause
+                            pause:
+                              key: create-frontend-check
+                              type: org.cses.flow.extensions.log.Log
+                              message: "frontend ready"
+                            resume:
+                              - key: frontendResult
+                                type: STRING
+                            outputs:
+                              - key: frontendResult
+                                type: STRING
+                          - key: target-block
+                            type: org.cses.flow.core.services.executions.TestWorkflowTask
+                  - key: join-checks
+                    type: org.cses.flow.extensions.log.Log
+                    message: "checks joined"
+                  - key: finish
+                    type: org.cses.flow.extensions.log.Log
+                    message: "finished"
+                """);
+            Execution started = fixture.startAndAwait(flow);
+            PausedTaskRunRef frontend = fixture.waitingForOutput(
+                started.id(), "frontendResult"
+            );
+            TestWorkflowTask.blockNextRun();
+            try {
+                fixture.executionService().resume(
+                    fixture.session(), started.id(), frontend.taskRunId(),
+                    Map.of("frontendResult", "PASS")
+                );
+                assertTrue(TestWorkflowTask.awaitBlockingRun());
+
+                assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+                    Execution running = fixture.executionService().execution(
+                        fixture.session(), started.id()
+                    ).orElseThrow();
+                    assertEquals(State.Type.RUNNING, running.state().current());
+                    TaskRun backend = run(running, task(flow, "backend-check"));
+                    assertEquals(State.Type.PAUSED, backend.state().current());
+                    PausedTaskRunRef currentBackend = waiting(fixture, backend);
+                    assertNoRun(running, task(flow, "join-checks"));
+                    fixture.executionService().resume(
+                        fixture.session(), started.id(), currentBackend.taskRunId(),
+                        Map.of("backendResult", "PASS")
+                    );
+                });
+            } finally {
+                TestWorkflowTask.releaseBlockingRun();
+            }
+
+            Execution completed = fixture.awaitExecution(
+                fixture.session(), started.id(), Execution::isTerminal
+            );
+            assertEquals(State.Type.SUCCESS, completed.state().current());
+            assertEquals(Map.of("backendResult", "PASS"),
+                run(completed, task(flow, "backend-check")).outputs());
+            assertEquals(Map.of("frontendResult", "PASS"),
+                run(completed, task(flow, "frontend-check")).outputs());
+            assertEquals(1, countRuns(completed, task(flow, "target-block")));
+            assertEquals(1, countRuns(completed, task(flow, "join-checks")));
+            assertEquals(1, countRuns(completed, task(flow, "finish")));
+            assertTrue(completed.activeTaskRuns().isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
+        }
+    }
 
     @Test
     void resumingBothParallelBranchesJoinsOnce() {
