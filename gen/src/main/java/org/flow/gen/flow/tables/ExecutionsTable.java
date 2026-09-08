@@ -85,9 +85,9 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, JSONB> GENERATION = createField(DSL.name("generation"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{\"current\": null, \"history\": []}'::jsonb"), SQLDataType.JSONB)), this, "");
 
     /**
-     * The column <code>public.executions.lock_version</code>.
+     * The column <code>public.executions.lock</code>.
      */
-    public final TableField<ExecutionsRecord, Long> LOCK_VERSION = createField(DSL.name("lock_version"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
+    public final TableField<ExecutionsRecord, Long> LOCK = createField(DSL.name("lock"), SQLDataType.BIGINT.nullable(false).defaultValue(DSL.field(DSL.raw("0"), SQLDataType.BIGINT)), this, "");
 
     /**
      * The column <code>public.executions.creator</code>.

@@ -31,7 +31,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public Long flowVersion;
     public JSONB state;
     public JSONB generation;
-    public Long lockVersion;
+    public Long lock;
     public JSONB creator;
     public Long createdAt;
     public JsonObject inputs;
@@ -45,7 +45,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.flowVersion = value.flowVersion;
         this.state = value.state;
         this.generation = value.generation;
-        this.lockVersion = value.lockVersion;
+        this.lock = value.lock;
         this.creator = value.creator;
         this.createdAt = value.createdAt;
         this.inputs = value.inputs;
@@ -58,7 +58,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         Long flowVersion,
         JSONB state,
         JSONB generation,
-        Long lockVersion,
+        Long lock,
         JSONB creator,
         Long createdAt,
         JsonObject inputs
@@ -69,7 +69,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.flowVersion = flowVersion;
         this.state = state;
         this.generation = generation;
-        this.lockVersion = lockVersion;
+        this.lock = lock;
         this.creator = creator;
         this.createdAt = createdAt;
         this.inputs = inputs;
@@ -160,17 +160,17 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     }
 
     /**
-     * Getter for <code>public.executions.lock_version</code>.
+     * Getter for <code>public.executions.lock</code>.
      */
-    public Long getLockVersion() {
-        return this.lockVersion;
+    public Long getLock() {
+        return this.lock;
     }
 
     /**
-     * Setter for <code>public.executions.lock_version</code>.
+     * Setter for <code>public.executions.lock</code>.
      */
-    public void setLockVersion(Long lockVersion) {
-        this.lockVersion = lockVersion;
+    public void setLock(Long lock) {
+        this.lock = lock;
     }
 
     /**
@@ -260,11 +260,11 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.generation.equals(other.generation))
             return false;
-        if (this.lockVersion == null) {
-            if (other.lockVersion != null)
+        if (this.lock == null) {
+            if (other.lock != null)
                 return false;
         }
-        else if (!this.lockVersion.equals(other.lockVersion))
+        else if (!this.lock.equals(other.lock))
             return false;
         if (this.creator == null) {
             if (other.creator != null)
@@ -297,7 +297,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
         result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
         result = prime * result + ((this.generation == null) ? 0 : this.generation.hashCode());
-        result = prime * result + ((this.lockVersion == null) ? 0 : this.lockVersion.hashCode());
+        result = prime * result + ((this.lock == null) ? 0 : this.lock.hashCode());
         result = prime * result + ((this.creator == null) ? 0 : this.creator.hashCode());
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
@@ -331,7 +331,7 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         map.put("flow_version", flowVersion);
         map.put("state", state);
         map.put("generation", generation);
-        map.put("lock_version", lockVersion);
+        map.put("lock", lock);
         map.put("creator", creator);
         map.put("created_at", createdAt);
         map.put("inputs", inputs == null ? null : inputs.toString());

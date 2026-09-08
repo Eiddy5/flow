@@ -16,6 +16,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.WeakHashMap;
+import java.util.function.Function;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
@@ -25,8 +27,43 @@ import static org.jooq.impl.DSL.*;
 @Singleton
 public class ExecutionRepositoryImpl implements ExecutionRepository {
 
-    private Map<Execution, String> versions = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
-    private static Field<String> storageVersion = field("{0}.xmin::text", String.class, EXECUTIONS);
+    /** 派生 DSL 共享同一会话标记，防止会话退出后通过派生配置继续写入。 */
+    private static class LoadedLocks extends WeakHashMap<Execution, Long> {
+        private boolean closed;
+    }
+
+    /**
+     * 为一次操作隔离加载版本；弱键不延长领域对象生命周期，结束时立即清理。
+     *
+     * @param <T> 操作结果类型
+     * @param dsl 调用方上下文，不在这里开启数据库事务
+     * @param operation 使用独立会话 DSL 的操作
+     * @return 操作结果
+     */
+    @Override
+    public <T> T inScope(DSLContext dsl, Function<DSLContext, T> operation) {
+        DSLContext scoped = dsl.configuration().derive().dsl();
+        LoadedLocks locks = new LoadedLocks();
+        scoped.configuration().data(ExecutionRepositoryImpl.class, locks);
+        try {
+            return operation.apply(scoped);
+        } finally {
+            locks.closed = true;
+            locks.clear();
+            scoped.configuration().data().remove(ExecutionRepositoryImpl.class);
+        }
+    }
+
+    /**
+     * 取得当前会话的技术版本表；普通查询没有会话时不登记写入版本。
+     *
+     * @param dsl 当前数据库上下文
+     * @return 会话版本表，未进入会话时为 null
+     */
+    private Map<Execution, Long> locks(DSLContext dsl) {
+        LoadedLocks locks = (LoadedLocks) dsl.configuration().data(ExecutionRepositoryImpl.class);
+        return locks == null || locks.closed ? null : locks;
+    }
 
     /**
      * Loads one aggregate and its ordered children from one database snapshot.
@@ -64,13 +101,16 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
                 .where(TASK_RUNS.EXECUTION_ID.eq(EXECUTIONS.ID))
                 .orderBy(TASK_RUNS.ORDER.asc()))
                 .convertFrom(rows -> rows.into(TaskRunEntry.class));
-        return dsl.select(EXECUTIONS.fields()).select(storageVersion.as("storage_version"), children)
+        Map<Execution, Long> locks = locks(dsl);
+        return dsl.select(EXECUTIONS.fields()).select(children)
                 .from(EXECUTIONS).where(condition)
                 .orderBy(EXECUTIONS.CREATED_AT.asc(), EXECUTIONS.ID.asc())
                 .fetch(row -> {
                     ExecutionEntry entry = row.into(ExecutionEntry.class);
                     Execution execution = entry.to(row.get(children).stream().map(TaskRunEntry::to).toList());
-                    versions.put(execution, entry.storageVersion);
+                    if (locks != null) {
+                        locks.put(execution, entry.lock);
+                    }
                     return execution;
                 });
     }
@@ -89,22 +129,40 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
     /**
      * Writes the already changed domain and all children in one SQL statement.
      * No state transition or business decision is performed by this storage operation.
-     * @param dsl database context without a caller-owned business transaction
+     * @param dsl active repository-scope database context
      * @param execution complete domain snapshot to store
      * @throws org.jooq.exception.DataChangedException when the loaded snapshot has become stale
      * @throws WorkflowException when storage rejects the aggregate
+     * @throws IllegalStateException when the repository scope is absent or closed
      */
     @Override
     public void save(DSLContext dsl, Execution execution) {
+        Map<Execution, Long> locks = locks(dsl);
+        if (locks == null) {
+            throw new IllegalStateException("Execution save requires an active repository scope");
+        }
+        Long expected = locks.put(execution, -1L);
+        if (expected != null && expected < 0) {
+            throw new org.jooq.exception.DataChangedException("Execution save failed; reload before saving again");
+        }
         ExecutionEntry entry = ExecutionEntry.from(execution);
         var fields = entry.toMap();
-        fields.remove("lock_version");
-        String expected = versions.get(execution);
-        var parent = name("stored_execution").as(dsl.insertInto(EXECUTIONS)
-                .set(fields).onConflict(EXECUTIONS.COMPANY_ID, EXECUTIONS.ID)
-                .doUpdate().set(fields)
-                .where(expected == null ? falseCondition() : storageVersion.eq(expected))
-                .returningResult(EXECUTIONS.ID, storageVersion.as("storage_version")));
+        fields.remove(EXECUTIONS.LOCK.getName());
+        org.jooq.ResultQuery<org.jooq.Record2<String, Long>> root;
+        if (expected == null) {
+            root = dsl.insertInto(EXECUTIONS).set(fields).set(EXECUTIONS.LOCK, 0L)
+                    .onConflict(EXECUTIONS.COMPANY_ID, EXECUTIONS.ID).doNothing()
+                    .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK);
+        } else {
+            fields.remove(EXECUTIONS.COMPANY_ID.getName());
+            fields.remove(EXECUTIONS.ID.getName());
+            root = dsl.update(EXECUTIONS).set(fields)
+                    .set(EXECUTIONS.LOCK, EXECUTIONS.LOCK.add(1L))
+                    .where(EXECUTIONS.COMPANY_ID.eq(entry.companyId))
+                    .and(EXECUTIONS.ID.eq(entry.id)).and(EXECUTIONS.LOCK.eq(expected))
+                    .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK);
+        }
+        var parent = name("stored_execution").as(root);
         List<String> ids = execution.taskRuns().stream().map(TaskRun::id).toList();
         var removed = name("removed_task_runs").as(dsl.deleteFrom(TASK_RUNS)
                 .where(TASK_RUNS.EXECUTION_ID.in(select(parent.field(EXECUTIONS.ID)).from(parent)))
@@ -129,13 +187,14 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
                 }
                 statements.add(name("stored_task_runs").as(dsl.insertInto(TASK_RUNS).columns(TASK_RUNS.fields())
                         .select(select(incoming.fields()).from(incoming).where(exists(selectOne().from(parent))))
-                        .onConflict(TASK_RUNS.ID).doUpdate().set(updates).returning(TASK_RUNS.ID)));
+                        .onConflict(TASK_RUNS.EXECUTION_ID, TASK_RUNS.ID)
+                        .doUpdate().set(updates).returning(TASK_RUNS.ID)));
             }
             var saved = dsl.with(statements).selectFrom(parent).fetchOne();
             if (saved == null) {
                 throw new org.jooq.exception.DataChangedException("Execution snapshot changed; reload before saving");
             }
-            versions.put(execution, saved.get("storage_version", String.class));
+            locks.put(execution, saved.get(EXECUTIONS.LOCK));
         } catch (org.jooq.exception.DataChangedException conflict) {
             throw conflict;
         } catch (DataAccessException exception) {

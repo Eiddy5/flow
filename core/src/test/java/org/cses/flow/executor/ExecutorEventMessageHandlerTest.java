@@ -262,11 +262,24 @@ final class ExecutorEventMessageHandlerTest {
         );
     }
 
-    private static final class TestExecutionRepository
+    private static class TestExecutionRepository
         implements ExecutionRepository {
 
-        private final Map<ExecutionKey, Execution> executions =
+        private Map<ExecutionKey, Execution> executions =
             new HashMap<>();
+
+        /**
+         * 本地状态机测试直接执行仓储操作，不模拟 PostgreSQL 并发协议。
+         *
+         * @param <T> 返回值类型
+         * @param dsl 测试上下文
+         * @param operation 仓储操作
+         * @return 操作结果
+         */
+        @Override
+        public <T> T inScope(DSLContext dsl, java.util.function.Function<DSLContext, T> operation) {
+            return operation.apply(dsl);
+        }
 
         @Override
         public Optional<Execution> findById(

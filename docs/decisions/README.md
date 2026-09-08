@@ -3,6 +3,8 @@
 当前运行时持久化边界以 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md) 为准：
 普通读取领域、调用领域方法、完整快照保存；不使用业务事务或锁定读取。
 下列早期 ADR 的事务表述按该决策修订，Queue 传输事务保留。
+Execution 的显式 `lock` CAS 和加载元数据清理以
+[ADR 0086](0086-use-scoped-execution-lock-for-cas.md) 为准。
 
 ## 文档定位
 

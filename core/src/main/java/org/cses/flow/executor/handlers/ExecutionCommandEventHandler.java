@@ -89,19 +89,20 @@ public class ExecutionCommandEventHandler implements
                 "command"
         );
         accepted.validate();
-        DSLContext dsl = jooq.createDSLContext();
-        route(dsl, accepted);
-        Execution execution = executionRepository.findById(dsl, companyId(accepted), accepted.key())
-                .orElseThrow(() -> new WorkflowException("Execution does not exist: " + accepted.key()));
-        if (!execution.isTerminal()) {
-            ExecutorEvent.EventType type = switch (execution.state().current()) {
-                case CREATED -> ExecutorEvent.EventType.CREATED;
-                case KILLING -> ExecutorEvent.EventType.TERMINATED;
-                default -> ExecutorEvent.EventType.UPDATED;
-            };
-            eventQueue.emit(ExecutorEvent.from(execution, type));
-        }
-        return Optional.empty();
+        return executionRepository.inScope(jooq.createDSLContext(), dsl -> {
+            route(dsl, accepted);
+            Execution execution = executionRepository.findById(dsl, companyId(accepted), accepted.key())
+                    .orElseThrow(() -> new WorkflowException("Execution does not exist: " + accepted.key()));
+            if (!execution.isTerminal()) {
+                ExecutorEvent.EventType type = switch (execution.state().current()) {
+                    case CREATED -> ExecutorEvent.EventType.CREATED;
+                    case KILLING -> ExecutorEvent.EventType.TERMINATED;
+                    default -> ExecutorEvent.EventType.UPDATED;
+                };
+                eventQueue.emit(ExecutorEvent.from(execution, type));
+            }
+            return Optional.empty();
+        });
     }
 
     /**

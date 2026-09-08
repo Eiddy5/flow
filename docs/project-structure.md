@@ -393,6 +393,8 @@ Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护�
 当前 Execution 启动和内部周期交接均依赖 Dispatch Queue；外部 Command Handler 与
 内部 Event Handler 分别加载领域、执行领域方法并完整保存，Worker 回调不持有业务事务。
 Execution 的完整快照保存与冲突检测见 [ADR 0084](decisions/0084-save-domain-snapshots-without-business-transactions.md)。
+Execution 写入通过 Repository 的 `inScope` 使用独立仓储会话；加载版本只在该会话
+保留并于结束时清理，显式 `lock` CAS 见 [ADR 0086](decisions/0086-use-scoped-execution-lock-for-cas.md)。
 `core/services/executions/RewindPath` 负责嵌套路径的前驱与影响范围计算；精确 Generation 失效范围和部分祖先重开见 [ADR 0085](decisions/0085-rewind-across-nested-orchestration-scopes.md)。
 具体 Queue Adapter 放入对应基础设施目录；Default Adapter 负责消息自己的传输事务和
 周期轮询消费生命周期。完整决策见

@@ -26,7 +26,7 @@ Flow Core 曾通过 `Lockable` 为 Flow 与 Execution 暴露技术乐观锁版�
 - 领域确认的业务唯一键由 PostgreSQL 主键或唯一索引保护，Repository 负责把唯一
   冲突转换为稳定的持久化冲突。需要行锁、CAS 或特定事务隔离时，由对应 Repository
   决策并实现。
-- PostgreSQL `executions.lock_version` 是数据库基础设施字段，Entry 不把它映射进
+- PostgreSQL `executions.lock` 是数据库基础设施字段（字段名由 ADR 0086 修订），Entry 不把它映射进
   领域对象，也不从领域对象写回。
 - `queues` 表消费时使用的数据库行锁属于消息消费互斥机制，不是领域对象能力，继续
   由 Queue Adapter 自己负责。

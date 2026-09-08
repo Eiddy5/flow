@@ -105,16 +105,16 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     }
 
     /**
-     * Setter for <code>public.executions.lock_version</code>.
+     * Setter for <code>public.executions.lock</code>.
      */
-    public void setLockVersion(Long value) {
+    public void setLock(Long value) {
         set(6, value);
     }
 
     /**
-     * Getter for <code>public.executions.lock_version</code>.
+     * Getter for <code>public.executions.lock</code>.
      */
-    public Long getLockVersion() {
+    public Long getLock() {
         return (Long) get(6);
     }
 
@@ -183,7 +183,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, JSONB state, JSONB generation, Long lockVersion, JSONB creator, Long createdAt, JsonObject inputs) {
+    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, JSONB state, JSONB generation, Long lock, JSONB creator, Long createdAt, JsonObject inputs) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
@@ -192,7 +192,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         setFlowVersion(flowVersion);
         setState(state);
         setGeneration(generation);
-        setLockVersion(lockVersion);
+        setLock(lock);
         setCreator(creator);
         setCreatedAt(createdAt);
         setInputs(inputs);
@@ -213,7 +213,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setFlowVersion(value.flowVersion);
             setState(value.state);
             setGeneration(value.generation);
-            setLockVersion(value.lockVersion);
+            setLock(value.lock);
             setCreator(value.creator);
             setCreatedAt(value.createdAt);
             setInputs(value.inputs);
@@ -228,7 +228,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.flowVersion = getFlowVersion();
         object.state = getState();
         object.generation = getGeneration();
-        object.lockVersion = getLockVersion();
+        object.lock = getLock();
         object.creator = getCreator();
         object.createdAt = getCreatedAt();
         object.inputs = getInputs();
@@ -248,7 +248,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.flowVersion = getFlowVersion();
         pojo.state = getState();
         pojo.generation = getGeneration();
-        pojo.lockVersion = getLockVersion();
+        pojo.lock = getLock();
         pojo.creator = getCreator();
         pojo.createdAt = getCreatedAt();
         pojo.inputs = getInputs();

@@ -12,10 +12,12 @@ import java.util.List;
 
 public class ExecutionEntry extends ExecutionsObject {
 
-    /** PostgreSQL snapshot token used only by the repository, outside the domain model. */
-    public String storageVersion;
-
-
+    /**
+     * 将领域事实转换为数据库字段，技术 lock 由仓储独立管理。
+     *
+     * @param execution 完整领域聚合
+     * @return 待保存的根行
+     */
     public static ExecutionEntry from(Execution execution) {
         ExecutionEntry entry = new ExecutionEntry();
         entry.id = execution.id();

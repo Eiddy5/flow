@@ -53,7 +53,7 @@ erDiagram
         bigint flow_version
         jsonb state
         jsonb generation
-        bigint lock_version
+        bigint lock
         jsonb creator
         bigint created_at
     }
@@ -138,6 +138,37 @@ FLOW_POSTGRES_TEST_PASSWORD=flow \
 
 未设置 `FLOW_POSTGRES_TEST_URL` 时，Repository 集成测试会跳过。
 
+Execution 写操作使用 `executionRepository.inScope(dsl, scoped -> ...)`；读取、领域修改
+和保存使用回调中的 `scoped`。会话结束即清除加载版本，不能把查询副本带到另一个
+会话直接更新。该 API 不开启业务事务，根 CAS 与 TaskRun 保存仍通过单 SQL 原子提交。
+`lock` 初始为 0，每次成功更新加 1；重复读取不改变它。完整并发回归还应运行：
+
+```bash
+./gradlew :core:test --tests '*ExecutionCasIntegrationTest'
+```
+
+此命令使用上文相同的 Java 与 PostgreSQL 环境变量。字段更名后，已有开发库必须
+显式重建；基线的 `IF NOT EXISTS` 不会把旧列自动改名。验证优先使用独立临时数据库，
+不要为了运行测试清空现有开发数据。
+
+### 2026-09-08 CAS 改造验证
+
+使用单独创建的 PostgreSQL 17.10 数据库，未修改本机已有开发库。Schema 验证脚本
+在另一个临时容器中成功执行完整基线两次；JOOQ 从新基线重新生成。
+
+- `ExecutionCasIntegrationTest`：7/7，通过两线程真实并发写、同事务连续保存与重复
+  加载、正常/异常会话清理（含派生 DSL）、脱离会话的快照拒绝、子写失败回滚、
+  子记录身份冲突和陈旧快照不能重新插入已删除根。
+- `PostgresRepositoryIntegrationTest`：7/7，验证 Flow/Execution 往返、根子失败原子性
+  和当前 Schema；依据 ADR 0072 修正了仍要求已删除审计列存在的两项旧断言。
+- `ExecutorEventMessageHandlerTest`：4/4，为本地状态机回归，不是数据库或业务验收。
+- `:server:flowQueryProbe`：正常模式执行成功，仅验证 SQL 生成探针能复用新会话接口，
+  不是数据库性能验收；旧测量报告的 SQL 长度不回填为新实现数据。
+- CAS HTML 原型只检查了脚本语法和新字段名，没有把它当作 PostgreSQL 验证证据。
+
+以上 18 项定向测试不替代 UC 逐场景验收；UC、模块和完整构建结果以本次
+`docs/test-reports/flow/` 报告为准。
+
 ## 运行 UC 测试
 
 UC-01～UC-08 通过 Micronaut Core 的公开 Service/Command 链路装配生产
@@ -172,3 +203,7 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
 
 也可通过 `FLOW_JOOQ_JDBC_URL`、`FLOW_JOOQ_JDBC_USER` 和
 `FLOW_JOOQ_JDBC_PASSWORD` 指向一次性代码生成数据库。
+
+2026-09-08 验证环境注意：当前已解析的 Micronaut/PAAS 依赖要求 JVM 25，Java 21
+会在依赖解析阶段失败。本次生成和验证仅为命令选用本机 JDK 25，没有改动项目的
+Java 21 源码约定或依赖版本；这不构成 Java 21 构建通过的证据。

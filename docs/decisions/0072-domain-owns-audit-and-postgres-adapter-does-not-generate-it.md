@@ -25,7 +25,7 @@ PostgreSQL Repository 曾通过 `PostgresAudit` 从 JOOQ 配置上下文读取�
   Adapter 的基础设施字段，不是审计字段。
 - 数据库不通过默认值、生成列或索引生成、复制或改变领域审计事实。开发期 Schema
   变化时重建基线并重新生成 JOOQ，不为旧基线增加迁移脚本。
-- `executions.lock_version` 是并发基础设施字段，不是审计字段，Entry 不将它映射到
+- `executions.lock` 是并发基础设施字段（字段名由 ADR 0086 修订），不是审计字段，Entry 不将它映射到
   领域对象。
 
 ## 理由

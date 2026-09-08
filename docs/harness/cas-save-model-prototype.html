@@ -164,9 +164,11 @@
 <main>
     <h1>PROTOTYPE — CAS 聚合保存模型</h1>
     <p class="notice">
-        要回答的问题：在 <code>lock_version</code> 不进入领域对象的前提下，Repository
+        要回答的问题：在 <code>lock</code> 不进入领域对象的前提下，Repository
         能否用“加载时版本”拒绝陈旧写，并让 Execution 根行与 TaskRun 子记录保持原子一致？
         这是一次性逻辑原型，不是生产实现。
+        当前仓储使用独立会话保存加载版本，不开启跨 Worker 业务事务；边界见
+        <a href="../decisions/0086-use-scoped-execution-lock-for-cas.md">ADR 0086</a>。
     </p>
 
     <h2>当前状态</h2>
@@ -214,22 +216,22 @@
         <tr><th>情况</th><th>Repository 行为</th><th>可观察结果</th></tr>
         </thead>
         <tbody>
-        <tr><td>首次保存</td><td>直接 INSERT，<code>lock_version = 0</code></td><td>主键/唯一键竞争只有一个成功</td></tr>
+        <tr><td>首次保存</td><td>直接 INSERT，<code>lock = 0</code></td><td>主键/唯一键竞争只有一个成功</td></tr>
         <tr><td>已有聚合保存</td><td>使用加载时版本执行单条 CAS UPDATE</td><td>恰好更新一行才成功</td></tr>
         <tr><td>陈旧版本</td><td>根行 UPDATE 返回零行，立即停止</td><td>抛持久化冲突，子记录不变</td></tr>
         <tr><td>同一上下文再次保存</td><td>以上一次 RETURNING 的新版本继续 CAS</td><td>每次实际 flush 递增一次</td></tr>
-        <tr><td>未在当前事务加载</td><td>不得猜测最新版本或执行无条件 UPDATE</td><td>按新建 INSERT；重复 ID 转持久化冲突</td></tr>
+        <tr><td>未在当前仓储会话加载</td><td>不得猜测最新版本或执行无条件 UPDATE</td><td>按新建 INSERT；重复 ID 转持久化冲突</td></tr>
         </tbody>
     </table>
 
     <pre><code>UPDATE executions
 SET state = :state,
     generation = :generation,
-    lock_version = lock_version + 1
+    lock = lock + 1
 WHERE company_id = :company_id
   AND id = :id
-  AND lock_version = :expected_lock_version
-RETURNING lock_version;
+  AND lock = :expected_lock
+RETURNING lock;
 
 -- 只有上面的 UPDATE 返回一行后，才在同一事务替换 task_runs。</code></pre>
 
@@ -238,13 +240,13 @@ RETURNING lock_version;
     EXECUTIONS {
         varchar company_id PK
         varchar id PK
-        bigint lock_version
+        bigint lock
         jsonb state
         jsonb generation
     }
     TASK_RUNS {
         varchar id PK
-        varchar execution_id UK
+        varchar execution_id
         jsonb state
         integer order
     }</code></pre>
@@ -268,7 +270,7 @@ const CasModel = (() => {
         database: empty ? null : {
             companyId: "company-1",
             id: "execution-1",
-            lockVersion: 0,
+            lock: 0,
             value: "CREATED",
             children: ["task-run-1"]
         },
@@ -294,7 +296,7 @@ const CasModel = (() => {
                 client.resultType = "conflict";
                 return record(state, `${client.name} 加载失败：数据库为空`);
             }
-            client.expectedVersion = state.database.lockVersion;
+            client.expectedVersion = state.database.lock;
             client.draftValue = state.database.value;
             client.draftChildren = copy(state.database.children);
             client.lastResult = `已加载 v${client.expectedVersion}`;
@@ -343,7 +345,7 @@ const CasModel = (() => {
             state.database = {
                 companyId: "company-1",
                 id: "execution-1",
-                lockVersion: 0,
+                lock: 0,
                 value: client.draftValue,
                 children: copy(client.draftChildren)
             };
@@ -359,16 +361,16 @@ const CasModel = (() => {
                 client.resultType = "conflict";
                 return record(state, `${client.name} 保存被拒绝：禁止猜测 expected version`);
             }
-            if (!state.database || state.database.lockVersion !== client.expectedVersion) {
-                const actual = state.database ? `v${state.database.lockVersion}` : "不存在";
+            if (!state.database || state.database.lock !== client.expectedVersion) {
+                const actual = state.database ? `v${state.database.lock}` : "不存在";
                 client.lastResult = `CAS 冲突：期望 v${client.expectedVersion}，实际 ${actual}`;
                 client.resultType = "conflict";
                 return record(state, `${client.name} CAS 返回零行；根行与子记录均未改变`);
             }
             state.database.value = client.draftValue;
             state.database.children = copy(client.draftChildren);
-            state.database.lockVersion += 1;
-            client.expectedVersion = state.database.lockVersion;
+            state.database.lock += 1;
+            client.expectedVersion = state.database.lock;
             client.lastResult = `保存成功，版本推进到 v${client.expectedVersion}`;
             client.resultType = "success";
             return record(state, `${client.name} CAS 成功；根行与子记录原子保存为 v${client.expectedVersion}`);
@@ -491,7 +493,7 @@ function renderDatabase() {
     target.innerHTML = stateList([
         ["身份", `${state.database.companyId} / ${state.database.id}`],
         ["根状态", state.database.value],
-        ["lock_version", `v${state.database.lockVersion}`],
+        ["lock", `v${state.database.lock}`],
         ["TaskRun", childChips(state.database.children)]
     ]);
 }

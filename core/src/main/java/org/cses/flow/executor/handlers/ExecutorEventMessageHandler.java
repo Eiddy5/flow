@@ -126,7 +126,8 @@ public class ExecutorEventMessageHandler implements
                 "event"
         );
         requireProductionRuntime();
-        return Optional.ofNullable(process(jooq.createDSLContext(), accepted));
+        return executionRepository.inScope(jooq.createDSLContext(),
+                dsl -> Optional.ofNullable(process(dsl, accepted)));
     }
 
     /**

@@ -751,7 +751,7 @@ Entry 列表暴露给 Core 调用方。
 - 更新必须显式指定租户、主键或已确认的业务身份。若业务还要求发现同一已有行的
   并发覆盖，由 Repository 根据 ADR 实现技术冲突检查；当前 Execution 使用完整快照 CAS，
   不使用锁定读取，见 [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
-- `lockVersion` 等纯技术并发字段只属于 Schema、Entry 和 Repository 更新条件，不
+- `lock` 等纯技术并发字段只属于 Schema、Entry 和 Repository 更新条件，不
   进入 Domain，也不能与业务版本混用。
 - `buildUpdateMap()` 自动排除主键，不代表更新语句可以省略主键条件。
 - 使用 CAS 时更新条数必须符合预期；不符合时按持久化协议处理不存在或并发冲突，

@@ -160,6 +160,11 @@ public class FlowQueryProbe {
         }
     }
 
+    /**
+     * 在同一仓储会话中统计首次保存与 CAS 更新的 SQL 规模。
+     * @param session 测试身份
+     * @param count 子记录数量
+     */
     private static void measureSnapshotWrite(Session<User> session, int count) {
         var execution = org.cses.flow.core.domains.executions.Execution.create("snapshot-probe", session, "flow-0", 2, Map.of());
         List<org.cses.flow.core.domains.executions.TaskRun> runs = new ArrayList<>();
@@ -167,19 +172,23 @@ public class FlowQueryProbe {
         execution.startWithTaskRuns(runs);
         DSLContext records = FlowJooqTestConfiguration.configure(DSL.using(SQLDialect.POSTGRES));
         var id = org.flow.gen.flow.Tables.EXECUTIONS.ID;
-        var version = DSL.field("storage_version", String.class);
+        var lock = org.flow.gen.flow.Tables.EXECUTIONS.LOCK;
+        long[] savedLock = {-1L};
         MockConnection connection = new MockConnection(context -> {
             System.out.println("PROBE execution.snapshot taskRuns=" + count + " sql=1 sqlChars=" + context.sql().length()
                 + " bindings=" + context.bindings().length);
-            var result = records.newResult(id, version);
-            result.add(records.newRecord(id, version).values(execution.id(), "42"));
+            var result = records.newResult(id, lock);
+            result.add(records.newRecord(id, lock).values(execution.id(), ++savedLock[0]));
             return new MockResult[]{new MockResult(1, result)};
         });
         var dsl = FlowJooqTestConfiguration.configure(DSL.using(connection, SQLDialect.POSTGRES));
         var repository = new org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl();
-        repository.save(dsl, execution);
-        execution.startTaskRun(runs.get(0).id());
-        repository.save(dsl, execution);
+        repository.inScope(dsl, scoped -> {
+            repository.save(scoped, execution);
+            execution.startTaskRun(runs.get(0).id());
+            repository.save(scoped, execution);
+            return null;
+        });
     }
 
     private static <T> T run(JooqRunnableResult<T> callback, JooqDSLContext dsl) {
