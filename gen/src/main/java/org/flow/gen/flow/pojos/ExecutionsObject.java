@@ -14,6 +14,7 @@ import org.flow.gen.flow.records.ExecutionsRecord;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.jooq.JSONB;
 import org.paas.json.JsonObject;
+import org.paas.json.JsonObjects;
 import org.x9.jooq.common.JooqPojo;
 
 
@@ -29,6 +30,9 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
     public String companyId;
     public String flowKey;
     public Long flowVersion;
+    public String parentId;
+    public String originId;
+    public JsonObjects inheritedTaskRuns;
     public JSONB state;
     public JSONB generation;
     public Long lock;
@@ -43,6 +47,9 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.companyId = value.companyId;
         this.flowKey = value.flowKey;
         this.flowVersion = value.flowVersion;
+        this.parentId = value.parentId;
+        this.originId = value.originId;
+        this.inheritedTaskRuns = value.inheritedTaskRuns;
         this.state = value.state;
         this.generation = value.generation;
         this.lock = value.lock;
@@ -56,6 +63,9 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         String companyId,
         String flowKey,
         Long flowVersion,
+        String parentId,
+        String originId,
+        JsonObjects inheritedTaskRuns,
         JSONB state,
         JSONB generation,
         Long lock,
@@ -67,6 +77,9 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         this.companyId = companyId;
         this.flowKey = flowKey;
         this.flowVersion = flowVersion;
+        this.parentId = parentId;
+        this.originId = originId;
+        this.inheritedTaskRuns = inheritedTaskRuns;
         this.state = state;
         this.generation = generation;
         this.lock = lock;
@@ -129,6 +142,48 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
      */
     public void setFlowVersion(Long flowVersion) {
         this.flowVersion = flowVersion;
+    }
+
+    /**
+     * Getter for <code>public.executions.parent_id</code>.
+     */
+    public String getParentId() {
+        return this.parentId;
+    }
+
+    /**
+     * Setter for <code>public.executions.parent_id</code>.
+     */
+    public void setParentId(String parentId) {
+        this.parentId = parentId;
+    }
+
+    /**
+     * Getter for <code>public.executions.origin_id</code>.
+     */
+    public String getOriginId() {
+        return this.originId;
+    }
+
+    /**
+     * Setter for <code>public.executions.origin_id</code>.
+     */
+    public void setOriginId(String originId) {
+        this.originId = originId;
+    }
+
+    /**
+     * Getter for <code>public.executions.inherited_task_runs</code>.
+     */
+    public JsonObjects getInheritedTaskRuns() {
+        return this.inheritedTaskRuns;
+    }
+
+    /**
+     * Setter for <code>public.executions.inherited_task_runs</code>.
+     */
+    public void setInheritedTaskRuns(JsonObjects inheritedTaskRuns) {
+        this.inheritedTaskRuns = inheritedTaskRuns;
     }
 
     /**
@@ -248,6 +303,24 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         }
         else if (!this.flowVersion.equals(other.flowVersion))
             return false;
+        if (this.parentId == null) {
+            if (other.parentId != null)
+                return false;
+        }
+        else if (!this.parentId.equals(other.parentId))
+            return false;
+        if (this.originId == null) {
+            if (other.originId != null)
+                return false;
+        }
+        else if (!this.originId.equals(other.originId))
+            return false;
+        if (this.inheritedTaskRuns == null) {
+            if (other.inheritedTaskRuns != null)
+                return false;
+        }
+        else if (!this.inheritedTaskRuns.equals(other.inheritedTaskRuns))
+            return false;
         if (this.state == null) {
             if (other.state != null)
                 return false;
@@ -295,6 +368,9 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.companyId == null) ? 0 : this.companyId.hashCode());
         result = prime * result + ((this.flowKey == null) ? 0 : this.flowKey.hashCode());
         result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
+        result = prime * result + ((this.parentId == null) ? 0 : this.parentId.hashCode());
+        result = prime * result + ((this.originId == null) ? 0 : this.originId.hashCode());
+        result = prime * result + ((this.inheritedTaskRuns == null) ? 0 : this.inheritedTaskRuns.hashCode());
         result = prime * result + ((this.state == null) ? 0 : this.state.hashCode());
         result = prime * result + ((this.generation == null) ? 0 : this.generation.hashCode());
         result = prime * result + ((this.lock == null) ? 0 : this.lock.hashCode());
@@ -329,6 +405,9 @@ public class ExecutionsObject extends JooqPojo implements Serializable {
         map.put("company_id", companyId);
         map.put("flow_key", flowKey);
         map.put("flow_version", flowVersion);
+        map.put("parent_id", parentId);
+        map.put("origin_id", originId);
+        map.put("inherited_task_runs", inheritedTaskRuns == null ? null : inheritedTaskRuns.toString());
         map.put("state", state);
         map.put("generation", generation);
         map.put("lock", lock);

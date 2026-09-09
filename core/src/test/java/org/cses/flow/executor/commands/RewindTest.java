@@ -12,13 +12,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-final class RewindTest {
+class RewindTest {
 
     @BeforeAll
     static void initializeJsonMapper() {
         JsonFactory.instance = JsonMapper.createDefault();
     }
 
+    /** 命令往返保留一次分配的新实例身份和退回坐标。 */
     @Test
     void carriesOnlyTheSelectedHistoricalFragmentThroughTheQueueContract() {
         Rewind command = Rewind.from(
@@ -53,6 +54,9 @@ final class RewindTest {
 
         ExecutionCommand restored = entry.toEvent(ExecutionCommand.class);
         Rewind restoredRewind = assertInstanceOf(Rewind.class, restored);
+        assertEquals(command.getReplayExecutionId(), entry.payloadJson().getString("replayExecutionId"));
+        org.junit.jupiter.api.Assertions.assertNotEquals(command.getExecutionId(), command.getReplayExecutionId());
+        assertEquals(command, restoredRewind);
         assertEquals(ExecutionCommand.Type.REWIND, restoredRewind.getType());
         assertEquals("company-1", restoredRewind.getCompanyId());
         assertEquals("actor-1", restoredRewind.getActorId());

@@ -1,60 +1,49 @@
 package org.cses.flow.executor;
 
-import io.micronaut.context.annotation.Bean;
-import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
-import jakarta.inject.Inject;
-import jakarta.inject.Named;
+import jakarta.inject.Singleton;
 import org.cses.flow.executor.commands.ExecutionCommand;
 import org.cses.flow.executor.handlers.ExecutionCommandEventHandler;
 import org.cses.flow.executor.handlers.ExecutorEventMessageHandler;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
-import org.cses.flow.queues.DispatchQueue;
-import org.cses.flow.queues.QueueSubscription;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.cses.flow.queues.annotations.FlowQueueListener;
 
 import java.util.Objects;
 
-/**
- * Default Executor lifecycle that routes external commands and internal
- * state hand-offs to their respective handlers.
- */
-@Context
-@Bean(preDestroy = "close")
+/** Routes Pulsar deliveries to the existing command and scheduling handlers. */
+@Singleton
 @Requires(condition = FlowJooqCondition.class)
-public final class DefaultExecutor implements AutoCloseable {
-    private static final Logger log = LoggerFactory.getLogger(DefaultExecutor.class);
+public class DefaultExecutor {
+    private ExecutionCommandEventHandler commandHandler;
+    private ExecutorEventMessageHandler eventHandler;
 
-    private final QueueSubscription commandSubscription;
-    private final QueueSubscription eventSubscription;
-
-    @Inject
-    public DefaultExecutor(
-            @Named(ExecutionCommand.QUEUE_NAME)
-            DispatchQueue<ExecutionCommand> commandQueue,
-            ExecutionCommandEventHandler commandHandler,
-            @Named(ExecutorEvent.QUEUE_NAME)
-            DispatchQueue<ExecutorEvent> eventQueue,
-            ExecutorEventMessageHandler eventHandler
-    ) {
-        Objects.requireNonNull(commandHandler, "commandHandler");
-        commandSubscription = Objects.requireNonNull(
-            commandQueue,
-            "commandQueue"
-        ).subscribe(commandHandler::handle);
-        eventSubscription = Objects.requireNonNull(
-            eventQueue,
-            "eventQueue"
-        ).subscribe(eventHandler::handle);
+    /**
+     * Retains the handlers without creating independent transport subscriptions.
+     * @param commandHandler handler restoring and applying external command facts
+     * @param eventHandler handler running one internal scheduling cycle
+     */
+    public DefaultExecutor(ExecutionCommandEventHandler commandHandler, ExecutorEventMessageHandler eventHandler) {
+        this.commandHandler = Objects.requireNonNull(commandHandler, "commandHandler");
+        this.eventHandler = Objects.requireNonNull(eventHandler, "eventHandler");
     }
 
-    @Override
-    public void close() {
-        try {
-            eventSubscription.close();
-        } finally {
-            commandSubscription.close();
-        }
+    /**
+     * Completes command persistence and internal publication before allowing ACK.
+     * @param command decoded execution command
+     * @throws RuntimeException when handling fails; PAAS requests redelivery
+     */
+    @FlowQueueListener(subscription = ExecutionCommand.QUEUE_NAME)
+    public void onCommand(ExecutionCommand command) {
+        commandHandler.handle(command);
+    }
+
+    /**
+     * Completes one scheduling cycle before allowing ACK.
+     * @param event decoded internal scheduling signal
+     * @throws RuntimeException when handling fails; PAAS requests redelivery
+     */
+    @FlowQueueListener(subscription = ExecutorEvent.QUEUE_NAME)
+    public void onEvent(ExecutorEvent event) {
+        eventHandler.handle(event);
     }
 }

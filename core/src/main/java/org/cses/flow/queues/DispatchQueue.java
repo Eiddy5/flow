@@ -25,7 +25,14 @@ import java.util.function.Consumer;
  *
  * @param <T> competing-consumer Event contract accepted by this Queue
  */
-public interface DispatchQueue<T extends DispatchEvent> extends Queue<T> {
+public interface DispatchQueue<T extends DispatchEvent> extends Queue<T>, AutoCloseable {
+
+    /**
+     * Closes this independently owned adapter and its subscriptions idempotently.
+     * New publication and subscription attempts fail after close.
+     */
+    @Override
+    void close();
 
     /**
      * Emits one Event.

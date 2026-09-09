@@ -84,7 +84,6 @@ public class PublishFlowHandler implements CommandHandler<
         );
         String source = resolveSource(context, companyId, command);
         Flow parsed = parse(source, command.draft());
-        validateInputs(parsed);
         if (!command.draft()) {
             validateTasks(parsed);
         }
@@ -225,8 +224,7 @@ public class PublishFlowHandler implements CommandHandler<
     /**
      * Parses a draft while preserving its raw source and preventing supplied
      * row, Repository-managed and domain-managed fields from entering the
-     * transient Flow. If Task binding fails, only definition fields are
-     * materialized.
+     * transient Flow. If Task or Input binding fails, those definitions remain only in raw source.
      *
      * @param source non-blank raw draft source
      * @return parsed draft containing only source-owned definition fields
@@ -234,9 +232,8 @@ public class PublishFlowHandler implements CommandHandler<
      *                          bound
      */
     private Flow parseDraft(String source) {
-        // A draft keeps the source even when a Task plugin is not currently
-        // bindable. Public Flow fields still go through the same Jackson
-        // configuration and are validated before persistence.
+        // Keep unbindable Task/Input definitions in raw source; remaining Flow
+        // fields still use strict binding before the draft can be persisted.
         Map<String, Object> fields = new LinkedHashMap<>(
                 YamlParser.parse(source)
         );
@@ -262,20 +259,17 @@ public class PublishFlowHandler implements CommandHandler<
                 return YamlParser.bind(fields, Flow.class);
             } catch (RuntimeException fallbackFailure) {
                 fallbackFailure.addSuppressed(bindingFailure);
-                throw fallbackFailure;
+                if (fields.remove("inputs") == null) {
+                    throw fallbackFailure;
+                }
+                try {
+                    return YamlParser.bind(fields, Flow.class);
+                } catch (RuntimeException fieldFailure) {
+                    fieldFailure.addSuppressed(fallbackFailure);
+                    throw fieldFailure;
+                }
             }
         }
-    }
-
-    /**
-     * Validates every parsed Flow input definition without modifying the
-     * Flow or its immutable input list.
-     *
-     * @param flow non-null parsed Flow whose inputs are validated
-     * @throws IllegalArgumentException when an input definition is invalid
-     */
-    private void validateInputs(Flow flow) {
-        flow.inputs().forEach(input -> input.validateDefinition());
     }
 
     /**

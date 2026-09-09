@@ -223,9 +223,10 @@ class PluginRegistryTest {
         assertTrue(exception.getMessage().contains("missing @Plugin"));
     }
 
+    /** 显式空注册集合不创建虚构包目录。 */
     @Test
     void doesNotCreateSyntheticPackageGroups() {
-        assertTrue(new DefaultPluginRegistry(List.of()).plugins().isEmpty());
+        assertTrue(new DefaultPluginRegistry(List.of(), List.of()).plugins().isEmpty());
     }
 
     private interface SpecialExtension
@@ -279,9 +280,14 @@ class PluginRegistryTest {
         }
     }
 
+    /**
+     * 为 Task 独立技术测试创建只包含指定 Task 的目录。
+     * @param plugins 非空 Task 集合，不修改
+     * @return 不发现额外 Input 的独立注册表
+     */
     private static DefaultPluginRegistry registry(
         org.cses.flow.core.plugins.Plugin... plugins
     ) {
-        return new DefaultPluginRegistry(List.of(plugins));
+        return new DefaultPluginRegistry(List.of(plugins), List.of());
     }
 }

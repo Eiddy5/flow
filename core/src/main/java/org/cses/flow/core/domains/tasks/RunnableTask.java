@@ -5,10 +5,10 @@ import org.cses.flow.core.runner.RunContext;
 /**
  * Executable capability implemented by a concrete Task definition.
  */
-public interface RunnableTask {
+public interface RunnableTask<T extends Output> {
 
     /**
      * Executes this Task once using only its invocation-scoped context.
      */
-    RunResult run(RunContext context);
+    T run(RunContext context);
 }

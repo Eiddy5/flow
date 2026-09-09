@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class ExecutionTest {
+class ExecutionTest {
 
     @Test
     void createsAnExecutionWithACallerProvidedStableId() {
@@ -237,6 +237,7 @@ final class ExecutionTest {
         assertEquals(State.Type.SUCCESS, execution.state().current());
     }
 
+    /** 通过公开 replay 验证 SKIPPED 记录不能作为退回目标。 */
     @Test
     void skippedTaskRunCannotBeARewindTarget() {
         Execution execution = Execution.create(
@@ -265,10 +266,11 @@ final class ExecutionTest {
 
         assertThrows(
             WorkflowException.class,
-            () -> execution.rewindTaskRun(
+            () -> execution.replay(
+                org.paas.common.util.StringUtil.newId(), session(execution.companyId()),
                 source.id(),
                 skipped.id(),
-                "cannot rewind to skipped route"
+                "cannot rewind to skipped route", List.of(source.id(), skipped.id())
             )
         );
         assertEquals(State.Type.PAUSED, execution.state().current());
@@ -358,6 +360,7 @@ final class ExecutionTest {
         );
     }
 
+    /** 退回产生新实例并停止父实例，完成后有效结果只包含最新片段与未影响记录。 */
     @Test
     void completedRewindShouldExposeOnlyTheLatestFragmentResults() {
         Execution execution = Execution.create(
@@ -397,12 +400,19 @@ final class ExecutionTest {
         execution.pauseTaskRun(originalSource.id());
         execution.pause();
 
-        execution.rewindTaskRun(
+        Execution original = execution;
+        execution = original.replay(
+            org.paas.common.util.StringUtil.newId(), session(original.companyId()),
             originalSource.id(),
             originalTarget.id(),
-            "correct warning result"
+            "correct warning result", List.of(originalSource.id(), originalTarget.id())
         );
-        execution.restart();
+        assertEquals(State.Type.KILLED, original.state().current());
+        assertEquals(State.Type.RUNNING, execution.state().current());
+        assertEquals(original.id(), execution.origin().parentId());
+        assertEquals(original.id(), execution.origin().originId());
+        assertTrue(execution.ownTaskRuns().isEmpty());
+        assertEquals(original.taskRuns().size(), execution.inheritedTaskRuns().size());
 
         TaskRun latestTarget = TaskRun.create(
             "target",
@@ -452,6 +462,7 @@ final class ExecutionTest {
         );
     }
 
+    /** 完整重建契约拒绝没有等待任务支撑的 PAUSED 根状态。 */
     @Test
     void rehydrateShouldRejectPausedExecutionState() {
         State paused = State.rehydrate(
@@ -473,12 +484,13 @@ final class ExecutionTest {
                 "execution-route-flow",
                 1,
                 Map.of(),
-                paused,
-                List.of()
+                Generation.empty(), paused,
+                List.of(), Origin.create(null, "execution-route-execution"), List.of()
             )
         );
     }
 
+    /** 完整重建契约拒绝 Execution 的 SKIPPED 状态。 */
     @Test
     void rehydrateShouldRejectSkippedExecutionState() {
         State skipped = State.rehydrate(
@@ -500,10 +512,34 @@ final class ExecutionTest {
                 "execution-skipped-flow",
                 1,
                 Map.of(),
-                skipped,
-                List.of()
+                Generation.empty(), skipped,
+                List.of(), Origin.create(null, "execution-skipped-execution"), List.of()
             )
         );
+    }
+
+    /** 重建只能接受一致的来源身份，继承列表与本次列表也不能重复同一个 TaskRun。 */
+    @Test
+    void rehydrateRejectsInvalidOriginsAndDuplicateInheritedIdentity() {
+        Execution root = Execution.create("origin-root", session("origin-company"), "origin-flow", 1, Map.of());
+        assertEquals(null, root.origin().parentId());
+        assertEquals(root.id(), root.origin().originId());
+        root.start();
+        TaskRun owned = root.createTaskRun("target", null, Map.of());
+        for (Origin invalid : List.of(Origin.create(null, "different-root"),
+                Origin.create(root.id(), "different-root"), Origin.create("parent", root.id()))) {
+            assertThrows(IllegalArgumentException.class, () -> Execution.rehydrate(root.id(), root.companyId(),
+                root.creator(), root.createdAt(), root.flowKey(), root.flowVersion(), root.inputs(),
+                root.generation(), root.state(), root.ownTaskRuns(), invalid, List.of()));
+        }
+        assertThrows(IllegalArgumentException.class, () -> Execution.rehydrate(root.id(), root.companyId(),
+            root.creator(), root.createdAt(), root.flowKey(), root.flowVersion(), root.inputs(),
+            root.generation(), root.state(), List.of(), root.origin(), List.of(owned)));
+        assertThrows(IllegalArgumentException.class, () -> Execution.rehydrate("derived", root.companyId(),
+            root.creator(), root.createdAt(), root.flowKey(), root.flowVersion(), root.inputs(),
+            root.generation(), root.state(), List.of(owned), Origin.create(root.id(), root.id()), List.of(owned)));
+        assertThrows(IllegalArgumentException.class, () -> Origin.create(" ", root.id()));
+        assertThrows(IllegalArgumentException.class, () -> Origin.create(null, " "));
     }
 
     private static List<State.Type> history(State state) {

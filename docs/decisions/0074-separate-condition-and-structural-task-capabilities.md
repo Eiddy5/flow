@@ -45,7 +45,7 @@ DAG 依赖留给后续专有模型。
 - 抽象 Task 只保存 `id`、`key`、`displayName`、`inputs` 和 `outputs`。
 - 抽象 Branch 继承 Task，并独占 `tasks: List<Task>`。
 - Route、Parallel、Sequence、Loop 和 LoopUntil 继承 Branch。
-- Pause 直接继承 Task，只保存 `pause`、`resume`、`duration` 和 `behavior`；它不拥有
+- Pause 直接继承 Task，只保存 `onPause`、`onResume`、`duration` 和 `behavior`；它不拥有
   普通 Branch tasks。
 - `dependOn` 属于尚未确认的 DAG 能力，不进入 Task 或 Branch。本决策不设计 DAG。
 
@@ -99,7 +99,7 @@ false，缺值使用 `!=` 也不例外。
 - Route 的定义字段只使用 `route` 字符串；草稿允许保留暂未完成的表达式，正式发布
   必须经过 `Condition.parser` 与 Flow 引用校验。
 - LoopUntil 继续直接持有 Condition，具体解析由包内独立的 `ConditionParser` 承担。
-- Branch 只拥有有序 tasks，Pause 只拥有自己的 pause 关系，二者不获得 route。
+- Branch 只拥有有序 tasks，Pause 只拥有自己的 onPause 关系，二者不获得 route。
 - 本阶段不决定 Task properties、PostgreSQL 列、数据库保存或恢复协议；这些 Adapter
   能力后续单独设计和验证，不能反向改变当前领域字段。
 - 条件判断统一使用 Condition；TemplateExpression 独立保留。

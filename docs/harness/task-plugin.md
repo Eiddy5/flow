@@ -194,7 +194,7 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
   Session、数据库或通用容器；宿主业务能力应通过明确扩展接口接入。
   OrchestrationTask 只声明 Executor 识别的编排特征。
 - 抽象 Task 不保存 `tasks` 或 `parentId`。结构型 `Branch` 通过 `tasks` 保存递归
-  children；Pause 的 `pause` 是类型专有包含关系。所有包含关系都通过
+  children；Pause 的 `onPause` 是类型专有包含关系。所有包含关系都通过
   `Task.definitionChildren()` 暴露。Repository 写入定义树时派生 `parent_id`，读取后
   必须按具体 Task 类型恢复 Branch 子树或类型专有定义树。
 - 重命名 Task 类或修改 package 会改变持久化类型，是一次显式兼容性变更。

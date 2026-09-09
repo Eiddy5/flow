@@ -106,8 +106,9 @@ List<FlowPayload> payloads = restored.asObjects(FlowPayload.class);
   `type` 读取精确插件标识、通过注册中心解析具体类，再让 Jackson 递归绑定所有
   Task 字段。`PublishFlowHandler` 在补充 Session、draft、状态和 source 后调用
   `ModelValidator`；版本只由 Repository 保存时分配，校验失败的部署对象不能进入
-  聚合。持久化 Input 继续由
-  Repository Codec 使用 PAAS JSON 恢复。
+  聚合。持久化 Input 由 DataJsonCodec 解析 PAAS JSON 树后，复用受控
+  JacksonMapper 按已注册类型恢复。Input 使用 Jackson 原生 Id.NAME，多态配置由
+  编译索引统一装配到 JSON/YAML 和 PAAS，见 ADR 0093。
 - Task 插件 properties 的拆分与合并统一由 Repository Adapter 的
   `TaskPropertiesCodec` 完成。Codec 通过 `JacksonMapper` 内部的持久化转换入口复用
   同一个受控 JSON Mapper；`FlowTaskEntry` 只静态调用 Codec，不接收或持有 Mapper。
@@ -160,15 +161,19 @@ PAAS 公共能力演进。
    `core/plugins/PluginDeserializer` 可在一次 Jackson 回调内读取插件节点并通过
    当前 `DeserializationContext` 递归绑定具体类。该例外只服务 Flow 定义和 Task
    插件的多态绑定，不得成为公共领域契约。
-2. `TaskPropertiesCodec` 是持久化 Task properties 调用 `JacksonMapper` 的唯一边界；
+2. `core/serializers/InputJacksonModule` 是 PAAS/Micronaut Jackson 3 的 Input 类型配置，
+   与 Jackson 2 使用同一份编译索引，注册原生子类型和历史内置代码兼容回调（ADR 0093）。
+   它不创建第二个 Mapper，也不解释业务字段。
+3. `DataJsonCodec` 与 `TaskPropertiesCodec` 分别是 Input 定义和 Task properties
+   调用 `JacksonMapper` 的持久化边界（ADR 0090）；
    `FlowTaskEntry` 只调用 Codec，不能直接接触 `JacksonMapper`、ObjectMapper 或
    JsonNode。
-3. Micronaut、PAAS JSON 或其他第三方库内部使用 Jackson，项目代码不直接绕过
+4. Micronaut、PAAS JSON 或其他第三方库内部使用 Jackson，项目代码不直接绕过
    PAAS API。
-4. 无 Micronaut 容器的基础设施测试为 PAAS JSON 初始化
+5. 无 Micronaut 容器的基础设施测试为 PAAS JSON 初始化
    `JsonFactory.instance`。该初始化只负责测试引导，测试中的 JSON 创建、解析和
    断言仍必须通过 PAAS JSON 完成。
-5. 生成器产出的代码由生成模板决定，不直接手工修改。项目维护的生成模板和生成
+6. 生成器产出的代码由生成模板决定，不直接手工修改。项目维护的生成模板和生成
    逻辑仍应优先生成 PAAS JSON 用法。
 
 新增例外必须记录 ADR，说明为什么 PAAS JSON 无法满足需求、例外边界和后续收敛

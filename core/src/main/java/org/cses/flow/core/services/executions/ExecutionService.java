@@ -1,7 +1,6 @@
 package org.cses.flow.core.services.executions;
 
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
@@ -13,7 +12,7 @@ import org.cses.flow.core.services.executions.queries.ExecutionQueryHandler;
 import org.cses.flow.core.services.flows.queries.FlowQueryHandler;
 import org.cses.flow.executor.commands.*;
 import org.cses.flow.extensions.flow.Pause;
-import org.cses.flow.queues.DispatchQueue;
+import org.cses.flow.queues.Queue;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -26,14 +25,19 @@ public class ExecutionService {
 
     private ExecutionQueryHandler queryHandler;
     private FlowQueryHandler flowQueryHandler;
-    private DispatchQueue<ExecutionCommand> executorCommandQueue;
+    private Queue<ExecutionCommand> executorCommandQueue;
 
+    /**
+     * Retains public query collaborators and the annotation-selected command publisher.
+     * @param queryHandler reads tenant-scoped execution snapshots
+     * @param flowQueryHandler resolves exact published flow versions
+     * @param executorCommandQueue accepts commands through the application-owned transport
+     */
     @Inject
     public ExecutionService(
             ExecutionQueryHandler queryHandler,
             FlowQueryHandler flowQueryHandler,
-            @Named(ExecutionCommand.QUEUE_NAME)
-            DispatchQueue<ExecutionCommand> executorCommandQueue
+            Queue<ExecutionCommand> executorCommandQueue
     ) {
         this.queryHandler = queryHandler;
         this.flowQueryHandler = flowQueryHandler;
@@ -91,7 +95,7 @@ public class ExecutionService {
             Map<String, ?> inputs
     ) {
         Flow flow = requireFlow(session, key, version);
-        Map<String, Object> normalizedInputs = flow.normalizeInputs(inputs);
+        Map<String, Object> normalizedInputs = flow.bindInputs(inputs);
         Create command = Create.from(
                 session,
                 executionId,
@@ -207,7 +211,7 @@ public class ExecutionService {
      * Validates and submits one durable Rewind command from the current Pause
      * to a selected historical TaskRun.
      *
-     * <p>The result contains the pre-rewind Execution snapshot and the
+     * <p>The result contains the new Execution ID, the source snapshot and the
      * TaskRuns affected by this request in business rollback order. It proves
      * Queue acceptance only; asynchronous command consumption may not have
      * applied the rewind when this method returns.</p>
@@ -233,14 +237,16 @@ public class ExecutionService {
                 sourceTaskRunId,
                 targetTaskRunId
         );
-        executorCommandQueue.emit(Rewind.from(
+        Rewind command = Rewind.from(
                 session,
                 executionId,
                 sourceTaskRunId,
                 targetTaskRunId,
                 reason
-        ));
+        );
+        executorCommandQueue.emit(command);
         return RewindResult.from(
+                command.getReplayExecutionId(),
                 plan.execution(),
                 plan.affectedTaskRunIds()
         );
@@ -310,6 +316,17 @@ public class ExecutionService {
     List<Execution> executions(S session) {
 
         return queryHandler.executions(session);
+    }
+
+    /**
+     * Reads all Execution snapshots belonging to the same origin as the selected instance.
+     * @param session tenant-scoped caller
+     * @param executionId accessible member of the derivation tree
+     * @return complete snapshots with explicit origins and inherited run boundaries
+     * @throws WorkflowException when the selected Execution cannot be read
+     */
+    public <S extends Session<U>, U extends User> List<Execution> lineage(S session, String executionId) {
+        return queryHandler.lineage(session, executionId);
     }
 
     /**
@@ -402,7 +419,7 @@ public class ExecutionService {
                             + taskRun.id()
             );
         }
-        return pause.validateResume(outputs);
+        return pause.bindResume(outputs);
     }
 
     /**

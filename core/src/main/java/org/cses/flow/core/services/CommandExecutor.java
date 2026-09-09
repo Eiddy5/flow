@@ -62,13 +62,8 @@ public class CommandExecutor {
 
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
-        return inScope(
-                session,
-                command,
-                handler,
-                jooq.createDSLContext(),
-                null
-        );
+        return FlowDatabase.execute(jooq.createDSLContext(),
+                dsl -> handle(session, command, handler, dsl, null));
     }
 
     /**
@@ -101,21 +96,29 @@ public class CommandExecutor {
 
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
-        return inScope(
-                session,
-                command,
-                handler,
-                jooq.createDSLContext(),
-                completion
-        );
+        return FlowDatabase.execute(jooq.createDSLContext(),
+                dsl -> handle(session, command, handler, dsl, completion));
     }
 
+    /**
+     * 绑定用户上下文后调用 Handler；仓储元数据由外层数据库入口自动管理。
+     * @param <S> 会话类型
+     * @param <U> 用户类型
+     * @param <R> 结果类型
+     * @param <C> 命令类型
+     * @param session 已验证会话
+     * @param command 已验证命令
+     * @param handler 匹配的处理器
+     * @param dsl 本次数据库操作上下文
+     * @param completion 可空的保存后传输动作
+     * @return Handler 的结果
+     */
     private static <
             S extends Session<U>,
             U extends User,
             R,
             C extends Command<R>
-            > R inScope(
+            > R handle(
             S session,
             C command,
             CommandHandler<S, U, R, C> handler,

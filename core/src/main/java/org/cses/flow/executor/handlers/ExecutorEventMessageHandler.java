@@ -15,7 +15,7 @@ import org.cses.flow.executor.ExecutorEvent;
 import org.cses.flow.executor.ExecutorEventHandler;
 import org.cses.flow.executor.ExecutorService;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
-import org.cses.flow.queues.DispatchQueue;
+import org.cses.flow.queues.Queue;
 import org.cses.flow.worker.WorkerDispatcher;
 import org.cses.flow.worker.WorkerTask;
 import org.cses.flow.worker.WorkerTaskResult;
@@ -49,8 +49,18 @@ public class ExecutorEventMessageHandler implements
     private ExecutionRepository executionRepository;
     private ExecutorService executorService;
     private WorkerDispatcher workerDispatcher;
-    private DispatchQueue<ExecutorEvent> eventQueue;
+    private Queue<ExecutorEvent> eventQueue;
 
+    /**
+     * Wires one scheduling cycle and its subsequent transport publication.
+     * @param jooq named Flow database access
+     * @param sessionFactory restores the execution tenant and actor
+     * @param flowRepository reads the exact flow definition
+     * @param executionRepository reads and saves complete execution snapshots
+     * @param executorService computes domain scheduling transitions
+     * @param workerDispatcher invokes runnable tasks
+     * @param eventQueue annotation-selected internal event publisher
+     */
     @Inject
     public ExecutorEventMessageHandler(
             @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
@@ -59,8 +69,7 @@ public class ExecutorEventMessageHandler implements
             ExecutionRepository executionRepository,
             ExecutorService executorService,
             WorkerDispatcher workerDispatcher,
-            @Named(ExecutorEvent.QUEUE_NAME)
-            DispatchQueue<ExecutorEvent> eventQueue
+            Queue<ExecutorEvent> eventQueue
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.sessionFactory = Objects.requireNonNull(
@@ -126,7 +135,7 @@ public class ExecutorEventMessageHandler implements
                 "event"
         );
         requireProductionRuntime();
-        return executionRepository.inScope(jooq.createDSLContext(),
+        return FlowDatabase.execute(jooq.createDSLContext(),
                 dsl -> Optional.ofNullable(process(dsl, accepted)));
     }
 

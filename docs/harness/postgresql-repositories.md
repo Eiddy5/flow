@@ -11,6 +11,8 @@
 erDiagram
     FLOWS ||--o{ FLOW_TASKS : "仅正式版本：company_id + key + version"
     FLOWS ||--o{ EXECUTIONS : "company_id + flow_key + flow_version"
+    EXECUTIONS o|--o{ EXECUTIONS : "parent_id 直接来源"
+    EXECUTIONS ||--o{ EXECUTIONS : "origin_id 最初运行"
     FLOW_TASKS o|--o{ FLOW_TASKS : "parent_id 形成任务树"
     EXECUTIONS ||--o{ TASK_RUNS : "execution_id 形成运行历史"
     FLOW_TASKS ||--o{ TASK_RUNS : "Execution 的版本范围内由 task_id 解析"
@@ -49,6 +51,9 @@ erDiagram
     EXECUTIONS {
         varchar company_id PK
         varchar id PK
+        varchar parent_id
+        varchar origin_id
+        jsonb inherited_task_runs
         varchar flow_key
         bigint flow_version
         jsonb state
@@ -138,18 +143,36 @@ FLOW_POSTGRES_TEST_PASSWORD=flow \
 
 未设置 `FLOW_POSTGRES_TEST_URL` 时，Repository 集成测试会跳过。
 
-Execution 写操作使用 `executionRepository.inScope(dsl, scoped -> ...)`；读取、领域修改
-和保存使用回调中的 `scoped`。会话结束即清除加载版本，不能把查询副本带到另一个
-会话直接更新。该 API 不开启业务事务，根 CAS 与 TaskRun 保存仍通过单 SQL 原子提交。
+业务使用普通 `find/save`；CommandExecutor 和消息处理入口内部自动管理加载版本。
+直接运行 Repository 的测试或探针使用 `FlowDatabase.execute(dsl, operation)`，读取、
+领域修改和保存使用回调提供的 DSL。操作结束即清除加载版本，不能把查询副本带到
+另一个操作直接更新。该入口不启动事务，根 CAS 与 TaskRun 仍通过单 SQL 原子提交。
 `lock` 初始为 0，每次成功更新加 1；重复读取不改变它。完整并发回归还应运行：
 
 ```bash
-./gradlew :core:test --tests '*ExecutionCasIntegrationTest'
+./gradlew :core:test --tests '*CasSupportTest' --tests '*ExecutionCasIntegrationTest'
 ```
 
 此命令使用上文相同的 Java 与 PostgreSQL 环境变量。字段更名后，已有开发库必须
 显式重建；基线的 `IF NOT EXISTS` 不会把旧列自动改名。验证优先使用独立临时数据库，
 不要为了运行测试清空现有开发数据。
+
+### 2026-09-09 通用 CAS 最小重构验证
+
+使用独立 PostgreSQL 17 容器，未操作已有开发库。定向测试 32/32 通过：
+`CasSupportTest` 4、`ExecutionCasIntegrationTest` 12、`PostgresRepositoryIntegrationTest`
+7、`CommandExecutorTest` 5、`ExecutorEventMessageHandlerTest` 4。
+覆盖弱对象身份、跨表与跨操作隔离、友好冲突文案、真实并发与根子原子性，以及
+外层事务提交清理、嵌套提交保留和嵌套回滚失效。原有退回派生保存用例一并保留。
+`:server:flowQueryProbe` 正常模式执行成功，确认 SQL 探针适配新入口；它使用 Mock JDBC，
+不作为真实数据库性能证据。
+UC 验收结果另见本轮 `docs/test-reports/flow/` 报告，不能由定向测试替代。
+
+同工作区并行 Gradle 测试可能覆盖默认 XML 和二进制结果；各任务应使用独占的
+测试结果目录，不引用被其他任务覆盖的报告。可用临时 Gradle init script 配合
+`-I`，按项目及 Test 任务分别设置 `binaryResultsDirectory`、
+`reports.junitXml.outputLocation` 和 `reports.html.outputLocation`；不要为一次验证
+修改全局构建配置。本轮定向证据位于 `core/build/cas-refactor-targeted/core/test/xml/`。
 
 ### 2026-09-08 CAS 改造验证
 
@@ -207,3 +230,18 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) \
 2026-09-08 验证环境注意：当前已解析的 Micronaut/PAAS 依赖要求 JVM 25，Java 21
 会在依赖解析阶段失败。本次生成和验证仅为命令选用本机 JDK 25，没有改动项目的
 Java 21 源码约定或依赖版本；这不构成 Java 21 构建通过的证据。
+
+## Execution 来源与退回验证
+
+当前来源与继承快照契约见 [ADR 0087](../decisions/0087-derive-execution-snapshots-on-replay.md)。
+`executions.parent_id` 与 `origin_id` 保存关系，`inherited_task_runs` 保存该次运行沿用的完整快照；
+`task_runs` 仍只包含本实例首次产生的运行实体，因此统计当前完整路径应通过公开 Execution 查询。
+
+退回受理返回 `executionId`（新实例）、`sourceExecution`、`affectedTaskRunIds`。调用方重新查询新实例，
+其可见后使用新 executionId 恢复等待任务；旧编号不自动重定向。
+`ExecutionService.lineage(session, executionId)` 返回同源快照，HTTP 对应
+`GET /executions/executions/{executionId}/lineage`（包含现有 Execution Controller 前缀）。
+每个 HTTP 快照给出 `origin`、`inheritedTaskRunIds`、`effectiveTaskRunIds`，供区分来源、沿用和当前路径。
+
+Schema 变化需使用空库执行基线并重新生成 JOOQ。不得把新基线的 `IF NOT EXISTS` 当成旧库升级。
+本需求使用独立临时 PostgreSQL，不修改本机已有开发库；具体运行证据见当次 UC04、UC10、UC11 及批量测试报告。

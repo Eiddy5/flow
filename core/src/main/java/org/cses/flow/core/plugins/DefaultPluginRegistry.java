@@ -1,6 +1,10 @@
 package org.cses.flow.core.plugins;
 
 import io.micronaut.context.annotation.Context;
+import io.micronaut.context.BeanContext;
+import jakarta.inject.Inject;
+import org.cses.flow.core.domains.flows.Input;
+import io.swagger.v3.oas.annotations.media.Schema;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -15,13 +19,39 @@ import java.util.*;
  * the application classpath and grouped by their real Java packages.
  */
 @Context
-public final class DefaultPluginRegistry implements PluginRegistry {
+public class DefaultPluginRegistry implements PluginRegistry {
 
-    private final List<RegisteredPlugin> registeredPlugins;
-    private final Map<String, PluginMetadata<? extends Plugin>>
+    private List<RegisteredPlugin> registeredPlugins;
+    private Map<String, PluginMetadata<? extends Plugin>>
             metadataByType;
 
+    /**
+     * 从 Task Bean 与宿主编译产物中的业务 Input 类创建只读注册表，不实例化 Input。
+     * @param plugins 已发现的非空 Task Bean 集合，只读
+     * @param context 当前宿主 BeanContext，用于选择应用 ClassLoader
+     * @throws IllegalStateException 当注册类或能力非法时抛出
+     */
+    @Inject
+    public DefaultPluginRegistry(Collection<Plugin> plugins, BeanContext context) {
+        this(plugins, InputTypes.discover(context.getClassLoader()));
+    }
+
+    /**
+     * 创建显式 Task 与当前应用索引中的 Input 注册表，供无容器调用方使用。
+     * @param plugins 非空且不含 null 的 Task 集合，只读
+     * @throws IllegalStateException 当注册非法时抛出
+     */
     public DefaultPluginRegistry(Collection<Plugin> plugins) {
+        this(plugins, InputTypes.discover(Thread.currentThread().getContextClassLoader()));
+    }
+
+    /**
+     * 注册显式 Task 实例与业务 Input 类；业务 Input 不会被实例化。
+     * @param plugins 非空 Task 集合，只读
+     * @param inputTypes 非空业务 Input 类集合，只读，重复或能力错误拒绝
+     * @throws IllegalStateException 当注册类、注解或类型重复时抛出
+     */
+    public DefaultPluginRegistry(Collection<Plugin> plugins, Collection<Class<?>> inputTypes) {
         if (plugins == null) {
             throw new IllegalStateException(
                     "Plugin registrations must not be null"
@@ -51,14 +81,19 @@ public final class DefaultPluginRegistry implements PluginRegistry {
                 plugin
         ));
 
+        Map<String, List<PluginMetadata<Input>>> inputsByPackage = new LinkedHashMap<>();
+        new InputTypes(inputTypes);
+        inputTypes.stream()
+            .sorted(Comparator.comparing(Class::getName))
+            .forEach(type -> registerInput(registrations, inputsByPackage, type));
         this.metadataByType = Map.copyOf(registrations);
-        this.registeredPlugins = tasksByPackage.entrySet().stream()
-                .sorted(Comparator.comparing(Map.Entry::getKey))
-                .map(entry -> RegisteredPlugin.from(
-                        entry.getKey(),
-                        entry.getValue()
-                ))
-                .toList();
+        Set<String> packages = new TreeSet<>(tasksByPackage.keySet());
+        packages.addAll(inputsByPackage.keySet());
+        this.registeredPlugins = packages.stream()
+            .map(packageName -> RegisteredPlugin.from(packageName,
+                tasksByPackage.getOrDefault(packageName, List.of()),
+                inputsByPackage.getOrDefault(packageName, List.of())))
+            .toList();
     }
 
     @Override
@@ -181,6 +216,37 @@ public final class DefaultPluginRegistry implements PluginRegistry {
                 packageName,
                 ignored -> new ArrayList<>()
         ).add(metadata);
+    }
+
+    /**
+     * 校验并登记一个业务 Input 类，不调用其构造或创建方法。
+     * @param registrations 可修改的精确类型索引
+     * @param inputsByPackage 可修改的包目录
+     * @param type 非空公共具体 Input 类，必须直接标注 JsonTypeName
+     * @throws IllegalStateException 当类型、注解、能力或重复注册非法时抛出
+     */
+    private static void registerInput(
+        Map<String, PluginMetadata<? extends Plugin>> registrations,
+        Map<String, List<PluginMetadata<Input>>> inputsByPackage,
+        Class<?> type
+    ) {
+        if (type == null || !Modifier.isPublic(type.getModifiers())
+            || Modifier.isAbstract(type.getModifiers())
+            || !Input.class.isAssignableFrom(type)
+            || type.getCanonicalName() == null || type.getPackageName().isBlank()) {
+            throw new IllegalStateException("Input plugin must be a public concrete Input class: " + type);
+        }
+        Schema annotation = type.getDeclaredAnnotation(Schema.class);
+        PluginMetadata<Input> metadata = PluginMetadata.from(
+            type.asSubclass(Input.class), Input.class,
+            annotation == null ? null : annotation.title(),
+            annotation == null ? null : annotation.description());
+        for (String name : new LinkedHashSet<>(List.of(metadata.typeName(), metadata.canonicalType()))) {
+            if (registrations.putIfAbsent(name, metadata) != null) {
+                throw new IllegalStateException("Duplicate plugin type '" + name + "'");
+            }
+        }
+        inputsByPackage.computeIfAbsent(type.getPackageName(), ignored -> new ArrayList<>()).add(metadata);
     }
 
     private static List<PluginExample> examples(Example[] declarations) {

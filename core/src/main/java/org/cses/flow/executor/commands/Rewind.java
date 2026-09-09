@@ -2,17 +2,19 @@ package org.cses.flow.executor.commands;
 
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.utils.SessionUtil;
+import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
 
 import java.util.Objects;
 
 /**
- * Requests a new rewind fragment from one paused source to one historical
- * target TaskRun.
+ * Requests a new Execution derived from a paused source and historical target.
+ * The allocated replay identity is part of the durable command.
  */
 public record Rewind(
         String executionId,
+        String replayExecutionId,
         String companyId,
         String actorId,
         String sourceTaskRunId,
@@ -20,8 +22,23 @@ public record Rewind(
         String reason
 ) implements ExecutionCommand {
 
+    /**
+     * Validates and normalizes the durable replay request.
+     * @param executionId source Execution
+     * @param replayExecutionId distinct new Execution ID
+     * @param companyId owning tenant
+     * @param actorId initiating actor
+     * @param sourceTaskRunId paused source occurrence
+     * @param targetTaskRunId completed predecessor to replay
+     * @param reason nonblank replay reason
+     * @throws IllegalArgumentException when a required value or identity is invalid
+     */
     public Rewind {
         executionId = requireText(executionId, "Execution id");
+        replayExecutionId = requireText(replayExecutionId, "Replay Execution id");
+        if (executionId.equals(replayExecutionId)) {
+            throw new IllegalArgumentException("Replay requires a new Execution identity");
+        }
         companyId = requireText(companyId, "Company id");
         actorId = requireText(actorId, "Actor id");
         sourceTaskRunId = requireText(
@@ -35,6 +52,15 @@ public record Rewind(
         reason = requireText(reason, "Rewind reason");
     }
 
+    /**
+     * Allocates the new Execution identity once when constructing a durable command.
+     * @param session trusted tenant and actor
+     * @param executionId source Execution ID
+     * @param sourceTaskRunId paused source occurrence
+     * @param targetTaskRunId completed predecessor
+     * @param reason nonblank reason
+     * @return command retaining the same new identity through redelivery
+     */
     public static Rewind from(
             Session<? extends User> session,
             String executionId,
@@ -46,6 +72,7 @@ public record Rewind(
         ActorRef actor = SessionUtil.user(session);
         return new Rewind(
                 executionId,
+                StringUtil.newId(),
                 session.getCompanyId(),
                 actor.id(),
                 sourceTaskRunId,
@@ -64,9 +91,11 @@ public record Rewind(
         return executionId;
     }
 
+    /** Validates required durable command fields before dispatch. */
     @Override
     public void validate() {
         requireText(executionId, "Execution id");
+        requireText(replayExecutionId, "Replay Execution id");
         requireText(companyId, "Company id");
         requireText(actorId, "Actor id");
         requireText(sourceTaskRunId, "Rewind source TaskRun id");
@@ -76,6 +105,11 @@ public record Rewind(
 
     public String getExecutionId() {
         return executionId;
+    }
+
+    /** @return preallocated Execution identity retained across queue redelivery */
+    public String getReplayExecutionId() {
+        return replayExecutionId;
     }
 
     public String getCompanyId() {

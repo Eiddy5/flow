@@ -260,11 +260,11 @@ class Uc05ParallelPauseFlowTest {
                 tasks:
                   - key: backend-check
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-backend-check
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: backendResult
                         type: STRING
                     outputs:
@@ -272,11 +272,11 @@ class Uc05ParallelPauseFlowTest {
                         type: STRING
                   - key: frontend-check
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-frontend-check
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: frontendResult
                         type: STRING
                     outputs:

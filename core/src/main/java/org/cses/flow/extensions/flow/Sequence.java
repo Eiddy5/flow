@@ -3,6 +3,7 @@ package org.cses.flow.extensions.flow;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 
@@ -34,10 +35,14 @@ import org.cses.flow.core.plugins.annotations.Plugin;
 )
 @SuperBuilder
 @NoArgsConstructor
-public class Sequence extends Branch implements OrchestrationTask {
+public class Sequence extends Branch<Sequence.Output> {
 
     @Override
     public boolean holdsTaskRunUntilChildrenSettle() {
         return true;
+    }
+
+    public static class Output implements org.cses.flow.core.domains.tasks.Output{
+
     }
 }

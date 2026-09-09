@@ -31,7 +31,7 @@ class PluginSchemaGeneratorTest {
             Log.class.getCanonicalName()
         ).orElseThrow();
 
-        Map<String, Object> schema = new PluginSchemaGenerator(mapper)
+        Map<String, Object> schema = new PluginSchemaGenerator(mapper, registry)
             .generate(metadata);
         Map<String, Object> properties = objectMap(
             schema.get("properties")
@@ -61,7 +61,7 @@ class PluginSchemaGeneratorTest {
         JacksonMapper mapper = new JacksonMapper(
             new PluginModule(registry)
         );
-        PluginSchemaGenerator generator = new PluginSchemaGenerator(mapper);
+        PluginSchemaGenerator generator = new PluginSchemaGenerator(mapper, registry);
         PluginMetadata<?> metadata = registry.findMetadata(
             TestNotificationTask.class.getCanonicalName()
         ).orElseThrow();
@@ -135,7 +135,7 @@ class PluginSchemaGeneratorTest {
             Parallel.class.getCanonicalName()
         ).orElseThrow();
 
-        Map<String, Object> schema = new PluginSchemaGenerator(mapper)
+        Map<String, Object> schema = new PluginSchemaGenerator(mapper, registry)
             .generate(metadata);
         Map<String, Object> concurrent = objectMap(
             objectMap(schema.get("properties")).get("concurrent")
@@ -162,7 +162,7 @@ class PluginSchemaGeneratorTest {
             Route.class.getCanonicalName()
         ).orElseThrow();
 
-        Map<String, Object> schema = new PluginSchemaGenerator(mapper)
+        Map<String, Object> schema = new PluginSchemaGenerator(mapper, registry)
             .generate(metadata);
         Map<String, Object> properties = objectMap(
             schema.get("properties")
@@ -176,6 +176,7 @@ class PluginSchemaGeneratorTest {
         assertFalse(properties.containsKey("condition"));
     }
 
+    /** 验证 Pause Schema 只公布 onPause/onResume，必填关系保持不变。 */
     @Test
     void pauseSchemaComesFromItsConcreteDefinitionFields() {
         DefaultPluginRegistry registry = registry(new Pause());
@@ -186,7 +187,7 @@ class PluginSchemaGeneratorTest {
             Pause.class.getCanonicalName()
         ).orElseThrow();
 
-        Map<String, Object> schema = new PluginSchemaGenerator(mapper)
+        Map<String, Object> schema = new PluginSchemaGenerator(mapper, registry)
             .generate(metadata);
         Map<String, Object> properties = objectMap(
             schema.get("properties")
@@ -194,12 +195,14 @@ class PluginSchemaGeneratorTest {
         List<?> required = (List<?>) schema.get("required");
 
         assertEquals("暂停", metadata.title());
-        assertTrue(properties.containsKey("pause"));
-        assertTrue(properties.containsKey("resume"));
+        assertTrue(properties.containsKey("onPause"));
+        assertTrue(properties.containsKey("onResume"));
+        assertFalse(properties.containsKey("pause"));
+        assertFalse(properties.containsKey("resume"));
         assertTrue(properties.containsKey("duration"));
         assertTrue(properties.containsKey("behavior"));
-        assertTrue(required.contains("pause"));
-        assertFalse(required.contains("resume"));
+        assertTrue(required.contains("onPause"));
+        assertFalse(required.contains("onResume"));
         assertFalse(required.contains("duration"));
         assertFalse(required.contains("behavior"));
     }
@@ -213,7 +216,7 @@ class PluginSchemaGeneratorTest {
         JacksonMapper mapper = new JacksonMapper(
             new PluginModule(registry)
         );
-        PluginSchemaGenerator generator = new PluginSchemaGenerator(mapper);
+        PluginSchemaGenerator generator = new PluginSchemaGenerator(mapper, registry);
 
         Map<String, Object> loopSchema = generator.generate(
             registry.findMetadata(Loop.class.getCanonicalName())

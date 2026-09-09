@@ -38,11 +38,11 @@ class LogFlowIntegrationTest {
                 tasks:
                   - key: prepare
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-prepare-request
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: result
                         type: STRING
                     outputs:

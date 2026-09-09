@@ -75,6 +75,21 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, Long> FLOW_VERSION = createField(DSL.name("flow_version"), SQLDataType.BIGINT.nullable(false), this, "");
 
     /**
+     * The column <code>public.executions.parent_id</code>.
+     */
+    public final TableField<ExecutionsRecord, String> PARENT_ID = createField(DSL.name("parent_id"), SQLDataType.VARCHAR(64), this, "");
+
+    /**
+     * The column <code>public.executions.origin_id</code>.
+     */
+    public final TableField<ExecutionsRecord, String> ORIGIN_ID = createField(DSL.name("origin_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
+
+    /**
+     * The column <code>public.executions.inherited_task_runs</code>.
+     */
+    public final TableField<ExecutionsRecord, JSONB> INHERITED_TASK_RUNS = createField(DSL.name("inherited_task_runs"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
      * The column <code>public.executions.state</code>.
      */
     public final TableField<ExecutionsRecord, JSONB> STATE = createField(DSL.name("state"), SQLDataType.JSONB.nullable(false), this, "");
@@ -140,7 +155,7 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
 
     @Override
     public List<Index> getIndexes() {
-        return Arrays.asList(Indexes.IDX_EXECUTIONS_FLOW);
+        return Arrays.asList(Indexes.IDX_EXECUTIONS_FLOW, Indexes.IDX_EXECUTIONS_ORIGIN, Indexes.IDX_EXECUTIONS_PARENT);
     }
 
     @Override

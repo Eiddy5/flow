@@ -33,7 +33,7 @@ class DataTest {
             .map(method -> method.getName())
             .collect(Collectors.toSet());
 
-        assertEquals(Set.of("getKey", "getType"), methods);
+        assertEquals(Set.of("getKey", "getValueType"), methods);
     }
 
     @Test
@@ -58,6 +58,7 @@ class DataTest {
         assertTrue(!DataType.INTEGER.accepts(1L));
     }
 
+    /** 验证具体 Input 定义物化后，由绑定入口执行整数约束。 */
     @Test
     void deserializesConcreteInputsAndValidatesIntegerRules() {
         Input<?> input = jsonInput(
@@ -78,14 +79,14 @@ class DataTest {
 
         assertEquals("retryCount", integerInput.getKey());
         assertEquals("重试次数", integerInput.getDisplayName());
-        assertEquals(DataType.INTEGER, integerInput.getType());
+        assertEquals(DataType.INTEGER, integerInput.getValueType());
         assertEquals(3, integerInput.getDefaultValue());
         assertEquals(0, integerInput.getMin());
         assertEquals(10, integerInput.getMax());
-        assertDoesNotThrow(() -> integerInput.valid(10));
+        assertDoesNotThrow(() -> integerInput.bind(Map.of("retryCount", 10)));
         assertThrows(
             IllegalArgumentException.class,
-            () -> integerInput.valid(11)
+            () -> integerInput.bind(Map.of("retryCount", 11))
         );
         assertEquals(
             integerInput,
@@ -117,7 +118,7 @@ class DataTest {
                     "defaultValue", defaults.get(type)
                 )
             );
-            assertEquals(type, input.getType());
+            assertEquals(type, input.getValueType());
             assertTrue(
                 input.getClass().getSimpleName().endsWith("Input")
             );
@@ -137,31 +138,20 @@ class DataTest {
             .defaultValue("payload")
             .build();
 
-        input.validateDefinition();
 
         assertEquals("request", input.getKey());
         assertEquals("请求", input.getDisplayName());
         assertEquals("payload", input.getDefaultValue());
-        assertEquals(DataType.STRING, input.getType());
+        assertEquals(DataType.STRING, input.getValueType());
     }
 
+    /** 验证 Builder 创建时即完成默认值和具体 Input 约束检查。 */
     @Test
-    void settersSupportFrameworkStylePropertyBinding() {
-        IntegerInput input = new IntegerInput();
-        input.setKey(" retryCount ");
-        input.setDisplayName(" 重试次数 ");
-        input.setRequired(true);
-        input.setDefaultValue(3);
-        input.setMin(0);
-        input.setMax(10);
-
-        input.validateDefinition();
-
-        assertEquals("retryCount", input.getKey());
-        assertEquals("重试次数", input.getDisplayName());
-        assertEquals(3, input.getDefaultValue());
-        assertEquals(0, input.getMin());
-        assertEquals(10, input.getMax());
+    void builderRejectsInvalidDefinitionsBeforeReturningAnInput() {
+        assertThrows(IllegalArgumentException.class, () -> IntegerInput.builder()
+            .key("attempts").min(5).max(2).build());
+        assertThrows(IllegalArgumentException.class, () -> IntegerInput.builder()
+            .key("attempts").max(2).defaultValue(3).build());
     }
 
     @Test
@@ -243,7 +233,6 @@ class DataTest {
     private static Input<?> jsonInput(Map<String, Object> definition) {
         Input<?> input = JsonObject.FromMap(definition)
             .asObject(Input.class);
-        input.validateDefinition();
         return input;
     }
 }

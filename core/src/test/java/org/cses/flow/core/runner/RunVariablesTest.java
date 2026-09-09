@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class RunVariablesTest {
 
+    /** 检查根实例变量树和仅含直接父、最初实例两项的来源。 */
     @Test
     void buildsTheCanonicalRuntimeVariableTree() {
         Fixture fixture = fixture();
@@ -74,10 +75,37 @@ class RunVariablesTest {
             fixture.execution().id(),
             map(variables, "execution").get("id")
         );
-        assertEquals(
-            Map.of(),
-            map(map(variables, "execution"), "outputs")
-        );
+        assertEquals(Map.of(), map(map(variables, "execution"), "outputs"));
+        Map<String, Object> origin = map(map(variables, "execution"), "origin");
+        assertEquals(java.util.Set.of("parentId", "originId"), origin.keySet());
+        org.junit.jupiter.api.Assertions.assertNull(origin.get("parentId"));
+        assertEquals(fixture.execution().id(), origin.get("originId"));
+        assertThrows(UnsupportedOperationException.class, () -> origin.put("parentId", "changed"));
+    }
+
+    /** 检查 replay 的表达式身份仍为当前实例，来源指向父实例且变量不可变。 */
+    @Test
+    void derivedExecutionVariablesKeepCurrentIdentityAndSourceRelationship() {
+        Fixture fixture = fixture();
+        Execution source = Execution.create(null, session(), fixture.flow().key(), 1L, Map.of("request", "A"));
+        source.start();
+        TaskRun target = source.createTaskRun(fixture.rootTask().id(), null, Map.of());
+        source.startTaskRun(target.id());
+        source.succeedTaskRun(target.id(), Map.of("token", "retained"));
+        TaskRun pause = source.createTaskRun(fixture.currentTask().id(), null, Map.of());
+        source.startTaskRun(pause.id());
+        source.pauseTaskRun(pause.id());
+        source.pause();
+        Execution derived = source.replay(org.paas.common.util.StringUtil.newId(), session(),
+            pause.id(), target.id(), "redo", List.of(pause.id(), target.id()));
+        Map<String, Object> variables = RunVariables.builder().flow(fixture.flow()).execution(derived).build();
+        assertEquals(derived.id(), map(variables, "execution").get("id"));
+        assertEquals(Map.of("parentId", source.id(), "originId", source.id()),
+            map(map(variables, "execution"), "origin"));
+        assertEquals("RUNNING", map(variables, "execution").get("state"));
+        assertThrows(UnsupportedOperationException.class,
+            () -> map(map(variables, "execution"), "origin").put("originId", "changed"));
+        assertFalse(containsDomainObject(variables));
     }
 
     @Test

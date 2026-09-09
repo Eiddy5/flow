@@ -19,6 +19,7 @@ jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-d
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 paas-json = { module = "org.paas:paas-json" }
 paas-session = { module = "org.paas:paas-session" }
+paas-pulsar = { module = "org.paas:paas-pulsar" }
 lombok = { module = "org.projectlombok:lombok" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 

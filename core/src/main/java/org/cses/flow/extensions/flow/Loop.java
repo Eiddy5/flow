@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.validations.ModelInvariant;
@@ -38,7 +39,7 @@ import java.util.Map;
 )
 @SuperBuilder
 @NoArgsConstructor
-public class Loop extends Branch implements OrchestrationTask, ModelInvariant {
+public class Loop extends Branch<Loop.Output> implements ModelInvariant {
 
     @NotNull
     @Positive
@@ -94,5 +95,9 @@ public class Loop extends Branch implements OrchestrationTask, ModelInvariant {
                 type + " requires at least one child Task"
             );
         }
+    }
+
+    public static class Output implements org.cses.flow.core.domains.tasks.Output{
+
     }
 }

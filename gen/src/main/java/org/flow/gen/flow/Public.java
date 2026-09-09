@@ -87,6 +87,6 @@ public class Public extends SchemaImpl {
 
     @Override
     public String getDbName() {
-        return "flow";
+        return "flow_origin";
     }
 }

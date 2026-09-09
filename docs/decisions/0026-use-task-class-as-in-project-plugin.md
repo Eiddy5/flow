@@ -24,6 +24,9 @@ ADR 0083 进一步规定 Flow 版本和行 ID 由 Repository 分配，并修订�
 创建业务绑定上下文。YAML Mapper 注册 source 定义配置并生成首次 Task 身份；JSON
 Mapper 注册持久化配置并直接绑定已保存身份。调用方不传递 reader attribute。
 
+ADR 0090 增加宿主 classpath 业务 Input 的按类发现，并复用同一注册表与绑定器；
+Input 不采用 Task 的空 Bean 创建方式。原 Task 规则保持不变。
+
 ## 背景
 
 原 Task 扩展需要同时提供具体 `Task` 和伴生 `TaskExtension`，再由 Dispatcher

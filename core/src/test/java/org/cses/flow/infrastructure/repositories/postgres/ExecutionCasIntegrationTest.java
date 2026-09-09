@@ -5,7 +5,9 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
+import org.cses.flow.infrastructure.repositories.CasSupport;
 import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.jooq.DSLContext;
 import org.jooq.exception.DataChangedException;
 import org.junit.jupiter.api.AfterEach;
@@ -61,7 +63,7 @@ class ExecutionCasIntegrationTest {
         try (var threads = Executors.newFixedThreadPool(2)) {
             var futures = List.of(0, 1).stream().map(writer -> threads.submit(() -> {
                 ExecutionRepositoryImpl contender = new ExecutionRepositoryImpl();
-                return contender.inScope(database, dsl -> {
+                return FlowDatabase.execute(database, dsl -> {
                     Execution execution = contender.findById(dsl, companyId, original.id()).orElseThrow();
                     assertEquals(0L, lock(dsl, execution.id()));
                     await(loaded);
@@ -71,6 +73,7 @@ class ExecutionCasIntegrationTest {
                         contender.save(dsl, execution);
                         return writer;
                     } catch (DataChangedException conflict) {
+                        assertEquals("数据已发生变化，请刷新后重试。", conflict.getMessage());
                         return -1;
                     }
                 });
@@ -93,7 +96,7 @@ class ExecutionCasIntegrationTest {
     @Test
     void repeatedFlushAndMultipleLoadsKeepIndependentVersionsWithinOneTransaction() {
         Execution original = create();
-        repository.inScope(database, scoped -> scoped.transactionResult(configuration -> {
+        FlowDatabase.execute(database, scoped -> scoped.transactionResult(configuration -> {
             DSLContext dsl = configuration.dsl();
             Execution first = repository.findById(dsl, companyId, original.id()).orElseThrow();
             Execution stale = repository.findAll(dsl, companyId).getFirst();
@@ -111,29 +114,70 @@ class ExecutionCasIntegrationTest {
         assertEquals(2L, lock(database, original.id()));
     }
 
+    /** 内层提交不清理；最外层提交后即失效，不必等待数据库操作回调返回。 */
+    @Test
+    void outerCommitExpiresTokensButNestedCommitKeepsThem() {
+        Execution original = create();
+        AtomicReference<DSLContext> expired = new AtomicReference<>();
+        FlowDatabase.execute(database, scoped -> {
+            scoped.transaction(configuration -> {
+                DSLContext dsl = configuration.dsl();
+                expired.set(dsl);
+                Execution loaded = repository.findById(dsl, companyId, original.id()).orElseThrow();
+                repository.save(dsl, loaded);
+                dsl.transaction(nested -> repository.save(nested.dsl(), loaded));
+                repository.save(dsl, loaded);
+                assertEquals(3L, lock(dsl, original.id()));
+            });
+            assertThrows(IllegalStateException.class, () -> repository.save(expired.get(), original));
+            assertThrows(IllegalStateException.class, () -> repository.save(scoped, original));
+            return null;
+        });
+        assertEquals(3L, lock(database, original.id()));
+    }
+
+    /** savepoint 回滚后拒绝复用缓存中的未提交版本，外层已成功写入仍可提交。 */
+    @Test
+    void nestedRollbackInvalidatesSnapshotsEvenWhenCallerCatchesFailure() {
+        Execution original = create();
+        FlowDatabase.execute(database, scoped -> scoped.transactionResult(configuration -> {
+            DSLContext dsl = configuration.dsl();
+            Execution loaded = repository.findById(dsl, companyId, original.id()).orElseThrow();
+            repository.save(dsl, loaded);
+            assertThrows(IllegalArgumentException.class, () -> dsl.transaction(nested -> {
+                repository.save(nested.dsl(), loaded);
+                throw new IllegalArgumentException("rollback savepoint");
+            }));
+            assertEquals(1L, lock(dsl, original.id()));
+            assertThrows(IllegalStateException.class, () -> repository.save(dsl, loaded));
+            return null;
+        }));
+        assertEquals(1L, lock(database, original.id()));
+    }
+
     /** 会话退出立即清理元数据；旧对象、拷贝和无会话写入都不能绕过加载条件。 */
     @Test
     void scopeCompletionClearsTokensAndDetachedSnapshotsCannotBorrowNewLocks() {
         Execution original = create();
         AtomicReference<DSLContext> expired = new AtomicReference<>();
         AtomicReference<DSLContext> derived = new AtomicReference<>();
-        AtomicReference<Map<?, ?>> tokens = new AtomicReference<>();
-        Execution detached = repository.inScope(database, dsl -> {
+        AtomicReference<CasSupport> context = new AtomicReference<>();
+        Execution detached = FlowDatabase.execute(database, dsl -> {
             expired.set(dsl);
             derived.set(dsl.configuration().derive().dsl());
-            tokens.set((Map<?, ?>) dsl.configuration().data(ExecutionRepositoryImpl.class));
+            context.set((CasSupport) dsl.configuration().data(CasSupport.class));
             Execution loaded = repository.findById(dsl, companyId, original.id()).orElseThrow();
             repository.save(dsl, loaded);
-            assertEquals(1, tokens.get().size());
+            assertNotNull(context.get());
             return loaded;
         });
-        assertTrue(tokens.get().isEmpty());
-        assertNull(expired.get().configuration().data(ExecutionRepositoryImpl.class));
-        assertNull(database.configuration().data(ExecutionRepositoryImpl.class));
+        assertNull(context.get().dsl().configuration().data(CasSupport.class));
+        assertNull(expired.get().configuration().data(CasSupport.class));
+        assertNull(database.configuration().data(CasSupport.class));
         assertThrows(IllegalStateException.class, () -> repository.save(expired.get(), detached));
         assertThrows(IllegalStateException.class, () -> repository.save(derived.get(), detached));
         assertThrows(IllegalStateException.class, () -> repository.save(database, detached));
-        repository.inScope(database, dsl -> {
+        FlowDatabase.execute(database, dsl -> {
             Execution current = repository.findById(dsl, companyId, original.id()).orElseThrow();
             assertThrows(DataChangedException.class, () -> repository.save(dsl, detached));
             assertThrows(DataChangedException.class, () -> repository.save(dsl, original));
@@ -148,7 +192,7 @@ class ExecutionCasIntegrationTest {
     @Test
     void childFailureRollsBackRootLockAndChildrenAndInvalidatesTheFailedSnapshot() {
         Execution original = create();
-        repository.inScope(database, dsl -> {
+        FlowDatabase.execute(database, dsl -> {
             Execution changed = repository.findById(dsl, companyId, original.id()).orElseThrow();
             changed.createTaskRun("x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1), null, Map.of());
             changed.beginKilling();
@@ -171,11 +215,13 @@ class ExecutionCasIntegrationTest {
     @Test
     void childIdentityConflictCannotMoveAnotherAggregatesTaskRun() {
         Execution original = create();
+        String conflictId = StringUtil.newId();
         Execution conflicting = Execution.rehydrate(
-                StringUtil.newId(), companyId, original.creator(), original.createdAt(),
+                conflictId, companyId, original.creator(), original.createdAt(),
                 original.flowKey(), original.flowVersion(), original.inputs(),
-                original.generation(), original.state(), original.taskRuns());
-        repository.inScope(database, dsl -> {
+                original.generation(), original.state(), original.taskRuns(),
+                org.cses.flow.core.domains.executions.Origin.create(null, conflictId), List.of());
+        FlowDatabase.execute(database, dsl -> {
             assertThrows(WorkflowException.class, () -> repository.save(dsl, conflicting));
             assertTrue(repository.findById(dsl, companyId, conflicting.id()).isEmpty());
             Execution retained = repository.findById(dsl, companyId, original.id()).orElseThrow();
@@ -191,9 +237,9 @@ class ExecutionCasIntegrationTest {
     @Test
     void transactionRollbackAlsoClearsTheScope() {
         Execution original = create();
-        AtomicReference<Map<?, ?>> tokens = new AtomicReference<>();
-        assertThrows(IllegalStateException.class, () -> repository.inScope(database, scoped -> {
-            tokens.set((Map<?, ?>) scoped.configuration().data(ExecutionRepositoryImpl.class));
+        AtomicReference<DSLContext> expired = new AtomicReference<>();
+        assertThrows(IllegalStateException.class, () -> FlowDatabase.execute(database, scoped -> {
+            expired.set(scoped);
             return scoped.transactionResult(configuration -> {
                 DSLContext dsl = configuration.dsl();
                 Execution loaded = repository.findById(dsl, companyId, original.id()).orElseThrow();
@@ -203,7 +249,8 @@ class ExecutionCasIntegrationTest {
                 throw new IllegalStateException("rollback-test");
             });
         }));
-        assertTrue(tokens.get().isEmpty());
+        assertNull(expired.get().configuration().data(CasSupport.class));
+        assertThrows(IllegalStateException.class, () -> repository.save(expired.get(), original));
         assertEquals(0L, lock(database, original.id()));
         assertEquals(original.state(), repository.findById(database, companyId, original.id()).orElseThrow().state());
     }
@@ -212,7 +259,7 @@ class ExecutionCasIntegrationTest {
     @Test
     void deletedRootCannotBeReinsertedByAStaleSnapshot() {
         Execution original = create();
-        repository.inScope(database, dsl -> {
+        FlowDatabase.execute(database, dsl -> {
             Execution loaded = repository.findById(dsl, companyId, original.id()).orElseThrow();
             database.deleteFrom(TASK_RUNS).where(TASK_RUNS.EXECUTION_ID.eq(original.id())).execute();
             database.deleteFrom(EXECUTIONS).where(EXECUTIONS.COMPANY_ID.eq(companyId))
@@ -223,6 +270,130 @@ class ExecutionCasIntegrationTest {
             assertEquals(0, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(original.id())));
             return null;
         });
+    }
+
+    /** 双聚合竞争只有一个完整提交，继承 ID 不重复进入 task_runs。
+     * @throws Exception 并发任务超时或失败
+     */
+    @Test
+    void concurrentReplaysCommitOneDerivedSnapshotAndOneSourceCas() throws Exception {
+        Execution original = createPaused();
+        String targetId = original.taskRuns().getFirst().id();
+        String pauseId = original.pausedTaskRuns().getFirst().id();
+        CyclicBarrier loaded = new CyclicBarrier(2);
+        try (var threads = Executors.newFixedThreadPool(2)) {
+            var futures = List.of(0, 1).stream().map(writer -> threads.submit(() -> {
+                ExecutionRepositoryImpl contender = new ExecutionRepositoryImpl();
+                return FlowDatabase.execute(database, dsl -> {
+                    Execution source = contender.findById(dsl, companyId, original.id()).orElseThrow();
+                    Execution derived = source.replay(StringUtil.newId(), session(), pauseId, targetId,
+                        "writer-" + writer, List.of(pauseId, targetId));
+                    derived.createTaskRun("new-" + writer, null, Map.of("writer", writer));
+                    await(loaded);
+                    try {
+                        contender.save(dsl, source, derived);
+                        return derived.id();
+                    } catch (DataChangedException conflict) {
+                        assertTrue(contender.findById(dsl, companyId, derived.id()).isEmpty());
+                        return "conflict";
+                    }
+                });
+            })).toList();
+            String first = futures.getFirst().get(20, TimeUnit.SECONDS);
+            String second = futures.getLast().get(20, TimeUnit.SECONDS);
+            assertNotEquals(first.equals("conflict"), second.equals("conflict"));
+            String winner = first.equals("conflict") ? second : first;
+            var lineage = repository.findByOriginId(database, companyId, original.id());
+            assertEquals(2, lineage.size());
+            assertTrue(repository.findByOriginId(database, "another-tenant", original.id()).isEmpty());
+            Execution source = repository.findById(database, companyId, original.id()).orElseThrow();
+            Execution derived = repository.findById(database, companyId, winner).orElseThrow();
+            assertEquals(org.cses.flow.core.domains.flows.State.Type.KILLED, source.state().current());
+            assertEquals(2L, lock(database, source.id()));
+            assertEquals(0L, lock(database, derived.id()));
+            assertEquals(original.id(), derived.origin().parentId());
+            assertEquals(original.id(), derived.origin().originId());
+            assertEquals(original.taskRuns().stream().map(TaskRun::id).toList(),
+                derived.inheritedTaskRuns().stream().map(TaskRun::id).toList());
+            assertEquals(1, derived.ownTaskRuns().size());
+            assertEquals(1, database.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(winner)));
+            assertEquals(original.taskRuns().size() + 1, database.fetchCount(TASK_RUNS,
+                TASK_RUNS.EXECUTION_ID.in(original.id(), winner)));
+            assertEquals(original.taskRuns().getFirst().outputs(), source.taskRuns().getFirst().outputs());
+        }
+    }
+
+    /** 派生子记录失败时原实例、根版本、子记录和新实例全部保持提交前状态。 */
+    @Test
+    void derivedChildFailureRollsBackBothAggregatesWithoutAnOuterTransaction() {
+        Execution original = createPaused();
+        FlowDatabase.execute(database, dsl -> {
+            Execution source = repository.findById(dsl, companyId, original.id()).orElseThrow();
+            String pause = source.pausedTaskRuns().getFirst().id();
+            String target = source.taskRuns().getFirst().id();
+            Execution derived = source.replay(StringUtil.newId(), session(), pause, target,
+                "invalid-derived-child", List.of(pause, target));
+            derived.createTaskRun("x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1), null, Map.of());
+            assertThrows(WorkflowException.class, () -> repository.save(dsl, source, derived));
+            assertEquals(1L, lock(database, original.id()));
+            Execution retained = repository.findById(dsl, companyId, original.id()).orElseThrow();
+            assertEquals(original.state(), retained.state());
+            assertEquals(original.taskRuns().stream().map(TaskRun::state).toList(),
+                retained.taskRuns().stream().map(TaskRun::state).toList());
+            assertTrue(repository.findById(dsl, companyId, derived.id()).isEmpty());
+            assertEquals(0, database.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(derived.id())));
+            assertEquals(1, repository.findByOriginId(dsl, companyId, original.id()).size());
+            assertThrows(DataChangedException.class, () -> repository.save(dsl, source, derived));
+            return null;
+        });
+    }
+
+    /** 派生根身份冲突不能提交原实例的停止事实。 */
+    @Test
+    void existingDerivedIdentityRollsBackSourceTransition() {
+        Execution original = createPaused();
+        Execution existing = create();
+        FlowDatabase.execute(database, dsl -> {
+            Execution source = repository.findById(dsl, companyId, original.id()).orElseThrow();
+            String pause = source.pausedTaskRuns().getFirst().id();
+            String target = source.taskRuns().getFirst().id();
+            Execution derived = source.replay(existing.id(), session(), pause, target,
+                "identity-conflict", List.of(pause, target));
+            assertThrows(WorkflowException.class, () -> repository.save(dsl, source, derived));
+            assertEquals(original.state(), repository.findById(dsl, companyId, original.id()).orElseThrow().state());
+            assertEquals(existing.state(), repository.findById(dsl, companyId, existing.id()).orElseThrow().state());
+            assertEquals(1L, lock(database, original.id()));
+            assertEquals(0L, lock(database, existing.id()));
+            return null;
+        });
+    }
+
+    /** @return 已持久化的目标完成、源 Pause 和并行 Pause 快照 */
+    private Execution createPaused() {
+        Execution original = create();
+        return FlowDatabase.execute(database, dsl -> {
+            Execution source = repository.findById(dsl, companyId, original.id()).orElseThrow();
+            source.succeedTaskRun(source.taskRuns().getFirst().id(), Map.of("value", "original"));
+            for (String key : List.of("source-pause", "sibling-pause")) {
+                TaskRun pause = source.createTaskRun(key, null, Map.of());
+                source.startTaskRun(pause.id());
+                source.pauseTaskRun(pause.id());
+            }
+            source.pause();
+            repository.save(dsl, source);
+            return source;
+        });
+    }
+
+    /** @return 本测试租户的有效用户会话 */
+    private Session<User> session() {
+        User user = new User();
+        user.setId("cas-user");
+        user.setCompanyId(companyId);
+        Session<User> session = new Session<>();
+        session.setCompanyId(companyId);
+        session.setUser(user);
+        return session;
     }
 
     /**
@@ -240,7 +411,7 @@ class ExecutionCasIntegrationTest {
         execution.start();
         TaskRun taskRun = execution.createTaskRun("cas-task", null, Map.of("step", "original"));
         execution.startTaskRun(taskRun.id());
-        repository.inScope(database, dsl -> {
+        FlowDatabase.execute(database, dsl -> {
             repository.save(dsl, execution);
             assertEquals(0L, lock(dsl, execution.id()));
             return null;

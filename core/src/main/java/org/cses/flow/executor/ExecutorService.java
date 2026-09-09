@@ -480,6 +480,14 @@ public class ExecutorService {
         };
     }
 
+    /**
+     * 根据运行中任务的编排类型查找下一项任务或可完成的编排节点。
+     * @param context 当前执行上下文，非 null
+     * @param task 当前任务定义，非 null，只读
+     * @param taskRun 当前运行记录，非 null，只读
+     * @param iterationScope 当前迭代范围，沿用调用方的查找范围
+     * @return 下一步计划或未收敛结果，不在此处执行计划
+     */
     private static SearchResult searchRunningTask(
         ExecutorContext context,
         Task task,
@@ -502,7 +510,7 @@ public class ExecutorService {
             }
             SearchResult action = searchTask(
                 context,
-                pause.pause(),
+                pause.onPause(),
                 taskRun.id(),
                 taskRun.inputs(),
                 null,

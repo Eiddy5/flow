@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class GenerationTest {
+class GenerationTest {
 
     @Test
     void normalExecutionStartsWithoutAFakeCurrentVersion() {
@@ -20,14 +20,15 @@ final class GenerationTest {
         assertTrue(generation.history().currents().isEmpty());
     }
 
+    /** 显式提供受影响记录，连续推进并确认原当前片段完整进入历史。 */
     @Test
     void rewindVersionsMoveTheSameCurrentObjectsIntoHistory() {
         Generation generation = Generation.empty();
 
-        generation.start("pause-1", "prepare-1", "资料需要修改");
+        generation.start("pause-1", "prepare-1", "资料需要修改", List.of("pause-1", "prepare-1"));
         Generation.Current first = generation.current().orElseThrow();
 
-        generation.advance("pause-2", "prepare-2", "仍需补充资料");
+        generation.advance("pause-2", "prepare-2", "仍需补充资料", List.of("pause-2", "prepare-2"));
         Generation.Current second = generation.current().orElseThrow();
 
         assertEquals(1, first.version());
@@ -56,6 +57,7 @@ final class GenerationTest {
         assertEquals("FIXED_COUNT_NOT_REACHED", current.reason());
     }
 
+    /** 重建带空影响列表的循环片段，拒绝不连续的版本历史。 */
     @Test
     void rehydratedVersionsMustBeConsecutive() {
         Generation.Current second = Generation.Current.rehydrate(
@@ -63,7 +65,7 @@ final class GenerationTest {
                 null,
                 null,
                 "INITIAL",
-                100L
+                100L, List.of()
         );
 
         assertThrows(

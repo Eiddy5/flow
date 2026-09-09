@@ -8,6 +8,8 @@ Accepted
 映射”的局部条款。ADR 0026 关于项目内发现、canonical class name、严格反序列化、
 Task 构造、运行能力和持久化的其余决定继续有效。
 
+ADR 0090 为目录分组增加业务 Input，并让 Input Schema 使用注册类而不创建空实例。
+
 ## 背景
 
 ADR 0026 已能在 YAML 反序列化时选择具体 Task，但编排工具仍不知道应用当前注册了

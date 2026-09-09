@@ -2,9 +2,9 @@
 
 当前运行时持久化边界以 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md) 为准：
 普通读取领域、调用领域方法、完整快照保存；不使用业务事务或锁定读取。
-下列早期 ADR 的事务表述按该决策修订，Queue 传输事务保留。
-Execution 的显式 `lock` CAS 和加载元数据清理以
-[ADR 0086](0086-use-scoped-execution-lock-for-cas.md) 为准。
+下列早期 ADR 的业务事务表述按该决策修订；当前 Executor 的 Pulsar 传输见 ADR 0094。
+显式 `lock` CAS 沿用 [ADR 0086](0086-use-scoped-execution-lock-for-cas.md)，通用支持、
+普通 `save` 接口及自动元数据清理以 [ADR 0091](0091-hide-repository-cas-behind-save.md) 为准。
 
 ## 文档定位
 
@@ -20,6 +20,11 @@ Execution 的显式 `lock` CAS 和加载元数据清理以
 
 ## Core 组件与依赖方向
 
+- [`ADR 0094`](0094-use-pulsar-for-executor-queues.md)：两条 Executor 队列切换到注解式
+  Pulsar，公共 Queue 只保留发布能力，删除旧默认队列工厂，不接入通知。
+- [`ADR 0092`](0092-add-annotation-driven-paas-pulsar-queues.md)：新增注解式 PAAS Pulsar
+  队列与方法消费者，复用 PAAS 发送、消费和 ACK/NACK；保留现有 PostgreSQL Executor
+  队列及其 Interface 的初始阶段，不增加 Flow 队列 YAML；默认链路已由 ADR 0094 切换。
 - [`ADR 0042`](0042-split-core-from-http-server.md)：采用 `gen + core + server` 的
   浅拆分；Core 保存完整非 HTTP Flow 能力，Server 只保存 HTTP、启动和资源，并
   通过 `api` 依赖 Core 维持 CSES 的单坐标接入。
@@ -133,6 +138,14 @@ Execution 的显式 `lock` CAS 和加载元数据清理以
 
 - [`ADR 0019`](0019-establish-basic-data-types.md)：Data、DataType、具体 Input 类型、
   Output、定义值边界、不变量、场景和当前实施状态。
+- [`ADR 0088`](0088-let-input-own-field-binding.md)：Input 自行处理字段取值、默认值、
+  转换和校验；Flow/Pause 仅管理声明集合，持久化层仅物化并触发定义检查。
+- [`ADR 0089`](0089-validate-input-during-materialization.md)：Input 在 JSON/YAML Creator
+  与 Builder 共用的构造路径完成定义校验，移除外部事后校验和无参/Setter 半成品。
+- [`ADR 0090`](0090-register-host-input-types.md)：宿主业务 Input 按类加入插件注册表，
+  定义类型与基础值类型分离，复用受控绑定和持久化入口。
+- [`ADR 0093`](0093-discover-inputs-from-jackson-type-names.md)：自动索引 JsonTypeName，
+  内置和业务 Input 共用 Jackson 原生多态，PAAS/JSON/YAML 与目录 Schema 统一。
 - [`ADR 0043`](0043-use-serializable-object-for-json-models.md)：JSON 模型统一继承
   PAAS `SerializableObject`，并由 Jackson Databind 作为 Micronaut HTTP codec，移除
   逐类 Micronaut Serialization 注解。
@@ -176,7 +189,7 @@ Execution 的显式 `lock` CAS 和加载元数据清理以
 - [`ADR 0031`](0031-model-pause-as-task-backed-gate.md)：Pause 直接拥有暂停前 Task、
   Resume Input、ISO 8601 duration 与 Behavior，并按 Task 即 Plugin 的结构物化。
 - [`ADR 0065`](0065-allow-pause-continuation-tasks.md)：Pause 同时拥有暂停前专有
-  `pause` Task 和恢复后继承的普通 `tasks`；其中普通 `tasks` 已由 ADR 0074 取消。
+  `onPause` Task 和恢复后继承的普通 `tasks`；其中普通 `tasks` 已由 ADR 0074 取消。
 - [`ADR 0036`](0036-model-loop-and-loop-until-as-recoverable-orchestration-scopes.md)：
   Loop 固定次数循环、Loop Until 后置条件循环、每轮 TaskRun 身份和可恢复调度协议。
 - [`ADR 0078`](0078-reuse-generation-for-rewind-fragments-and-loop-rounds.md)：以拥有者
@@ -203,6 +216,8 @@ Execution 的显式 `lock` CAS 和加载元数据清理以
   `vars.<key>`。
 
 ## Execution、TaskRun、State 与调度
+
+- [ADR 0087](0087-derive-execution-snapshots-on-replay.md)：退回派生新 Execution、两字段 Origin、独立继承快照、单 SQL 原子交接及来源查询。
 
 - [`ADR 0051`](0051-start-executions-through-dispatch-queue.md)：Execution 启动采用
   持久化 Queue 的异步受理边界与至少一次消费协议。

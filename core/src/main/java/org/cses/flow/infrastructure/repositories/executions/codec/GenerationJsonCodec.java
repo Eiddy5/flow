@@ -66,19 +66,17 @@ public class GenerationJsonCodec {
     }
 
     /**
-     * Serializes one generation including explicit invalidations when present.
+     * Serializes one generation including explicit invalidations.
      *
      * @param current validated generation record to read
-     * @return new JSON object; an empty affected set retains the legacy JSON shape
+     * @return new JSON object; loop rounds have an explicit empty affected set
      */
     private static JsonObject encodeCurrent(Generation.Current current) {
         JsonObject value = JsonObject.Create()
                 .put("version", current.version())
                 .put("reason", current.reason())
-                .put("date", current.date());
-        if (!current.affectedTaskRunIds().isEmpty()) {
-            value.put("affectedTaskRunIds", current.affectedTaskRunIds());
-        }
+                .put("date", current.date())
+                .put("affectedTaskRunIds", current.affectedTaskRunIds());
         current.sourceTaskRunId().ifPresent(id ->
                 value.put("sourceTaskRunId", id)
         );
@@ -89,7 +87,7 @@ public class GenerationJsonCodec {
     }
 
     /**
-     * Restores explicit invalidations and accepts legacy records without that field.
+     * Restores the required explicit invalidations of the current storage contract.
      *
      * @param value persisted generation JSON object to read
      * @return new validated generation record
@@ -99,9 +97,10 @@ public class GenerationJsonCodec {
         if (value == null
                 || !value.has("version")
                 || !value.has("reason")
-                || !value.has("date")) {
+                || !value.has("date")
+                || !value.has("affectedTaskRunIds")) {
             throw new IllegalArgumentException(
-                    "Generation Current requires version, reason and date"
+                    "Generation Current requires version, reason, date and affectedTaskRunIds"
             );
         }
         return Generation.Current.rehydrate(
@@ -114,7 +113,7 @@ public class GenerationJsonCodec {
                         : null,
                 value.getString("reason"),
                 value.getLong("date"),
-                value.has("affectedTaskRunIds") ? value.getStrings("affectedTaskRunIds") : List.of()
+                value.getStrings("affectedTaskRunIds")
         );
     }
 }

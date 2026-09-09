@@ -7,6 +7,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.conditions.ConditionContext;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.plugins.annotations.Plugin;
 
 /**
@@ -21,7 +22,7 @@ import org.cses.flow.core.plugins.annotations.Plugin;
 )
 @SuperBuilder
 @NoArgsConstructor
-public class Route extends Branch implements OrchestrationTask {
+public class Route extends Branch<Route.Output> {
 
     @NotBlank
     @Schema(
@@ -56,6 +57,10 @@ public class Route extends Branch implements OrchestrationTask {
     @Override
     protected Object typeSpecificEqualityState() {
         return route;
+    }
+
+    public static class Output implements org.cses.flow.core.domains.tasks.Output{
+
     }
 
 }

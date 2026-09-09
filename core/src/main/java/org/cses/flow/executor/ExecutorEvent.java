@@ -2,6 +2,7 @@ package org.cses.flow.executor;
 
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.queues.event.DispatchEvent;
+import org.cses.flow.queues.annotations.FlowQueue;
 
 import java.util.Objects;
 
@@ -13,6 +14,7 @@ import java.util.Objects;
  * {@link ExecutorContext} for every delivery; no Session, command payload or
  * mutable runtime object crosses the queue.</p>
  */
+@FlowQueue(name = ExecutorEvent.QUEUE_NAME, topic = ExecutorEvent.QUEUE_NAME)
 public record ExecutorEvent(
     String executionId,
     String companyId,

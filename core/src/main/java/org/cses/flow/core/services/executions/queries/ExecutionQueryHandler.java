@@ -15,10 +15,10 @@ import java.util.List;
 import java.util.Optional;
 
 @Singleton
-public final class ExecutionQueryHandler {
+public class ExecutionQueryHandler {
 
-    private final JOOQ jooq;
-    private final ExecutionRepository executionRepository;
+    private JOOQ jooq;
+    private ExecutionRepository executionRepository;
 
     @Inject
     public ExecutionQueryHandler(
@@ -50,4 +50,22 @@ public final class ExecutionQueryHandler {
             SessionValidation.requireCompanyId(session)
         ));
     }
+
+    /**
+     * Resolves an accessible Execution and loads its entire derivation tree.
+     * @param session tenant-scoped caller
+     * @param executionId any member of the tree
+     * @return independently restored snapshots in creation order
+     * @throws org.cses.flow.core.exceptions.WorkflowException when the member is not accessible
+     */
+    public <S extends Session<U>, U extends User> List<Execution> lineage(S session, String executionId) {
+        String companyId = SessionValidation.requireCompanyId(session);
+        return jooq.get(dsl -> {
+            Execution member = executionRepository.findById(dsl, companyId, executionId)
+                    .orElseThrow(() -> new org.cses.flow.core.exceptions.WorkflowException(
+                            "Execution does not exist: " + executionId));
+            return executionRepository.findByOriginId(dsl, companyId, member.origin().originId());
+        });
+    }
+
 }

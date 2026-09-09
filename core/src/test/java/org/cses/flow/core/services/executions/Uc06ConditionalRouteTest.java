@@ -321,11 +321,11 @@ class Uc06ConditionalRouteTest {
             tasks:
               - key: approval-decision
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-approval-decision
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
                 outputs:

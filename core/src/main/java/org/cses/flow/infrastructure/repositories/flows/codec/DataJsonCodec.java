@@ -4,16 +4,16 @@ import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.serializers.JacksonMapper;
 import org.jooq.JSONB;
 import org.paas.json.JsonObject;
 import org.paas.json.JsonObjects;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 
 public class DataJsonCodec {
-
-    private static Class<Input<?>> INPUT_TYPE = inputType();
 
     private DataJsonCodec() {
     }
@@ -28,6 +28,13 @@ public class DataJsonCodec {
         return JSONB.valueOf(encode(values).toJson());
     }
 
+    /**
+     * 恢复创建时已经检查完整定义的具体 Input，不在持久化层解释字段规则。
+     * @param values 已解析的只读定义数组；null 表示没有输入声明
+     * @param field 用于错误定位的所属字段路径
+     * @return 恢复后的不可变 Input 列表
+     * @throws IllegalStateException 当某项无法物化或定义校验失败时抛出，包含数组位置
+     */
     public static List<Input<?>> decodeInputs(
         JsonObjects values,
         String field
@@ -35,36 +42,13 @@ public class DataJsonCodec {
         if (values == null) {
             return List.of();
         }
-        JsonObjects normalized = JsonObjects.Create();
+        List<Input<?>> inputs = new ArrayList<>();
         for (int index = 0; index < values.size(); index++) {
-            JsonObject definition = JsonObject.FromMap(
-                values.getObject(index).asMap()
-            );
-            String path = "Persisted " + field + "[" + index + "]";
-            Map<String, Object> source = definition.asMap();
-            String key = requiredText(source, "key", path);
-            String type = requiredText(source, "type", path);
-            DataType dataType = DataType.parse(type);
-            definition.replace("type", dataType.name());
-            Object defaultValue = source.get("defaultValue");
-            if (defaultValue != null) {
-                definition.replace(
-                    "defaultValue",
-                    dataType.normalize(defaultValue)
-                );
-            }
-            if (!source.containsKey("displayName")) {
-                definition.put("displayName", key);
-            }
-            if (!source.containsKey("required")) {
-                definition.put("required", false);
-            }
-            normalized.add(definition);
-        }
-        List<Input<?>> inputs = normalized.asObjects(INPUT_TYPE);
-        for (int index = 0; index < inputs.size(); index++) {
             try {
-                inputs.get(index).validateDefinition();
+                Input<?> input = JacksonMapper.convertPersistenceValue(
+                    values.getObject(index).asMap(), Input.class
+                );
+                inputs.add(input);
             } catch (RuntimeException exception) {
                 throw new IllegalStateException(
                     "Persisted " + field + "[" + index + "] is invalid",
@@ -120,7 +104,7 @@ public class DataJsonCodec {
             "key",
             data.getKey(),
             "type",
-            data.getType().name()
+            data.getValueType().name()
         );
     }
 
@@ -139,8 +123,4 @@ public class DataJsonCodec {
         return text.trim();
     }
 
-    @SuppressWarnings("unchecked")
-    private static Class<Input<?>> inputType() {
-        return (Class<Input<?>>) (Class<?>) Input.class;
-    }
 }

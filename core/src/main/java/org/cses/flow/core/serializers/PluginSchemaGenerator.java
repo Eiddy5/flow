@@ -11,12 +11,15 @@ import com.github.victools.jsonschema.generator.SchemaGeneratorConfigBuilder;
 import com.github.victools.jsonschema.generator.SchemaGenerationContext;
 import com.github.victools.jsonschema.generator.SchemaVersion;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
+import com.github.victools.jsonschema.module.jackson.JacksonOption;
 import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationModule;
 import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidationOption;
 import com.github.victools.jsonschema.module.swagger2.Swagger2Module;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.flows.Input;
+import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.plugins.Plugin;
 import org.cses.flow.core.plugins.PluginMetadata;
 
@@ -36,23 +39,32 @@ import java.util.concurrent.ConcurrentMap;
  * Lazily generates and caches the accepted definition schema for a plugin.
  */
 @Singleton
-public final class PluginSchemaGenerator {
+public class PluginSchemaGenerator {
 
-    private static final String TYPE_PROPERTY = "type";
-    private static final String KEY_PROPERTY = "key";
-    private static final String SYSTEM_ID_PROPERTY = "id";
-    private static final Set<String> DEFAULTED_TASK_PROPERTIES = Set.of(
+    private static String TYPE_PROPERTY = "type";
+    private static String KEY_PROPERTY = "key";
+    private static String SYSTEM_ID_PROPERTY = "id";
+    private static Set<String> DEFAULTED_TASK_PROPERTIES = Set.of(
         "inputs",
         "outputs",
         "tasks"
     );
 
-    private final JacksonMapper jacksonMapper;
-    private final ConcurrentMap<Class<? extends Plugin>, Map<String, Object>>
+    private JacksonMapper jacksonMapper;
+    private Map<Class<?>, String> inputTypes;
+    private ConcurrentMap<Class<? extends Plugin>, Map<String, Object>>
         cache = new ConcurrentHashMap<>();
 
-    public PluginSchemaGenerator(JacksonMapper jacksonMapper) {
+    /**
+     * 使用与反序列化相同的注册表建立 Input Schema 类型列表，不创建 Input 实例。
+     * @param jacksonMapper 非空受控 Mapper
+     * @param registry 非空只读插件注册表
+     */
+    public PluginSchemaGenerator(JacksonMapper jacksonMapper, PluginRegistry registry) {
         this.jacksonMapper = jacksonMapper;
+        inputTypes = new LinkedHashMap<>();
+        registry.plugins().stream().flatMap(group -> group.inputs().stream())
+            .forEach(metadata -> inputTypes.put(metadata.type(), metadata.typeName()));
     }
 
     /**
@@ -67,17 +79,24 @@ public final class PluginSchemaGenerator {
         );
     }
 
+    /**
+     * 为已注册插件生成不可变定义 Schema；Input 不创建空实例来探测默认值。
+     * @param metadata 非空已注册类型元信息
+     * @return 新生成的不可变 Schema 树
+     * @throws IllegalArgumentException 当 Task 默认实例无法创建或 Schema 无法生成时抛出
+     */
     private Map<String, Object> generateUncached(
         PluginMetadata<? extends Plugin> metadata
     ) {
-        Object defaultInstance = newDefaultInstance(metadata.type());
+        Object defaultInstance = Input.class.isAssignableFrom(metadata.type())
+            ? null : newDefaultInstance(metadata.type());
         SchemaGeneratorConfigBuilder builder =
             new SchemaGeneratorConfigBuilder(
                 jacksonMapper.jsonMapper().copy(),
                 SchemaVersion.DRAFT_7,
                 OptionPreset.PLAIN_JSON
             )
-                .with(new JacksonModule())
+                .with(new JacksonModule(JacksonOption.SKIP_SUBTYPE_LOOKUP, JacksonOption.IGNORE_TYPE_INFO_TRANSFORM))
                 .with(new JakartaValidationModule(
                     JakartaValidationOption.NOT_NULLABLE_FIELD_IS_REQUIRED,
                     JakartaValidationOption.INCLUDE_PATTERN_EXPRESSIONS
@@ -88,6 +107,21 @@ public final class PluginSchemaGenerator {
                     Option.FORBIDDEN_ADDITIONAL_PROPERTIES_BY_DEFAULT,
                     Option.SCHEMA_VERSION_INDICATOR
                 );
+        builder.forTypesInGeneral()
+            .withSubtypeResolver((declaredType, context) -> declaredType.getErasedType() == Input.class
+                ? inputTypes.keySet().stream().map(type -> context.getTypeContext().resolve(type)).toList()
+                : null)
+            .withTypeAttributeOverride((attributes, scope, context) -> {
+                Class<?> type = scope.getType().getErasedType();
+                if (Input.class.isAssignableFrom(type) && type != Input.class) {
+                    ObjectNode identifier = attributes.withObject("properties").withObject("type");
+                    identifier.removeAll();
+                    identifier.put("type", "string");
+                    identifier.put("const", inputTypes.getOrDefault(type, type.getCanonicalName()));
+                    addRequired(attributes.withArray("required"), "type");
+                    addRequired(attributes.withArray("required"), "key");
+                }
+            });
         builder.forFields()
             .withIgnoreCheck(PluginSchemaGenerator::isSystemId)
             .withDefaultResolver(field -> defaultValue(
@@ -100,7 +134,7 @@ public final class PluginSchemaGenerator {
 
         ObjectNode schema = new SchemaGenerator(builder.build())
             .generateSchema(metadata.type());
-        normalizeDefinitionSchema(schema, metadata.canonicalType());
+        normalizeDefinitionSchema(schema, metadata.typeName(), Task.class.isAssignableFrom(metadata.type()));
         return immutableMap(jacksonMapper.toMap(schema));
     }
 
@@ -195,13 +229,22 @@ public final class PluginSchemaGenerator {
         }
     }
 
+    /**
+     * 写入精确类型与必需 key；仅对 Task 清除系统字段和具有默认值的通用要求。
+     * @param schema 待原地规范化的 Schema 树
+     * @param canonicalType 非空的注册类型标识
+     * @param task true 应用 Task 规则，false 保留 Input 自有字段
+     */
     private static void normalizeDefinitionSchema(
         ObjectNode schema,
-        String canonicalType
+        String canonicalType,
+        boolean task
     ) {
         schema.put("additionalProperties", false);
         ObjectNode properties = schema.withObject("properties");
-        properties.remove(SYSTEM_ID_PROPERTY);
+        if (task) {
+            properties.remove(SYSTEM_ID_PROPERTY);
+        }
         ObjectNode type = properties.withObject(TYPE_PROPERTY);
         type.removeAll();
         type.put("type", "string");
@@ -209,10 +252,10 @@ public final class PluginSchemaGenerator {
 
         removeDefaultedRequirements(schema);
         ArrayNode required = schema.withArray("required");
-        removeRequired(required, SYSTEM_ID_PROPERTY);
-        DEFAULTED_TASK_PROPERTIES.forEach(property ->
-            removeRequired(required, property)
-        );
+        if (task) {
+            removeRequired(required, SYSTEM_ID_PROPERTY);
+            DEFAULTED_TASK_PROPERTIES.forEach(property -> removeRequired(required, property));
+        }
         addRequired(required, TYPE_PROPERTY);
         addRequired(required, KEY_PROPERTY);
     }

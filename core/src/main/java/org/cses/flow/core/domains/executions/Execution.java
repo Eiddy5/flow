@@ -23,9 +23,20 @@ public class Execution extends BaseDomain {
     Long flowVersion;
     List<TaskRun> taskRuns;
     Generation generation;
+    Origin origin;
+    int inheritedTaskRunCount;
     State state;
     Map<String, Object> inputs;
 
+    /**
+     * Creates a root snapshot with fresh lifecycle facts and the supplied identity.
+     * @param id nonblank identity allocated once for this Execution
+     * @param session trusted tenant and creator
+     * @param flowKey exact Flow key
+     * @param flowVersion positive bound Flow version
+     * @param inputs start inputs, defensively copied
+     * @throws IllegalArgumentException when required identities or version are invalid
+     */
     private Execution(
             String id,
             Session<? extends User> session,
@@ -43,8 +54,25 @@ public class Execution extends BaseDomain {
         this.generation = Generation.empty();
         this.inputs = immutableMap(inputs);
         this.state = State.created();
+        this.origin = Origin.create(null, id);
     }
 
+    /**
+     * Restores one independent snapshot and validates its complete runtime history.
+     * @param id persisted Execution ID
+     * @param companyId owning tenant
+     * @param creator original creator
+     * @param createdAt original creation time in milliseconds
+     * @param flowKey bound Flow key
+     * @param flowVersion positive bound version
+     * @param inputs copied start inputs
+     * @param generation copied replay history
+     * @param state immutable Execution lifecycle history
+     * @param taskRuns ordered runs created by this instance
+     * @param origin immutable parent and root references
+     * @param inheritedTaskRuns ordered source snapshots, independently copied
+     * @throws IllegalArgumentException when identity or history is inconsistent
+     */
     private Execution(
             String id,
             String companyId,
@@ -55,7 +83,9 @@ public class Execution extends BaseDomain {
             Map<String, ?> inputs,
             Generation generation,
             State state,
-            List<TaskRun> taskRuns
+            List<TaskRun> taskRuns,
+            Origin origin,
+            List<TaskRun> inheritedTaskRuns
     ) {
         super(id, companyId, creator, createdAt);
         this.flowKey = requireText(flowKey, "Flow key");
@@ -69,7 +99,11 @@ public class Execution extends BaseDomain {
                 "Execution generation"
         ).copy();
         this.state = RequiredUtil.required(state, "Execution state");
+        this.origin = Objects.requireNonNull(origin, "Execution origin");
         this.taskRuns = new ArrayList<>();
+        Objects.requireNonNull(inheritedTaskRuns, "Inherited TaskRuns").stream()
+                .map(TaskRun::copy).forEach(this.taskRuns::add);
+        this.inheritedTaskRunCount = this.taskRuns.size();
         if (taskRuns != null) {
             taskRuns.stream().map(TaskRun::copy).forEach(this.taskRuns::add);
         }
@@ -95,55 +129,46 @@ public class Execution extends BaseDomain {
         );
     }
 
+    /**
+     * Restores one stored Execution with its own runs and inherited run snapshots.
+     * @param id stable Execution identity
+     * @param companyId owning tenant
+     * @param creator original creator
+     * @param createdAt original creation time in milliseconds
+     * @param flowKey bound Flow key
+     * @param flowVersion bound positive Flow version
+     * @param inputs immutable start inputs, copied
+     * @param generation exact replay history, copied
+     * @param state exact lifecycle history
+     * @param taskRuns runs created by this Execution, copied in order
+     * @param origin exact parent and root relationship
+     * @param inheritedTaskRuns ordered inherited snapshots, copied before owned runs
+     * @return restored aggregate without creating execution facts
+     * @throws IllegalArgumentException when the snapshot is inconsistent
+     */
     public static Execution rehydrate(
-            String id,
-            String companyId,
-            ActorRef creator,
-            long createdAt,
-            String flowKey,
-            long flowVersion,
-            Map<String, ?> inputs,
-            State state,
-            List<TaskRun> taskRuns
+            String id, String companyId, ActorRef creator, long createdAt,
+            String flowKey, long flowVersion, Map<String, ?> inputs,
+            Generation generation, State state, List<TaskRun> taskRuns,
+            Origin origin, List<TaskRun> inheritedTaskRuns
     ) {
-        return rehydrate(
-                id,
-                companyId,
-                creator,
-                createdAt,
-                flowKey,
-                flowVersion,
-                inputs,
-                Generation.empty(),
-                state,
-                taskRuns
-        );
+        return new Execution(id, companyId, creator, createdAt, flowKey, flowVersion,
+                inputs, generation, state, taskRuns, origin, inheritedTaskRuns);
     }
 
-    public static Execution rehydrate(
-            String id,
-            String companyId,
-            ActorRef creator,
-            long createdAt,
-            String flowKey,
-            long flowVersion,
-            Map<String, ?> inputs,
-            Generation generation,
-            State state,
-            List<TaskRun> taskRuns
-    ) {
-        return new Execution(
-                id,
-                companyId,
-                creator,
-                createdAt,
-                flowKey,
-                flowVersion,
-                inputs,
-                generation,
-                state,
-                taskRuns
-        );
+    /** @return immutable direct-parent and root Execution relationship */
+    public Origin origin() {
+        return origin;
+    }
+
+    /** @return inherited run snapshots in their original order */
+    public List<TaskRun> inheritedTaskRuns() {
+        return List.copyOf(taskRuns.subList(0, inheritedTaskRunCount));
+    }
+
+    /** @return only the run occurrences first created by this Execution */
+    public List<TaskRun> ownTaskRuns() {
+        return List.copyOf(taskRuns.subList(inheritedTaskRunCount, taskRuns.size()));
     }
 
     public String flowKey() {
@@ -438,17 +463,42 @@ public class Execution extends BaseDomain {
     }
 
     /**
-     * Replays the effective serial suffix for callers without a Flow path plan.
-     *
-     * @param sourceTaskRunId effective paused source occurrence ID
-     * @param targetTaskRunId effective completed preceding occurrence ID
-     * @param reason nonblank rewind reason, trimmed before storage
-     * @throws WorkflowException when source, target or current execution cannot rewind
+     * Derives a running Execution from this snapshot and stops this Execution after validation.
+     * Unaffected runs retain their identities and progress in isolated inherited snapshots.
+     * @param executionId preallocated identity of the new Execution
+     * @param session trusted tenant and actor creating the new Execution
+     * @param sourceTaskRunId current paused source occurrence
+     * @param targetTaskRunId completed target occurrence to execute again
+     * @param reason nonblank replay reason
+     * @param affectedTaskRunIds exact validated affected path, including both endpoints
+     * @return new running Execution; this source is now KILLED
+     * @throws WorkflowException when this snapshot cannot replay
+     * @throws IllegalArgumentException when identities or the session do not match
      */
-    public void rewindTaskRun(String sourceTaskRunId, String targetTaskRunId, String reason) {
-        rewindTaskRun(sourceTaskRunId, targetTaskRunId, reason,
-                effectiveTaskRuns().stream().filter(run -> indexOfTaskRun(run.id()) >= indexOfTaskRun(targetTaskRunId))
-                        .map(TaskRun::id).toList());
+    public Execution replay(String executionId, Session<? extends User> session,
+            String sourceTaskRunId, String targetTaskRunId, String reason,
+            List<String> affectedTaskRunIds) {
+        if (identifiedBy(executionId) || !companyId().equals(session.getCompanyId())) {
+            throw new IllegalArgumentException("Replay requires a new identity in the same tenant");
+        }
+        if (!canResumeTaskRun()) {
+            throw new WorkflowException("Execution cannot replay: " + id());
+        }
+        Execution next = create(requireText(executionId, "Replay Execution id"), session,
+                flowKey, flowVersion, inputs);
+        next.origin = Origin.create(id(), origin.originId());
+        // ponytail: a full snapshot per replay; share immutable history blocks if long chains make storage material.
+        next.taskRuns = taskRuns.stream().map(TaskRun::copy)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        next.inheritedTaskRunCount = next.taskRuns.size();
+        next.generation = generation.copy();
+        next.start();
+        next.rewindTaskRun(sourceTaskRunId, targetTaskRunId, reason, affectedTaskRunIds);
+        next.validateRehydratedState();
+        beginKilling();
+        killUnfinishedTaskRuns();
+        finishKilling();
+        return next;
     }
 
     /**
@@ -460,7 +510,7 @@ public class Execution extends BaseDomain {
      * @param affectedTaskRunIds unique effective IDs including source and target, defensively copied into Generation
      * @throws WorkflowException when the plan is stale or the execution cannot rewind
      */
-    public void rewindTaskRun(
+    private void rewindTaskRun(
             String sourceTaskRunId, String targetTaskRunId, String reason,
             List<String> affectedTaskRunIds
     ) {
@@ -523,12 +573,12 @@ public class Execution extends BaseDomain {
     /**
      * Excludes all occurrences invalidated by current or archived rewind generations.
      *
-     * @return an unmodifiable list of owned TaskRuns still on the effective path
+     * @return inherited and owned TaskRuns still on the effective path, in history order
      */
     public List<TaskRun> effectiveTaskRuns() {
         Set<String> invalidated = new HashSet<>();
         for (Generation.Current version : executionGenerations()) {
-            invalidated.addAll(invalidatedTaskRunIds(version));
+            invalidated.addAll(version.affectedTaskRunIds());
         }
         return taskRuns.stream().filter(run -> !invalidated.contains(run.id())).toList();
     }
@@ -545,7 +595,7 @@ public class Execution extends BaseDomain {
     public Integer replayGenerationVersion(String taskId, String parentId, Integer iteration, Integer inherited) {
         Integer version = inherited;
         for (Generation.Current current : executionGenerations()) {
-            for (String id : invalidatedTaskRunIds(current)) {
+            for (String id : current.affectedTaskRunIds()) {
                 TaskRun run = requireTaskRun(id);
                 if (run.taskId().equals(taskId) && Objects.equals(run.parentId().orElse(null), parentId)
                         && Objects.equals(run.iteration().isPresent() ? run.iteration().getAsInt() : null, iteration)) {
@@ -565,27 +615,6 @@ public class Execution extends BaseDomain {
         List<Generation.Current> versions = new ArrayList<>(generation.history().currents());
         generation.current().ifPresent(versions::add);
         return versions;
-    }
-
-    /**
-     * Reads precise invalidations or interprets a legacy top-level serial interval.
-     *
-     * @param version persisted execution generation whose source and target exist
-     * @return invalidated occurrence IDs without changing the snapshot
-     */
-    private List<String> invalidatedTaskRunIds(Generation.Current version) {
-        if (!version.affectedTaskRunIds().isEmpty()) return version.affectedTaskRunIds();
-        // Older persisted generations described a top-level serial interval.
-        int first = indexOfTaskRun(version.targetTaskRunId().orElseThrow());
-        int last = indexOfTaskRun(version.sourceTaskRunId().orElseThrow());
-        Set<String> roots = taskRuns.subList(first, last + 1).stream()
-                .filter(run -> run.parentId().isEmpty()).map(TaskRun::taskId)
-                .collect(java.util.stream.Collectors.toSet());
-        return taskRuns.stream().filter(run -> {
-            TaskRun root = run;
-            while (root.parentId().isPresent()) root = requireTaskRun(root.parentId().orElseThrow());
-            return roots.contains(root.taskId()) && root.executionGenerationVersion().orElse(0) < version.version();
-        }).map(TaskRun::id).toList();
     }
 
     private void completeRewindWhenSourceResumes(TaskRun resumed) {
@@ -698,6 +727,7 @@ public class Execution extends BaseDomain {
         return findTaskRun(taskRunId).orElseThrow(() -> new WorkflowException("TaskRun does not exist: " + taskRunId));
     }
 
+    /** @return an independent snapshot retaining all identities, origins and inherited boundaries */
     public Execution copy() {
         return new Execution(
                 id(),
@@ -709,11 +739,21 @@ public class Execution extends BaseDomain {
                 inputs,
                 generation,
                 state,
-                taskRuns
+                ownTaskRuns(),
+                origin,
+                inheritedTaskRuns()
         );
     }
 
+    /** Validates identity, inherited boundaries and runtime history without changing the snapshot. */
     private void validateRehydratedState() {
+        if (origin.parentId() == null) {
+            if (!id().equals(origin.originId()) || inheritedTaskRunCount != 0) {
+                throw new IllegalArgumentException("Root Execution must reference itself without inherited runs");
+            }
+        } else if (id().equals(origin.parentId()) || id().equals(origin.originId())) {
+            throw new IllegalArgumentException("Derived Execution must have distinct parent and root identities");
+        }
         HashSet<String> ids = new HashSet<>();
         HashSet<TaskOccurrence> occurrences = new HashSet<>();
         for (TaskRun taskRun : taskRuns) {
@@ -771,8 +811,7 @@ public class Execution extends BaseDomain {
                             "Execution Generation requires a target TaskRun"
                     )
             );
-            if (!current.affectedTaskRunIds().isEmpty()
-                    && (!current.affectedTaskRunIds().contains(sourceId) || !current.affectedTaskRunIds().contains(targetId))) {
+            if (!current.affectedTaskRunIds().contains(sourceId) || !current.affectedTaskRunIds().contains(targetId)) {
                 throw new IllegalArgumentException("Execution Generation affected path requires source and target");
             }
             current.affectedTaskRunIds().forEach(this::requireTaskRun);

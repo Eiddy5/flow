@@ -10,6 +10,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.annotations.Example;
@@ -40,11 +41,11 @@ import java.util.Optional;
                 tasks:
                   - key: wait-approval
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-approval
                       type: org.cses.flow.extensions.log.Log
                       message: "创建暂停前记录"
-                    resume:
+                    onResume:
                       - key: decision
                         type: STRING
                         displayName: 审批结果
@@ -58,7 +59,7 @@ import java.util.Optional;
 )
 @SuperBuilder
 @NoArgsConstructor
-public class Pause extends Task implements OrchestrationTask, ModelInvariant {
+public class Pause extends Task implements OrchestrationTask<Pause.Output>, ModelInvariant {
 
     private static final DatatypeFactory DURATION_FACTORY = durationFactory();
 
@@ -67,7 +68,7 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         title = "暂停任务",
         description = "进入 PAUSED 前必须完整执行的 Task"
     )
-    private Task pause;
+    private Task onPause;
 
     @NotNull
     @Builder.Default
@@ -75,7 +76,7 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         title = "恢复输入",
         description = "外部 Resume 回调接受的 Input 定义；允许为空"
     )
-    private List<Input<?>> resume = List.of();
+    private List<Input<?>> onResume = List.of();
 
     @Schema(
         title = "等待时长",
@@ -90,12 +91,20 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
     )
     private Behavior behavior;
 
-    public Task pause() {
-        return pause;
+    /**
+     * 返回进入暂停前执行的任务。
+     * @return 定义中持有的任务；未完成模型校验时可能为 null
+     */
+    public Task onPause() {
+        return onPause;
     }
 
-    public List<Input<?>> resume() {
-        return resume == null ? List.of() : List.copyOf(resume);
+    /**
+     * 返回恢复输入定义的不可变列表，不复制列表中的 Input 对象。
+     * @return 恢复输入定义；未配置时返回空列表
+     */
+    public List<Input<?>> onResume() {
+        return onResume == null ? List.of() : List.copyOf(onResume);
     }
 
     public Optional<String> duration() {
@@ -106,29 +115,29 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         return Optional.ofNullable(behavior);
     }
 
+    /**
+     * 返回包含暂停前任务的不可变列表，供定义树遍历使用。
+     * @return 包含 onPause 原对象的列表；未配置时返回空列表
+     */
     @Override
     public List<Task> definitionChildren() {
-        return pause == null ? List.of() : List.of(pause);
-    }
-
-    @Override
-    public boolean pausesTaskRun() {
-        return true;
+        return onPause == null ? List.of() : List.of(onPause);
     }
 
     /**
-     * Validates and normalizes external Resume data using the configured
-     * concrete Input definitions. This input contract is independent from
-     * the Task.outputs contract inherited by Pause.
+     * 按 onResume 声明收集每个 Input 自行绑定的回调值，独立于 Task.outputs。
+     * @param actualInputs 非 null 的只读提交映射，允许显式 null 值
+     * @return 不可变结果映射，保留显式提交的 null，省略缺失且未绑定到值的字段
+     * @throws WorkflowException 当提交映射为空引用、存在未声明字段或 Input 绑定失败时抛出
      */
-    public Map<String, Object> validateResume(
+    public Map<String, Object> bindResume(
         Map<String, ?> actualInputs
     ) {
         if (actualInputs == null) {
-            throw new WorkflowException("Pause resume inputs must be provided");
+            throw new WorkflowException("Pause onResume inputs must be provided");
         }
 
-        LinkedHashSet<String> declared = resume().stream()
+        LinkedHashSet<String> declared = onResume().stream()
             .map(Input::getKey)
             .collect(java.util.stream.Collectors.toCollection(
                 LinkedHashSet::new
@@ -139,20 +148,16 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         unsupported.removeAll(declared);
         if (!unsupported.isEmpty()) {
             throw new WorkflowException(
-                "Pause resume inputs were not declared: " + unsupported
+                "Pause onResume inputs were not declared: " + unsupported
             );
         }
 
         Map<String, Object> normalized = new LinkedHashMap<>();
-        for (Input<?> input : resume()) {
+        for (Input<?> input : onResume()) {
             String key = input.getKey();
-            boolean supplied = actualInputs.containsKey(key);
-            Object value = supplied
-                ? actualInputs.get(key)
-                : input.getDefaultValue();
             try {
-                Object accepted = input.normalized(value);
-                if (supplied || accepted != null) {
+                Object accepted = input.bind(actualInputs);
+                if (actualInputs.containsKey(key) || accepted != null) {
                     normalized.put(key, accepted);
                 }
             } catch (IllegalArgumentException exception) {
@@ -168,30 +173,33 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         duration = normalizeDuration(source);
     }
 
+    /**
+     * 检查 Pause 的任务、onResume 字段集合和超时配置，不重复检查已合法创建的 Input。
+     * @throws IllegalArgumentException 当必需任务缺失、onResume 集合非法或超时配置非法时抛出
+     */
     @Override
     public void verifyModelInvariant() {
-        if (pause == null) {
+        if (onPause == null) {
             throw new IllegalArgumentException(
-                "Pause requires exactly one pause Task"
+                "Pause requires exactly one onPause Task"
             );
         }
-        if (resume == null) {
+        if (onResume == null) {
             throw new IllegalArgumentException(
-                "Pause resume inputs must not be null"
+                "Pause onResume inputs must not be null"
             );
         }
 
         LinkedHashSet<String> keys = new LinkedHashSet<>();
-        for (Input<?> input : resume) {
+        for (Input<?> input : onResume) {
             if (input == null) {
                 throw new IllegalArgumentException(
-                    "Pause resume inputs must not contain null values"
+                    "Pause onResume inputs must not contain null values"
                 );
             }
-            input.validateDefinition();
             if (!keys.add(input.getKey())) {
                 throw new IllegalArgumentException(
-                    "Pause resume inputs contains duplicate key: "
+                    "Pause onResume inputs contains duplicate key: "
                         + input.getKey()
                 );
             }
@@ -241,11 +249,15 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         }
     }
 
+    /**
+     * 提供本类型参与相等比较的字段快照。
+     * @return 包含暂停任务、恢复输入及超时配置的列表，任务和输入对象沿用原引用
+     */
     @Override
     protected Object typeSpecificEqualityState() {
         return java.util.Arrays.asList(
-            pause,
-            resume(),
+            onPause,
+            onResume(),
             Optional.ofNullable(duration),
             Optional.ofNullable(behavior)
         );
@@ -274,5 +286,9 @@ public class Pause extends Task implements OrchestrationTask, ModelInvariant {
         public State.Type state() {
             return state;
         }
+    }
+
+    public static class Output implements org.cses.flow.core.domains.tasks.Output{
+
     }
 }

@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class Uc08DynamicLogFlowTest {
 
+    /** 只由目标 Log 输出动态消息，后置观察步骤通过真实 Worker 完成。 */
     @Test
     void s1RendersPrecedingResultOnceAndContinuesTheFlow() {
         LogCapture logs = LogCapture.start();
@@ -49,8 +50,7 @@ class Uc08DynamicLogFlowTest {
                     type: org.cses.flow.extensions.log.Log
                     message: "处理结果：{{ outputs.prepare.result }}"
                   - key: observe
-                    type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
                 """);
 
             Execution completed = fixture.startAndAwait(flow);
@@ -75,6 +75,7 @@ class Uc08DynamicLogFlowTest {
         }
     }
 
+    /** 验证发布和启动均拒绝无效消息且清理草稿。 */
     @Test
     void s2RejectsInvalidMessageExpressionBeforePublishing() {
         LogCapture logs = LogCapture.start();
@@ -91,7 +92,7 @@ class Uc08DynamicLogFlowTest {
                     message: "结果：{{ outputs.result"
                 """)
             );
-            long executionsBefore = fixture.executionCount();
+            int executionsBefore = fixture.executionService().executions(fixture.session()).size();
 
             assertThrows(
                 IllegalArgumentException.class,
@@ -105,7 +106,9 @@ class Uc08DynamicLogFlowTest {
                 fixture.session(),
                 draft.key()
             ).isEmpty());
-            assertEquals(executionsBefore, fixture.executionCount());
+            assertThrows(org.cses.flow.core.exceptions.WorkflowException.class,
+                () -> fixture.executionService().create(fixture.session(), draft.key(), java.util.Optional.empty(), Map.of()));
+            assertEquals(executionsBefore, fixture.executionService().executions(fixture.session()).size());
             assertTrue(logs.messages().isEmpty());
             fixture.flowService().delete(
                 fixture.session(),
@@ -164,7 +167,7 @@ class Uc08DynamicLogFlowTest {
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static final class LogInputTask
+    public static class LogInputTask
         extends Task implements RunnableTask {
 
         @Override
@@ -192,10 +195,10 @@ class Uc08DynamicLogFlowTest {
             .orElseThrow();
     }
 
-    private static final class LogCapture implements AutoCloseable {
+    private static class LogCapture implements AutoCloseable {
 
-        private final ch.qos.logback.classic.Logger logger;
-        private final ListAppender<ILoggingEvent> appender;
+        private ch.qos.logback.classic.Logger logger;
+        private ListAppender<ILoggingEvent> appender;
 
         private LogCapture(
             ch.qos.logback.classic.Logger logger,

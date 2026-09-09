@@ -5,9 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
-import org.cses.flow.core.domains.tasks.RunResult;
-import org.cses.flow.core.domains.tasks.RunnableTask;
-import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.tasks.*;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -35,7 +33,7 @@ import java.util.Map;
 )
 @SuperBuilder
 @NoArgsConstructor
-public final class Log extends Task implements RunnableTask {
+public class Log extends Task implements RunnableTask<VoidOutput> {
 
     private static final org.slf4j.Logger LOGGER =
         LoggerFactory.getLogger(Log.class);
@@ -54,15 +52,12 @@ public final class Log extends Task implements RunnableTask {
     }
 
     @Override
-    public RunResult run(RunContext context) {
+    public VoidOutput run(RunContext context) {
         try {
             LOGGER.info("{}", context.render(message));
-            return RunResult.success(Map.of());
+            return null;
         } catch (WorkflowException exception) {
-            return RunResult.failed(
-                "Log message could not be rendered: "
-                    + exception.getMessage()
-            );
+            return null;
         }
     }
 

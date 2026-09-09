@@ -1,24 +1,32 @@
 package org.cses.flow.queues;
 
-import org.cses.flow.queues.event.Event;
+import java.util.concurrent.CompletionStage;
 
 /**
- * Common identity and lifecycle contract for a typed Event Queue.
- * Implementations must be safe for concurrent use.
+ * Typed publishing boundary. Acceptance means transport acceptance, not business
+ * completion. The application owns transport resources and consumer lifecycle.
  *
- * @param <T> Event contract accepted by this Queue
+ * @param <T> message contract accepted by this queue
  */
-public interface Queue<T extends Event> extends AutoCloseable {
+public interface Queue<T> {
 
     /**
      * Returns the implementation-defined name of this Queue.
+     * @return nonblank logical queue name
      */
     String queueName();
 
     /**
-     * Idempotently closes this Queue and its active subscriptions. New publish
-     * and subscribe operations fail with {@link QueueException} after close.
+     * Publishes one message and waits for transport acceptance.
+     * @param event nonnull message of the declared type
+     * @throws QueueException when validation or publication fails
      */
-    @Override
-    void close();
+    void emit(T event);
+
+    /**
+     * Publishes one message asynchronously.
+     * @param event nonnull message of the declared type
+     * @return transport-acceptance stage, failed with QueueException on rejection
+     */
+    CompletionStage<Void> emitAsync(T event);
 }

@@ -15,7 +15,7 @@ import java.util.Map;
  * HTTP representations of the package-grouped plugin catalog without
  * exposing Java classes.
  */
-public final class PluginModels {
+public class PluginModels {
 
     private PluginModels() {
     }
@@ -129,7 +129,7 @@ public final class PluginModels {
         static PluginMetadataView from(PluginMetadata<?> metadata) {
             return new PluginMetadataView(
                 metadata.packageName(),
-                metadata.canonicalType(),
+                metadata.typeName(),
                 metadata.baseClass().getCanonicalName(),
                 metadata.title(),
                 metadata.description(),
@@ -140,11 +140,12 @@ public final class PluginModels {
 
     @Getter
     @Setter
-    public static final class RegisteredPluginView
+    public static class RegisteredPluginView
         extends SerializableObject {
 
         private String packageName;
         private List<PluginMetadataView> tasks;
+        private List<PluginMetadataView> inputs = List.of();
 
         public RegisteredPluginView() {
         }
@@ -165,13 +166,20 @@ public final class PluginModels {
             return tasks;
         }
 
+        /**
+         * 将同包 Task 与 Input 元信息转换为 HTTP 目录，隐藏 Java Class 对象。
+         * @param plugin 非空的只读插件分组
+         * @return 保留两类插件的目录视图
+         */
         static RegisteredPluginView from(RegisteredPlugin plugin) {
-            return new RegisteredPluginView(
+            RegisteredPluginView view = new RegisteredPluginView(
                 plugin.packageName(),
                 plugin.tasks().stream()
                     .map(PluginMetadataView::from)
                     .toList()
             );
+            view.inputs = plugin.inputs().stream().map(PluginMetadataView::from).toList();
+            return view;
         }
     }
 

@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CoreArchitectureStandardTest {
 
@@ -338,10 +339,10 @@ class CoreArchitectureStandardTest {
                 && executionService.contains("Resume.from(")
                 && executionService.contains("Cancel.from(")
                 && defaultExecutor.contains(
-                    ".subscribe(commandHandler::handle)"
+                    "commandHandler.handle(command)"
                 )
                 && defaultExecutor.contains(
-                    ".subscribe(eventHandler::handle)"
+                    "eventHandler.handle(event)"
                 )
                 && !defaultExecutor.contains("ExecutionRepository")
                 && !defaultExecutor.contains("WorkerDispatcher")
@@ -350,9 +351,9 @@ class CoreArchitectureStandardTest {
                 && commandHandler.contains("case Cancel cancel")
                 && commandHandler.contains("command.getExecutionId()")
                 && commandHandler.contains("validateRepeatedCreate(")
-                && commandHandler.contains("eventQueue.emitInTransaction(")
+                && commandHandler.contains("eventQueue.emit(")
                 && eventHandler.contains("executorService.process(context)")
-                && eventHandler.contains("eventQueue.emitInTransaction(")
+                && eventHandler.contains("eventQueue.emit(")
                 && eventHandler.contains("new ExecutorContext(flow, execution)"),
             "ExecutionService must support generated and preallocated "
                 + "Execution IDs while publishing Create, Resume and Cancel commands, "
@@ -361,6 +362,10 @@ class CoreArchitectureStandardTest {
         );
     }
 
+    /**
+     * 检查队列契约边界，仅允许 ADR0092 确认的监听注解元数据依赖。
+     * @throws IOException 当被检查的生产源码无法读取时抛出
+     */
     @Test
     void queueContractsRemainTopLevelPeers()
         throws IOException {
@@ -394,7 +399,12 @@ class CoreArchitectureStandardTest {
             events.resolve("Event.java")
         );
         assertTrue(
-            !queueContract.contains("QueueSubscription subscribe("),
+            !queueContract.contains("QueueSubscription subscribe(")
+                && !queueContract.contains("extends Event")
+                && !queueContract.contains("AutoCloseable")
+                && !queueContract.contains("void close(")
+                && queueContract.contains("CompletionStage<Void> emitAsync(T event)")
+                && dispatchContract.contains("AutoCloseable"),
             "Base Queue must not own Dispatch subscription semantics"
         );
         assertTrue(
@@ -420,6 +430,14 @@ class CoreArchitectureStandardTest {
                 .forEach(path -> {
                     try {
                         String source = Files.readString(path);
+                        if (path.equals(queues.resolve(
+                            "annotations/FlowQueueListener.java"
+                        ))) {
+                            source = source.replace(
+                                "import io.micronaut.context.annotation.Executable;",
+                                ""
+                            );
+                        }
                         if (source.contains("import io.micronaut.")
                             || source.contains(
                                 "import org.cses.flow.core."
@@ -458,6 +476,35 @@ class CoreArchitectureStandardTest {
                 + "expose the confirmed JOOQ dependency: "
                 + unexpectedJooqDependencies
         );
+    }
+
+    /**
+     * Verifies annotation-selected publisher injection and the two production listener declarations.
+     * @throws IOException when an inspected source cannot be read
+     */
+    @Test
+    void executorUsesTheAnnotationDrivenPulsarQueues() throws IOException {
+        String executor = Files.readString(FLOW.resolve("executor/DefaultExecutor.java"));
+        String service = Files.readString(CORE.resolve("services/executions/ExecutionService.java"));
+        String commandHandler = Files.readString(FLOW.resolve("executor/handlers/ExecutionCommandEventHandler.java"));
+        String eventHandler = Files.readString(FLOW.resolve("executor/handlers/ExecutorEventMessageHandler.java"));
+        assertTrue(executor.contains("@FlowQueueListener(subscription = ExecutionCommand.QUEUE_NAME)")
+            && executor.contains("@FlowQueueListener(subscription = ExecutorEvent.QUEUE_NAME)")
+            && executor.contains("public void onCommand(ExecutionCommand command)")
+            && executor.contains("public void onEvent(ExecutorEvent event)")
+            && !executor.contains(".subscribe(") && !executor.contains("DispatchQueue")
+            && !executor.contains(".close("));
+        assertTrue(service.contains("Queue<ExecutionCommand> executorCommandQueue")
+            && commandHandler.contains("Queue<ExecutorEvent> eventQueue")
+            && eventHandler.contains("Queue<ExecutorEvent> eventQueue"));
+        for (String source : List.of(service, commandHandler, eventHandler)) {
+            assertFalse(source.contains("DispatchQueue<"));
+            assertFalse(source.contains("@Named(ExecutionCommand.QUEUE_NAME)"));
+            assertFalse(source.contains("@Named(ExecutorEvent.QUEUE_NAME)"));
+            assertFalse(source.contains("emitInTransaction("));
+        }
+        assertTrue(Files.notExists(FLOW.resolve("infrastructure/queues/ExecutorCommandQueueFactory.java")));
+        assertTrue(Files.notExists(FLOW.resolve("infrastructure/queues/ExecutorEventQueueFactory.java")));
     }
 
     @Test
@@ -874,17 +921,17 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             defaultExecutor.contains(
-                ".subscribe(commandHandler::handle)"
+                "commandHandler.handle(command)"
             )
                 && defaultExecutor.contains(
-                    ".subscribe(eventHandler::handle)"
+                    "eventHandler.handle(event)"
                 )
                 && !defaultExecutor.contains("executorService")
                 && executorEventHandler.contains(
                     "executorService.process(context)"
                 )
                 && executorEventHandler.contains(
-                    "eventQueue.emitInTransaction("
+                    "eventQueue.emit("
                 )
                 && !executorEventHandler.contains("dispatchBranch("),
             "DefaultExecutor must only route Queue events while "
@@ -1167,6 +1214,10 @@ class CoreArchitectureStandardTest {
         );
     }
 
+    /**
+     * 检查插件绑定仍由注册表选择精确类，并按 Task/Input 目标能力约束解析。
+     * @throws IOException 当被检查的生产源码无法读取时抛出
+     */
     @Test
     void taskPluginsUseCompileTimeDiscoveryAndExactClassTypes()
         throws IOException {
@@ -1254,7 +1305,7 @@ class CoreArchitectureStandardTest {
         String pluginModuleSource = Files.readString(pluginModule);
         assertTrue(
             deserializerSource.contains(
-                "registry.resolve(type, Plugin.class)"
+                "registry.resolve(type, expectedType)"
             )
                 && deserializerSource.contains("readTreeAsValue")
                 && !deserializerSource.contains("ModelValidator")

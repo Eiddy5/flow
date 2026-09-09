@@ -86,10 +86,19 @@ public class RunVariables {
         return builder.build();
     }
 
+    /**
+     * Projects the current Execution identity and its source relationship for Tasks.
+     * @param execution current runtime snapshot
+     * @return immutable values; origin.parentId is null for a root
+     */
     static Map<String, Object> of(final Execution execution) {
+        Map<String, Object> origin = new LinkedHashMap<>();
+        origin.put("parentId", execution.origin().parentId());
+        origin.put("originId", execution.origin().originId());
         ImmutableMap.Builder<String, Object> builder =
                 ImmutableMap.builder();
         builder.put("id", execution.id())
+                .put("origin", immutableCopy(origin))
                 .put("flowKey", execution.flowKey())
                 .put("flowVersion", execution.flowVersion())
                 .put("state", execution.state().current().name())

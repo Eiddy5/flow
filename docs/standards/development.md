@@ -148,9 +148,9 @@ public record ExecutionSummary(
   Setter，并只允许受控领域行为访问或替换其状态；不能依赖 `final` 修饰符表达不变量。
   采用上文 PAAS JSON 自动绑定约定时，Lombok 生成的 Setter 只是技术绑定入口，不
   改变该字段的业务不变量。
-- ADR 0019 的 Input 定义层次采用同一自动绑定约定：PAAS JSON 先通过无参构造和字段
-  绑定形成具体子类，再由 Flow 或 Repository 边界执行完整定义校验。校验通过并进入
-  聚合后仍按只读定义使用，Service、Handler 和其他领域对象不得调用生成的 Setter。
+- 使用已确认构造协议保证不变量的领域定义可以按 ADR 采用 Creator，而非无参/Setter
+  绑定；对象必须在创建返回前合法，不能要求调用方追加完成步骤。具体 Input 决策见
+  [`ADR 0089`](../decisions/0089-validate-input-during-materialization.md)。
 - `record` 组件包含集合、Map、数组或其他可变对象时，紧凑构造方法必须防御性
   复制；访问方法不能泄漏可变引用。
 - 使用 `class` 表达值语义时，应按需要实现 `equals()`、`hashCode()` 和

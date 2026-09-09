@@ -1042,11 +1042,11 @@ class NestedPauseResumeIntegrationTest {
                     tasks:
                       - key: backend-review
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-backend-review
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: backendResult
                             type: STRING
                         outputs:
@@ -1058,11 +1058,11 @@ class NestedPauseResumeIntegrationTest {
                     tasks:
                       - key: frontend-review
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-frontend-review
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: frontendResult
                             type: STRING
                         outputs:
@@ -1081,11 +1081,11 @@ class NestedPauseResumeIntegrationTest {
                     tasks:
                       - key: security-approve
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-security-approval
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: securityDecision
                             type: STRING
                         outputs:
@@ -1120,11 +1120,11 @@ class NestedPauseResumeIntegrationTest {
 
                   - key: backend-review
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-backend-review
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: backendResult
                         type: STRING
                     outputs:
@@ -1136,11 +1136,11 @@ class NestedPauseResumeIntegrationTest {
                     tasks:
                       - key: frontend-review
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-frontend-review
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: frontendResult
                             type: STRING
                         outputs:
@@ -1159,11 +1159,11 @@ class NestedPauseResumeIntegrationTest {
                     tasks:
                       - key: security-approve
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-security-approval
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: securityDecision
                             type: STRING
                         outputs:
@@ -1190,11 +1190,11 @@ class NestedPauseResumeIntegrationTest {
                 tasks:
                   - key: approval
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-approval
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: decision
                         type: STRING
                     outputs:

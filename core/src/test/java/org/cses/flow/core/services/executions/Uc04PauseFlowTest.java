@@ -63,6 +63,7 @@ class Uc04PauseFlowTest {
         }
     }
 
+    /** 提交批准结果后核对目标和后置步骤各执行一次、后置输入消费批准值且流程完成。 */
     @Test
     void s2ResumeResultIsConsumedOnceByOnlyTheCurrentFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -84,6 +85,8 @@ class Uc04PauseFlowTest {
                 task(flow, "record-result").id()).size());
             assertEquals(Map.of("decision", "APPROVED"),
                 run(reloaded, task(flow, "wait-confirmation")).outputs());
+            assertEquals("APPROVED", inputOutput(run(reloaded, task(flow, "record-result")),
+                "wait-confirmation", "decision"));
             assertEquals(State.Type.SUCCESS,
                 run(reloaded, task(flow, "record-result")).state().current());
             assertEquals(State.Type.SUCCESS, reloaded.state().current());
@@ -211,6 +214,7 @@ class Uc04PauseFlowTest {
         }
     }
 
+    /** 取消后拒绝旧 Pause 恢复，确认未创建后置步骤且没有等待任务。 */
     @Test
     void s7CancelledFlowRejectsResumeOfItsFormerPause() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -227,6 +231,7 @@ class Uc04PauseFlowTest {
             Execution reloaded = query(fixture, started.id());
             assertEquals(State.Type.KILLED, canceled.state().current());
             assertEquals(State.Type.KILLED, reloaded.state().current());
+            assertNoRun(reloaded, task(flow, "record-result"));
             assertTrue(reloaded.taskRuns().stream().noneMatch(taskRun ->
                 taskRun.state().is(State.Type.PAUSED)));
             assertTrue(fixture.pausedTaskRuns().isEmpty());
@@ -242,11 +247,11 @@ class Uc04PauseFlowTest {
                 tasks:
                   - key: wait-confirmation
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-confirmation
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: decision
                         type: STRING
                         required: true
@@ -304,6 +309,7 @@ class Uc04PauseFlowTest {
         }
     }
 
+    /** 从公开 Pause 退回并核对新实例接替、历史和片段结果。 */
     @Test
     void s10UserRewindsFromPauseToHistoricalStepAndContinues() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -348,15 +354,16 @@ class Uc04PauseFlowTest {
                 reason
             );
             RewindResult accepted = rewind.accepted();
-            Execution acceptedSnapshot = accepted.execution();
+            Execution acceptedSnapshot = accepted.sourceExecution();
             Execution rewound = rewind.rewound();
             Generation.Current current = rewound.generation().current()
                 .orElseThrow();
             PausedTaskRunRef rerunPause = fixture.waitingForExecution(
-                started.id()
+                rewound.id()
             );
             TaskRun rerunTarget = latestRun(rewound, targetTask);
 
+            assertReplacement(fixture, started, rewound, accepted);
             // S10 预期：受理结果保留退回前快照并给出完整回滚顺序。
             assertExecutionSnapshot(acceptedSnapshot, started);
             assertEquals(
@@ -395,7 +402,7 @@ class Uc04PauseFlowTest {
 
             // 持久化往返：重建服务后仍可从公开查询恢复当前片段。
             fixture.restartServer();
-            Execution persistedCurrent = query(fixture, started.id());
+            Execution persistedCurrent = query(fixture, rewound.id());
             assertGeneration(
                 persistedCurrent.generation().current().orElseThrow(),
                 1,
@@ -404,7 +411,7 @@ class Uc04PauseFlowTest {
                 reason
             );
             PausedTaskRunRef requeriedPause = fixture.waitingForExecution(
-                started.id()
+                rewound.id()
             );
             assertEquals(rerunPause.taskRunId(), requeriedPause.taskRunId());
 
@@ -412,7 +419,7 @@ class Uc04PauseFlowTest {
                 requeriedPause,
                 Map.of("decision", "APPROVED")
             );
-            Execution reloaded = query(fixture, started.id());
+            Execution reloaded = query(fixture, rewound.id());
             Generation completedGeneration = reloaded.generation();
 
             // S10 场景结束：当前片段清空，历史保留且下游使用重跑结果。
@@ -431,10 +438,13 @@ class Uc04PauseFlowTest {
                 rerunTarget.outputs().get("token"),
                 inputOutput(onlyRun(reloaded, afterTask), "recompute", "token")
             );
+            assertTrue(fixture.executionService().executions(fixture.session()).stream()
+                .allMatch(Execution::isTerminal));
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
+    /** 连续退回两次并核对三次实例及有效片段互不混用。 */
     @Test
     void s11UserRewindsAgainFromTheNewPause() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -464,13 +474,14 @@ class Uc04PauseFlowTest {
                 firstSource.taskRunId(),
                 firstTarget.id()
             );
-            assertExecutionSnapshot(firstAccepted.execution(), started);
+            assertReplacement(fixture, started, firstRewind, firstAccepted);
+            assertExecutionSnapshot(firstAccepted.sourceExecution(), started);
             assertEquals(
                 firstAffectedTaskRunIds,
                 firstAccepted.affectedTaskRunIds()
             );
             PausedTaskRunRef secondSource = fixture.waitingForExecution(
-                started.id()
+                firstRewind.id()
             );
             TaskRun secondTarget = latestRun(firstRewind, targetTask);
             TaskRun secondPauseChild = latestRun(
@@ -493,13 +504,14 @@ class Uc04PauseFlowTest {
             );
             RewindResult secondAccepted = secondAttempt.accepted();
             Execution secondRewind = secondAttempt.rewound();
+            assertReplacement(fixture, firstRewind, secondRewind, secondAccepted);
             List<String> secondAffectedTaskRunIds = List.of(
                 secondPauseChild.id(),
                 secondSource.taskRunId(),
                 secondTarget.id()
             );
             assertExecutionSnapshot(
-                secondAccepted.execution(),
+                secondAccepted.sourceExecution(),
                 firstRewind
             );
             assertEquals(
@@ -509,7 +521,7 @@ class Uc04PauseFlowTest {
             assertTrue(secondAffectedTaskRunIds.stream()
                 .noneMatch(firstAffectedTaskRunIds::contains));
             PausedTaskRunRef thirdSource = fixture.waitingForExecution(
-                started.id()
+                secondRewind.id()
             );
             TaskRun thirdTarget = latestRun(secondRewind, targetTask);
             Generation active = secondRewind.generation();
@@ -554,7 +566,7 @@ class Uc04PauseFlowTest {
                 Map.of("decision", "APPROVED")
             );
             fixture.restartServer();
-            Execution persisted = query(fixture, started.id());
+            Execution persisted = query(fixture, secondRewind.id());
             Generation history = persisted.generation();
 
             // S11 场景结束：最新结果被消费，两次片段均完成并持久化。
@@ -580,6 +592,8 @@ class Uc04PauseFlowTest {
                 thirdTarget.outputs().get("token"),
                 inputOutput(onlyRun(persisted, afterTask), "recompute", "token")
             );
+            assertTrue(fixture.executionService().executions(fixture.session()).stream()
+                .allMatch(Execution::isTerminal));
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
@@ -660,6 +674,36 @@ class Uc04PauseFlowTest {
         assertTrue(execution.taskRunsForTask(task.id()).isEmpty());
     }
 
+    /**
+     * 从公开查询证明原实例已停止且新实例继承原记录、仅新建重做记录。
+     * @param fixture 当前公开服务夹具
+     * @param source 受理前原实例快照
+     * @param derived 新实例已稳定快照
+     * @param accepted 退回受理结果
+     */
+    private static void assertReplacement(WorkflowUcFixture fixture, Execution source,
+        Execution derived, RewindResult accepted) {
+        assertNotEquals(source.id(), derived.id());
+        assertEquals(derived.id(), accepted.executionId());
+        assertEquals(source.id(), derived.origin().parentId());
+        assertEquals(source.origin().originId(), derived.origin().originId());
+        assertEquals(source.taskRuns().stream().map(TaskRun::id).toList(),
+            derived.inheritedTaskRuns().stream().map(TaskRun::id).toList());
+        assertTrue(derived.ownTaskRuns().stream().noneMatch(run ->
+            source.findTaskRun(run.id()).isPresent()));
+        Execution stopped = query(fixture, source.id());
+        assertEquals(State.Type.KILLED, stopped.state().current());
+        assertEquals(source.taskRuns().stream().map(TaskRun::id).toList(),
+            stopped.taskRuns().stream().map(TaskRun::id).toList());
+        source.taskRuns().forEach(run -> {
+            TaskRun retained = stopped.requireTaskRun(run.id());
+            assertEquals(run.inputs(), retained.inputs());
+            assertEquals(run.outputs(), retained.outputs());
+            assertTrue(retained.state().history().containsAll(run.state().history()));
+        });
+        assertTrue(stopped.unfinishedTaskRuns().isEmpty());
+    }
+
     private static void assertExecutionSnapshot(
         Execution snapshot,
         Execution observedAtSubmission
@@ -719,11 +763,11 @@ class Uc04PauseFlowTest {
             tasks:
               - key: wait-confirmation
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-confirmation
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
             %s
@@ -753,11 +797,11 @@ class Uc04PauseFlowTest {
                     type: STRING
               - key: wait-confirmation
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-confirmation
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
                 outputs:
@@ -805,11 +849,11 @@ class Uc04PauseFlowTest {
                     message: "must not run"
               - key: wait-confirmation
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-confirmation
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
                 outputs:

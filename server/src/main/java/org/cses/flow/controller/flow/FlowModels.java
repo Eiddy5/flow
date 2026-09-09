@@ -2,6 +2,7 @@ package org.cses.flow.controller.flow;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.Generation;
@@ -13,13 +14,13 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.flows.inputs.IntegerInput;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.services.executions.RewindResult;
 import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
 import org.paas.json.SerializableObject;
+import org.paas.json.JsonObject;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -411,14 +412,14 @@ public class FlowModels {
 
     @Getter
     @Setter
-    public static final class DataView extends SerializableObject {
+    public static class DataView extends SerializableObject {
 
-        private final String key;
-        private final String type;
-        private final String displayName;
-        private final Boolean required;
-        private final Object defaultValue;
-        private final Map<String, Object> constraints;
+        private String key;
+        private String type;
+        private String displayName;
+        private Boolean required;
+        private Object defaultValue;
+        private Map<String, Object> constraints;
 
         private DataView(
             String key,
@@ -436,24 +437,25 @@ public class FlowModels {
             this.constraints = Map.copyOf(constraints);
         }
 
+        /**
+         * 将输入或输出定义投影为 HTTP 字段，业务 Input 专有字段全部保留在 constraints。
+         * @param data 非空只读定义；Input 使用定义标识，Output 使用基础值类型
+         * @return 新视图，包含复制的业务配置和可传输的默认值
+         */
         private static DataView from(Data data) {
             if (data instanceof Input<?> input) {
-                Map<String, Object> constraints = new LinkedHashMap<>();
-                if (input instanceof IntegerInput integerInput) {
-                    if (integerInput.getMin() != null) {
-                        constraints.put("min", integerInput.getMin());
-                    }
-                    if (integerInput.getMax() != null) {
-                        constraints.put("max", integerInput.getMax());
-                    }
-                }
+                Map<String, Object> constraints = new LinkedHashMap<>(JsonObject.From(input).asMap());
+                constraints.keySet().removeAll(List.of(
+                    "key", "type", "displayName", "required", "defaultValue"
+                ));
+                constraints.values().removeIf(java.util.Objects::isNull);
                 Object defaultValue = input.getDefaultValue();
                 if (defaultValue instanceof Character character) {
                     defaultValue = character.toString();
                 }
                 return new DataView(
                     input.getKey(),
-                    input.getType().name(),
+                    input.getType(),
                     input.getDisplayName(),
                     input.isRequired(),
                     defaultValue,
@@ -462,7 +464,7 @@ public class FlowModels {
             }
             return new DataView(
                 data.getKey(),
-                data.getType().name(),
+                data.getValueType().name(),
                 null,
                 null,
                 null,
@@ -506,11 +508,25 @@ public class FlowModels {
         private final List<DataView> inputs;
         private final List<DataView> outputs;
         private final List<TaskView> tasks;
-        private final TaskView pause;
-        private final List<DataView> resume;
+        private final TaskView onPause;
+        private final List<DataView> onResume;
         private final String duration;
         private final String behavior;
 
+        /**
+         * 构造任务响应视图，复制集合并保留子视图引用。
+         * @param id 任务身份，非 null
+         * @param key 任务业务标识，非 null
+         * @param type 插件类型，非 null
+         * @param route 路由表达式，非路由任务为 null
+         * @param inputs 输入视图，非 null，只读
+         * @param outputs 输出视图，非 null，只读
+         * @param tasks 子任务视图，非 null，只读
+         * @param onPause 暂停前任务视图，非 Pause 任务为 null
+         * @param onResume 恢复输入视图，非 null，只读
+         * @param duration 等待时长，未配置时为 null
+         * @param behavior 超时行为，未配置时为 null
+         */
         private TaskView(
             String id,
             String key,
@@ -519,8 +535,8 @@ public class FlowModels {
             List<DataView> inputs,
             List<DataView> outputs,
             List<TaskView> tasks,
-            TaskView pause,
-            List<DataView> resume,
+            TaskView onPause,
+            List<DataView> onResume,
             String duration,
             String behavior
         ) {
@@ -531,12 +547,17 @@ public class FlowModels {
             this.inputs = List.copyOf(inputs);
             this.outputs = List.copyOf(outputs);
             this.tasks = List.copyOf(tasks);
-            this.pause = pause;
-            this.resume = List.copyOf(resume);
+            this.onPause = onPause;
+            this.onResume = List.copyOf(onResume);
             this.duration = duration;
             this.behavior = behavior;
         }
 
+        /**
+         * 从任务定义递归构造响应视图。
+         * @param task 非 null 的任务定义，只读
+         * @return 新建的视图，包含专有暂停任务和恢复输入
+         */
         private static TaskView from(Task task) {
             Pause pauseTask = task instanceof Pause candidate
                 ? candidate
@@ -557,10 +578,10 @@ public class FlowModels {
                 branch == null
                     ? List.of()
                     : branch.tasks().stream().map(TaskView::from).toList(),
-                pauseTask == null ? null : from(pauseTask.pause()),
+                pauseTask == null ? null : from(pauseTask.onPause()),
                 pauseTask == null
                     ? List.of()
-                    : pauseTask.resume().stream().map(DataView::from).toList(),
+                    : pauseTask.onResume().stream().map(DataView::from).toList(),
                 pauseTask == null
                     ? null
                     : pauseTask.duration().orElse(null),
@@ -598,12 +619,20 @@ public class FlowModels {
             return tasks;
         }
 
-        public TaskView getPause() {
-            return pause;
+        /**
+         * 返回暂停前任务视图。
+         * @return 当前持有的子视图；非 Pause 任务为 null
+         */
+        public TaskView getOnPause() {
+            return onPause;
         }
 
-        public List<DataView> getResume() {
-            return resume;
+        /**
+         * 返回恢复输入视图。
+         * @return 不可变列表，未配置恢复输入时为空
+         */
+        public List<DataView> getOnResume() {
+            return onResume;
         }
 
         public String getDuration() {
@@ -617,56 +646,74 @@ public class FlowModels {
 
     @Getter
     @Setter
-    public static final class ExecutionView extends SerializableObject {
+    @NoArgsConstructor
+    public static class OriginView extends SerializableObject {
+        String parentId;
+        String originId;
 
-        private final String id;
-        private final String flowKey;
-        private final long flowVersion;
-        private final String state;
-        private final long createdAt;
-        private final long updatedAt;
-        private final GenerationView generation;
-        private final List<HistoryView> history;
-        private final List<TaskRunView> taskRuns;
-
-        private ExecutionView(
-            String id,
-            String flowKey,
-            long flowVersion,
-            String state,
-            long createdAt,
-            long updatedAt,
-            GenerationView generation,
-            List<HistoryView> history,
-            List<TaskRunView> taskRuns
-        ) {
-            this.id = id;
-            this.flowKey = flowKey;
-            this.flowVersion = flowVersion;
-            this.state = state;
-            this.createdAt = createdAt;
-            this.updatedAt = updatedAt;
-            this.generation = generation;
-            this.history = List.copyOf(history);
-            this.taskRuns = List.copyOf(taskRuns);
+        /**
+         * Copies the two source references for HTTP serialization.
+         * @param origin immutable Execution source relationship
+         */
+        private OriginView(org.cses.flow.core.domains.executions.Origin origin) {
+            parentId = origin.parentId();
+            originId = origin.originId();
         }
 
+        /**
+         * Exposes the direct parent and tree root.
+         * @param origin immutable source relationship
+         * @return new HTTP relationship view
+         */
+        public static OriginView from(org.cses.flow.core.domains.executions.Origin origin) {
+            return new OriginView(origin);
+        }
+    }
+
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    public static class ExecutionView extends SerializableObject {
+
+        String id;
+        OriginView origin;
+        List<String> inheritedTaskRunIds;
+        List<String> effectiveTaskRunIds;
+        String flowKey;
+        long flowVersion;
+        String state;
+        long createdAt;
+        long updatedAt;
+        GenerationView generation;
+        List<HistoryView> history;
+        List<TaskRunView> taskRuns;
+
+        /**
+         * Projects one complete snapshot without changing or executing any Task.
+         * @param execution source domain snapshot
+         */
+        private ExecutionView(Execution execution) {
+            this.id = execution.id();
+            this.origin = OriginView.from(execution.origin());
+            this.inheritedTaskRunIds = execution.inheritedTaskRuns().stream().map(TaskRun::id).toList();
+            this.effectiveTaskRunIds = execution.effectiveTaskRuns().stream().map(TaskRun::id).toList();
+            this.flowKey = execution.flowKey();
+            this.flowVersion = execution.flowVersion();
+            this.state = execution.state().current().name();
+            this.createdAt = execution.createdAt();
+            this.updatedAt = execution.state().history().getLast().date();
+            this.generation = GenerationView.from(execution.generation());
+            this.history = execution.state().history().stream().map(HistoryView::from).toList();
+            this.taskRuns = execution.taskRuns().stream().map(TaskRunView::from).toList();
+        }
+
+        /**
+         * Creates an HTTP view with explicit inherited and effective path membership.
+         * @param execution complete source snapshot
+         * @return isolated read model
+         */
         public static ExecutionView from(Execution execution) {
-            List<State.History> stateHistory =
-                execution.state().history();
-            return new ExecutionView(
-                execution.id(),
-                execution.flowKey(),
-                execution.flowVersion(),
-                execution.state().current().name(),
-                stateHistory.getFirst().date(),
-                stateHistory.getLast().date(),
-                GenerationView.from(execution.generation()),
-                stateHistory.stream().map(HistoryView::from).toList(),
-                execution.taskRuns().stream()
-                    .map(TaskRunView::from)
-                    .toList()
-            );
+            return new ExecutionView(execution);
         }
 
         public String getId() {
@@ -708,24 +755,29 @@ public class FlowModels {
 
     @Getter
     @Setter
+    @NoArgsConstructor
     public static class RewindView extends SerializableObject {
-
-        ExecutionView execution;
+        String executionId;
+        ExecutionView sourceExecution;
         List<String> affectedTaskRunIds;
 
-        private RewindView(
-                ExecutionView execution,
-                List<String> affectedTaskRunIds
-        ) {
-            this.execution = execution;
-            this.affectedTaskRunIds = List.copyOf(affectedTaskRunIds);
+        /**
+         * Projects queue acceptance without claiming that asynchronous replay has finished.
+         * @param result accepted replay identity, source snapshot and affected path
+         */
+        private RewindView(RewindResult result) {
+            executionId = result.executionId();
+            sourceExecution = ExecutionView.from(result.sourceExecution());
+            affectedTaskRunIds = List.copyOf(result.affectedTaskRunIds());
         }
 
+        /**
+         * Returns the new Execution ID for subsequent queries and callbacks.
+         * @param result queue-accepted replay request
+         * @return HTTP acceptance result
+         */
         public static RewindView from(RewindResult result) {
-            return new RewindView(
-                    ExecutionView.from(result.execution()),
-                    result.affectedTaskRunIds()
-            );
+            return new RewindView(result);
         }
     }
 

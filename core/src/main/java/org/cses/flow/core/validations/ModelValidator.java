@@ -5,7 +5,6 @@ import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import io.micronaut.validation.validator.Validator;
 import org.cses.flow.core.domains.flows.Data;
-import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -19,9 +18,9 @@ import java.util.Set;
  * Active validation entry point for bound or directly-created models.
  */
 @Singleton
-public final class ModelValidator {
+public class ModelValidator {
 
-    private final Validator validator;
+    private Validator validator;
 
     public ModelValidator(Validator validator) {
         this.validator = validator;
@@ -43,6 +42,12 @@ public final class ModelValidator {
         }
     }
 
+    /**
+     * 检查 Task 能力、字段集合及子任务关系；Input 的单字段定义由创建路径保证。
+     * @param task 待检查的非 null Task，不修改其字段
+     * @throws IllegalArgumentException 当 Task 身份、能力或字段集合不合法时抛出
+     * @throws ConstraintViolationException 当子任务违反声明约束时抛出
+     */
     private void validateTask(Task task) {
         if (task instanceof ModelInvariant invariant) {
             invariant.verifyModelInvariant();
@@ -59,9 +64,6 @@ public final class ModelValidator {
         }
         requireUniqueData(task.inputs(), "Task inputs");
         requireUniqueData(task.outputs(), "Task outputs");
-        for (Input<?> input : task.inputs()) {
-            input.validateDefinition();
-        }
         for (Task child : task.definitionChildren()) {
             validateConstraints(child);
             validateTask(child);

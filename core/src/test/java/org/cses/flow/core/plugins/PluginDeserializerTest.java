@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginDeserializerTest {
 
+    /** 绑定新 Pause 字段，验证往返只输出新名并拒绝两个旧字段。 */
     @Test
     void bindsConcreteAndNestedTasksWithoutFlowDefinitionDeserializer() {
         TaskPluginTestSupport.Context context = builtInContext();
@@ -29,12 +30,12 @@ class PluginDeserializerTest {
                 "id", "pause-id",
                 "key", "pause",
                 "type", Pause.class.getCanonicalName(),
-                "pause", Map.of(
+                "onPause", Map.of(
                     "id", "child-id",
                     "key", "prepare",
                     "type", Log.class.getCanonicalName(), "message", "test step"
                 ),
-                "resume", List.of(Map.of(
+                "onResume", List.of(Map.of(
                     "key", "decision",
                     "type", " string ",
                     "displayName", "Decision",
@@ -46,10 +47,24 @@ class PluginDeserializerTest {
 
         Pause pause = assertInstanceOf(Pause.class, task);
         assertEquals("pause-id", pause.id());
-        assertEquals("prepare", pause.pause().key());
-        Input<?> input = pause.resume().getFirst();
+        assertEquals("prepare", pause.onPause().key());
+        Input<?> input = pause.onResume().getFirst();
         assertEquals("decision", input.getKey());
         assertEquals("Decision", input.getDisplayName());
+
+        Map<String, Object> serialized = context.jacksonMapper().toMap(pause);
+        assertTrue(serialized.containsKey("onPause"));
+        assertTrue(serialized.containsKey("onResume"));
+        assertFalse(serialized.containsKey("pause"));
+        assertFalse(serialized.containsKey("resume"));
+        assertEquals(pause, context.jacksonMapper().convertValue(serialized, Task.class));
+        for (String oldField : List.of("pause", "resume")) {
+            Map<String, Object> obsolete = new java.util.LinkedHashMap<>(serialized);
+            String newField = oldField.equals("pause") ? "onPause" : "onResume";
+            obsolete.put(oldField, obsolete.remove(newField));
+            assertThrows(IllegalArgumentException.class,
+                () -> context.jacksonMapper().convertValue(obsolete, Task.class));
+        }
     }
 
     @Test
@@ -120,7 +135,6 @@ class PluginDeserializerTest {
             Input.class
         );
 
-        input.validateDefinition();
         assertEquals("retry-count", input.getKey());
         assertEquals("retry-count", input.getDisplayName());
         assertEquals(3, input.getDefaultValue());

@@ -3,6 +3,9 @@ CREATE TABLE IF NOT EXISTS executions (
     company_id       varchar(64) NOT NULL,
     flow_key         varchar(128) NOT NULL,
     flow_version      bigint NOT NULL,
+    parent_id        varchar(64),
+    origin_id        varchar(64) NOT NULL,
+    inherited_task_runs jsonb NOT NULL DEFAULT '[]'::jsonb,
     state            jsonb NOT NULL,
     generation       jsonb NOT NULL DEFAULT '{"current": null, "history": []}'::jsonb,
     lock             bigint NOT NULL DEFAULT 0,
@@ -24,3 +27,9 @@ CREATE INDEX IF NOT EXISTS idx_executions_flow
 
 CREATE INDEX IF NOT EXISTS idx_executions_state_current
     ON executions (company_id, (state ->> 'current'));
+
+CREATE INDEX IF NOT EXISTS idx_executions_origin
+    ON executions (company_id, origin_id, created_at, id);
+
+CREATE INDEX IF NOT EXISTS idx_executions_parent
+    ON executions (company_id, parent_id);

@@ -1,5 +1,7 @@
 package org.cses.flow.core.domains.tasks;
 
+import org.cses.flow.core.runner.RunContext;
+
 import java.util.Map;
 
 /**
@@ -10,7 +12,7 @@ import java.util.Map;
  * Executor interprets them and owns every resulting Execution and TaskRun
  * transition.</p>
  */
-public interface OrchestrationTask {
+public interface OrchestrationTask<T extends Output> {
 
     /**
      * Whether entering this Task pauses its TaskRun for an explicit resume.
@@ -44,8 +46,8 @@ public interface OrchestrationTask {
      * Decides what happens after one complete child iteration has settled.
      */
     default IterationDecision decideAfterIteration(
-        int completedIterations,
-        Map<String, Map<String, Object>> iterationOutputs
+            int completedIterations,
+            Map<String, Map<String, Object>> iterationOutputs
     ) {
         return IterationDecision.SUCCESS;
     }
@@ -55,7 +57,7 @@ public interface OrchestrationTask {
      */
     default String iterationFailureMessage(int completedIterations) {
         return "Orchestration did not complete after " + completedIterations
-            + " iterations";
+                + " iterations";
     }
 
     /**
@@ -65,9 +67,15 @@ public interface OrchestrationTask {
         return false;
     }
 
+    default T outputs(RunContext context) {
+        return null;
+    }
+
     enum IterationDecision {
         CONTINUE,
         SUCCESS,
         FAILURE
     }
+
+
 }

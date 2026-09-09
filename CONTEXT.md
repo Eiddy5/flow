@@ -66,20 +66,21 @@ Execution、TaskRun 各自持有完整 State 并限制自己的合法路线；Ru
 _Avoid_: ExecutionStatus, TaskRunStatus, WorkerTaskOutcome, approval status
 
 **Data**:
-Flow 或 Task 中以唯一业务 `key` 标识、并通过 `type` 声明数据类型的数据定义；它是 Input 与 Output 的共同基础，但不保存某次运行产生的实际值。
+Flow 或 Task 中以唯一业务 `key` 标识、并声明基础值类型的数据定义；它是 Input 与 Output 的共同基础，但不保存某次运行产生的实际值。
 _Avoid_: Runtime value, arbitrary Map, database column
 
 **Data Type**:
-Data 对实际值种类的稳定契约，由独立的有限类型 `DataType` 表达；同一个类型代码
-在 Input 与 Output 中具有相同含义，并决定一个已提供运行值能否被该数据定义
+Data 对实际值种类的稳定契约，由独立的有限类型 `DataType` 表达；Input 与 Output 的基础值类型具有相同含义，并决定一个已提供运行值能否被该数据定义
 接受。Data Type 不属于 Data 内部，也不表达输入输出方向、Task 类型或业务字段
 用途。
 _Avoid_: Data.Type, Task Type, Java class name, database column type, implicit String
 
 **Input**:
-实现 Data、由 Flow 或 Task 持有的抽象输入定义基类；它保存 `key`、
-`displayName`、`required`、`defaultValue` 等公共描述，具体子类声明固定
-Data Type 与自身约束并负责校验。实际输入值属于 TaskRun。
+由 Flow 或 Task 持有的单字段输入定义，描述字段标识、名称、必填性、默认值和接受规则。
+每个 Input 自行解释其字段的提交：缺失时使用默认值，显式空值不使用默认值，并负责
+转换和检查字段值。业务可以提供自己的 Input 定义类型，复用基础值类型并持有自己的规则。
+Input 定义建立时即有效，建立后不再修改。所属定义管理字段之间的关系。实际启动值属于 Execution，任务调用值
+属于 TaskRun。
 _Avoid_: Concrete Input, Input value, request DTO, untyped input Map
 
 **Output**:
@@ -285,9 +286,17 @@ Task 的普通可配置输出契约；`resume` 只定义外部回调输入，不
 也不要求两者字段一致。它不定义审批人、表单、工单或其他外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
 
+**Execution Origin**:
+一次运行的直接父运行编号与整棵派生树最初运行编号组成的来源关系。首次运行没有父运行，后续每次派生指向直接来源，并沿用最初运行编号。
+_Avoid_: execution generation number, task parent, mutable current execution pointer
+
+**Inherited TaskRun**:
+新运行沿用的历史步骤运行事实，保留原步骤运行编号、已有结果和进度，能够与本次真正重新执行的步骤区分。后续运行的变化不覆盖原运行保存的事实。
+_Avoid_: rerun, newly completed task, shared mutable history
+
 **Execution Rewind**:
-从有效暂停节点退回到定义因果路径上的已完成前驱，跨越 Sequence、Route 与 Parallel 的嵌套作用域。Generation 保存精确受影响 TaskRun IDs；只部分受影响的祖先编排容器沿原 ID 重开，无关并行分支保留。审批节点含义、最近审批候选许可与用户权限属于宿主；循环内部端点不在本次支持范围。见 [ADR 0085](docs/decisions/0085-rewind-across-nested-orchestration-scopes.md)。
-_Avoid_: global suffix invalidation, top-level-only rewind, append order as branch order
+从当前有效暂停节点退回已完成的因果前驱，产生具备来源关系的新运行，整体接替原运行。原运行停止并保留历史；受影响片段重新执行，无关并行分支沿用已有进度。后续回调使用新运行编号，旧运行编号不能自动转到新运行。保持跨嵌套编排支持，循环内部端点仍不在本次范围。见 [ADR 0087](docs/decisions/0087-derive-execution-snapshots-on-replay.md)。
+_Avoid_: same-execution rewind, global suffix invalidation, append order as branch order
 
 **Execution Resume**:
 Flow Core 接受一个确定 PAUSE TaskRun 的外部回调，按该 Pause 的具体 resume Input

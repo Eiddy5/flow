@@ -13,6 +13,6 @@ public interface Data {
     /**
      * Returns the stable value type of this data definition.
      */
-    DataType getType();
+    DataType getValueType();
 
 }

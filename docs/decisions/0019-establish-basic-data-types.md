@@ -5,6 +5,15 @@
 Accepted（2026-07-30；Input 多态物化方式于 2026-08-03 修订；运行值绑定与
 typed Route 于 2026-08-13 由 ADR 0052 修订）
 
+单字段运行值入口和默认值绑定的职责归属由
+[`ADR 0088`](0088-let-input-own-field-binding.md) 修订：使用 `Input.bind` 完成整次字段绑定，
+具体值规则改为受保护行为，外部不再分步调用 `valid` 或 `normalized`。
+定义创建及反序列化的有效性进一步由
+[`ADR 0089`](0089-validate-input-during-materialization.md) 修订：Creator 和 Builder
+在返回前完成校验，不再采用无参/Setter 半成品和外部追加校验。
+
+ADR 0090 进一步分离 Input 定义类型标识与基础值类型，并允许宿主注册业务 Input。
+
 ## 背景
 
 Flow 与 Task 已经使用 Data、Input 和 Output 表达输入输出定义，但当前

@@ -86,7 +86,7 @@ class FlowMaterializationTest {
                         Map.of(
                             "key", "approval",
                             "type", Pause.class.getName(),
-                            "pause", Map.of(
+                            "onPause", Map.of(
                                 "key", "create-approval",
                                 "type", Log.class.getName(), "message", "test step"
                             )
@@ -543,6 +543,7 @@ class FlowMaterializationTest {
         );
     }
 
+    /** 验证 Flow 收集字段绑定结果并拒绝未声明字段，供路由读取。 */
     @Test
     void validatesAndNormalizesConfirmedFlowInputsForRoutes() {
         Flow flow = deploy(
@@ -579,15 +580,15 @@ class FlowMaterializationTest {
 
         assertEquals(
             Map.of("amount", 1200.0, "urgent", false),
-            flow.normalizeInputs(Map.of("amount", 1200))
+            flow.bindInputs(Map.of("amount", 1200))
         );
         assertThrows(
             WorkflowException.class,
-            () -> flow.normalizeInputs(Map.of())
+            () -> flow.bindInputs(Map.of())
         );
         assertThrows(
             WorkflowException.class,
-            () -> flow.normalizeInputs(Map.of(
+            () -> flow.bindInputs(Map.of(
                 "amount", 1200,
                 "business-only", "hidden"
             ))

@@ -50,7 +50,7 @@ flowchart LR
         subgraph coreRuntime ["领域与运行时"]
             domains["Flow / Execution / TaskRun / State"]
             repositoryPorts["Core Repository 端口"]
-            queueContracts["DispatchQueue / QueueSubscription"]
+            queueContracts["Queue 发布接口 / FlowQueue / FlowQueueListener"]
             executor["DefaultExecutor + ExecutionCommandEventHandler + ExecutorEventHandler + ExecutorService"]
             worker["WorkerDispatcher"]
             pluginRuntime["PluginRegistry / RegisteredPlugin / PluginMetadata"]
@@ -65,7 +65,7 @@ flowchart LR
 
         subgraph infrastructure ["基础设施适配"]
             postgresRepositories["PostgreSQL Repositories + Entries"]
-            defaultQueue["DefaultDispatchQueue + JsonFactory / Class"]
+            defaultQueue["PulsarQueue + PAAS Factory / Runner"]
             jooqBoundary["具名 flow JOOQ"]
         end
     end
@@ -76,6 +76,7 @@ flowchart LR
     end
 
     postgres[(Flow 独立 PostgreSQL / public schema)]
+    pulsar[(Pulsar Broker)]
     consul["Consul 配置与服务注册"]
 
     browser -->|"HTTP / JSON"| micronautApp
@@ -89,7 +90,7 @@ flowchart LR
     externalCaller -->|"executionId + taskRunId + outputs"| executionService
 
     flowService --> commandExecutor
-    executionService --> commandExecutor
+    executionService -->|"发布 ExecutionCommand"| queueContracts
     flowService --> queryHandlers
     executionService --> queryHandlers
     pluginService --> pluginRuntime
@@ -123,8 +124,10 @@ flowchart LR
     commandExecutor -->|"开启写事务"| jooqBoundary
     queryHandlers -->|"开启读事务"| jooqBoundary
     postgresRepositories --> generatedJooq
-    defaultQueue --> generatedJooq
-    defaultQueue -->|"JSONB / 周期轮询 / FOR UPDATE SKIP LOCKED"| jooqBoundary
+    queueContracts --> defaultQueue
+    defaultQueue -->|"发布 / 消费 / ACK / NACK"| pulsar
+    defaultQueue -->|"注解回调"| executor
+    executor -->|"发布 ExecutorEvent"| queueContracts
     jooqBoundary -->|"DSLContext / SQL"| postgres
     migrations -.->|"启动前由部署人员手工执行"| postgres
     postgres -.->|"构建期读取 schema 并生成"| generatedJooq
@@ -151,24 +154,17 @@ Worker、扩展与 Infrastructure；`server` 是只保留 HTTP 与启动职责�
 `api` 传递暴露 Core。Server 既可独立启动，也可完整嵌入 CSES，两者不是独立微服务。
 Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只使用具名 `flow` 数据源。
 开发期基线变化后需要重建该数据库，不提供旧 Schema 或旧数据的升级路径。
-Core 提供类型化 Dispatch Queue Interface，并已把 Execution 启动接入使用统一
-`queues` 表的 Default Adapter。该表以
-`queue_type + queue_name` 隔离传输类别和逻辑 Queue；当前 Adapter 只写入并领取
-`DISPATCH` 行。业务 Module 为具体 Event 提供 key、确定的 `Class<T>` 和具名 Bean；
-Event 不携带事务状态，需要与业务写入原子提交时，调用方通过 Queue 的显式发布方法
-传入事务。Event 内部 `eventType` 仍由业务自行维护。当前 `ExecutionCommand`、
-`Create`、`Resume`、`Cancel`、具名 Queue Bean、只做两条 Queue 路由的 eager `DefaultExecutor`、
-`ExecutionCommandEventHandler` 和内部 `ExecutorEventMessageHandler` 已连线；Broadcast
-Interface、消费游标或保留清理仍未实现。
+Core 通过公共 `Queue<T>` 发布 `ExecutionCommand` 与 `ExecutorEvent`，对应 Pulsar
+Topic 为 `flow-executor-command` 与 `flow-executor-event`。消息类型用 `@FlowQueue`
+声明，`DefaultExecutor` 的两个 `@FlowQueueListener` 方法调用既有 Handler。
+PAAS 拥有消息编码、接收循环、ACK/NACK 与关闭；回调完成后 ACK，异常 NACK 重投。
+Service 的返回仍只表示传输受理，领域保存与后续发布沿用 ADR 0084 的独立边界。
 
-`DefaultDispatchQueue` 的普通同步与异步发布都使用 Queue 自有事务；需要加入调用方
-事务时必须调用 `emitInTransaction(...)` 显式传入 `DSLContext`。Default Queue 使用项目
-现有 `JsonFactory` 把业务 Event 重组为 JSONB Queue Entry，并用装配时传入的 `Class<T>`
-恢复类型，后台任务只携带 Entry。每个 Subscription 使用虚拟线程周期轮询
-数据库，并在领取事务内按 `queue_type = 'DISPATCH'`、`queue_name` 通过
-`FOR UPDATE SKIP LOCKED` 竞争并调用 Consumer；只有 Consumer 正常返回才删除消息，
-异常会回滚领取事务并重试。未来 Broadcast 消息载荷仍写入 `queues`，所需的
-广播专属投递状态单独保存，不拆分消息载荷表。
+旧的两个 Executor Queue Factory 已删除，DefaultDispatchQueue 不再自动装配；
+旧表和独立适配器保留，不提供运行期回退。部署时先排空旧版本已接受消息，再整体切换，
+不能将旧数据库队列积压当成已经进入 Pulsar。详见
+[ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md) 与
+[切换说明](harness/pulsar-queues.md)。本次没有通知业务接入。
 
 ## 核心业务流程图
 
@@ -199,8 +195,8 @@ flowchart TD
     orchestrationKind{"编排特征？"}
     routeCondition["Route 使用已创建且 RUNNING 的当前 TaskRun 构建变量并计算 Condition；不匹配则以 SKIPPED 收敛且不进入子树"]
     parallelScope["Parallel TaskRun 保持 RUNNING；释放可运行直接分支"]
-    pauseAction["Pause TaskRun 保持 RUNNING；无条件执行 pause Task 完整子树"]
-    pausePersist["pause 子树收敛后，持久化 Pause TaskRun 与 Execution 的稳定暂停点"]
+    pauseAction["Pause TaskRun 保持 RUNNING；无条件执行 onPause Task 完整子树"]
+    pausePersist["onPause 子树收敛后，持久化 Pause TaskRun 与 Execution 的稳定暂停点"]
 
     runnableDispatch["TaskRun 进入 RUNNING 并先持久化"]
     workerRun["WorkerDispatcher 同步调用 RunnableTask.run"]
@@ -216,7 +212,7 @@ flowchart TD
     runningStable["Execution 保持 RUNNING 并提交稳定暂停点"]
 
     resumeStart(["外部提交 Resume"])
-    resumeAdmission["加载当前 Execution；校验并规范化 resume Input；构造最小 Resume"]
+    resumeAdmission["加载当前 Execution；校验并规范化 onResume Input；构造最小 Resume"]
     enqueueResume["写入 ExecutionCommand Queue"]
     resumeAccepted(["返回当前 Execution 受理回执"])
     resumeConsume["ExecutionCommandEventHandler 路由 Resume；校验后投递 ExecutorEvent"]
@@ -355,7 +351,7 @@ flowchart TD
    同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。RunContext 通过 Builder 创建且
    只保存规范 variables，不保存 Session 或重复运行身份；常用身份通过
    `taskRunInfo()`、`flowInfo()` 等只读视图从变量路径派生。
-7. Pause 先执行其必填 `pause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
+7. Pause 先执行其必填 `onPause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
    TaskRun 是唯一持久化等待事实。合法 Resume 在 Service 侧预校验并规范化后写入
    `ExecutionCommand` Queue，Command Handler 再次校验并投递 `ExecutorEvent`，内部
    Handler 从队列领取后通过 `ExecutorContext` 调用 `ExecutorService.resume`，因此不

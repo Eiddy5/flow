@@ -34,11 +34,11 @@ import static org.cses.flow.core.plugins.TaskPluginTestSupport.builtInContext;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class ExecutorEventMessageHandlerTest {
+class ExecutorEventMessageHandlerTest {
 
-    private static final AtomicReference<RunIdentity> CAPTURED_RUN =
+    private static AtomicReference<RunIdentity> CAPTURED_RUN =
         new AtomicReference<>();
-    private static final Context PLUGINS = builtInContext(
+    private static Context PLUGINS = builtInContext(
         new ParentTaskRunRecordingTask()
     );
 
@@ -156,7 +156,7 @@ final class ExecutorEventMessageHandlerTest {
                 "tasks", List.of(Map.of(
                     "key", "wait-confirmation",
                     "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                    "pause", Map.of(
+                    "onPause", Map.of(
                         "key", "create-confirmation",
                         "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                     )
@@ -216,7 +216,7 @@ final class ExecutorEventMessageHandlerTest {
                 "tasks", List.of(Map.of(
                     "key", "wait-confirmation",
                     "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                    "pause", Map.of(
+                    "onPause", Map.of(
                         "key", "record-parent-run",
                         "type",
                         ParentTaskRunRecordingTask.class.getCanonicalName()
@@ -268,19 +268,6 @@ final class ExecutorEventMessageHandlerTest {
         private Map<ExecutionKey, Execution> executions =
             new HashMap<>();
 
-        /**
-         * 本地状态机测试直接执行仓储操作，不模拟 PostgreSQL 并发协议。
-         *
-         * @param <T> 返回值类型
-         * @param dsl 测试上下文
-         * @param operation 仓储操作
-         * @return 操作结果
-         */
-        @Override
-        public <T> T inScope(DSLContext dsl, java.util.function.Function<DSLContext, T> operation) {
-            return operation.apply(dsl);
-        }
-
         @Override
         public Optional<Execution> findById(
             DSLContext dsl,
@@ -318,6 +305,31 @@ final class ExecutorEventMessageHandlerTest {
                 ),
                 execution.copy()
             );
+        }
+
+        /**
+         * 适配双快照签名的替身只用于状态机测试；两次普通保存不验证原子提交。
+         * @param dsl 测试上下文
+         * @param source 原实例快照
+         * @param derived 新实例快照
+         */
+        @Override
+        public void save(DSLContext dsl, Execution source, Execution derived) {
+            save(dsl, source);
+            save(dsl, derived);
+        }
+
+        /**
+         * 返回当前租户内同源的独立副本。
+         * @param dsl 测试上下文
+         * @param companyId 目标租户
+         * @param originId 最初实例编号
+         * @return 同源快照，无记录时为空
+         */
+        @Override
+        public List<Execution> findByOriginId(DSLContext dsl, String companyId, String originId) {
+            return findAll(dsl, companyId).stream()
+                .filter(execution -> execution.origin().originId().equals(originId)).toList();
         }
 
         private Optional<Execution> stored(
@@ -361,7 +373,7 @@ final class ExecutorEventMessageHandlerTest {
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static final class ParentTaskRunRecordingTask
+    public static class ParentTaskRunRecordingTask
         extends Task implements RunnableTask {
 
         @Override

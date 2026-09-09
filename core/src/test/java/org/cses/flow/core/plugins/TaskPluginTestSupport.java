@@ -117,7 +117,6 @@ public class TaskPluginTestSupport {
                         : flowKey
                 : null;
             flow.resolveKey(fallback);
-            flow.inputs().forEach(input -> input.validateDefinition());
             flow.tasks().forEach(task -> {
                 try {
                     modelValidator.validate(task);

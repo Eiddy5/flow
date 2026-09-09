@@ -27,6 +27,7 @@ flow/
 ├── buildSrc/          # 仓库共享的 Gradle 构建约定
 ├── gradle/            # Gradle Wrapper 和版本目录
 ├── gen/               # Flow 数据库脚本及 JOOQ 代码生成模块
+├── processor/         # Jackson Input 类型的编译期索引生成
 ├── core/              # 完整的非 HTTP Flow 能力与生产适配器
 ├── server/            # HTTP 服务、启动入口、资源与会话绑定
 └── docs/              # 项目规范、决策、UC 和验证记忆
@@ -104,6 +105,13 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 `core` 构建依赖 `gen` 中 Flow 数据库的生成类型。Flow 基线由开发或部署人员在
 应用启动前手工执行，不进入 Core 或 Server 运行资源。基线变化后重建对应开发数据库，不
 维护旧数据升级路径；Generator 和代码生成依赖仍只属于 `gen`，业务代码不能调用它们。
+
+### `processor/`
+
+独立的 JDK 注解处理器，源码位于 `org.cses.flow.processor`，不依赖 Core 或 Micronaut。
+处理具体 Input 的 `@JsonTypeName`，在编译输出生成 `META-INF/flow/inputs`；
+Core、Server 和宿主业务模块将其作为 annotationProcessor 使用。服务声明和 Gradle
+增量编译元数据位于 `src/main/resources/META-INF/`。它不参与运行期构造或业务校验。
 
 ### `core/`
 
@@ -196,7 +204,7 @@ Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务�
 `/flow/**` 下的正式管理页面；默认由
 `controller/session/AdminSessionArgumentBinder` 注入临时 `admin` 管理员身份，
 可通过 `flow.management.admin-session.enabled=false` 关闭并交回宿主认证。页面不启用
-Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 和 Dispatch Queue。
+Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 和 Pulsar 队列。
 
 ### `core/`
 
@@ -264,6 +272,9 @@ Flow、Task 等业务类型。`PluginModule` 在 Mapper 创建时注册
 `PluginDeserializer` 通过构造器接收注册中心，解析具体 Task 并由 Jackson 自然
 递归绑定嵌套插件，不再由 Flow 反射扫描插件字段。
 `plugins` 的运行机制放在包根，只有注解位于 `plugins/annotations`；
+其中 `InputTypes` 读取处理器生成的索引，按 `@JsonTypeName` 注册内置和业务 Input，
+不创建空实例。`PluginModule` 安装 Jackson 2 的原生名称多态，`InputJacksonModule`
+位于 `serializers`，为 PAAS/Micronaut 的 Jackson 3 安装同一套名称配置（ADR 0093）。
 `DefaultPluginRegistry` 直接从插件类的 `Class#getPackageName()` 取得真实包路径，
 并以此构造全局只读目录。`PluginSchemaGenerator` 位于
 保持扁平的 `serializers`，使用 `JacksonMapper` 的隔离副本按需生成定义 Schema。具体扩展
@@ -327,7 +338,8 @@ Execution 编排推进组件。它与 `core` 平级，负责：
 - 在 `executor/commands` 定义统一 `ExecutionCommand` 和具体 `Create`、`Resume`、`Cancel`
   Command；`Create` 只传递 `company`、`flowKey`、`flowVersion`、`inputs`，
   `ExecutionService` 只等待 Queue 接受，不等待 Execution 创建或运行完成。
-- `DefaultExecutor` 同时订阅外部 Executor Command Queue 和内部 Executor Event Queue。
+- `DefaultExecutor` 通过两个 `@FlowQueueListener` 方法接收外部 Command 与内部 Event，
+  两种消息由 `@FlowQueue` 声明 Pulsar Topic，发布端注入公共 `Queue<T>`。
   外部消息只路由给 `executor/handlers/ExecutionCommandEventHandler`；该 Handler 恢复
   宿主 Session、校验并物化 Execution，保存后投递 `ExecutorEvent`。
 - `executor/handlers/ExecutorEventHandler` 是内部状态循环的唯一处理器：每次领取一个
@@ -344,7 +356,7 @@ Execution 编排推进组件。它与 `core` 平级，负责：
 - 校验每个具体 Task 恰好实现 RunnableTask 或 OrchestrationTask；RunnableTask
   形成 WorkerTask 后返回提交边界，OrchestrationTask 直接在 `handle` 循环内完成
   Pause 前置 Task 子树执行、Pause TaskRun 暂停、编排作用域推进和收敛；Pause
-  自身不形成 WorkerTask，其 `pause` 字段中的 RunnableTask 仍按正常 Worker 链路执行。
+  自身不形成 WorkerTask，其 `onPause` 字段中的 RunnableTask 仍按正常 Worker 链路执行。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
 - 内部 `ExecutorEventMessageHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
   Worker 结果应用后通过新的 `ExecutorEvent` 再次进入下一周期。`ExecutorContext` 不
@@ -356,13 +368,15 @@ Execution 编排推进组件。它与 `core` 平级，负责：
 分派、输入规范化、创建或锁定 Execution 以及加载精确 Flow Reversion；内部
 `ExecutorEventMessageHandler` 依赖当前 DSLContext、ExecutorService、WorkerDispatcher 和
 Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor` 只负责两条 Queue
-的生命周期和路由。Context 自身仍不保存任何可持久化状态；恢复时由内部 Handler
+的注解回调路由；PAAS 拥有消费生命周期。Context 自身仍不保存任何可持久化状态；恢复时由内部 Handler
 重新从 Execution.inputs 读取 Flow inputs。
 
 ### `queues/`
 
 类型化异步消息传输契约。它与 `core`、`executor` 和 `worker` 平级，只保存公开
-Interface；`Event` 只表达业务 key，`DispatchQueue.emitInTransaction(...)` 使用 JOOQ
+Interface 与队列声明注解。公共 `Queue<T>` 只提供 queueName、emit、emitAsync，
+不拥有资源关闭或订阅。当前运行装配见 [ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md)。
+`Event` 只表达业务 key。独立旧适配器的 `DispatchQueue.emitInTransaction(...)` 使用 JOOQ
 `DSLContext` 显式表达一次发布的调用方事务；Event 不携带事务状态。该目录不包含
 存储、序列化或中间件产品实现：
 
@@ -372,13 +386,16 @@ queues/
 ├── DispatchQueue.java
 ├── QueueSubscription.java
 ├── QueueException.java
+├── annotations/
+│   ├── FlowQueue.java         # 消息类型的逻辑名与 PAAS Topic 声明
+│   └── FlowQueueListener.java # singleton 方法的订阅名、并发与可执行元数据
 └── event/
     ├── Event.java
     └── DispatchEvent.java
 ```
 
-业务 Module 拥有具体 Event 的字段、key 和内部业务分类；每个 Event 契约对应一个
-类型化 Dispatch Queue。`DispatchQueue` 提供单条与批量、同步与异步发布，并使用
+业务 Module 拥有具体消息字段、key 和内部分类；默认 Executor 通过类型注入发布到
+Pulsar，订阅在方法注解中声明。以下 Dispatch 契约只用于未自动装配的旧独立适配器。`DispatchQueue` 提供单条与批量、同步与异步发布，并使用
 Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次注册的暂停、恢复
 和关闭生命周期。普通 `emit(...)` 由具体 Adapter 使用 Queue 自有事务；调用方已经
 持有事务且要求业务写入与消息原子提交时，必须通过 `emitInTransaction(...)` 在调用点
@@ -390,11 +407,14 @@ Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护�
 尚未定义。数据库 Adapter 的所有传输类别共用 `queues` 载荷表，并通过
 `queue_type + queue_name` 逻辑隔离；未来专属消费状态可以独立建表，但不拆分载荷表。
 
-当前 Execution 启动和内部周期交接均依赖 Dispatch Queue；外部 Command Handler 与
+当前 Execution 启动和内部周期交接均依赖注解式 Pulsar Queue；外部 Command Handler 与
 内部 Event Handler 分别加载领域、执行领域方法并完整保存，Worker 回调不持有业务事务。
 Execution 的完整快照保存与冲突检测见 [ADR 0084](decisions/0084-save-domain-snapshots-without-business-transactions.md)。
-Execution 写入通过 Repository 的 `inScope` 使用独立仓储会话；加载版本只在该会话
-保留并于结束时清理，显式 `lock` CAS 见 [ADR 0086](decisions/0086-use-scoped-execution-lock-for-cas.md)。
+业务通过普通 `find/save` 读写；数据库执行入口内部使用通用 `CasSupport` 管理加载
+版本并自动清理，显式 `lock` CAS 及生命周期见 [ADR 0091](decisions/0091-hide-repository-cas-behind-save.md)。
+Execution 的 `Origin` 与继承运行快照、新旧实例单 SQL 交接和同源查询见
+[ADR 0087](decisions/0087-derive-execution-snapshots-on-replay.md)。继承快照只存于 Execution，
+`task_runs` 继续保存每个实例首次产生的运行记录。
 `core/services/executions/RewindPath` 负责嵌套路径的前驱与影响范围计算；精确 Generation 失效范围和部分祖先重开见 [ADR 0085](decisions/0085-rewind-across-nested-orchestration-scopes.md)。
 具体 Queue Adapter 放入对应基础设施目录；Default Adapter 负责消息自己的传输事务和
 周期轮询消费生命周期。完整决策见
@@ -457,11 +477,11 @@ extensions/
 当前 `Pause` 是 Flow Core 自带并标注 `@Plugin` 的 OrchestrationTask 暂停能力，
 位于 `extensions/flow/Pause.java`。位于 `extensions` 表示它通过 Task 扩展协议
 装配，不表示审批或其他外部业务对象属于 Flow Core。外部业务能力通过宿主自定义
-RunnableTask 与 `Pause.pause` 对接，Task 使用 `RunContext` 调用宿主 Service；跨进程
+RunnableTask 与 `Pause.onPause` 对接，Task 使用 `RunContext` 调用宿主 Service；跨进程
 场景才通过公开 `ExecutionService.resume(...)` 恢复 Pause。Task 不能直接调用 Worker、
-Executor 或 Handler。Pause 直接声明唯一必填的 `pause` Task、允许为空的 `resume` Input
+Executor 或 Handler。Pause 直接声明唯一必填的 `onPause` Task、允许为空的 `onResume` Input
 列表以及可选且成对配置的 `duration + behavior`。Pause 直接继承 Task，不拥有 Branch
-的普通 `tasks`；`definitionChildren()` 只暴露其专有的 `pause` Task，Resume 数据进入
+的普通 `tasks`；`definitionChildren()` 只暴露其专有的 `onPause` Task，Resume 数据进入
 Pause 自身的 `outputs`，后续流程由 Pause 所在串行作用域继续推进。
 完整定义遍历通过 `Task.definitionChildren()` 识别类型专有 Task，跨字段约束继续由
 `ModelValidator` 统一调用 `ModelInvariant` 校验。
@@ -521,8 +541,10 @@ Java Class 转换为字符串 DTO。
 core/src/main/java/org/cses/flow/infrastructure/
 ├── jooq/            # 具名 flow 数据源和 JOOQ 装配
 ├── queues/          # Default Dispatch Queue、统一消息表、JsonFactory 类型恢复与周期轮询
-│   └── entries/     # 保存业务 payload、queue_type 与 queue_name 的 Queue Message Entry
+│   ├── entries/     # 保存业务 payload、queue_type 与 queue_name 的 Queue Message Entry
+│   └── pulsar/      # PAAS 薄适配：PulsarQueue、类型注入 Factory、注解消费者注册
 ├── repositories/    # Repository 的具体生产实现
+│   ├── CasSupport.java # 按弱引用对象身份管理加载版本、CAS 条件及自动失效
 │   └── <业务模块>/
 │       ├── XxxRepositoryImpl.java
 │       ├── entries/
@@ -535,17 +557,20 @@ core/src/main/java/org/cses/flow/infrastructure/
 适合放入：
 
 - Repository 的 PostgreSQL、DataPilot 等生产实现。
+- `queues/pulsar` 中的注解式 PAAS Pulsar 适配；连接、编码、消费循环与 ACK/NACK
+  复用 PAAS。它实现公共 Queue，作为两条 Executor 队列的默认传输，不实现旧 DispatchQueue，具体见
+  [ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md) 和
+  [接入说明](harness/pulsar-queues.md)。
 - `entries` 子包中的数据库 Entry，以及 Entry 与领域对象之间的转换。
 - 与 `entries` 平级的 `codec` 子包；只保存 Entry 静态调用的序列化和专用字段转换。
-- `queues` 中实现 `queues` Interface 的 `DefaultDispatchQueue`；普通发布使用 Queue
+- `queues` 中未自动装配的独立旧 `DefaultDispatchQueue`；普通发布使用 Queue
   自有事务，显式事务发布使用调用方传入的 `DSLContext`。它使用项目现有 `JsonFactory`
   把 Event 重组为只含业务数据的 JSONB Queue Entry，并通过装配时传入的 `Class<T>`
   恢复业务类型。所有传输类别的
   Entry 写入统一 `queues`，用可扩展 `queue_type + queue_name` 隔离；当前
   Default Adapter 固定使用 `DISPATCH`。Adapter 使用具名 `flow` JOOQ、周期轮询和
   `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务。
-  `ExecutorCommandQueueFactory` 和 `ExecutorEventQueueFactory` 是两条具名
-  Executor Queue 的业务组合根。
+  原两条 Executor Queue Factory 已删除，运行链路改用 `PulsarQueueFactory` 与注解消费者。
 - 缓存、远程服务等其他技术适配器。
 - 只与具体框架或外部系统有关的配置和连接代码。
 
@@ -672,6 +697,8 @@ queues/event
   `core/plugins` 不能反向依赖 `extensions`。
 - `core` 不能依赖 `controller` 或具体基础设施实现。
 - `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；只有
+  `annotations/FlowQueueListener` 可引用 Micronaut `Executable` 元注解以生成方法元数据，
+  其他 Queue 契约不依赖 Micronaut。只有
   `DispatchQueue.emitInTransaction(...)` 的公开发布契约依赖 JOOQ `DSLContext` 类型，
   `Event` 不依赖 JOOQ，Queue 契约不执行 SQL。Executor 的具体启动 Event 依赖该公开
   契约，消费后再进入 Worker 链路。
@@ -710,7 +737,7 @@ queues/event
 | 类型化 Event、Dispatch Queue 与订阅生命周期契约 | `core/src/main/java/org/cses/flow/queues/` |
 | Queue Event 分类 Interface | `core/src/main/java/org/cses/flow/queues/event/` |
 | Default Dispatch Queue、统一消息表、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
-| Executor Command/Event Queue 的 Micronaut 组合根 | `core/src/main/java/org/cses/flow/infrastructure/queues/ExecutorCommandQueueFactory.java`、`ExecutorEventQueueFactory.java` |
+| Executor Command/Event 的 Pulsar 声明与回调 | `core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`、`executor/ExecutorEvent.java`、`executor/DefaultExecutor.java` |
 | 包含 `queue_type + queue_name` 的统一 Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/XxxRepositoryImpl.java` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |

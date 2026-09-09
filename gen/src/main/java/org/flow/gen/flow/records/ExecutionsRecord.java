@@ -10,6 +10,7 @@ import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
 import org.paas.json.JsonObject;
+import org.paas.json.JsonObjects;
 
 
 /**
@@ -77,87 +78,131 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     }
 
     /**
+     * Setter for <code>public.executions.parent_id</code>.
+     */
+    public void setParentId(String value) {
+        set(4, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.parent_id</code>.
+     */
+    public String getParentId() {
+        return (String) get(4);
+    }
+
+    /**
+     * Setter for <code>public.executions.origin_id</code>.
+     */
+    public void setOriginId(String value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.origin_id</code>.
+     */
+    public String getOriginId() {
+        return (String) get(5);
+    }
+
+    /**
+     * Setter for <code>public.executions.inherited_task_runs</code>.[[before=
+     * ][]]
+     */
+    public void setInheritedTaskRuns(JsonObjects value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.inherited_task_runs</code>.[[before=
+     * ][]]
+     */
+    public JsonObjects getInheritedTaskRuns() {
+        return (JsonObjects) get(6);
+    }
+
+    /**
      * Setter for <code>public.executions.state</code>.
      */
     public void setState(JSONB value) {
-        set(4, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.executions.state</code>.
      */
     public JSONB getState() {
-        return (JSONB) get(4);
+        return (JSONB) get(7);
     }
 
     /**
      * Setter for <code>public.executions.generation</code>.
      */
     public void setGeneration(JSONB value) {
-        set(5, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.executions.generation</code>.
      */
     public JSONB getGeneration() {
-        return (JSONB) get(5);
+        return (JSONB) get(8);
     }
 
     /**
      * Setter for <code>public.executions.lock</code>.
      */
     public void setLock(Long value) {
-        set(6, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.executions.lock</code>.
      */
     public Long getLock() {
-        return (Long) get(6);
+        return (Long) get(9);
     }
 
     /**
      * Setter for <code>public.executions.creator</code>.
      */
     public void setCreator(JSONB value) {
-        set(7, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.executions.creator</code>.
      */
     public JSONB getCreator() {
-        return (JSONB) get(7);
+        return (JSONB) get(10);
     }
 
     /**
      * Setter for <code>public.executions.created_at</code>.
      */
     public void setCreatedAt(Long value) {
-        set(8, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.executions.created_at</code>.
      */
     public Long getCreatedAt() {
-        return (Long) get(8);
+        return (Long) get(11);
     }
 
     /**
      * Setter for <code>public.executions.inputs</code>.[[before= ][]]
      */
     public void setInputs(JsonObject value) {
-        set(9, value == null ? null : value.toString());
+        set(12, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.executions.inputs</code>.[[before= ][]]
      */
     public JsonObject getInputs() {
-        return JsonObject.Parse((String) get(9));
+        return JsonObject.Parse((String) get(12));
     }
 
     // -------------------------------------------------------------------------
@@ -183,13 +228,16 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, JSONB state, JSONB generation, Long lock, JSONB creator, Long createdAt, JsonObject inputs) {
+    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, String parentId, String originId, JsonObjects inheritedTaskRuns, JSONB state, JSONB generation, Long lock, JSONB creator, Long createdAt, JsonObject inputs) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
         setCompanyId(companyId);
         setFlowKey(flowKey);
         setFlowVersion(flowVersion);
+        setParentId(parentId);
+        setOriginId(originId);
+        setInheritedTaskRuns(inheritedTaskRuns);
         setState(state);
         setGeneration(generation);
         setLock(lock);
@@ -211,6 +259,9 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setCompanyId(value.companyId);
             setFlowKey(value.flowKey);
             setFlowVersion(value.flowVersion);
+            setParentId(value.parentId);
+            setOriginId(value.originId);
+            setInheritedTaskRuns(value.inheritedTaskRuns);
             setState(value.state);
             setGeneration(value.generation);
             setLock(value.lock);
@@ -226,6 +277,9 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.companyId = getCompanyId();
         object.flowKey = getFlowKey();
         object.flowVersion = getFlowVersion();
+        object.parentId = getParentId();
+        object.originId = getOriginId();
+        object.inheritedTaskRuns = getInheritedTaskRuns();
         object.state = getState();
         object.generation = getGeneration();
         object.lock = getLock();
@@ -246,6 +300,9 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.companyId = getCompanyId();
         pojo.flowKey = getFlowKey();
         pojo.flowVersion = getFlowVersion();
+        pojo.parentId = getParentId();
+        pojo.originId = getOriginId();
+        pojo.inheritedTaskRuns = getInheritedTaskRuns();
         pojo.state = getState();
         pojo.generation = getGeneration();
         pojo.lock = getLock();

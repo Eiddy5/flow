@@ -13,6 +13,7 @@ import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.executor.commands.Create;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
+import org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment;
 import org.paas.session.Session;
 import org.paas.session.User;
 import org.paas.common.util.StringUtil;
@@ -38,7 +39,6 @@ public class WorkflowUcFixture implements AutoCloseable {
         "consul.client.watch.service.enabled", false,
         "grpc.server.enabled", false,
         "thrift.server.enabled", false,
-        "pulsar.consumer.enabled", false,
         "jooq.send-event", false
     );
 
@@ -52,6 +52,14 @@ public class WorkflowUcFixture implements AutoCloseable {
     private Object[] singletons;
     private Set<String> companyIds = new LinkedHashSet<>();
 
+    /**
+     * Starts real database and Pulsar-backed public services for one isolated user scope.
+     * @param jooq adapter to the dedicated PostgreSQL database
+     * @param companyId optional stable tenant identifier for restart scenarios
+     * @param cleanupOnClose whether final close removes this fixture's owned resources
+     * @param additionalProperties existing scenario-specific Micronaut properties
+     * @param singletons explicit non-queue collaborators required by a technical scenario
+     */
     private WorkflowUcFixture(
         PostgresJooqTestAdapter jooq,
         String companyId,
@@ -63,6 +71,7 @@ public class WorkflowUcFixture implements AutoCloseable {
         this.cleanupOnClose = cleanupOnClose;
         Map<String, Object> mergedProperties =
             new java.util.LinkedHashMap<>(PROPERTIES);
+        mergedProperties.putAll(PulsarTestEnvironment.properties());
         if (additionalProperties != null) {
             mergedProperties.putAll(additionalProperties);
         }
@@ -134,7 +143,7 @@ public class WorkflowUcFixture implements AutoCloseable {
 
     /**
      * Closes the current server and starts a new server backed only by the
-     * persisted PostgreSQL state.
+     * persisted PostgreSQL state and the same durable Pulsar subscriptions.
      */
     public void restartServer() {
         closeServer();
@@ -383,6 +392,13 @@ public class WorkflowUcFixture implements AutoCloseable {
         return resume(session, pausedTaskRun, outputs);
     }
 
+    /**
+     * 提交退回并查询新实例到达所选片段的 Pause。
+     * @param pausedTaskRun 公开查询取得的原实例及当前 Pause
+     * @param targetTaskRunId 当前有效历史目标编号
+     * @param reason 非空退回原因
+     * @return 受理时原快照及已到达 Pause 的新实例
+     */
     public RewindAttempt rewind(
         PausedTaskRunRef pausedTaskRun,
         String targetTaskRunId,
@@ -397,7 +413,7 @@ public class WorkflowUcFixture implements AutoCloseable {
         );
         Execution rewound = awaitExecution(
             session,
-            accepted.execution().id(),
+            accepted.executionId(),
             execution -> execution.state().isPaused()
                 && execution.generation().current()
                     .filter(current -> current.sourceTaskRunId()
@@ -410,6 +426,14 @@ public class WorkflowUcFixture implements AutoCloseable {
                     .isPresent()
         );
         return RewindAttempt.from(accepted, rewound);
+    }
+
+    /**
+     * 将普通技术测试的持久化命令交给真实消费入口；不用于替代 UC 公开操作。
+     * @param command 重投的同一命令或旧回调
+     */
+    public void deliverCommand(org.cses.flow.executor.commands.ExecutionCommand command) {
+        context.getBean(org.cses.flow.executor.handlers.ExecutionCommandEventHandler.class).handle(command);
     }
 
     public Execution cancel(String executionId) {
@@ -506,11 +530,11 @@ public class WorkflowUcFixture implements AutoCloseable {
             tasks:
               - key: wait-confirmation
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-confirmation
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
                 outputs:
@@ -520,13 +544,21 @@ public class WorkflowUcFixture implements AutoCloseable {
             """.formatted(key, description, trailing);
     }
 
+    /**
+     * Closes the server before clearing dedicated Broker backlog and owned database rows.
+     * Physical cleanup never substitutes for the scenario's user-visible final state.
+     */
     @Override
     public void close() {
         try {
             closeServer();
         } finally {
             if (cleanupOnClose && jooq.cleanupEnabled()) {
-                companyIds.forEach(jooq::removeTenant);
+                try {
+                    PulsarTestEnvironment.clearExecutorBacklogs();
+                } finally {
+                    companyIds.forEach(jooq::removeTenant);
+                }
             }
         }
     }

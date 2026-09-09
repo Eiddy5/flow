@@ -465,9 +465,12 @@ public class Flow extends AbstractFlow {
     }
 
     /**
-     * Validates and normalizes one confirmed Flow input payload.
+     * 按当前正式 Flow 的声明收集每个 Input 自行绑定的启动值。
+     * @param actualInputs 提交的只读字段映射；null 视为没有提交字段
+     * @return 不含 null 的不可变输入映射
+     * @throws WorkflowException 当 Flow 未发布、存在未声明字段或某个 Input 绑定失败时抛出
      */
-    public Map<String, Object> normalizeInputs(Map<String, ?> actualInputs) {
+    public Map<String, Object> bindInputs(Map<String, ?> actualInputs) {
         requireDeployed();
         Map<String, ?> accepted = actualInputs == null
                 ? Map.of()
@@ -484,17 +487,13 @@ public class Flow extends AbstractFlow {
         }
         Map<String, Object> normalized = new LinkedHashMap<>();
         for (Input<?> input : inputs()) {
-            boolean provided = accepted.containsKey(input.getKey());
-            Object value = provided
-                    ? accepted.get(input.getKey())
-                    : input.getDefaultValue();
             try {
-                Object result = input.normalized(value);
+                Object result = input.bind(accepted);
                 if (result != null) {
                     normalized.put(input.getKey(), result);
                 }
             } catch (IllegalArgumentException exception) {
-                throw new WorkflowException(exception.getMessage());
+                throw new WorkflowException(exception.getMessage(), exception);
             }
         }
         return Collections.unmodifiableMap(normalized);
@@ -861,7 +860,7 @@ public class Flow extends AbstractFlow {
                     + " references undeclared Flow input "
                     + key + ": " + owner.key()
             ));
-        if (!condition.supports(reference, input.getType())) {
+        if (!condition.supports(reference, input.getValueType())) {
             throw new WorkflowException(
                 conditionOwner(owner)
                     + " is incompatible with Flow input "

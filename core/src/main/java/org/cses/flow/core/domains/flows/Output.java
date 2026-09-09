@@ -9,7 +9,7 @@ import java.util.Objects;
 /**
  * Immutable output definition owned by a Flow or Task.
  */
-public final class Output implements Data {
+public class Output implements Data {
 
     String key;
     DataType type;
@@ -39,8 +39,17 @@ public final class Output implements Data {
         return key;
     }
 
-    @Override
     public DataType getType() {
+        return type;
+    }
+
+    /**
+     * 返回输出值类型，保留原 JSON type 字段。
+     * @return 已声明的非空输出值类型
+     */
+    @Override
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public DataType getValueType() {
         return type;
     }
 

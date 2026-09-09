@@ -6,13 +6,14 @@ import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.domains.tasks.Task;
 
 import java.util.List;
 
 @SuperBuilder
 @NoArgsConstructor
-public abstract class Branch extends Task implements OrchestrationTask {
+public abstract class Branch<T extends Output> extends Task implements OrchestrationTask<T> {
 
     @NotNull
     @Builder.Default

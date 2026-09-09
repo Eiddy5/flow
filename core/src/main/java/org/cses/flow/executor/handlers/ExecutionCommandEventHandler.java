@@ -9,6 +9,7 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
@@ -20,7 +21,7 @@ import org.cses.flow.executor.ExecutorEventHandler;
 import org.cses.flow.executor.commands.*;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
-import org.cses.flow.queues.DispatchQueue;
+import org.cses.flow.queues.Queue;
 import org.jooq.DSLContext;
 import org.paas.session.Session;
 import org.paas.session.SessionFactory;
@@ -48,16 +49,23 @@ public class ExecutionCommandEventHandler implements
     private SessionFactory<?, ?> sessionFactory;
     private FlowRepository flowRepository;
     private ExecutionRepository executionRepository;
-    private DispatchQueue<ExecutorEvent> eventQueue;
+    private Queue<ExecutorEvent> eventQueue;
 
+    /**
+     * Wires command persistence and subsequent transport publication without a shared transaction.
+     * @param jooq named Flow database access
+     * @param sessionFactory restores the command tenant and actor
+     * @param flowRepository reads the exact flow definition
+     * @param executionRepository reads and saves complete execution snapshots
+     * @param eventQueue annotation-selected internal event publisher
+     */
     @Inject
     public ExecutionCommandEventHandler(
             @Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
             SessionFactory<?, ?> sessionFactory,
             FlowRepository flowRepository,
             ExecutionRepository executionRepository,
-            @Named(ExecutorEvent.QUEUE_NAME)
-            DispatchQueue<ExecutorEvent> eventQueue
+            Queue<ExecutorEvent> eventQueue
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.sessionFactory = Objects.requireNonNull(
@@ -89,10 +97,14 @@ public class ExecutionCommandEventHandler implements
                 "command"
         );
         accepted.validate();
-        return executionRepository.inScope(jooq.createDSLContext(), dsl -> {
+        return FlowDatabase.execute(jooq.createDSLContext(), dsl -> {
             route(dsl, accepted);
-            Execution execution = executionRepository.findById(dsl, companyId(accepted), accepted.key())
-                    .orElseThrow(() -> new WorkflowException("Execution does not exist: " + accepted.key()));
+            String scheduledId = accepted instanceof Rewind rewind
+                    ? rewind.getReplayExecutionId() : accepted.key();
+            Optional<Execution> scheduled = executionRepository.findById(dsl, companyId(accepted), scheduledId);
+            if (scheduled.isEmpty() && accepted instanceof Rewind) return Optional.empty();
+            Execution execution = scheduled.orElseThrow(() ->
+                    new WorkflowException("Execution does not exist: " + scheduledId));
             if (!execution.isTerminal()) {
                 ExecutorEvent.EventType type = switch (execution.state().current()) {
                     case CREATED -> ExecutorEvent.EventType.CREATED;
@@ -224,7 +236,7 @@ public class ExecutionCommandEventHandler implements
                                         + flow.key() + "@" + flow.reversion()
                         );
                     }
-                    Map<String, Object> normalizedInputs = flow.normalizeInputs(
+                    Map<String, Object> normalizedInputs = flow.bindInputs(
                             command.getInputs()
                     );
                     Execution execution = Execution.create(
@@ -303,7 +315,7 @@ public class ExecutionCommandEventHandler implements
                             + taskRun.id()
             );
         }
-        Map<String, Object> normalizedOutputs = pause.validateResume(
+        Map<String, Object> normalizedOutputs = pause.bindResume(
                 command.getOutputs()
         );
         execution.resumeTaskRun(taskRun.id(), normalizedOutputs);
@@ -311,12 +323,28 @@ public class ExecutionCommandEventHandler implements
     }
 
     /**
-     * Applies a rewind through the complete Execution domain before saving its new snapshot.
+     * Creates and atomically saves a derived Execution, or validates an existing result on redelivery.
      * @param dsl ordinary database context
      * @param command rewind occurrence and reason
      * @throws WorkflowException when the rewind cannot be applied
      */
     private void handleRewind(DSLContext dsl, Rewind command) {
+        Optional<Execution> existing = executionRepository.findById(
+                dsl, command.getCompanyId(), command.getReplayExecutionId());
+        if (existing.isPresent()) {
+            Execution replayed = existing.orElseThrow();
+            if (!command.getExecutionId().equals(replayed.origin().parentId())) {
+                throw new WorkflowException("Replay identity is already bound to another source");
+            }
+            var generation = replayed.generation();
+            var replay = generation.current().orElseGet(() -> generation.history().currents().getLast());
+            if (!command.getSourceTaskRunId().equals(replay.sourceTaskRunId().orElse(null))
+                    || !command.getTargetTaskRunId().equals(replay.targetTaskRunId().orElse(null))
+                    || !command.getReason().equals(replay.reason())) {
+                throw new WorkflowException("Replay identity is already bound to another request");
+            }
+            return;
+        }
         Execution execution = executionRepository.findById(
                 dsl,
                 command.getCompanyId(),
@@ -351,13 +379,20 @@ public class ExecutionCommandEventHandler implements
                 command.getSourceTaskRunId(),
                 command.getTargetTaskRunId()
         );
-        execution.rewindTaskRun(
+        if (execution.activeTaskRuns().stream().anyMatch(run ->
+                run.state().is(State.Type.RUNNING)
+                        && flow.findTask(run.taskId()).orElseThrow() instanceof RunnableTask)) {
+            throw new WorkflowException("Replay waits for in-flight Worker results before taking its snapshot");
+        }
+        Execution replayed = execution.replay(
+                command.getReplayExecutionId(),
+                restoreSession(command.getCompanyId(), command.getActorId()),
                 command.getSourceTaskRunId(),
                 command.getTargetTaskRunId(),
                 command.getReason(),
                 ExecutionService.affectedTaskRunIds(flow, execution, command.getSourceTaskRunId(), command.getTargetTaskRunId())
         );
-        executionRepository.save(dsl, execution);
+        executionRepository.save(dsl, execution, replayed);
     }
 
     private static void inCommandScope(

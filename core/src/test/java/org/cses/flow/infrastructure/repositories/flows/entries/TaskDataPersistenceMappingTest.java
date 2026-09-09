@@ -175,8 +175,8 @@ class TaskDataPersistenceMappingTest {
         Pause task = Pause.builder()
             .id("pause-id")
             .key("wait-approval")
-            .pause(action)
-            .resume(List.of(StringInput.builder()
+            .onPause(action)
+            .onResume(List.of(StringInput.builder()
                 .key("decision")
                 .displayName("Decision")
                 .required(true)
@@ -196,14 +196,14 @@ class TaskDataPersistenceMappingTest {
             0
         );
 
-        assertTrue(properties(entry).asMap().containsKey("pause"));
+        assertTrue(properties(entry).asMap().containsKey("onPause"));
         assertEquals("P1M", properties(entry).asMap().get("duration"));
         Pause restored = assertInstanceOf(
             Pause.class,
             entry.to(List.of())
         );
         assertEquals(task, restored);
-        assertEquals(action, restored.pause());
+        assertEquals(action, restored.onPause());
         assertEquals(List.of(action), restored.definitionChildren());
         assertEquals(
             List.of(Output.create("decision", DataType.STRING)),

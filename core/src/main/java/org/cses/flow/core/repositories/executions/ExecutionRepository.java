@@ -5,23 +5,11 @@ import org.jooq.DSLContext;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
 
 /**
  * Aggregate repository for Execution and its ordered TaskRun collection.
  */
 public interface ExecutionRepository {
-
-    /**
-     * 在独立仓储会话中加载并保存聚合；结束时释放加载元数据，不开启数据库事务。
-     * 显式事务调用方必须在操作返回前完成提交或回滚，不能跨事务复用会话。
-     *
-     * @param <T> 操作返回类型
-     * @param dsl 调用方数据库上下文
-     * @param operation 使用传入会话 DSL 完成的操作
-     * @return 操作结果，返回的领域对象不携带可跨会话复用的写权限
-     */
-    <T> T inScope(DSLContext dsl, Function<DSLContext, T> operation);
 
     Optional<Execution> findById(
         DSLContext dsl,
@@ -34,12 +22,30 @@ public interface ExecutionRepository {
     long count(DSLContext dsl, String companyId);
 
     /**
-     * 在当前仓储会话内原子保存完整聚合；已有行必须使用本会话加载的原对象。
+     * 原子保存完整聚合；已有行使用本次数据库操作加载的原对象，内部检查加载版本。
      *
-     * @param dsl 当前仓储会话提供的上下文
+     * @param dsl 执行入口提供的上下文，调用方无需单独管理 CAS 会话
      * @param execution 已完成业务修改的完整聚合
      * @throws org.jooq.exception.DataChangedException 加载快照已过期或缺少已有行的加载版本
-     * @throws IllegalStateException 未进入仓储会话或会话已结束
+     * @throws IllegalStateException 数据库操作未建立或已经结束
      */
     void save(DSLContext dsl, Execution execution);
+    /**
+     * Atomically stores a changed source and one new derived Execution.
+     * @param dsl managed database operation used to load the source
+     * @param source loaded source after its transition
+     * @param derived new snapshot created from that source
+     * @throws org.jooq.exception.DataChangedException when the source snapshot is stale
+     */
+    void save(DSLContext dsl, Execution source, Execution derived);
+
+    /**
+     * Loads all snapshots sharing a root, within the supplied tenant.
+     * @param dsl read context
+     * @param companyId owning tenant
+     * @param originId first Execution ID
+     * @return snapshots in creation order, or an empty list
+     */
+    List<Execution> findByOriginId(DSLContext dsl, String companyId, String originId);
+
 }

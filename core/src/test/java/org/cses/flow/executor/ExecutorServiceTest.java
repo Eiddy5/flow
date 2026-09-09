@@ -179,6 +179,7 @@ final class ExecutorServiceTest {
         assertTrue(execution.pausedTaskRuns().isEmpty());
     }
 
+    /** 验证并行分支使用 Flow 各字段绑定后保存的启动值。 */
     @Test
     void parallelBranchesUsePersistedConfirmedFlowInputs() {
         Flow flow = deploy(Map.of(
@@ -220,7 +221,7 @@ final class ExecutorServiceTest {
             session(seed.companyId()),
             seed.flowKey(),
             seed.flowVersion(),
-            flow.normalizeInputs(Map.of("amount", 1200))
+            flow.bindInputs(Map.of("amount", 1200))
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
 
@@ -318,6 +319,7 @@ final class ExecutorServiceTest {
         );
     }
 
+    /** 验证路由结合前序输出与绑定的启动值计算复合条件。 */
     @Test
     void routeReadsPrecedingOutputsAndEvaluatesACompoundCondition() {
         Flow flow = deploy(Map.of(
@@ -370,7 +372,7 @@ final class ExecutorServiceTest {
             session(seed.companyId()),
             seed.flowKey(),
             seed.flowVersion(),
-            flow.normalizeInputs(Map.of())
+            flow.bindInputs(Map.of())
         );
         ExecutorContext context = new ExecutorContext(flow, execution);
 
@@ -442,7 +444,7 @@ final class ExecutorServiceTest {
             "tasks", List.of(Map.of(
                 "key", "wait-confirmation",
                 "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                "pause", Map.of(
+                "onPause", Map.of(
                     "key", "create-confirmation",
                     "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 )
@@ -488,11 +490,11 @@ final class ExecutorServiceTest {
             "tasks", List.of(Map.of(
                 "key", "wait-confirmation",
                 "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                "pause", Map.of(
+                "onPause", Map.of(
                     "key", "create-confirmation",
                     "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                 ),
-                "resume", List.of(Map.of(
+                "onResume", List.of(Map.of(
                     "key", "decision",
                     "type", "STRING",
                     "required", true
@@ -554,7 +556,7 @@ final class ExecutorServiceTest {
                     Map.of(
                         "key", "left",
                         "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                        "pause", Map.of(
+                        "onPause", Map.of(
                             "key", "left-action",
                             "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         )
@@ -562,7 +564,7 @@ final class ExecutorServiceTest {
                     Map.of(
                         "key", "right",
                         "type", org.cses.flow.extensions.flow.Pause.class.getName(),
-                        "pause", Map.of(
+                        "onPause", Map.of(
                             "key", "right-action",
                             "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                         )

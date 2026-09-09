@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 
@@ -41,7 +42,7 @@ import java.util.OptionalInt;
 )
 @SuperBuilder
 @NoArgsConstructor
-public class Parallel extends Branch implements OrchestrationTask {
+public class Parallel extends Branch<Parallel.Output> {
 
     @Positive
     @Schema(
@@ -70,5 +71,9 @@ public class Parallel extends Branch implements OrchestrationTask {
     @Override
     protected Object typeSpecificEqualityState() {
         return concurrent;
+    }
+
+    public static class Output implements org.cses.flow.core.domains.tasks.Output{
+
     }
 }

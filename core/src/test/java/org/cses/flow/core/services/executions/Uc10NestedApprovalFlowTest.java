@@ -531,11 +531,13 @@ class Uc10NestedApprovalFlowTest {
                         approvalYaml("first") + logYaml("notify") + approvalYaml("second"))
                     + routeYaml("low", "{{ inputs.amount }} <= 400", approvalYaml("unused"))
                     + recordYaml("record", "first", "second")));
-            String id = startWithAmount(fixture, flow, 500).id();
-            Execution waiting = approve(fixture, flow, id, "first", "OLD");
+            String sourceId = startWithAmount(fixture, flow, 500).id();
+            Execution waiting = approve(fixture, flow, sourceId, "first", "OLD");
             TaskRun target = onlyRun(waiting, flow, "first");
-            PausedTaskRunRef source = pausedTask(query(fixture, id), flow, "second");
+            PausedTaskRunRef source = pausedTask(query(fixture, sourceId), flow, "second");
             var attempt = fixture.rewind(source, target.id(), "same-branch");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, id);
             Execution rewound = query(fixture, id);
             assertPausedKeys(rewound, flow, "first");
             assertNotEquals(target.id(), latestRun(rewound, flow, "first").id());
@@ -545,9 +547,9 @@ class Uc10NestedApprovalFlowTest {
                 onlyRun(rewound, flow, "before").id()));
             assertNoRun(rewound, flow, "record");
             assertRejectedWithoutChange(fixture, id, () -> fixture.executionService().resume(
-                fixture.session(), id, source.taskRunId(), Map.of("decision", "OLD")));
+                fixture.session(), sourceId, source.taskRunId(), Map.of("decision", "OLD")));
             assertRejectedWithoutChange(fixture, id, () -> fixture.executionService().rewind(
-                fixture.session(), id, source.taskRunId(), target.id(), "stale-source"));
+                fixture.session(), sourceId, source.taskRunId(), target.id(), "stale-source"));
             Execution next = approve(fixture, flow, id, "first", "NEW");
             assertPausedKeys(next, flow, "second");
             assertNoRun(next, flow, "record");
@@ -573,10 +575,12 @@ class Uc10NestedApprovalFlowTest {
                     + routeYaml("high", "{{ inputs.amount }} > 400", approvalYaml("second"))
                     + routeYaml("low", "{{ inputs.amount }} <= 400", approvalYaml("unused"))
                     + recordYaml("record", "first", "second")));
-            String id = startWithAmount(fixture, flow, 500).id();
-            Execution waiting = approve(fixture, flow, id, "first", "OLD");
-            fixture.rewind(pausedTask(query(fixture, id), flow, "second"),
+            String sourceId = startWithAmount(fixture, flow, 500).id();
+            Execution waiting = approve(fixture, flow, sourceId, "first", "OLD");
+            var attempt = fixture.rewind(pausedTask(query(fixture, sourceId), flow, "second"),
                 onlyRun(waiting, flow, "first").id(), "before-split");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, id);
             Execution rewound = query(fixture, id);
             assertPausedKeys(rewound, flow, "first");
             assertEquals(1, countRuns(rewound, flow, "before"));
@@ -611,18 +615,20 @@ class Uc10NestedApprovalFlowTest {
                 startWithAmount(fixture, flow, 100));
             List<String> branches = List.of("high-review", "low-review");
             for (int index = 0; index < started.size(); index++) {
-                String id = started.get(index).id();
+                String sourceId = started.get(index).id();
                 String branch = branches.get(index);
                 String unmatched = branches.get(1 - index);
-                Execution waiting = approve(fixture, flow, id, branch, "OLD");
+                Execution waiting = approve(fixture, flow, sourceId, branch, "OLD");
                 assertNoRun(waiting, flow, unmatched);
                 assertEquals(List.of(onlyRun(waiting, flow, branch).id()),
-                    fixture.executionService().previousCompletedTaskRuns(fixture.session(), id,
+                    fixture.executionService().previousCompletedTaskRuns(fixture.session(), sourceId,
                         pausedTask(waiting, flow, "final").taskRunId(),
                         Set.of("high-review", "low-review", "final"))
                         .stream().map(TaskRun::id).toList());
-                fixture.rewind(pausedTask(query(fixture, id), flow, "final"),
+                var attempt = fixture.rewind(pausedTask(query(fixture, sourceId), flow, "final"),
                     onlyRun(waiting, flow, branch).id(), "actual-branch");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, id);
                 Execution rewound = query(fixture, id);
                 assertPausedKeys(rewound, flow, branch);
                 assertNoRun(rewound, flow, unmatched);
@@ -664,10 +670,12 @@ class Uc10NestedApprovalFlowTest {
                     approvalYaml("first") + nested + recordYaml("outer-record", "first", "deep"))
                 + routeYaml("skip-1", "{{ inputs.amount }} <= 400", approvalYaml("unused-1"))
                 + recordYaml("record", "first", "deep")));
-            String id = startWithAmount(fixture, flow, 500).id();
-            Execution waiting = approve(fixture, flow, id, "first", "OLD");
-            fixture.rewind(pausedTask(query(fixture, id), flow, "deep"),
+            String sourceId = startWithAmount(fixture, flow, 500).id();
+            Execution waiting = approve(fixture, flow, sourceId, "first", "OLD");
+            var attempt = fixture.rewind(pausedTask(query(fixture, sourceId), flow, "deep"),
                 onlyRun(waiting, flow, "first").id(), "deep-to-outer");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, id);
             Execution rewound = query(fixture, id);
             assertPausedKeys(rewound, flow, "first");
             assertEquals(1, countRuns(rewound, flow, "before"));
@@ -702,19 +710,33 @@ class Uc10NestedApprovalFlowTest {
                 parallelYaml(routeYaml("first-branch", "{{ inputs.amount }} > 400",
                     approvalYaml("first") + approvalYaml("second")) + approvalYaml("sibling"))
                     + recordYaml("record", "first", "second", "sibling")));
-            String id = startWithAmount(fixture, flow, 500).id();
-            Execution waiting = approve(fixture, flow, id, "first", "OLD");
-            PausedTaskRunRef sibling = pausedTask(query(fixture, id), flow, "sibling");
+            String sourceId = startWithAmount(fixture, flow, 500).id();
+            Execution waiting = approve(fixture, flow, sourceId, "first", "OLD");
+            PausedTaskRunRef sibling = pausedTask(query(fixture, sourceId), flow, "sibling");
             TaskRun target = onlyRun(waiting, flow, "first");
-            var attempt = fixture.rewind(pausedTask(query(fixture, id), flow, "second"),
+            var attempt = fixture.rewind(pausedTask(query(fixture, sourceId), flow, "second"),
                 target.id(), "parallel-branch");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, id);
             Execution rewound = query(fixture, id);
             assertPausedKeys(rewound, flow, "first", "sibling");
             assertEquals(sibling.taskRunId(), pausedTask(rewound, flow, "sibling").taskRunId());
             assertFalse(attempt.accepted().affectedTaskRunIds().contains(sibling.taskRunId()));
+            TaskRun preparation = onlyRun(waiting, flow, "prepare-sibling");
+            assertEquals(preparation.id(), onlyRun(rewound, flow, "prepare-sibling").id());
+            assertEquals(preparation.outputs(), onlyRun(rewound, flow, "prepare-sibling").outputs());
+            assertTrue(rewound.inheritedTaskRuns().stream().anyMatch(run -> run.id().equals(sibling.taskRunId())));
+            assertTrue(rewound.ownTaskRuns().stream().noneMatch(run -> run.id().equals(sibling.taskRunId())));
+            fixture.restartServer();
+            assertRejectedWithoutChange(fixture, id, () -> fixture.executionService().resume(
+                fixture.session(), sourceId, sibling.taskRunId(), Map.of("decision", "STALE")));
+            Execution sourceBeforeSibling = query(fixture, sourceId);
             String newFirst = pausedTask(rewound, flow, "first").taskRunId();
             PausedTaskRunRef queriedSibling = pausedTask(query(fixture, id), flow, "sibling");
             Execution afterSibling = fixture.resume(queriedSibling, Map.of("decision", "KEPT"));
+            assertEquals(sourceBeforeSibling.requireTaskRun(sibling.taskRunId()).state(),
+                query(fixture, sourceId).requireTaskRun(sibling.taskRunId()).state());
+            assertEquals(Map.of(), query(fixture, sourceId).requireTaskRun(sibling.taskRunId()).outputs());
             assertPausedKeys(afterSibling, flow, "first");
             assertEquals(newFirst, pausedTask(afterSibling, flow, "first").taskRunId());
             assertNoRun(afterSibling, flow, "record");
@@ -742,26 +764,30 @@ class Uc10NestedApprovalFlowTest {
                 parallelYaml(approvalYaml("first") + approvalYaml("sibling"))
                     + approvalYaml("final", "first", "sibling")
                     + recordYaml("record", "first", "sibling")));
-            String id = startWithAmount(fixture, flow, 500).id();
-            approve(fixture, flow, id, "first", "OLD");
-            Execution waiting = approve(fixture, flow, id, "sibling", "KEPT");
+            String sourceId = startWithAmount(fixture, flow, 500).id();
+            approve(fixture, flow, sourceId, "first", "OLD");
+            Execution waiting = approve(fixture, flow, sourceId, "sibling", "KEPT");
             TaskRun target = onlyRun(waiting, flow, "first");
             TaskRun sibling = onlyRun(waiting, flow, "sibling");
-            PausedTaskRunRef source = pausedTask(query(fixture, id), flow, "final");
+            PausedTaskRunRef source = pausedTask(query(fixture, sourceId), flow, "final");
             assertEquals(Set.of(target.id(), sibling.id()),
-                fixture.executionService().previousCompletedTaskRuns(fixture.session(), id,
+                fixture.executionService().previousCompletedTaskRuns(fixture.session(), sourceId,
                     source.taskRunId(), Set.of("first", "sibling", "final"))
                     .stream().map(TaskRun::id).collect(Collectors.toSet()));
             assertEquals("first", fixture.executionService().planRewind(
-                fixture.session(), id, source.taskRunId(), target.id()).targetTaskKey());
+                fixture.session(), sourceId, source.taskRunId(), target.id()).targetTaskKey());
             assertEquals("sibling", fixture.executionService().planRewind(
-                fixture.session(), id, source.taskRunId(), sibling.id()).targetTaskKey());
+                fixture.session(), sourceId, source.taskRunId(), sibling.id()).targetTaskKey());
             var attempt = fixture.rewind(source, target.id(), "selected-parallel");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, id);
             Execution rewound = query(fixture, id);
             assertPausedKeys(rewound, flow, "first");
             assertEquals(sibling.id(), onlyRun(rewound, flow, "sibling").id());
             assertEquals(State.Type.SUCCESS, onlyRun(rewound, flow, "sibling").state().current());
             assertEquals(sibling.outputs(), onlyRun(rewound, flow, "sibling").outputs());
+            assertTrue(rewound.inheritedTaskRuns().stream().anyMatch(run -> run.id().equals(sibling.id())));
+            assertTrue(rewound.ownTaskRuns().stream().noneMatch(run -> run.id().equals(sibling.id())));
             assertFalse(attempt.accepted().affectedTaskRunIds().contains(sibling.id()));
             assertNoRun(rewound, flow, "record");
             Execution next = approve(fixture, flow, id, "first", "NEW");
@@ -789,25 +815,29 @@ class Uc10NestedApprovalFlowTest {
                         + routeYaml("inner-skip", "{{ inputs.amount }} <= 400", approvalYaml("unused-inner")))
                 + routeYaml("outer-skip", "{{ inputs.amount }} <= 400", approvalYaml("unused-outer"))
                 + approvalYaml("final", "first") + recordYaml("record", "first")));
-            String id = startWithAmount(fixture, flow, 500).id();
-            Execution initial = approve(fixture, flow, id, "first", "OLD");
+            String sourceId = startWithAmount(fixture, flow, 500).id();
+            Execution initial = approve(fixture, flow, sourceId, "first", "OLD");
             TaskRun oldTarget = onlyRun(initial, flow, "first");
-            PausedTaskRunRef oldSource = pausedTask(query(fixture, id), flow, "final");
-            fixture.rewind(oldSource, oldTarget.id(), "first-correction");
-            approve(fixture, flow, id, "first", "INTERMEDIATE");
-            Execution waiting = query(fixture, id);
+            PausedTaskRunRef oldSource = pausedTask(query(fixture, sourceId), flow, "final");
+            var firstAttempt = fixture.rewind(oldSource, oldTarget.id(), "first-correction");
+            String middleId = firstAttempt.accepted().executionId();
+            assertReplacement(fixture, sourceId, middleId);
+            approve(fixture, flow, middleId, "first", "INTERMEDIATE");
+            Execution waiting = query(fixture, middleId);
             PausedTaskRunRef source = pausedTask(waiting, flow, "final");
             TaskRun target = latestRun(waiting, flow, "first");
-            assertRejectedWithoutChange(fixture, id, () -> fixture.executionService().rewind(
-                fixture.session(), id, source.taskRunId(), oldTarget.id(), "stale-target"));
+            assertRejectedWithoutChange(fixture, middleId, () -> fixture.executionService().rewind(
+                fixture.session(), middleId, source.taskRunId(), oldTarget.id(), "stale-target"));
             var attempt = fixture.rewind(source, target.id(), "second-correction");
+            String id = attempt.accepted().executionId();
+            assertReplacement(fixture, middleId, id);
             assertFalse(attempt.accepted().affectedTaskRunIds().contains(oldTarget.id()));
             assertFalse(attempt.accepted().affectedTaskRunIds().contains(oldSource.taskRunId()));
             assertPausedKeys(query(fixture, id), flow, "first");
             assertRejectedWithoutChange(fixture, id, () -> fixture.executionService().resume(
-                fixture.session(), id, oldSource.taskRunId(), Map.of("decision", "OLD")));
+                fixture.session(), sourceId, oldSource.taskRunId(), Map.of("decision", "OLD")));
             assertRejectedWithoutChange(fixture, id, () -> fixture.executionService().resume(
-                fixture.session(), id, source.taskRunId(), Map.of("decision", "INTERMEDIATE")));
+                fixture.session(), middleId, source.taskRunId(), Map.of("decision", "INTERMEDIATE")));
             approve(fixture, flow, id, "first", "NEWEST");
             Execution finalWaiting = query(fixture, id);
             assertPausedKeys(finalWaiting, flow, "final");
@@ -822,6 +852,30 @@ class Uc10NestedApprovalFlowTest {
             assertObservedDecision(completed, flow, "record", "first", "NEWEST");
             assertCompletedRewinds(fixture, flow, id, "first-correction", "second-correction");
         }
+    }
+
+    /**
+     * 从公开查询检查接替关系、历史和可识别的沿用记录。
+     * @param fixture 当前服务会话
+     * @param sourceId 原实例编号
+     * @param derivedId 退回受理返回的新编号
+     */
+    private static void assertReplacement(WorkflowUcFixture fixture, String sourceId, String derivedId) {
+        Execution source = query(fixture, sourceId);
+        Execution derived = query(fixture, derivedId);
+        assertNotEquals(sourceId, derivedId);
+        assertEquals(State.Type.KILLED, source.state().current());
+        assertTrue(source.unfinishedTaskRuns().isEmpty());
+        assertEquals(sourceId, derived.origin().parentId());
+        assertEquals(source.origin().originId(), derived.origin().originId());
+        assertEquals(source.taskRuns().stream().map(TaskRun::id).toList(),
+            derived.inheritedTaskRuns().stream().map(TaskRun::id).toList());
+        source.taskRuns().forEach(run -> {
+            TaskRun inherited = derived.requireTaskRun(run.id());
+            assertEquals(run.inputs(), inherited.inputs());
+            assertEquals(run.outputs(), inherited.outputs());
+        });
+        assertTrue(derived.ownTaskRuns().stream().noneMatch(run -> source.findTaskRun(run.id()).isPresent()));
     }
 
     /**
@@ -890,8 +944,10 @@ class Uc10NestedApprovalFlowTest {
         WorkflowUcFixture fixture, String executionId, Runnable request
     ) {
         Execution before = query(fixture, executionId);
+        int count = fixture.executionService().executions(fixture.session()).size();
         assertThrows(WorkflowException.class, request::run);
         Execution after = query(fixture, executionId);
+        assertEquals(count, fixture.executionService().executions(fixture.session()).size());
         assertEquals(before.state().current(), after.state().current());
         assertEquals(before.taskRuns().stream().map(TaskRun::id).toList(),
             after.taskRuns().stream().map(TaskRun::id).toList());
@@ -932,6 +988,13 @@ class Uc10NestedApprovalFlowTest {
         assertEquals(List.of(reasons), completed.generation().history().currents().stream()
             .map(current -> current.reason()).toList());
         assertNoPendingWork(fixture, executionId);
+        var lineage = fixture.executionService().lineage(fixture.session(), executionId);
+        assertEquals(reasons.length + 1, lineage.size());
+        lineage.stream().filter(member -> !member.id().equals(executionId)).forEach(member -> {
+            assertEquals(State.Type.KILLED, member.state().current());
+            assertTrue(member.unfinishedTaskRuns().isEmpty());
+            assertNoRun(member, flow, "record");
+        });
     }
 
     /**
@@ -965,9 +1028,9 @@ class Uc10NestedApprovalFlowTest {
         return """
             - key: %s
               type: org.cses.flow.extensions.flow.Pause
-              pause:
+              onPause:
             %s
-              resume:
+              onResume:
                 - key: decision
                   type: STRING
               outputs:
@@ -1162,11 +1225,11 @@ class Uc10NestedApprovalFlowTest {
                 tasks:
                   - key: initial-approval
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-initial-approval
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: decision
                         type: STRING
                     outputs:
@@ -1181,11 +1244,11 @@ class Uc10NestedApprovalFlowTest {
                         tasks:
                           - key: finance-approval
                             type: org.cses.flow.extensions.flow.Pause
-                            pause:
+                            onPause:
                               key: create-finance-approval
                               type: org.cses.flow.extensions.log.Log
                               message: "test step"
-                            resume:
+                            onResume:
                               - key: decision
                                 type: STRING
                             outputs:
@@ -1193,11 +1256,11 @@ class Uc10NestedApprovalFlowTest {
                                 type: STRING
                           - key: legal-approval
                             type: org.cses.flow.extensions.flow.Pause
-                            pause:
+                            onPause:
                               key: create-legal-approval
                               type: org.cses.flow.extensions.log.Log
                               message: "test step"
-                            resume:
+                            onResume:
                               - key: decision
                                 type: STRING
                             outputs:
@@ -1232,11 +1295,11 @@ class Uc10NestedApprovalFlowTest {
                     tasks:
                       - key: first-owner
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-first-owner
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: decision
                             type: STRING
                         outputs:
@@ -1244,11 +1307,11 @@ class Uc10NestedApprovalFlowTest {
                             type: STRING
                       - key: first-reviewer
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-first-reviewer
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: decision
                             type: STRING
                         outputs:
@@ -1259,11 +1322,11 @@ class Uc10NestedApprovalFlowTest {
                     tasks:
                       - key: second-owner
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-second-owner
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: decision
                             type: STRING
                         outputs:
@@ -1271,11 +1334,11 @@ class Uc10NestedApprovalFlowTest {
                             type: STRING
                       - key: second-reviewer
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-second-reviewer
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: decision
                             type: STRING
                         outputs:
@@ -1283,11 +1346,11 @@ class Uc10NestedApprovalFlowTest {
                             type: STRING
               - key: final-approval
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-final-approval
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
                 outputs:
@@ -1323,11 +1386,11 @@ class Uc10NestedApprovalFlowTest {
                     tasks:
                       - key: material-submission
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-material-submission
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: decision
                             type: STRING
                         outputs:
@@ -1335,11 +1398,11 @@ class Uc10NestedApprovalFlowTest {
                             type: STRING
                       - key: material-review
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-material-review
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: decision
                             type: STRING
                         outputs:
@@ -1347,11 +1410,11 @@ class Uc10NestedApprovalFlowTest {
                             type: STRING
               - key: final-approval
                 type: org.cses.flow.extensions.flow.Pause
-                pause:
+                onPause:
                   key: create-final-approval
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
-                resume:
+                onResume:
                   - key: decision
                     type: STRING
                 outputs:

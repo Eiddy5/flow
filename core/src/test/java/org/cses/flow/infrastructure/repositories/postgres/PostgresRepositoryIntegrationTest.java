@@ -17,6 +17,7 @@ import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.exception.DataChangedException;
@@ -340,7 +341,7 @@ class PostgresRepositoryIntegrationTest {
 
         DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
         direct.configuration().data(Session.class, actorSession);
-        executionRepository.inScope(direct, scoped -> {
+        FlowDatabase.execute(direct, scoped -> {
             ExecutionRepositoryImpl firstWriter = new ExecutionRepositoryImpl();
             ExecutionRepositoryImpl secondWriter = new ExecutionRepositoryImpl();
             Execution staleFirst = firstWriter.findById(scoped, companyId, execution.id()).orElseThrow();
@@ -383,7 +384,7 @@ class PostgresRepositoryIntegrationTest {
     @Test
     void childSaveFailureDoesNotPersistHalfAnAggregateWithoutCallerTransaction() {
         DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
-        executionRepository.inScope(direct, dsl -> {
+        FlowDatabase.execute(direct, dsl -> {
             dsl.configuration().data(Session.class, session());
             Flow rejectedFlow = plugins.deploy(
                     companyId,
@@ -938,11 +939,11 @@ class PostgresRepositoryIntegrationTest {
                                         "tasks", List.of(Map.of(
                                                 "key", "approval",
                                                 "type", Pause.class.getName(),
-                                                "pause", Map.of(
+                                                "onPause", Map.of(
                                                         "key", "create-approval",
                                                         "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step"
                                                 ),
-                                                "resume", List.of(Map.of(
+                                                "onResume", List.of(Map.of(
                                                         "key", "approved",
                                                         "type", "STRING"
                                                 ))
@@ -1020,7 +1021,7 @@ class PostgresRepositoryIntegrationTest {
                     DSL.using(connection, SQLDialect.POSTGRES)
             );
             dsl.configuration().data(Session.class, session());
-            return executionRepository.inScope(dsl, scoped -> {
+            return FlowDatabase.execute(dsl, scoped -> {
                 try {
                     T result = operation.apply(scoped);
                     if (write) {

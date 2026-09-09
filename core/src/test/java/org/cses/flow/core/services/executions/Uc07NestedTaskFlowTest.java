@@ -751,11 +751,11 @@ class Uc07NestedTaskFlowTest {
                 tasks:
                   - key: backend-review
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-backend-review
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: backendResult
                         type: STRING
                     outputs:
@@ -763,11 +763,11 @@ class Uc07NestedTaskFlowTest {
                         type: STRING
                   - key: frontend-review
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-frontend-review
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: frontendResult
                         type: STRING
                     outputs:
@@ -781,11 +781,11 @@ class Uc07NestedTaskFlowTest {
                 tasks:
                   - key: security-approve
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-security-approval
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: securityDecision
                         type: STRING
                     outputs:
@@ -816,11 +816,11 @@ class Uc07NestedTaskFlowTest {
                     message: "test step"
                   - key: backend-review
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-backend-review
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: backendResult
                         type: STRING
                     outputs:
@@ -831,11 +831,11 @@ class Uc07NestedTaskFlowTest {
                     tasks:
                       - key: frontend-review
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-frontend-review
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
-                        resume:
+                        onResume:
                           - key: frontendResult
                             type: STRING
                         outputs:
@@ -849,11 +849,11 @@ class Uc07NestedTaskFlowTest {
                 tasks:
                   - key: security-approve
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-security-approval
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: securityDecision
                         type: STRING
                     outputs:
@@ -878,11 +878,11 @@ class Uc07NestedTaskFlowTest {
                 tasks:
                   - key: confirm
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-confirm
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: decision
                         type: STRING
                     outputs:

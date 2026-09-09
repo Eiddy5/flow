@@ -41,6 +41,7 @@ dependencies {
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
+    annotationProcessor(project(':processor'))
     annotationProcessor(libs.micronaut.http.validation)
 
     implementation(libs.micronaut.http.client)
@@ -57,6 +58,7 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testCompileOnly(libs.lombok)
     testAnnotationProcessor(libs.lombok)
+    testAnnotationProcessor(project(':processor'))
     testAnnotationProcessor(libs.micronaut.http.validation)
 }
 
@@ -92,6 +94,8 @@ tasks.named("dockerfileNative") {
 tasks.configureEach {
     if (name in ["shadowJar", "optimizedJitJarAll"]) {
         zip64 = true
+        append('META-INF/flow/inputs')
+        mergeServiceFiles()
     }
 }
 

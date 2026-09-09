@@ -633,11 +633,11 @@ class Uc09LoopOrchestrationTest {
                         type: INTEGER
                   - key: wait-round
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: request-round
                       type: org.cses.flow.extensions.log.Log
                       message: "continue round"
-                    resume:
+                    onResume:
                       - key: continue
                         type: STRING
                     outputs:
@@ -674,11 +674,11 @@ class Uc09LoopOrchestrationTest {
                         type: INTEGER
                   - key: wait-round
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: request-round
                       type: org.cses.flow.extensions.log.Log
                       message: "provide round status"
-                    resume:
+                    onResume:
                       - key: status
                         type: STRING
                         required: true

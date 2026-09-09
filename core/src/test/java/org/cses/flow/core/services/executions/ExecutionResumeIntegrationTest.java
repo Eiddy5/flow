@@ -485,11 +485,11 @@ class ExecutionResumeIntegrationTest {
                 tasks:
                   - key: wait-confirmation
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-confirmation
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: decision
                         type: STRING
                     outputs:

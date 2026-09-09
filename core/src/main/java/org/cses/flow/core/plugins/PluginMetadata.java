@@ -1,5 +1,7 @@
 package org.cses.flow.core.plugins;
 
+import org.cses.flow.core.domains.flows.Input;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -97,6 +99,11 @@ public record PluginMetadata<T extends Plugin>(
         String description
     ) {
         this(type, baseClass, title, description, List.of(), List.of());
+    }
+
+    /** @return Input 自身声明的类型名称，或 Task 的完整类名 */
+    public String typeName() {
+        return Input.class.isAssignableFrom(type) ? InputTypes.name(type) : canonicalType();
     }
 
     public String canonicalType() {

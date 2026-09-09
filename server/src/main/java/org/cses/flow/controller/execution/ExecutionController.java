@@ -32,7 +32,7 @@ import java.util.Optional;
 @Controller("/executions")
 public class ExecutionController {
 
-    private final ExecutionService executionService;
+    private ExecutionService executionService;
 
     @Inject
     public ExecutionController(ExecutionService executionService) {
@@ -87,6 +87,18 @@ public class ExecutionController {
         return ExecutionView.from(
                 requireExecution(session, executionId)
         );
+    }
+
+    /**
+     * Returns the complete derivation tree accessible to the caller.
+     * @param session tenant-scoped caller
+     * @param executionId selected member of the tree
+     * @return snapshots with parent/root IDs and inherited/effective TaskRun IDs
+     * @throws WorkflowException when the selected instance is not accessible
+     */
+    @Get("/executions/{executionId}/lineage")
+    public List<ExecutionView> lineage(@UserSession Session<User> session, String executionId) {
+        return executionService.lineage(session, executionId).stream().map(ExecutionView::from).toList();
     }
 
     @Post("/executions/{executionId}/cancel")

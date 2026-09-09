@@ -8,8 +8,8 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.conditions.ConditionContext;
 import org.cses.flow.core.domains.conditions.Operand;
-import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -49,7 +49,7 @@ import java.util.Map;
 )
 @SuperBuilder
 @NoArgsConstructor
-public class LoopUntil extends Branch implements OrchestrationTask, ModelInvariant {
+public class LoopUntil extends Branch<LoopUntil.Output> implements ModelInvariant {
 
     @NotNull
     @Schema(
@@ -186,4 +186,6 @@ public class LoopUntil extends Branch implements OrchestrationTask, ModelInvaria
         return !reference.path().isEmpty()
             && reference.path().getFirst().equals(root);
     }
+
+    public static class Output implements org.cses.flow.core.domains.tasks.Output{}
 }

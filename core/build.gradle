@@ -32,6 +32,7 @@ dependencies {
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
+    annotationProcessor(project(':processor'))
     annotationProcessor(libs.micronaut.http.validation)
 
     implementation(libs.micronaut.jackson.databind)
@@ -53,6 +54,7 @@ dependencies {
     api(libs.jakarta.validation.api)
     api(libs.paas.json)
     api(libs.paas.session)
+    implementation(libs.paas.pulsar)
 
     runtimeOnly(libs.postgresql)
 
@@ -61,6 +63,7 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testCompileOnly(libs.lombok)
     testAnnotationProcessor(libs.lombok)
+    testAnnotationProcessor(project(':processor'))
     testAnnotationProcessor(libs.micronaut.http.validation)
 }
 

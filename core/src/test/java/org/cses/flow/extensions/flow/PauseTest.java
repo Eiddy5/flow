@@ -34,8 +34,8 @@ class PauseTest {
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
             .key("wait-approval")
-            .pause(action)
-            .resume(List.of(
+            .onPause(action)
+            .onResume(List.of(
                 StringInput.builder()
                     .key("decision")
                     .displayName("Decision")
@@ -55,7 +55,7 @@ class PauseTest {
             .build());
 
         assertEquals(Pause.class.getCanonicalName(), pause.getType());
-        assertEquals(action, pause.pause());
+        assertEquals(action, pause.onPause());
         assertEquals(List.of(action), pause.definitionChildren());
         assertEquals(action, pause.findDescendant(action.id()).orElseThrow());
         assertEquals(
@@ -75,7 +75,7 @@ class PauseTest {
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
             .key("wait-approval")
-            .pause(action)
+            .onPause(action)
             .build());
 
         assertEquals(List.of(action), pause.definitionChildren());
@@ -101,11 +101,11 @@ class PauseTest {
                 "tasks", List.of(Map.of(
                     "key", "wait-approval",
                     "type", Pause.class.getCanonicalName(),
-                    "pause", Map.of(
+                    "onPause", Map.of(
                         "key", "create-approval",
                         "type", Log.class.getCanonicalName(), "message", "test step"
                     ),
-                    "resume", List.of(Map.of(
+                    "onResume", List.of(Map.of(
                         "key", "decision",
                         "type", "STRING",
                         "required", true
@@ -124,25 +124,26 @@ class PauseTest {
         );
 
         Pause pause = assertInstanceOf(Pause.class, flow.tasks().getFirst());
-        assertInstanceOf(Log.class, pause.pause());
+        assertInstanceOf(Log.class, pause.onPause());
         assertEquals("decision",
-            pause.resume().getFirst().getDisplayName());
+            pause.onResume().getFirst().getDisplayName());
         assertEquals(
             List.of(Output.create("approved", DataType.BOOLEAN)),
             pause.outputs()
         );
         assertEquals("PT5M", pause.duration().orElseThrow());
         assertEquals(2, flow.allTasks().size());
-        assertTrue(flow.findTask(pause.pause().id()).isPresent());
+        assertTrue(flow.findTask(pause.onPause().id()).isPresent());
     }
 
+    /** 验证 Pause 收集各字段绑定结果，并保留默认值与输入拒绝规则。 */
     @Test
     void validatesResumeInputsWithDefaultsAndConcreteInputRules() {
         Pause pause = plugins.modelValidator().validate(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .pause(log("action-id", "create"))
-            .resume(List.of(
+            .onPause(log("action-id", "create"))
+            .onResume(List.of(
                 StringInput.builder()
                     .key("decision")
                     .displayName("Decision")
@@ -161,22 +162,22 @@ class PauseTest {
 
         assertEquals(
             Map.of("decision", "APPROVED", "score", 3),
-            pause.validateResume(Map.of("decision", "APPROVED"))
+            pause.bindResume(Map.of("decision", "APPROVED"))
         );
         assertThrows(
             WorkflowException.class,
-            () -> pause.validateResume(Map.of())
+            () -> pause.bindResume(Map.of())
         );
         assertThrows(
             WorkflowException.class,
-            () -> pause.validateResume(Map.of(
+            () -> pause.bindResume(Map.of(
                 "decision", "APPROVED",
                 "score", 6
             ))
         );
         assertThrows(
             WorkflowException.class,
-            () -> pause.validateResume(Map.of(
+            () -> pause.bindResume(Map.of(
                 "decision", "APPROVED",
                 "extra", true
             ))
@@ -192,13 +193,13 @@ class PauseTest {
         assertInvalid(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .pause(log("action-id", "create"))
+            .onPause(log("action-id", "create"))
             .duration("PT5M")
             .build());
         assertInvalid(Pause.builder()
             .id("pause-id")
             .key("wait")
-            .pause(log("action-id", "create"))
+            .onPause(log("action-id", "create"))
             .duration("PT0S")
             .behavior(Pause.Behavior.FAIL)
             .build());

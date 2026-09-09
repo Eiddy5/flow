@@ -5,6 +5,9 @@
 Accepted（2026-09-08）。修订 ADR 0084 的技术版本来源和内存生命周期，保留普通
 读取、单 SQL 聚合保存、不跨 Worker 回调开启业务事务的边界。
 
+公开 `inScope` 接口及清理方式已由 [ADR 0091](0091-hide-repository-cas-behind-save.md)
+修订为数据库入口内部管理，业务继续使用普通 `find/save`。以下保留原决策背景。
+
 ## 背景与选择
 
 用户要求 `lock_version` 更名为 `lock`，技术版本不进入领域，不额外保留完整领域

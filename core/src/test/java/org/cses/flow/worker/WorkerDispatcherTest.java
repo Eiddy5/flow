@@ -101,7 +101,7 @@ class WorkerDispatcherTest {
         Pause task = Pause.builder()
             .id("task-1")
             .key("pause")
-            .pause(Log.builder()
+            .onPause(Log.builder()
                 .id("action-1")
                 .key("create-pause")
                 .message(TemplateExpression.parse("test step"))

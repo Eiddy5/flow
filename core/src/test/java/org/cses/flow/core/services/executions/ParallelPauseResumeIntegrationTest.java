@@ -43,11 +43,11 @@ class ParallelPauseResumeIntegrationTest {
                     tasks:
                       - key: backend-check
                         type: org.cses.flow.extensions.flow.Pause
-                        pause:
+                        onPause:
                           key: create-backend-check
                           type: org.cses.flow.extensions.log.Log
                           message: "backend ready"
-                        resume:
+                        onResume:
                           - key: backendResult
                             type: STRING
                         outputs:
@@ -58,11 +58,11 @@ class ParallelPauseResumeIntegrationTest {
                         tasks:
                           - key: frontend-check
                             type: org.cses.flow.extensions.flow.Pause
-                            pause:
+                            onPause:
                               key: create-frontend-check
                               type: org.cses.flow.extensions.log.Log
                               message: "frontend ready"
-                            resume:
+                            onResume:
                               - key: frontendResult
                                 type: STRING
                             outputs:
@@ -507,11 +507,11 @@ class ParallelPauseResumeIntegrationTest {
                 tasks:
                   - key: backend-check
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-backend-check
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: backendResult
                         type: STRING
                     outputs:
@@ -519,11 +519,11 @@ class ParallelPauseResumeIntegrationTest {
                         type: STRING
                   - key: frontend-check
                     type: org.cses.flow.extensions.flow.Pause
-                    pause:
+                    onPause:
                       key: create-frontend-check
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
-                    resume:
+                    onResume:
                       - key: frontendResult
                         type: STRING
                     outputs:

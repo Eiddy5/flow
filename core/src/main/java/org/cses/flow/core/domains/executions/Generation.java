@@ -48,23 +48,7 @@ public class Generation {
     }
 
     public void start(String reason) {
-        start(null, null, reason);
-    }
-
-    /**
-     * Starts a new generation; an existing active generation must first complete. This overload keeps the legacy interval contract.
-     *
-     * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
-     * @param targetTaskRunId target occurrence ID, or null together with source
-     * @param reason nonblank reason, trimmed before storage
-     * @throws WorkflowException when active-generation state does not permit the transition
-     */
-    public void start(
-            String sourceTaskRunId,
-            String targetTaskRunId,
-            String reason
-    ) {
-        start(sourceTaskRunId, targetTaskRunId, reason, List.of());
+        start(null, null, reason, List.of());
     }
 
     /**
@@ -73,7 +57,7 @@ public class Generation {
      * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
      * @param targetTaskRunId target occurrence ID, or null together with source
      * @param reason nonblank reason, trimmed before storage
-     * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+     * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty only for loop rounds
      * @throws WorkflowException when active-generation state does not permit the transition
      */
     public void start(
@@ -98,23 +82,7 @@ public class Generation {
     }
 
     public void advance(String reason) {
-        advance(null, null, reason);
-    }
-
-    /**
-     * Archives the current generation and starts the next version. This overload keeps the legacy interval contract.
-     *
-     * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
-     * @param targetTaskRunId target occurrence ID, or null together with source
-     * @param reason nonblank reason, trimmed before storage
-     * @throws WorkflowException when active-generation state does not permit the transition
-     */
-    public void advance(
-            String sourceTaskRunId,
-            String targetTaskRunId,
-            String reason
-    ) {
-        advance(sourceTaskRunId, targetTaskRunId, reason, List.of());
+        advance(null, null, reason, List.of());
     }
 
     /**
@@ -123,7 +91,7 @@ public class Generation {
      * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
      * @param targetTaskRunId target occurrence ID, or null together with source
      * @param reason nonblank reason, trimmed before storage
-     * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+     * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty only for loop rounds
      * @throws WorkflowException when active-generation state does not permit the transition
      */
     public void advance(
@@ -205,7 +173,7 @@ public class Generation {
          * @param targetTaskRunId target occurrence ID, or null together with source
          * @param reason nonblank reason, trimmed before storage
          * @param date nonnegative creation time in Unix epoch milliseconds
-         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty only for loop rounds
          * @throws IllegalArgumentException when coordinates, reason, version or affected IDs are invalid
          */
         private Current(
@@ -243,6 +211,13 @@ public class Generation {
                     || this.affectedTaskRunIds.stream().distinct().count() != this.affectedTaskRunIds.size()) {
                 throw new IllegalArgumentException("Affected TaskRun IDs must be nonblank and unique");
             }
+            if (source != null && (!this.affectedTaskRunIds.contains(source)
+                    || !this.affectedTaskRunIds.contains(target))) {
+                throw new IllegalArgumentException("Replay affected TaskRun IDs must include both endpoints");
+            }
+            if (source == null && !this.affectedTaskRunIds.isEmpty()) {
+                throw new IllegalArgumentException("Loop generations cannot invalidate Execution TaskRuns");
+            }
         }
 
         /**
@@ -252,7 +227,7 @@ public class Generation {
          * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
          * @param targetTaskRunId target occurrence ID, or null together with source
          * @param reason nonblank reason, trimmed before storage
-         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty only for loop rounds
          * @return a new immutable record
          * @throws IllegalArgumentException when coordinates or affected IDs are invalid
          */
@@ -274,27 +249,6 @@ public class Generation {
         }
 
         /**
-         * Restores a legacy generation without an explicit affected-occurrence set.
-         *
-         * @param version positive generation number
-         * @param sourceTaskRunId source occurrence ID, or null together with target for a loop generation
-         * @param targetTaskRunId target occurrence ID, or null together with source
-         * @param reason nonblank reason, trimmed before storage
-         * @param date nonnegative creation time in Unix epoch milliseconds
-         * @return a new validated record with an empty explicit affected set
-         * @throws IllegalArgumentException when persisted values are invalid
-         */
-        public static Current rehydrate(
-                int version,
-                String sourceTaskRunId,
-                String targetTaskRunId,
-                String reason,
-                long date
-        ) {
-            return rehydrate(version, sourceTaskRunId, targetTaskRunId, reason, date, List.of());
-        }
-
-        /**
          * Restores the exact persisted generation and its copied affected-occurrence set.
          *
          * @param version positive generation number
@@ -302,7 +256,7 @@ public class Generation {
          * @param targetTaskRunId target occurrence ID, or null together with source
          * @param reason nonblank reason, trimmed before storage
          * @param date nonnegative creation time in Unix epoch milliseconds
-         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty for loops or legacy intervals
+         * @param affectedTaskRunIds non-null unique affected occurrence IDs, copied; empty only for loop rounds
          * @return a new validated record
          * @throws IllegalArgumentException when persisted values are invalid
          */
@@ -316,7 +270,7 @@ public class Generation {
         /**
          * Exposes the exact recorded invalidation set without permitting collection mutation.
          *
-         * @return the immutable ID list; empty denotes a loop or legacy record
+         * @return the immutable ID list; empty denotes a loop round
          */
         public List<String> affectedTaskRunIds() {
             return affectedTaskRunIds;

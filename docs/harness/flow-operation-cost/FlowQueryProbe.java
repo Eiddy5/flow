@@ -21,6 +21,7 @@ import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.validations.ModelValidator;
 import org.cses.flow.extensions.log.Log;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.jooq.DSLContext;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
@@ -183,7 +184,7 @@ public class FlowQueryProbe {
         });
         var dsl = FlowJooqTestConfiguration.configure(DSL.using(connection, SQLDialect.POSTGRES));
         var repository = new org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl();
-        repository.inScope(dsl, scoped -> {
+        FlowDatabase.execute(dsl, scoped -> {
             repository.save(scoped, execution);
             execution.startTaskRun(runs.get(0).id());
             repository.save(scoped, execution);

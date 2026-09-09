@@ -1072,6 +1072,12 @@
                     ${escapeHtml(stateLabel(execution.state))}
                 </span>
                 <code>${escapeHtml(execution.id)}</code>
+                ${execution.origin.parentId ? `<button class="btn btn-ghost"
+                    data-action="select-execution" data-id="${escapeAttribute(execution.origin.parentId)}"
+                    title="查看直接来源">来源 ${escapeHtml(execution.origin.parentId)}</button>` : ""}
+                ${execution.origin.originId !== execution.id ? `<button class="btn btn-ghost"
+                    data-action="select-execution" data-id="${escapeAttribute(execution.origin.originId)}"
+                    title="查看最初运行">最初运行</button>` : ""}
                 ${active
                     ? `<button
                         class="btn btn-danger"
@@ -1092,6 +1098,8 @@
 
     function renderTaskRunFact(execution, run) {
         const key = deployedTaskKey(run.taskId) || run.taskId;
+        const inherited = execution.inheritedTaskRunIds.includes(run.id);
+        const effective = execution.effectiveTaskRunIds.includes(run.id);
         const detail = run.error
             ? run.error
             : Object.keys(run.outputs || {}).length
@@ -1100,7 +1108,7 @@
         return `
             <div class="fact-row">
                 <span class="fact-key" title="${escapeAttribute(run.taskId)}">
-                    ${escapeHtml(key)}${run.iteration
+                    ${inherited ? "继承 · " : ""}${effective ? "" : "历史 · "}${escapeHtml(key)}${run.iteration
                         ? ` #${escapeHtml(run.iteration)}`
                         : ""}
                 </span>
@@ -1110,7 +1118,7 @@
                 <span class="fact-detail" title="${escapeAttribute(detail)}">
                     ${escapeHtml(detail)}
                 </span>
-                ${run.state === "PAUSED"
+                ${run.state === "PAUSED" && effective && !["SUCCESS", "WARNING", "FAILED", "KILLED"].includes(execution.state)
                     ? `<button
                         class="btn btn-primary"
                         data-action="open-resume"
@@ -1238,7 +1246,7 @@
                     ? renderDataListEditor(
                         "恢复输入",
                         "task-resume",
-                        task.resume,
+                        task.onResume,
                         "外部 Resume 表单按 Input 的类型、必填、默认值和约束校验",
                         "添加恢复输入",
                     )
@@ -2795,7 +2803,7 @@
             && selectedTask()?.type === TASK_TYPES.PAUSE
         ) {
             showToast(
-                "PAUSE 不使用 tasks；请编辑它的 pause 前置任务，或添加同级后续 Task",
+                "PAUSE 不使用 tasks；请编辑它的 onPause 前置任务，或添加同级后续 Task",
                 true,
             );
             return;
@@ -3070,7 +3078,7 @@
         }
         if (parent.type === TASK_TYPES.PAUSE) {
             showToast(
-                "PAUSE 的恢复数据由 resume 定义，不能作为 tasks 的父路由输出",
+                "PAUSE 的恢复数据由 onResume 定义，不能作为 tasks 的父路由输出",
                 true,
             );
             return;
@@ -3292,7 +3300,7 @@
             executionId,
             taskRunId,
             taskKey: task?.key || "外部审批",
-            inputs: task?.resume || [],
+            inputs: task?.onResume || [],
         };
         render();
         setTimeout(() => {
@@ -3438,7 +3446,7 @@
         if (!task || task.type !== TASK_TYPES.PAUSE) {
             return;
         }
-        task.resume = approvalTemplateInputs();
+        task.onResume = approvalTemplateInputs();
         markDefinitionChanged();
         render();
         showToast("已应用审批决定和审批意见字段");
@@ -3512,10 +3520,10 @@
                 if (!task || task.type !== TASK_TYPES.PAUSE) {
                     return null;
                 }
-                task.resume = Array.isArray(task.resume)
-                    ? task.resume
+                task.onResume = Array.isArray(task.onResume)
+                    ? task.onResume
                     : [];
-                return task.resume;
+                return task.onResume;
             default:
                 return null;
         }
@@ -3663,14 +3671,14 @@
         if (type === TASK_TYPES.PAUSE) {
             task.outputs = [];
             task.tasks = [];
-            if (!task.pause || typeof task.pause !== "object") {
-                task.pause = taskDefinition(
+            if (!task.onPause || typeof task.onPause !== "object") {
+                task.onPause = taskDefinition(
                     TASK_TYPES.LOG,
                     uniqueTaskKey(`${task.key || "pause"}-action`),
                 );
             }
-            if (!Array.isArray(task.resume)) {
-                task.resume = approvalTemplateInputs();
+            if (!Array.isArray(task.onResume)) {
+                task.onResume = approvalTemplateInputs();
             }
         }
         Object.entries(pluginSchemaProperties(type))
@@ -3914,7 +3922,7 @@
             }
             [
                 ...(Array.isArray(owner.inputs) ? owner.inputs : []),
-                ...(Array.isArray(owner.resume) ? owner.resume : []),
+                ...(Array.isArray(owner.onResume) ? owner.onResume : []),
             ]
                 .forEach((input) => {
                     if (!input || typeof input !== "object") {
@@ -3939,8 +3947,8 @@
                         changed = true;
                     }
                 });
-            if (owner.pause && typeof owner.pause === "object") {
-                upgradeOwner(owner.pause);
+            if (owner.onPause && typeof owner.onPause === "object") {
+                upgradeOwner(owner.onPause);
             }
             (Array.isArray(owner.tasks) ? owner.tasks : [])
                 .forEach(upgradeOwner);
@@ -4202,7 +4210,7 @@
                 !COMMON_TASK_FIELDS.has(name)
                 && !(
                     task.type === TASK_TYPES.PAUSE
-                    && name === "resume"
+                    && name === "onResume"
                 )
             );
         if (properties.length === 0) {
@@ -4470,8 +4478,8 @@
                 if (task?.key) {
                     keys.add(task.key);
                 }
-                if (task?.pause && typeof task.pause === "object") {
-                    visit([task.pause]);
+                if (task?.onPause && typeof task.onPause === "object") {
+                    visit([task.onPause]);
                 }
                 visit(task?.tasks);
             });
@@ -4514,8 +4522,8 @@
         function visit(tasks) {
             (tasks || []).forEach((task) => {
                 result.push(task);
-                if (task.pause && typeof task.pause === "object") {
-                    visit([task.pause]);
+                if (task.onPause && typeof task.onPause === "object") {
+                    visit([task.onPause]);
                 }
                 visit(task.tasks);
             });

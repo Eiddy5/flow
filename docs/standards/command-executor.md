@@ -69,8 +69,8 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 - 异常继续传播；已完成的其他保存或外部调用不会因为异常自动回滚。
 - Execution 快照、Worker 回调与 Queue 传输边界见
   [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
-  Execution 写入方用仓储 `inScope` 限定加载元数据生命周期，它不启动数据库事务，
-  具体协议见 [ADR 0086](../decisions/0086-use-scoped-execution-lock-for-cas.md)。
+  数据库执行入口内部限定加载元数据生命周期，业务使用普通 `find/save`，不启动
+  数据库事务；具体协议见 [ADR 0091](../decisions/0091-hide-repository-cas-behind-save.md)。
 
 ## Command 规则
 
