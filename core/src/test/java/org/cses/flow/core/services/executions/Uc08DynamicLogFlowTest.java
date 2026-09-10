@@ -9,7 +9,6 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -43,9 +42,6 @@ class Uc08DynamicLogFlowTest {
                 tasks:
                   - key: prepare
                     type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
-                    outputs:
-                      - key: result
-                        type: STRING
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
                     message: "处理结果：{{ outputs.prepare.result }}"
@@ -63,6 +59,7 @@ class Uc08DynamicLogFlowTest {
                 run(completed, target).state().current()
             );
             assertEquals(1, completed.taskRunsForTask(target.id()).size());
+            assertEquals(1, completed.taskRunsForTask(observe.id()).size());
             assertEquals(
                 State.Type.SUCCESS,
                 run(completed, observe).state().current()
@@ -133,9 +130,6 @@ class Uc08DynamicLogFlowTest {
                 tasks:
                   - key: prepare
                     type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
-                    outputs:
-                      - key: available
-                        type: STRING
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
                     message: "结果：{{ outputs.prepare.missing }}"
@@ -163,23 +157,23 @@ class Uc08DynamicLogFlowTest {
         }
     }
 
-    /** Supplies deterministic predecessor output through the normal worker. */
+    /** 通过真实 Worker 提供固定的前置结果。 */
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
     public static class LogInputTask
-        extends Task implements RunnableTask {
+        extends Task implements RunnableTask<LogInputOutput> {
 
+        /**
+         * 返回可被后续步骤引用的具体结果字段。
+         * @param context 本次调用上下文；此确定性样本不读取它
+         * @return 包含 result 字段的明确输出
+         */
         @Override
-        public RunResult run(RunContext context) {
-            return switch (key()) {
-                case "prepare" -> RunResult.success(Map.of(
-                    outputs().getFirst().getKey(),
-                    "ready"
-                ));
-                default -> RunResult.success(Map.of());
-            };
+        public LogInputOutput run(RunContext context) {
+            return LogInputOutput.from("ready");
         }
+
     }
 
     private static Task task(Flow flow, String key) {
@@ -229,6 +223,18 @@ class Uc08DynamicLogFlowTest {
         public void close() {
             logger.detachAppender(appender);
             appender.stop();
+        }
+    }
+
+    /** 日志前置任务的明确结果字段。 */
+    public record LogInputOutput(String result) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建确定的前置结果。
+         * @param result 本场景字符串结果
+         * @return 含该字段的新输出
+         */
+        public static LogInputOutput from(String result) {
+            return new LogInputOutput(result);
         }
     }
 }

@@ -485,7 +485,7 @@ class ExecutionTest {
                 1,
                 Map.of(),
                 Generation.empty(), paused,
-                List.of(), Origin.create(null, "execution-route-execution"), List.of()
+                List.of(), Origin.create(null, "execution-route-execution"), List.of(), null, 0L
             )
         );
     }
@@ -513,7 +513,7 @@ class ExecutionTest {
                 1,
                 Map.of(),
                 Generation.empty(), skipped,
-                List.of(), Origin.create(null, "execution-skipped-execution"), List.of()
+                List.of(), Origin.create(null, "execution-skipped-execution"), List.of(), null, 0L
             )
         );
     }
@@ -530,14 +530,14 @@ class ExecutionTest {
                 Origin.create(root.id(), "different-root"), Origin.create("parent", root.id()))) {
             assertThrows(IllegalArgumentException.class, () -> Execution.rehydrate(root.id(), root.companyId(),
                 root.creator(), root.createdAt(), root.flowKey(), root.flowVersion(), root.inputs(),
-                root.generation(), root.state(), root.ownTaskRuns(), invalid, List.of()));
+                root.generation(), root.state(), root.ownTaskRuns(), invalid, List.of(), null, 0L));
         }
         assertThrows(IllegalArgumentException.class, () -> Execution.rehydrate(root.id(), root.companyId(),
             root.creator(), root.createdAt(), root.flowKey(), root.flowVersion(), root.inputs(),
-            root.generation(), root.state(), List.of(), root.origin(), List.of(owned)));
+            root.generation(), root.state(), List.of(), root.origin(), List.of(owned), null, 0L));
         assertThrows(IllegalArgumentException.class, () -> Execution.rehydrate("derived", root.companyId(),
             root.creator(), root.createdAt(), root.flowKey(), root.flowVersion(), root.inputs(),
-            root.generation(), root.state(), List.of(owned), Origin.create(root.id(), root.id()), List.of(owned)));
+            root.generation(), root.state(), List.of(owned), Origin.create(root.id(), root.id()), List.of(owned), null, 0L));
         assertThrows(IllegalArgumentException.class, () -> Origin.create(" ", root.id()));
         assertThrows(IllegalArgumentException.class, () -> Origin.create(null, " "));
     }

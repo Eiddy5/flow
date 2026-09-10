@@ -9,7 +9,7 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.runner.RunContext;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
@@ -337,11 +337,7 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "prepare",
-                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
-                        "outputs", List.of(Map.of(
-                            "key", "decision",
-                            "type", "STRING"
-                        ))
+                        "type", org.cses.flow.core.plugins.TestOutputTasks.Decision.class.getCanonicalName()
                     ),
                     Map.of(
                         "key", "approved-route",
@@ -696,11 +692,7 @@ final class ExecutorServiceTest {
                 "tasks", List.of(
                     Map.of(
                         "key", "source",
-                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
-                        "outputs", List.of(Map.of(
-                            "key", "decision",
-                            "type", "STRING"
-                        ))
+                        "type", org.cses.flow.core.plugins.TestOutputTasks.Decision.class.getCanonicalName()
                     ),
                     Map.of(
                         "key", "parallel",
@@ -708,19 +700,11 @@ final class ExecutorServiceTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "left",
-                                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
-                                "outputs", List.of(Map.of(
-                                    "key", "branchResult",
-                                    "type", "STRING"
-                                ))
+                                "type", org.cses.flow.core.plugins.TestOutputTasks.BranchResult.class.getCanonicalName()
                             ),
                             Map.of(
                                 "key", "right",
-                                "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
-                                "outputs", List.of(Map.of(
-                                    "key", "branchResult",
-                                    "type", "STRING"
-                                ))
+                                "type", org.cses.flow.core.plugins.TestOutputTasks.BranchResult.class.getCanonicalName()
                             )
                         )
                     ),
@@ -1101,11 +1085,7 @@ final class ExecutorServiceTest {
                 "maxIterations", maxIterations,
                 "tasks", List.of(Map.of(
                     "key", "check",
-                    "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
-                    "outputs", List.of(Map.of(
-                        "key", "status",
-                        "type", "STRING"
-                    ))
+                    "type", org.cses.flow.core.plugins.TestOutputTasks.Status.class.getCanonicalName()
                 ))
             ))
         ));
@@ -1228,11 +1208,11 @@ final class ExecutorServiceTest {
     @SuperBuilder
     @NoArgsConstructor
     private static final class ConflictingCapabilityTask
-        extends NoCapabilityTask implements RunnableTask, OrchestrationTask {
+        extends NoCapabilityTask implements RunnableTask<VoidOutput>, OrchestrationTask<VoidOutput> {
 
         @Override
-        public RunResult run(RunContext context) {
-            return RunResult.success(Map.of());
+        public VoidOutput run(RunContext context) {
+            return VoidOutput.from();
         }
     }
 }

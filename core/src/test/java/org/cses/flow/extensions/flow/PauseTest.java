@@ -47,9 +47,7 @@ class PauseTest {
                     .required(false)
                     .build()
             ))
-            .outputs(List.of(
-                Output.create("approved", DataType.BOOLEAN)
-            ))
+
             .duration(" pt5m ")
             .behavior(Pause.Behavior.FAIL)
             .build());
@@ -59,10 +57,11 @@ class PauseTest {
         assertEquals(List.of(action), pause.definitionChildren());
         assertEquals(action, pause.findDescendant(action.id()).orElseThrow());
         assertEquals(
-            List.of(
-                Output.create("approved", DataType.BOOLEAN)
+            java.util.Set.of(
+                Output.create("decision", DataType.STRING),
+                Output.create("comment", DataType.STRING)
             ),
-            pause.outputs()
+            java.util.Set.copyOf(pause.outputs())
         );
         assertEquals("PT5M", pause.duration().orElseThrow());
         assertEquals(Pause.Behavior.FAIL, pause.behavior().orElseThrow());
@@ -110,10 +109,7 @@ class PauseTest {
                         "type", "STRING",
                         "required", true
                     )),
-                    "outputs", List.of(Map.of(
-                        "key", "approved",
-                        "type", "BOOLEAN"
-                    )),
+
                     "duration", " pt5m ",
                     "behavior", "FAIL"
                 ))
@@ -128,7 +124,7 @@ class PauseTest {
         assertEquals("decision",
             pause.onResume().getFirst().getDisplayName());
         assertEquals(
-            List.of(Output.create("approved", DataType.BOOLEAN)),
+            List.of(Output.create("decision", DataType.STRING)),
             pause.outputs()
         );
         assertEquals("PT5M", pause.duration().orElseThrow());

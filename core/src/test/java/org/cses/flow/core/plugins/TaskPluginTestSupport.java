@@ -15,6 +15,7 @@ import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Parallel;
 import org.cses.flow.extensions.flow.Route;
 import org.cses.flow.extensions.flow.Sequence;
+import org.cses.flow.extensions.flow.SubFlow;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -33,7 +34,13 @@ public class TaskPluginTestSupport {
     private TaskPluginTestSupport() {
     }
 
+    /**
+     * 建立内置及传入插件的测试绑定环境，并初始化 PAAS 结果序列化。
+     * @param additionalPlugins 额外只读插件实例；不得为空
+     * @return 可发布测试定义的上下文
+     */
     public static Context builtInContext(Plugin... additionalPlugins) {
+        org.paas.json.JsonFactory.instance = io.micronaut.json.JsonMapper.createDefault();
         List<Plugin> plugins = new ArrayList<>();
         plugins.add(new Log());
         plugins.add(new Loop());
@@ -42,6 +49,17 @@ public class TaskPluginTestSupport {
         plugins.add(new Parallel());
         plugins.add(new Route());
         plugins.add(new Sequence());
+        plugins.add(new SubFlow());
+        plugins.add(new TestOutputTasks.Decision());
+        plugins.add(new TestOutputTasks.Status());
+        plugins.add(new TestOutputTasks.Approved());
+        plugins.add(new TestOutputTasks.BooleanApproved());
+        plugins.add(new TestOutputTasks.Count());
+        plugins.add(new TestOutputTasks.Payload());
+        plugins.add(new TestOutputTasks.Result());
+        plugins.add(new TestOutputTasks.Prepared());
+        plugins.add(new TestOutputTasks.NumericStatus());
+        plugins.add(new TestOutputTasks.BranchResult());
         plugins.addAll(List.of(additionalPlugins));
 
         PluginRegistry registry = new DefaultPluginRegistry(plugins);

@@ -68,9 +68,6 @@ class ExecutionAsyncStartIntegrationTest {
                     onResume:
                       - key: decision
                         type: STRING
-                    outputs:
-                      - key: decision
-                        type: STRING
                   - key: target-block
                     type: org.cses.flow.core.services.executions.TestWorkflowTask
                 """);
@@ -121,9 +118,6 @@ class ExecutionAsyncStartIntegrationTest {
                       key: target-block
                       type: org.cses.flow.core.services.executions.TestWorkflowTask
                     onResume:
-                      - key: decision
-                        type: STRING
-                    outputs:
                       - key: decision
                         type: STRING
                   - key: record-result
@@ -208,9 +202,6 @@ class ExecutionAsyncStartIntegrationTest {
                     onResume:
                       - key: decision
                         type: STRING
-                    outputs:
-                      - key: decision
-                        type: STRING
                   - key: record
                     type: org.cses.flow.extensions.log.Log
                     message: '{{ outputs.approval.decision }}'
@@ -279,9 +270,6 @@ class ExecutionAsyncStartIntegrationTest {
                                 onResume:
                                   - key: decision
                                     type: STRING
-                                outputs:
-                                  - key: decision
-                                    type: STRING
                           - key: worker-branch
                             type: org.cses.flow.extensions.flow.Sequence
                             tasks:
@@ -292,9 +280,6 @@ class ExecutionAsyncStartIntegrationTest {
                                   type: org.cses.flow.extensions.log.Log
                                   message: gate
                                 onResume:
-                                  - key: release
-                                    type: STRING
-                                outputs:
                                   - key: release
                                     type: STRING
                               - key: target-block

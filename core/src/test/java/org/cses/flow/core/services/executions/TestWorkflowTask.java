@@ -3,7 +3,7 @@ package org.cses.flow.core.services.executions;
 import io.micronaut.context.annotation.Requires;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Requires(property = "flow.test.workflow-task", value = "true")
 @SuperBuilder
 @NoArgsConstructor
-public class TestWorkflowTask extends Task implements RunnableTask {
+public class TestWorkflowTask extends Task implements RunnableTask<VoidOutput> {
 
     private static AtomicInteger blockingRuns = new AtomicInteger();
     private static volatile CountDownLatch blockingStarted =
@@ -56,19 +56,19 @@ public class TestWorkflowTask extends Task implements RunnableTask {
     }
 
     /**
-     * Counts and blocks the controlled task until the test releases it.
+     * 记录目标步骤的调用次数，并等待测试释放后返回空成功结果。
      *
-     * @param context current Worker context, unused by this fixture
-     * @return successful empty outputs after release
+     * @param context 运行上下文；本夹具不读取它
+     * @return 释放等待后创建的空输出
      */
     @Override
-    public RunResult run(RunContext context) {
+    public VoidOutput run(RunContext context) {
         if ("target-block".equals(key())) {
             blockingRuns.incrementAndGet();
             blockingStarted.countDown();
             awaitRelease();
         }
-        return RunResult.success(Map.of());
+        return VoidOutput.from();
     }
 
     private static void awaitRelease() {

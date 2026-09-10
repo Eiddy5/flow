@@ -3,8 +3,8 @@
 当前运行时持久化边界以 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md) 为准：
 普通读取领域、调用领域方法、完整快照保存；不使用业务事务或锁定读取。
 下列早期 ADR 的业务事务表述按该决策修订；当前 Executor 的 Pulsar 传输见 ADR 0094。
-显式 `lock` CAS 沿用 [ADR 0086](0086-use-scoped-execution-lock-for-cas.md)，通用支持、
-普通 `save` 接口及自动元数据清理以 [ADR 0091](0091-hide-repository-cas-behind-save.md) 为准。
+显式 `lock` 随对象携带，普通 `save` 由实现层 `CasRepository` 统一执行 CAS，
+不再维护元数据缓存或作用域，见 [ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)。
 
 ## 文档定位
 
@@ -19,6 +19,9 @@
 读取这些历史引用时，使用本索引定位当前 ADR，不回写历史报告。
 
 ## Core 组件与依赖方向
+
+- [`ADR 0096`](0096-remove-legacy-postgres-queues.md)：清理旧 PostgreSQL 队列、专属契约、
+  压测及队列表基线/生成类，保留 PAAS Pulsar 为唯一运行传输。
 
 - [`ADR 0094`](0094-use-pulsar-for-executor-queues.md)：两条 Executor 队列切换到注解式
   Pulsar，公共 Queue 只保留发布能力，删除旧默认队列工厂，不接入通知。
@@ -132,9 +135,14 @@
   选择语义由 ADR 0083 修订。
 - [`ADR 0071`](0071-remove-lockable-from-domain.md)：锁与并发协议不进入 Flow 领域；
   业务唯一键、行锁、CAS 和事务隔离由数据库 Schema、Repository 与 Queue Adapter
-  在各自基础设施边界负责。
+  在各自基础设施边界负责。对象携带版本元数据的限制已由 ADR 0097 修订。
 
 ## Data、Input 与 Output
+
+- [`ADR 0098`](0098-run-subflow-as-linked-execution.md)：SubFlow 统一 inputs、独立运行、
+  精确父调用关联、等待和结果返回；首次调用闭环不包含重试或重启恢复。
+- [`ADR 0095`](0095-return-typed-task-outputs.md)：Task 类型声明具体 Output，替代
+  RunResult 与 Task 可配置输出列表，结果经 TaskRun 投影到后续 RunContext。
 
 - [`ADR 0019`](0019-establish-basic-data-types.md)：Data、DataType、具体 Input 类型、
   Output、定义值边界、不变量、场景和当前实施状态。
@@ -282,6 +290,8 @@
 
 ## 持久化、时间与并发
 
+- [`ADR 0097`](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)：需要 CAS 的根
+  携带 lock，由实现层 CasRepository 统一 save、版本比较与回填；删除隐式缓存和作用域。
 - [`ADR 0083`](0083-allocate-flow-version-in-repository.md)：`FlowRepository.save`
   查询同租户同 key 的全部版本（包括草稿和删除），分配下一版本、生成新行 ID 并只
   执行 INSERT；数据库以 `(company_id, key, version)` 统一保证业务唯一性。

@@ -136,6 +136,11 @@ public class LoopUntil extends Branch<LoopUntil.Output> implements ModelInvarian
             .forEach(this::verifyOutputReference);
     }
 
+    /**
+     * 检查循环条件引用属于循环体且匹配任务代码定义的标量输出类型。
+     * @param reference 非 null 的输出引用，只读
+     * @throws IllegalArgumentException 引用路径、字段或条件类型非法时抛出
+     */
     private void verifyOutputReference(Operand reference) {
         if (reference.path().size() != 3) {
             throw new IllegalArgumentException(
@@ -151,7 +156,7 @@ public class LoopUntil extends Branch<LoopUntil.Output> implements ModelInvarian
                 "LOOP UNTIL condition references a Task outside its body: "
                     + taskKey
             ));
-        Output output = source.outputs().stream()
+        var output = source.outputs().stream()
             .filter(candidate -> candidate.getKey().equals(outputKey))
             .findFirst()
             .orElseThrow(() -> new IllegalArgumentException(

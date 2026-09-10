@@ -5,13 +5,14 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
-import org.cses.flow.infrastructure.repositories.CasSupport;
+import org.cses.flow.infrastructure.repositories.CasRepository;
 import org.cses.flow.infrastructure.repositories.executions.entries.ExecutionEntry;
 import org.cses.flow.infrastructure.repositories.executions.entries.TaskRunEntry;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.exception.DataAccessException;
+import org.jooq.Record1;
+import org.jooq.ResultQuery;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -24,7 +25,30 @@ import static org.jooq.impl.DSL.*;
 
 /** Loads and stores the complete Execution snapshot without locking reads. */
 @Singleton
-public class ExecutionRepositoryImpl implements ExecutionRepository {
+public class ExecutionRepositoryImpl extends CasRepository<Execution> implements ExecutionRepository {
+
+    /** 绑定 Execution 根表及租户、身份、版本字段；不保存任何请求状态。 */
+    public ExecutionRepositoryImpl() {
+        super(EXECUTIONS, EXECUTIONS.COMPANY_ID, EXECUTIONS.ID, EXECUTIONS.LOCK);
+    }
+
+    /**
+     * @param execution 完整聚合
+     * @return 对象自带版本，新建时为 null
+     */
+    @Override
+    protected Long lock(Execution execution) {
+        return execution.lock();
+    }
+
+    /**
+     * @param execution 已保存聚合
+     * @param version SQL 返回的非负版本
+     */
+    @Override
+    protected void lock(Execution execution, long version) {
+        execution.lock(version);
+    }
 
     /**
      * Loads one aggregate and its ordered children from one database snapshot.
@@ -63,10 +87,10 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
     }
 
     /**
-     * Reads a parent and child collection in one query so callbacks never see half a save.
-     * @param dsl database context
-     * @param condition complete tenant and optional execution selection
-     * @return reconstructed domain aggregates
+     * 单次查询读取根、版本和子集合，避免观察到不完整的保存结果。
+     * @param dsl 调用方数据库上下文
+     * @param condition 包含租户的完整筛选条件
+     * @return 携带加载版本的独立聚合快照
      */
     private List<Execution> find(DSLContext dsl, Condition condition) {
         dsl = dsl.configuration().derive(new org.jooq.impl.DefaultRecordUnmapperProvider()).dsl();
@@ -74,15 +98,12 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
                 .where(TASK_RUNS.EXECUTION_ID.eq(EXECUTIONS.ID))
                 .orderBy(TASK_RUNS.ORDER.asc()))
                 .convertFrom(rows -> rows.into(TaskRunEntry.class));
-        DSLContext readContext = dsl;
         return dsl.select(EXECUTIONS.fields()).select(children)
                 .from(EXECUTIONS).where(condition)
                 .orderBy(EXECUTIONS.CREATED_AT.asc(), EXECUTIONS.ID.asc())
                 .fetch(row -> {
                     ExecutionEntry entry = row.into(ExecutionEntry.class);
-                    Execution execution = entry.to(row.get(children).stream().map(TaskRunEntry::to).toList());
-                    CasSupport.loaded(readContext, EXECUTIONS, execution, entry.lock);
-                    return execution;
+                    return entry.to(row.get(children).stream().map(TaskRunEntry::to).toList());
                 });
     }
 
@@ -98,73 +119,37 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
     }
 
     /**
-     * Writes the already changed domain and all children in one SQL statement.
-     * No state transition or business decision is performed by this storage operation.
-     * @param dsl managed database operation context
-     * @param execution complete domain snapshot to store
-     * @throws org.jooq.exception.DataChangedException when the loaded snapshot has become stale
-     * @throws WorkflowException when storage rejects the aggregate
-     * @throws IllegalStateException when the database operation is absent or closed
+     * 将根保存语句与自有 TaskRun 增删改组合为单 SQL，由基类执行并回填版本。
+     * @param dsl 调用方数据库上下文
+     * @param execution 待保存的完整聚合
+     * @param expected 对象查询时版本，null 仅尝试新建
+     * @return 成功时返回根版本、CAS 冲突时返回零行的原子 SQL
      */
     @Override
-    public void save(DSLContext dsl, Execution execution) {
-        Long expected = CasSupport.saving(dsl, EXECUTIONS, execution);
+    protected ResultQuery<Record1<Long>> save(DSLContext dsl, Execution execution, Long expected) {
         ExecutionEntry entry = ExecutionEntry.from(execution);
-        var fields = entry.toMap();
-        fields.remove(EXECUTIONS.LOCK.getName());
-        org.jooq.ResultQuery<org.jooq.Record2<String, Long>> root;
-        if (expected == null) {
-            root = dsl.insertInto(EXECUTIONS).set(fields).set(EXECUTIONS.LOCK, 0L)
-                    .onConflict(EXECUTIONS.COMPANY_ID, EXECUTIONS.ID).doNothing()
-                    .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK);
-        } else {
-            fields.remove(EXECUTIONS.COMPANY_ID.getName());
-            fields.remove(EXECUTIONS.ID.getName());
-            root = CasSupport.update(dsl, EXECUTIONS, fields,
-                    EXECUTIONS.COMPANY_ID.eq(entry.companyId).and(EXECUTIONS.ID.eq(entry.id)),
-                    EXECUTIONS.LOCK, expected)
-                    .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK);
-        }
+        var root = save(dsl, entry.toMap(), expected);
         var parent = name("stored_execution").as(root);
-        try {
-            var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
-            save(dsl, execution, parent, statements);
-            var saved = dsl.with(statements).selectFrom(parent).fetchOne();
-            if (saved == null) {
-                throw CasSupport.conflict();
-            }
-            CasSupport.saved(dsl, EXECUTIONS, execution, saved.get(EXECUTIONS.LOCK));
-        } catch (org.jooq.exception.DataChangedException conflict) {
-            throw conflict;
-        } catch (DataAccessException exception) {
-            throw new WorkflowException("Execution persistence conflict for "
-                    + execution.companyId() + ":" + execution.id(), exception);
-        }
+        var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
+        save(dsl, execution, parent, statements);
+        return dsl.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent);
     }
     /**
-     * Saves the changed source and a new derived snapshot in one SQL statement.
-     * Source CAS gates insertion; any child or identity failure rolls back both snapshots.
-     * @param dsl managed database operation context
-     * @param source previously loaded source after its domain transition
-     * @param derived new derived Execution, never previously persisted
-     * @throws org.jooq.exception.DataChangedException when source CAS or scope ownership fails
-     * @throws WorkflowException when either snapshot cannot be stored
+     * 单 SQL 保存源与派生聚合；源 CAS 成功才允许插入新根，成功后回填两个对象版本。
+     * @param dsl 调用方数据库上下文
+     * @param source 携带查询时版本且已完成领域变更的源快照
+     * @param derived 从源派生的新快照，lock 必须为 null
+     * @throws org.jooq.exception.DataChangedException 源版本陈旧或新建/更新身份不符合要求
+     * @throws WorkflowException 任意根或子记录写入失败，两个对象版本保持不变
      */
     @Override
     public void save(DSLContext dsl, Execution source, Execution derived) {
-        Long expected = CasSupport.saving(dsl, EXECUTIONS, source);
-        if (expected == null || CasSupport.saving(dsl, EXECUTIONS, derived) != null) {
-            throw CasSupport.conflict();
+        Long expected = source.lock();
+        if (expected == null || derived.lock() != null) {
+            throw conflict();
         }
         ExecutionEntry sourceEntry = ExecutionEntry.from(source);
-        var sourceFields = sourceEntry.toMap();
-        sourceFields.remove(EXECUTIONS.COMPANY_ID.getName());
-        sourceFields.remove(EXECUTIONS.ID.getName());
-        sourceFields.remove(EXECUTIONS.LOCK.getName());
-        var parent = name("stored_execution").as(CasSupport.update(dsl, EXECUTIONS, sourceFields,
-                EXECUTIONS.COMPANY_ID.eq(source.companyId()).and(EXECUTIONS.ID.eq(source.id())),
-                EXECUTIONS.LOCK, expected)
-                .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK));
+        var parent = name("stored_execution").as(save(dsl, sourceEntry.toMap(), expected));
         ExecutionEntry derivedEntry = ExecutionEntry.from(derived);
         derivedEntry.lock = 0L;
         var fields = derivedEntry.toMap();
@@ -174,20 +159,12 @@ public class ExecutionRepositoryImpl implements ExecutionRepository {
                         .map(field -> val(fields.get(field.getName()), field)).toArray(Field<?>[]::new))
                         .where(exists(selectOne().from(parent))))
                 .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK));
-        try {
-            var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
-            save(dsl, source, parent, statements);
-            save(dsl, derived, created, statements);
-            if (dsl.with(statements).selectFrom(created).fetchOne() == null) {
-                throw CasSupport.conflict();
-            }
-            CasSupport.saved(dsl, EXECUTIONS, source, expected + 1);
-            CasSupport.saved(dsl, EXECUTIONS, derived, 0L);
-        } catch (org.jooq.exception.DataChangedException conflict) {
-            throw conflict;
-        } catch (DataAccessException failure) {
-            throw new WorkflowException("Execution replay persistence conflict", failure);
-        }
+        var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
+        save(dsl, source, parent, statements);
+        save(dsl, derived, created, statements);
+        save(source, dsl.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent)
+                .where(exists(selectOne().from(created))));
+        lock(derived, 0L);
     }
 
     /**

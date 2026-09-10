@@ -138,12 +138,14 @@ class LoopUntilTest {
         );
     }
 
-    private static Log checkTask(DataType type) {
-        return Log.builder()
-            .id("check-id")
-            .key("check")
-            .message(TemplateExpression.parse("test step"))
-            .outputs(List.of(Output.create("status", type)))
-            .build();
+    /**
+     * 创建带具体 status 返回类型的检查任务。
+     * @param type STRING 选择字符串输出，其他值选择整数输出
+     * @return 用于本测试定义校验的具体任务
+     */
+    private static org.cses.flow.core.domains.tasks.Task checkTask(DataType type) {
+        return type == DataType.STRING
+            ? org.cses.flow.core.plugins.TestOutputTasks.Status.builder().id("check-id").key("check").build()
+            : org.cses.flow.core.plugins.TestOutputTasks.NumericStatus.builder().id("check-id").key("check").build();
     }
 }

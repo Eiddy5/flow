@@ -10,7 +10,6 @@ import java.util.List;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
-import org.flow.gen.flow.tables.QueuesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.jooq.Catalog;
 import org.jooq.Table;
@@ -47,11 +46,6 @@ public class Public extends SchemaImpl {
     public final FlowsTable FLOWS = FlowsTable.FLOWS;
 
     /**
-     * The table <code>public.queues</code>.
-     */
-    public final QueuesTable QUEUES = QueuesTable.QUEUES;
-
-    /**
      * The table <code>public.task_runs</code>.
      */
     public final TaskRunsTable TASK_RUNS = TaskRunsTable.TASK_RUNS;
@@ -75,7 +69,6 @@ public class Public extends SchemaImpl {
             ExecutionsTable.EXECUTIONS,
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,
-            QueuesTable.QUEUES,
             TaskRunsTable.TASK_RUNS
         );
     }
@@ -87,6 +80,6 @@ public class Public extends SchemaImpl {
 
     @Override
     public String getDbName() {
-        return "flow_origin";
+        return "flow_subflow_uc13";
     }
 }

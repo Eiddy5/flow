@@ -160,8 +160,7 @@ Topic 为 `flow-executor-command` 与 `flow-executor-event`。消息类型用 `@
 PAAS 拥有消息编码、接收循环、ACK/NACK 与关闭；回调完成后 ACK，异常 NACK 重投。
 Service 的返回仍只表示传输受理，领域保存与后续发布沿用 ADR 0084 的独立边界。
 
-旧的两个 Executor Queue Factory 已删除，DefaultDispatchQueue 不再自动装配；
-旧表和独立适配器保留，不提供运行期回退。部署时先排空旧版本已接受消息，再整体切换，
+旧 PostgreSQL 队列实现、专属契约、队列表基线及生成类型已删除，不提供运行期回退。部署时先排空旧版本已接受消息，再整体切换，
 不能将旧数据库队列积压当成已经进入 Pulsar。详见
 [ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md) 与
 [切换说明](harness/pulsar-queues.md)。本次没有通知业务接入。
@@ -200,7 +199,7 @@ flowchart TD
 
     runnableDispatch["TaskRun 进入 RUNNING 并先持久化"]
     workerRun["WorkerDispatcher 同步调用 RunnableTask.run"]
-    workerResult{"RunResult 目标状态？"}
+    workerResult{"Output 目标状态？"}
     applyOutputs["校验 outputs 并完成 TaskRun"]
     terminate["终止 TaskRun 与 Execution 并持久化"]
 

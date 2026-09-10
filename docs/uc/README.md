@@ -39,6 +39,7 @@ docs/uc/
     UC-10 用户处理包含嵌套编排的审批 Flow.md
     UC-11 用户追溯退回后的 Flow 运行来源.md
     UC-12 用户在 Flow 中使用业务输入类型.md
+    UC-13 用户调用并追溯子流程.md
 ```
 
 新领域由 UC Agent 创建，同时建立领域 `README.md` 并维护领域边界、UC 清单、

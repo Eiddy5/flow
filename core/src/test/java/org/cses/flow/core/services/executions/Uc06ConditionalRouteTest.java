@@ -328,9 +328,6 @@ class Uc06ConditionalRouteTest {
                 onResume:
                   - key: decision
                     type: STRING
-                outputs:
-                  - key: decision
-                    type: STRING
               - key: route-decision
                 type: org.cses.flow.extensions.flow.Route
                 route: '%s'

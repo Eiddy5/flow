@@ -15,18 +15,19 @@ import java.util.List;
 public class ExecutionEntry extends ExecutionsObject {
 
     /**
-     * Maps the complete Execution and inherited snapshots to the current database shape.
-     * The repository separately manages the technical lock version.
-     * @param execution validated domain snapshot
-     * @return new database Entry without generating domain facts
+     * 将完整 Execution、继承快照及随身版本转换为数据库字段，不生成领域事实。
+     * @param execution 已校验的领域快照，新建对象的 lock 为 null
+     * @return 新的完整数据库 Entry
      */
     public static ExecutionEntry from(Execution execution) {
         ExecutionEntry entry = new ExecutionEntry();
         entry.id = execution.id();
+        entry.lock = execution.lock();
         entry.companyId = execution.companyId();
         entry.flowKey = execution.flowKey();
         entry.flowVersion = execution.flowVersion();
         entry.parentId = execution.origin().parentId();
+        entry.parentTaskRunId = execution.parentTaskRunId();
         entry.originId = execution.origin().originId();
         entry.inheritedTaskRuns = TaskRunSnapshotsJsonCodec.encode(execution.inheritedTaskRuns());
         entry.inputs = ExecutionInputsJsonCodec.encode(execution.inputs());
@@ -38,13 +39,14 @@ public class ExecutionEntry extends ExecutionsObject {
     }
 
     /**
-     * Combines persisted inherited snapshots with this instance's ordered owned runs.
-     * @param taskRuns independently decoded owned TaskRun rows, in order
-     * @return fully validated Execution including its source relationship
-     * @throws IllegalArgumentException when origin or inherited history is invalid
-     * @throws IllegalStateException when the bound Flow version is missing
+     * 合并持久化继承快照与自有 TaskRun，恢复包含加载版本的完整 Execution。
+     * @param taskRuns 独立解码并保持顺序的自有 TaskRun
+     * @return 校验后的领域快照，保留数据库版本及来源关系
+     * @throws IllegalArgumentException 来源、历史或版本非法
+     * @throws IllegalStateException Flow 版本或 lock 缺失
      */
     public Execution to(List<TaskRun> taskRuns) {
+        if (lock == null) throw new IllegalStateException("Persisted Execution lock must not be null");
         if (flowVersion == null) {
             throw new IllegalStateException(
                 "Persisted Execution flowVersion must not be null"
@@ -62,7 +64,9 @@ public class ExecutionEntry extends ExecutionsObject {
             StateJsonCodec.decode(state),
             taskRuns,
             Origin.create(parentId, originId),
-            TaskRunSnapshotsJsonCodec.decode(inheritedTaskRuns)
+            TaskRunSnapshotsJsonCodec.decode(inheritedTaskRuns),
+            parentTaskRunId,
+            lock
         );
     }
 

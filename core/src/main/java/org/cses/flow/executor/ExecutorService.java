@@ -6,11 +6,15 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.Generation;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.runner.RunVariables;
+import org.cses.flow.core.runner.RunContext;
+import org.cses.flow.core.domains.tasks.Output;
+import org.cses.flow.core.plugins.TaskOutputs;
 import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.extensions.flow.Loop;
 import org.cses.flow.extensions.flow.LoopUntil;
@@ -172,17 +176,27 @@ public class ExecutorService {
         return workerTask(context, runningTaskRun, task);
     }
 
+    /**
+     * 启动已规划的编排任务，必要时收集其立即完成的结果。
+     * @param context 非 null 的当前执行上下文，会被修改
+     * @param plannedTaskRun 非 null 的 CREATED 编排任务记录
+     * @throws IllegalStateException 任务状态或编排能力非法时抛出
+     */
     private static void handleOrchestration(ExecutorContext context, TaskRun plannedTaskRun) {
         TaskRun taskRun = context.execution().requireTaskRun(plannedTaskRun.id());
         if (!taskRun.state().is(State.Type.CREATED)) {
             throw new IllegalStateException("Only a CREATED Orchestration TaskRun can be handled: " + taskRun.id());
         }
         Task task = context.flow().findTask(taskRun.taskId()).orElseThrow(() -> new IllegalStateException("TaskRun references a missing Task: " + taskRun.taskId()));
-        if (!(task instanceof OrchestrationTask orchestrationTask) || task instanceof RunnableTask) {
+        if (!(task instanceof OrchestrationTask<?> orchestrationTask) || task instanceof RunnableTask) {
             throw new IllegalStateException("Orchestration handling requires only the " + "OrchestrationTask capability: " + task.getType());
         }
 
         Execution execution = context.execution();
+        if (orchestrationTask.subFlow().isPresent()) {
+            context.stageSubFlow(taskRun.id());
+            return;
+        }
         execution.startTaskRun(taskRun.id());
         if (orchestrationTask.iteratesChildren()) {
             execution.startTaskRunGeneration(taskRun.id(), "INITIAL");
@@ -199,23 +213,29 @@ public class ExecutorService {
             throw new IllegalStateException("An OrchestrationTask cannot pause and hold a child scope: " + task.getType());
         }
         if (!pausesTaskRun && !holdsScope) {
-            execution.succeedTaskRun(taskRun.id(), task.validateOutputs(Map.of()));
+            completeOrchestrationOutput(context, task, taskRun, orchestrationTask);
         }
         context.captureState();
     }
 
+    /**
+     * 收敛已运行的编排作用域；Pause 首次进入等待，恢复后才收集完成结果。
+     * @param context 非 null 的当前执行上下文，会被修改
+     * @param taskRunId 非 null 的 RUNNING 编排任务记录身份
+     * @throws IllegalStateException 状态、能力或子树收敛条件不满足时抛出
+     */
     private static void completeOrchestrationScope(ExecutorContext context, String taskRunId) {
         TaskRun taskRun = context.execution().requireTaskRun(taskRunId);
         if (!taskRun.state().is(State.Type.RUNNING)) {
             throw new IllegalStateException("Only a RUNNING orchestration scope can complete: " + taskRun.id());
         }
         Task task = context.flow().findTask(taskRun.taskId()).orElseThrow(() -> new IllegalStateException("TaskRun references a missing Task: " + taskRun.taskId()));
-        if (!(task instanceof OrchestrationTask orchestrationTask) || (!orchestrationTask.holdsTaskRunUntilChildrenSettle() && !orchestrationTask.pausesTaskRun())) {
+        if (!(task instanceof OrchestrationTask<?> orchestrationTask) || (!orchestrationTask.holdsTaskRunUntilChildrenSettle() && !orchestrationTask.pausesTaskRun())) {
             throw new IllegalStateException("TaskRun is not an orchestration scope: " + taskRun.id());
         }
         if (orchestrationTask.pausesTaskRun()) {
             if (hasPaused(taskRun)) {
-                context.execution().succeedTaskRun(taskRun.id(), taskRun.outputs());
+                completeOrchestrationOutput(context, task, taskRun, orchestrationTask);
             } else {
                 context.execution().pauseTaskRun(taskRun.id());
             }
@@ -248,10 +268,7 @@ public class ExecutorService {
             );
             if (decision == OrchestrationTask.IterationDecision.SUCCESS) {
                 context.execution().completeTaskRunGeneration(taskRun.id());
-                context.execution().succeedTaskRun(
-                    taskRun.id(),
-                    task.validateOutputs(Map.of())
-                );
+                completeOrchestrationOutput(context, task, taskRun, orchestrationTask);
             } else if (
                 decision == OrchestrationTask.IterationDecision.FAILURE
             ) {
@@ -278,10 +295,17 @@ public class ExecutorService {
         if (!children.settled() || !children.nexts().isEmpty() || !children.orchestrationCompletions().isEmpty()) {
             throw new IllegalStateException("Orchestration scope still has unfinished children: " + taskRun.id());
         }
-        context.execution().succeedTaskRun(taskRun.id(), task.validateOutputs(Map.of()));
+        completeOrchestrationOutput(context, task, taskRun, orchestrationTask);
         context.captureState();
     }
 
+    /**
+     * 将 Worker 终态及具体输出字段应用到当前 RUNNING 任务并捕获执行状态。
+     * @param context 非 null 的当前执行上下文，会被修改
+     * @param result 非 null 的 Worker 结果信封，只读
+     * @throws IllegalStateException 结果身份或任务状态不匹配时抛出
+     * @throws WorkflowException 输出字段与 Task 代码定义不匹配时抛出
+     */
     public void applyResult(ExecutorContext context, WorkerTaskResult result) {
         requireExecution(context, result.executionId());
         Execution execution = context.execution();
@@ -290,10 +314,89 @@ public class ExecutorService {
             throw new IllegalStateException("Worker result requires a RUNNING TaskRun");
         }
         Task task = context.flow().findTask(taskRun.taskId()).orElseThrow(() -> new WorkflowException("Task definition does not exist: " + taskRun.taskId()));
-        switch (result.targetState()) {
-            case SUCCESS -> execution.succeedTaskRun(taskRun.id(), task.validateOutputs(result.outputs()));
-            case WARNING -> execution.warnTaskRun(taskRun.id(), task.validateOutputs(result.outputs()));
-            case FAILED -> execution.failTaskRun(taskRun.id(), result.error());
+        applyCompletion(context, task, taskRun, result.targetState(), result.outputs(), result.error());
+        context.captureState();
+    }
+
+    /**
+     * 在编排完成时收集其 Output；默认未提供 Output 时沿用已有结果（包括 Pause 回调值）。
+     * @param context 非 null 的执行上下文
+     * @param task 非 null 的任务定义，只读
+     * @param taskRun 非 null 的运行记录，只读取结果与身份
+     * @param orchestrationTask 非 null 的编排能力
+     */
+    private static void completeOrchestrationOutput(
+        ExecutorContext context, Task task, TaskRun taskRun, OrchestrationTask<?> orchestrationTask
+    ) {
+        RunContext runContext = RunContext.builder().variables(RunVariables.builder()
+            .flow(context.flow()).execution(context.execution()).task(task).taskRun(taskRun).build()).build();
+        Output output = orchestrationTask.outputs(runContext);
+        applyCompletion(context, task, taskRun,
+            output == null ? State.Type.SUCCESS : output.state().orElse(State.Type.SUCCESS),
+            output == null ? taskRun.outputs() : TaskOutputs.values(output),
+            output == null ? null : output.error().orElse(null));
+    }
+
+    /**
+     * 将独立子运行的终态与具体 Output 应用到精确父调用节点。
+     * @param context 父运行的最新上下文，会被修改
+     * @param childFlow 子运行绑定的定义
+     * @param child 已持久化的子运行终态
+     * @throws IllegalArgumentException 子运行来源与父节点不一致时抛出
+     */
+    public void completeSubFlow(ExecutorContext context, Flow childFlow, Execution child) {
+        Execution parent = context.execution();
+        if (!child.isTerminal() || !parent.id().equals(child.origin().parentId())
+                || !parent.companyId().equals(child.companyId()) || child.parentTaskRunId() == null) {
+            throw new IllegalArgumentException("SubFlow completion does not belong to this parent");
+        }
+        TaskRun caller = parent.requireTaskRun(child.parentTaskRunId());
+        Task task = requireTask(context, caller);
+        if (!(task instanceof OrchestrationTask<?> orchestration) || orchestration.subFlow().isEmpty()) {
+            throw new IllegalArgumentException("SubFlow caller no longer declares a child flow");
+        }
+        var reference = orchestration.subFlow().orElseThrow();
+        if (!reference.key().equals(child.flowKey()) || reference.version() != child.flowVersion()) {
+            throw new IllegalArgumentException("SubFlow completion has a different target version");
+        }
+        if (child.state().is(State.Type.SUCCESS) || child.state().is(State.Type.WARNING)) {
+            RunContext childContext = RunContext.builder().variables(RunVariables.builder()
+                    .flow(childFlow).execution(child).build()).build();
+            Output output = orchestration.outputs(childContext);
+            applyCompletion(context, task, caller, child.state().current(),
+                    TaskOutputs.values(output), null);
+        } else {
+            String error = child.taskRuns().stream().flatMap(run -> run.error().stream())
+                    .findFirst().orElse("Child execution ended with " + child.state().current());
+            applyCompletion(context, task, caller, State.Type.FAILED, Map.of(),
+                    "SubFlow " + child.id() + " failed: " + error);
+        }
+        context.captureState();
+    }
+
+    /**
+     * 将 Runnable 或编排结果应用到同一任务状态机，成功数据按 Task 的代码定义校验。
+     * @param context 非 null 的执行上下文，状态会被修改
+     * @param task 非 null 的任务定义，只读
+     * @param taskRun 非 null 的当前运行记录
+     * @param targetState 非 null 的任务终态
+     * @param outputs 非 null 的业务结果映射，只读
+     * @param error FAILED 时为非空白原因，其他状态为 null
+     * @throws IllegalArgumentException 失败原因与状态不匹配时抛出
+     * @throws IllegalStateException 状态不能由任务结果产生时抛出
+     */
+    private static void applyCompletion(
+        ExecutorContext context, Task task, TaskRun taskRun, State.Type targetState,
+        Map<String, ?> outputs, String error
+    ) {
+        if (targetState == State.Type.FAILED ? error == null || error.isBlank() : error != null) {
+            throw new IllegalArgumentException("Task error must be present only for FAILED output");
+        }
+        Execution execution = context.execution();
+        switch (targetState) {
+            case SUCCESS -> execution.succeedTaskRun(taskRun.id(), task.validateOutputs(outputs));
+            case WARNING -> execution.warnTaskRun(taskRun.id(), task.validateOutputs(outputs));
+            case FAILED -> execution.failTaskRun(taskRun.id(), error);
             case KILLED -> {
                 if (!execution.state().is(State.Type.KILLING)) {
                     execution.beginKilling();
@@ -302,9 +405,8 @@ public class ExecutorService {
                 execution.finishKilling();
             }
             case CREATED, RUNNING, PAUSED, RESTARTED, SKIPPED, KILLING ->
-                    throw new IllegalStateException("Worker cannot return " + result.targetState());
+                    throw new IllegalStateException("Worker cannot return " + targetState);
         }
-        context.captureState();
     }
 
     public void resume(ExecutorContext context, String taskRunId, Map<String, ?> outputs) {
@@ -355,7 +457,7 @@ public class ExecutorService {
         }
         return execution.activeTaskRuns().stream().allMatch(taskRun -> {
             Task task = requireTask(context, taskRun);
-            return taskRun.state().is(State.Type.RUNNING) && task instanceof OrchestrationTask orchestrationTask && orchestrationTask.holdsTaskRunUntilChildrenSettle();
+            return taskRun.state().is(State.Type.RUNNING) && task instanceof OrchestrationTask<?> orchestrationTask && orchestrationTask.holdsTaskRunUntilChildrenSettle();
         });
     }
 
@@ -494,7 +596,7 @@ public class ExecutorService {
         TaskRun taskRun,
         IterationScope iterationScope
     ) {
-        if (task instanceof OrchestrationTask orchestrationTask
+        if (task instanceof OrchestrationTask<?> orchestrationTask
             && orchestrationTask.iteratesChildren()) {
             return searchIterativeScope(
                 context,
@@ -524,7 +626,7 @@ public class ExecutorService {
             }
             return action.asUnsettled();
         }
-        if (!(task instanceof OrchestrationTask orchestrationTask) || !orchestrationTask.holdsTaskRunUntilChildrenSettle()) {
+        if (!(task instanceof OrchestrationTask<?> orchestrationTask) || !orchestrationTask.holdsTaskRunUntilChildrenSettle()) {
             return SearchResult.unsettled();
         }
         SearchResult children = searchChildren(
@@ -542,7 +644,7 @@ public class ExecutorService {
     private static SearchResult searchIterativeScope(
         ExecutorContext context,
         Task task,
-        OrchestrationTask orchestrationTask,
+        OrchestrationTask<?> orchestrationTask,
         TaskRun loopRun,
         IterationScope parentScope
     ) {
@@ -645,7 +747,7 @@ public class ExecutorService {
     private static OrchestrationTask.IterationDecision decideAfterIteration(
         ExecutorContext context,
         Task task,
-        OrchestrationTask orchestrationTask,
+        OrchestrationTask<?> orchestrationTask,
         TaskRun taskRun,
         int completedIterations,
         Map<String, Map<String, Object>> iterationOutputs
@@ -712,7 +814,7 @@ public class ExecutorService {
         TaskRun parentRun,
         IterationScope iterationScope
     ) {
-        if (parent instanceof OrchestrationTask orchestrationTask && orchestrationTask.startsChildrenInParallel()) {
+        if (parent instanceof OrchestrationTask<?> orchestrationTask && orchestrationTask.startsChildrenInParallel()) {
             return searchParallelChildren(
                 context,
                 parent,
@@ -850,7 +952,7 @@ public class ExecutorService {
     }
 
     private static boolean iteratesChildren(Task task) {
-        return task instanceof OrchestrationTask orchestrationTask
+        return task instanceof OrchestrationTask<?> orchestrationTask
             && orchestrationTask.iteratesChildren();
     }
 

@@ -50,16 +50,18 @@ public class ExecutorEventMessageHandler implements
     private ExecutorService executorService;
     private WorkerDispatcher workerDispatcher;
     private Queue<ExecutorEvent> eventQueue;
+    private SubFlowExecutionHandler subFlows;
 
     /**
-     * Wires one scheduling cycle and its subsequent transport publication.
-     * @param jooq named Flow database access
-     * @param sessionFactory restores the execution tenant and actor
-     * @param flowRepository reads the exact flow definition
-     * @param executionRepository reads and saves complete execution snapshots
-     * @param executorService computes domain scheduling transitions
-     * @param workerDispatcher invokes runnable tasks
-     * @param eventQueue annotation-selected internal event publisher
+     * 注入单次调度、子调用及保存后发布事件的运行设施。
+     * @param jooq 具名 Flow 数据库访问
+     * @param sessionFactory 恢复可信租户和操作者
+     * @param flowRepository 精确流程定义仓储
+     * @param executionRepository 完整运行仓储
+     * @param executorService 领域调度状态机
+     * @param workerDispatcher 可执行任务调用器
+     * @param eventQueue 内部调度事件发布器
+     * @param subFlows 子调用创建与完成协调器
      */
     @Inject
     public ExecutorEventMessageHandler(
@@ -69,7 +71,8 @@ public class ExecutorEventMessageHandler implements
             ExecutionRepository executionRepository,
             ExecutorService executorService,
             WorkerDispatcher workerDispatcher,
-            Queue<ExecutorEvent> eventQueue
+            Queue<ExecutorEvent> eventQueue,
+            SubFlowExecutionHandler subFlows
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.sessionFactory = Objects.requireNonNull(
@@ -93,6 +96,7 @@ public class ExecutorEventMessageHandler implements
                 "workerDispatcher"
         );
         this.eventQueue = Objects.requireNonNull(eventQueue, "eventQueue");
+        this.subFlows = Objects.requireNonNull(subFlows, "subFlows");
     }
 
     /**
@@ -123,10 +127,10 @@ public class ExecutorEventMessageHandler implements
     }
 
     /**
-     * Runs one scheduling delivery without holding a business transaction across Worker callbacks.
-     * @param event durable scheduling identity
-     * @return current execution context when present
-     * @throws RuntimeException when loading, scheduling or persistence fails
+     * 处理一次调度投递，不创建 CAS 作用域或跨 Worker 回调的业务事务。
+     * @param event 持久化调度身份
+     * @return 运行存在时的当前执行上下文
+     * @throws RuntimeException 加载、调度或持久化失败时抛出
      */
     @Override
     public Optional<ExecutorContext> handle(ExecutorEvent event) {
@@ -135,8 +139,7 @@ public class ExecutorEventMessageHandler implements
                 "event"
         );
         requireProductionRuntime();
-        return FlowDatabase.execute(jooq.createDSLContext(),
-                dsl -> Optional.ofNullable(process(dsl, accepted)));
+        return Optional.ofNullable(process(jooq.createDSLContext(), accepted));
     }
 
     /**
@@ -175,6 +178,13 @@ public class ExecutorEventMessageHandler implements
         return drive(session, dsl, context, false);
     }
 
+    /**
+     * 读取运行并在可信会话内处理一次事件，子终态保存后通知父调用。
+     * @param dsl 当前数据库上下文
+     * @param event 带租户与运行身份的调度事件
+     * @return 最新处理上下文
+     * @throws RuntimeException 定义缺失、调度或持久化失败时抛出
+     */
     private ExecutorContext process(
             DSLContext dsl,
             ExecutorEvent event
@@ -207,18 +217,20 @@ public class ExecutorEventMessageHandler implements
                         process(session, dsl, flow, execution, event)
                 )
         );
-        return processed.get();
+        ExecutorContext result = processed.get();
+        subFlows.complete(dsl, result);
+        return result;
     }
 
     /**
-     * Applies domain scheduling and reloads before every Worker claim and result save.
-     * @param session restored execution session
-     * @param dsl ordinary database context
-     * @param flow immutable bound definition
-     * @param execution loaded complete execution
-     * @param event scheduling identity
-     * @return the latest processed execution context
-     * @throws RuntimeException when scheduling, dispatch or persistence fails
+     * 保存调度计划，再重读快照启动子调用或 Worker 并合并结果。
+     * @param session 已恢复的可信执行会话
+     * @param dsl 当前数据库上下文
+     * @param flow 绑定的不可变流程定义
+     * @param execution 已加载的完整运行
+     * @param event 当前调度事件
+     * @return 最新处理上下文
+     * @throws RuntimeException 调度、任务分派或持久化失败时抛出
      */
     private ExecutorContext process(
             Session<?> session,
@@ -238,6 +250,12 @@ public class ExecutorEventMessageHandler implements
         executionUpdated |= persistIfUpdated(dsl, context);
 
         List<WorkerTask> workerTasks = context.takeWorkerTasks();
+        for (String taskRunId : context.takeSubFlows()) {
+            context = subFlows.start(dsl, session, context, taskRunId);
+            executionUpdated = true;
+            if (context.execution().isTerminal()) return context;
+        }
+
         if (workerTasks.isEmpty()) {
             if (executionUpdated && context.canBeProcessed()) {
                 emitNext(event);
@@ -346,6 +364,17 @@ public class ExecutorEventMessageHandler implements
         return true;
     }
 
+    /**
+     * 本地推进至稳定边界，子调用仍通过生产队列运行。
+     * @param <S> 可信会话类型
+     * @param <U> 会话用户类型
+     * @param session 当前可信会话
+     * @param dsl 数据库上下文
+     * @param context 待推进的运行快照，会被修改
+     * @param captureUnexpectedTaskFailure 是否把 Worker 异常收敛为任务失败
+     * @return 稳定边界的运行副本
+     * @throws RuntimeException 缺少运行设施或持久化失败时抛出
+     */
     private <S extends Session<U>, U extends User> Execution drive(
             S session,
             DSLContext dsl,
@@ -358,6 +387,11 @@ public class ExecutorEventMessageHandler implements
             boolean executionUpdated = context.takeExecutionUpdated();
             if (executionUpdated) {
                 persist(dsl, context);
+            }
+
+            for (String taskRunId : context.takeSubFlows()) {
+                if (subFlows == null) throw new IllegalStateException("SubFlow requires the production runtime");
+                context = subFlows.start(dsl, session, context, taskRunId);
             }
 
             if (workerTasks.isEmpty()) {

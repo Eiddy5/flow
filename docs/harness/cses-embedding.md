@@ -97,14 +97,12 @@ CSES 新增 Task 插件时直接放在表达真实所有权的 package 中并标
 ```java
 package org.cses.server.common.flow.plugins;
 
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
-
-import java.util.Map;
 
 @Plugin(
     title = "创建 CSES 任务",
@@ -122,15 +120,15 @@ import java.util.Map;
         )
     }
 )
-public final class CreateCsesTask extends Task implements RunnableTask {
+public final class CreateCsesTask extends Task implements RunnableTask<VoidOutput> {
     public CreateCsesTask() {
     }
 
     @Override
-    public RunResult run(RunContext context) {
+    public VoidOutput run(RunContext context) {
         // Host-owned Task code may use context.taskRunInfo().executionId()
         // to associate its operation with the current Flow execution.
-        return RunResult.success(Map.of());
+        return VoidOutput.from();
     }
 }
 ```

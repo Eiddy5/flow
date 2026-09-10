@@ -127,11 +127,10 @@ class TaskDataPersistenceMappingTest {
 
     @Test
     void flowTaskEntryRoundTripsLoopUntilConditionAsAString() {
-        Task check = Log.builder()
+        Task check = org.cses.flow.core.plugins.TestOutputTasks.Status.builder()
             .id("check-id")
             .key("check")
-            .message(TemplateExpression.parse("test step"))
-            .outputs(List.of(Output.create("status", DataType.STRING)))
+
             .build();
         LoopUntil task = LoopUntil.builder()
             .id("loop-id")
@@ -181,7 +180,7 @@ class TaskDataPersistenceMappingTest {
                 .displayName("Decision")
                 .required(true)
                 .build()))
-            .outputs(List.of(Output.create("decision", DataType.STRING)))
+
             .duration("P1M")
             .behavior(Pause.Behavior.WARN)
             .build();
@@ -229,10 +228,7 @@ class TaskDataPersistenceMappingTest {
             .key("approval")
             .message(TemplateExpression.parse("test step"))
             .inputs(List.of(definitionInput))
-            .outputs(List.of(Output.create(
-                "decision",
-                DataType.STRING
-            )))
+
             .build();
 
         FlowTaskEntry entry = FlowTaskEntry.from(

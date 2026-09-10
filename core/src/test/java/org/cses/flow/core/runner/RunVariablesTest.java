@@ -5,6 +5,7 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.TestOutputTasks;
 import org.cses.flow.extensions.log.Log;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
@@ -81,6 +82,27 @@ class RunVariablesTest {
         org.junit.jupiter.api.Assertions.assertNull(origin.get("parentId"));
         assertEquals(fixture.execution().id(), origin.get("originId"));
         assertThrows(UnsupportedOperationException.class, () -> origin.put("parentId", "changed"));
+    }
+
+    /** 完成日志任务后省略其 VoidOutput，仍保留具体输出的数据与空业务结果。 */
+    @Test
+    void omitsVoidOutputsWithoutDiscardingConcreteEmptyResults() {
+        Fixture fixture = fixture();
+        fixture.execution().startTaskRun(fixture.rootTaskRun().id());
+        fixture.execution().succeedTaskRun(fixture.rootTaskRun().id(), Map.of());
+
+        Map<String, Object> variables = RunVariables.builder()
+            .flow(fixture.flow())
+            .execution(fixture.execution())
+            .build();
+
+        assertEquals(org.cses.flow.core.domains.flows.State.Type.SUCCESS,
+            fixture.execution().requireTaskRun(fixture.rootTaskRun().id()).state().current());
+        assertFalse(map(variables, "outputs").containsKey("root"));
+        assertEquals(Map.of(
+            "repeat", Map.of("result", "second"),
+            "empty", Map.of()
+        ), variables.get("outputs"));
     }
 
     /** 检查 replay 的表达式身份仍为当前实例，来源指向父实例且变量不可变。 */
@@ -196,14 +218,15 @@ class RunVariablesTest {
     }
 
     /**
-     * Builds one persisted-style Flow and runtime state for variable tests.
+     * 创建带正版本流程及运行记录，包含具体任务的非空与空成功结果。
      *
-     * @return fixture whose Flow has a positive persisted version
+     * @return 相互对应的独立流程、运行实例与任务样本
      */
     private static Fixture fixture() {
         Session<User> session = session();
         Log root = task("root-id", "root");
-        Log repeated = task("repeat-id", "repeat");
+        Task repeated = TestOutputTasks.Result.builder().id("repeat-id").key("repeat").build();
+        Task empty = TestOutputTasks.Result.builder().id("empty-id").key("empty").build();
         Log parent = task("parent-id", "parent");
         Log current = task("current-id", "current");
         Flow transientFlow = Flow.deploy(
@@ -213,7 +236,7 @@ class RunVariablesTest {
             Map.of("environment", "prod"),
             List.of(),
             List.of(),
-            List.of(root, repeated, parent, current),
+            List.of(root, repeated, empty, parent, current),
             "source",
             null
         );
@@ -257,6 +280,7 @@ class RunVariablesTest {
             Map.of(),
             2
         );
+        TaskRun emptyRun = TaskRun.create(empty.id(), rootRun.id(), Map.of());
         TaskRun parentRun = TaskRun.create(
             parent.id(),
             rootRun.id(),
@@ -271,6 +295,7 @@ class RunVariablesTest {
             rootRun,
             first,
             second,
+            emptyRun,
             parentRun,
             currentRun
         ));
@@ -278,6 +303,8 @@ class RunVariablesTest {
         execution.succeedTaskRun(first.id(), Map.of("result", "first"));
         execution.startTaskRun(second.id());
         execution.succeedTaskRun(second.id(), Map.of("result", "second"));
+        execution.startTaskRun(emptyRun.id());
+        execution.succeedTaskRun(emptyRun.id(), Map.of());
         return Fixture.from(
             flow,
             execution,

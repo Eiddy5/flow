@@ -539,21 +539,6 @@ for (TaskRunEntry entry : entries) {
 values.execute();
 ```
 
-带数据库默认值的批量插入：
-
-```java
-var values = dsl
-    .insertInto(QUEUES)
-    .columns(QUEUES.ID, QUEUES.QUEUE_TYPE, QUEUES.QUEUE_NAME,
-        QUEUES.EVENT_KEY, QUEUES.PAYLOAD);
-for (QueueMessageEntry entry : entries) {
-    values.values(
-        entry.getId(), entry.getQueueType(), entry.getQueueName(),
-        entry.getEventKey(), entry.getPayload());
-}
-values.execute();
-```
-
 禁止在批量保存中逐条调用 `insertInto(...).execute()`、使用
 `newRecord().set(...)` 拼接，或使用 `batchInsert`/Record 批处理替代 `VALUES`。读取
 表行仍必须遵守第 10 节的 `fetchOneInto(...)`/`fetchInto(...)` 直映射规则。
@@ -751,8 +736,8 @@ Entry 列表暴露给 Core 调用方。
 - 更新必须显式指定租户、主键或已确认的业务身份。若业务还要求发现同一已有行的
   并发覆盖，由 Repository 根据 ADR 实现技术冲突检查；当前 Execution 使用完整快照 CAS，
   不使用锁定读取，见 [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
-- `lock` 等纯技术并发字段只属于 Schema、Entry 和 Repository 更新条件，不
-  进入 Domain，也不能与业务版本混用。
+- 技术并发版本由 Repository 校验和推进；具体 ADR 允许时可随领域快照携带为
+  持久化元数据，不参与业务规则，也不能与业务版本混用。当前协议见 ADR 0097。
 - `buildUpdateMap()` 自动排除主键，不代表更新语句可以省略主键条件。
 - 使用 CAS 时更新条数必须符合预期；不符合时按持久化协议处理不存在或并发冲突，
   不能静默忽略。

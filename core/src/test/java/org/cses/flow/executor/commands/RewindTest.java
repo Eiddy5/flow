@@ -1,12 +1,14 @@
 package org.cses.flow.executor.commands;
 
-import io.micronaut.json.JsonMapper;
-import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
+import org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.paas.json.JsonFactory;
+import org.paas.json.JsonObject;
+import org.paas.pulsar.JacksonSchema;
 import org.paas.session.Session;
 import org.paas.session.User;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,9 +16,10 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 class RewindTest {
 
+    /** 初始化实际 PAAS Schema 所需的 JSON 绑定组件。 */
     @BeforeAll
     static void initializeJsonMapper() {
-        JsonFactory.instance = JsonMapper.createDefault();
+        PulsarTestEnvironment.initializeJson();
     }
 
     /** 命令往返保留一次分配的新实例身份和退回坐标。 */
@@ -30,31 +33,29 @@ class RewindTest {
                 "退回补充资料"
         );
 
-        QueueMessageEntry entry = QueueMessageEntry.create(
-                "DISPATCH",
-                ExecutionCommand.QUEUE_NAME,
-                command
-        );
+        JacksonSchema<ExecutionCommand> schema = new JacksonSchema<>(ExecutionCommand.class);
+        byte[] encoded = schema.encode(command);
+        JsonObject payload = JsonObject.Parse(new String(encoded, StandardCharsets.UTF_8));
 
-        assertEquals("execution-1", entry.payloadJson().getString(
+        assertEquals("execution-1", payload.getString(
                 "executionId"
         ));
-        assertEquals("pause-run-2", entry.payloadJson().getString(
+        assertEquals("pause-run-2", payload.getString(
                 "sourceTaskRunId"
         ));
-        assertEquals("prepare-run-1", entry.payloadJson().getString(
+        assertEquals("prepare-run-1", payload.getString(
                 "targetTaskRunId"
         ));
-        assertEquals("退回补充资料", entry.payloadJson().getString(
+        assertEquals("退回补充资料", payload.getString(
                 "reason"
         ));
-        assertFalse(entry.payloadJson().has("flowId"));
-        assertFalse(entry.payloadJson().has("flowReversion"));
-        assertFalse(entry.payloadJson().has("dsl"));
+        assertFalse(payload.has("flowId"));
+        assertFalse(payload.has("flowReversion"));
+        assertFalse(payload.has("dsl"));
 
-        ExecutionCommand restored = entry.toEvent(ExecutionCommand.class);
+        ExecutionCommand restored = schema.decode(encoded);
         Rewind restoredRewind = assertInstanceOf(Rewind.class, restored);
-        assertEquals(command.getReplayExecutionId(), entry.payloadJson().getString("replayExecutionId"));
+        assertEquals(command.getReplayExecutionId(), payload.getString("replayExecutionId"));
         org.junit.jupiter.api.Assertions.assertNotEquals(command.getExecutionId(), command.getReplayExecutionId());
         assertEquals(command, restoredRewind);
         assertEquals(ExecutionCommand.Type.REWIND, restoredRewind.getType());

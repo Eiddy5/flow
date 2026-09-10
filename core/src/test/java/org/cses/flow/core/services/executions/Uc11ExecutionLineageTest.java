@@ -217,14 +217,8 @@ class Uc11ExecutionLineageTest {
             tasks:
               - key: prepare
                 type: %s
-                outputs:
-                  - key: token
-                    type: STRING
               - key: target
                 type: %s
-                outputs:
-                  - key: token
-                    type: STRING
               - key: approval
                 type: org.cses.flow.extensions.flow.Pause
                 onPause:
@@ -232,9 +226,6 @@ class Uc11ExecutionLineageTest {
                   type: org.cses.flow.extensions.log.Log
                   message: open approval
                 onResume:
-                  - key: decision
-                    type: STRING
-                outputs:
                   - key: decision
                     type: STRING
               - key: record

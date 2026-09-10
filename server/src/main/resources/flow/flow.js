@@ -1250,13 +1250,12 @@
                         "外部 Resume 表单按 Input 的类型、必填、默认值和约束校验",
                         "添加恢复输入",
                     )
-                    : renderDataListEditor(
-                        "Task 输出",
-                        "task-outputs",
-                        task.outputs,
-                        "每个 Output 使用独立字段定义",
-                        "添加输出",
-                    )}
+                    : `<div class="field"><label>Task 输出</label>
+                        ${taskOutputs(task).length
+                            ? taskOutputs(task).map((output) =>
+                                `<div>${escapeHtml(output.key)} · ${escapeHtml(output.type)}</div>`).join("")
+                            : "无输出字段"}
+                    </div>`}
                 ${task.type === TASK_TYPES.PAUSE
                     ? `<div class="approval-template">
                         <div>
@@ -1303,9 +1302,7 @@
         }
         const parsed = parseRouteExpression(task.route);
         const conditional = parsed?.kind === "condition";
-        const outputs = (Array.isArray(parent.outputs)
-            ? parent.outputs
-            : []).filter(
+        const outputs = taskOutputs(parent).filter(
             (output) =>
                 String(output.type || "STRING").toUpperCase() === "STRING",
         );
@@ -1384,10 +1381,7 @@
                         </small>`
                         : `<div class="route-empty">
                             <span>父任务还没有声明可用于路由的输出。</span>
-                            <button
-                                class="btn btn-ghost"
-                                data-action="add-parent-route-output"
-                            >${icon("plus")} 添加 decision 输出</button>
+
                         </div>`
                     : `<small>
                         ${parent.type === TASK_TYPES.PARALLEL
@@ -2006,7 +2000,7 @@
     }
 
     function renderRouteBuilderFields(modal, parent) {
-        const routeOutputs = (parent?.outputs || []).filter(
+        const routeOutputs = taskOutputs(parent).filter(
             isStringOutput,
         );
         const existingOutput = routeOutputs.find(
@@ -2626,9 +2620,6 @@
                 await loadPluginDetails(selectedTask()?.type);
                 render();
                 break;
-            case "add-parent-route-output":
-                addParentRouteOutput();
-                break;
             case "apply-approval-template":
                 applyApprovalTemplate();
                 break;
@@ -2898,7 +2889,7 @@
             && state.modal.mode === "route"
         ) {
             const parent = taskAtPath(state.modal.parentPath);
-            const output = (parent?.outputs || []).find(
+            const output = taskOutputs(parent).find(
                 (candidate) => candidate.key === element.value,
             ) || { key: element.value, type: "STRING" };
             const values = approvalDecisionValues(output);
@@ -2983,7 +2974,7 @@
             if (branchAValue === branchBValue) {
                 throw new Error("两个 Route 命中值必须不同");
             }
-            const existingOutput = (parent.outputs || []).find(
+            const existingOutput = taskOutputs(parent).find(
                 (output) => output.key === outputKey,
             );
             if (!existingOutput) {
@@ -3048,47 +3039,6 @@
         if (duplicate) {
             throw new Error(`Task key 已存在：${duplicate}`);
         }
-    }
-
-    function ensureRouteOutput(parent, outputKey) {
-        parent.outputs = Array.isArray(parent.outputs)
-            ? parent.outputs
-            : [];
-        const existing = parent.outputs.find(
-            (output) => output.key === outputKey,
-        );
-        if (
-            existing
-            && String(existing.type || "STRING").toUpperCase() !== "STRING"
-        ) {
-            throw new Error(
-                `父任务输出 ${outputKey} 必须是 STRING，当前为 ${existing.type}`,
-            );
-        }
-        if (!existing) {
-            parent.outputs.push({ key: outputKey, type: "STRING" });
-        }
-    }
-
-    function addParentRouteOutput() {
-        const task = selectedTask();
-        const parent = parentTaskForPath(state.selectedPath);
-        if (!task || !parent) {
-            return;
-        }
-        if (parent.type === TASK_TYPES.PAUSE) {
-            showToast(
-                "PAUSE 的恢复数据由 onResume 定义，不能作为 tasks 的父路由输出",
-                true,
-            );
-            return;
-        }
-        const outputKey = uniqueDataKey(parent.outputs, "decision");
-        ensureRouteOutput(parent, outputKey);
-        task.route = routeExpression(outputKey, "APPROVED");
-        markDefinitionChanged();
-        render();
-        showToast(`已为父任务添加 ${outputKey} STRING 输出`);
     }
 
     function createLocalDraft(shouldRender = true) {
@@ -3508,14 +3458,6 @@
                 }
                 task.inputs = Array.isArray(task.inputs) ? task.inputs : [];
                 return task.inputs;
-            case "task-outputs":
-                if (!task) {
-                    return null;
-                }
-                task.outputs = Array.isArray(task.outputs)
-                    ? task.outputs
-                    : [];
-                return task.outputs;
             case "task-resume":
                 if (!task || task.type !== TASK_TYPES.PAUSE) {
                     return null;
@@ -3662,14 +3604,12 @@
 
     function applyPluginDefaults(task, type) {
         if (type === TASK_TYPES.LOG) {
-            task.outputs = [];
             task.tasks = [];
             if (!Object.prototype.hasOwnProperty.call(task, "message")) {
                 task.message = "流程步骤";
             }
         }
         if (type === TASK_TYPES.PAUSE) {
-            task.outputs = [];
             task.tasks = [];
             if (!task.onPause || typeof task.onPause !== "object") {
                 task.onPause = taskDefinition(
@@ -4335,6 +4275,15 @@
         return alternative ? pluginPropertyType(alternative) : "string";
     }
 
+    function taskOutputs(task) {
+        if (!task) {
+            return [];
+        }
+        return task.type === TASK_TYPES.PAUSE
+            ? (task.onResume || [])
+            : (state.pluginDetails.get(task.type)?.outputs || []);
+    }
+
     function taskTypeCode(type) {
         const entry = Object.entries(TASK_TYPES).find(
             ([, className]) => className === type,
@@ -4391,7 +4340,7 @@
         if (!task) {
             return null;
         }
-        const outputs = Array.isArray(task.outputs) ? task.outputs : [];
+        const outputs = taskOutputs(task);
         return (
             approvalDecisionOutput(outputs.filter(isStringOutput))
             || outputs.find(isStringOutput)
@@ -4405,7 +4354,7 @@
         outputKey,
         currentValue,
     ) {
-        const output = (parent?.outputs || []).find(
+        const output = taskOutputs(parent).find(
             (candidate) => candidate.key === outputKey,
         );
         const decisionOutput =
@@ -4772,7 +4721,6 @@
             key,
             type,
             inputs: [],
-            outputs: [],
             route: "DIRECT",
             dependOn: [],
             tasks: [],

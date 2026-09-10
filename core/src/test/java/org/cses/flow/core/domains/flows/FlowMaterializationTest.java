@@ -77,11 +77,7 @@ class FlowMaterializationTest {
                     "tasks", List.of(
                         Map.of(
                             "key", "prepare",
-                            "type", Log.class.getName(), "message", "test step",
-                            "outputs", List.of(Map.of(
-                                "key", "prepared",
-                                "type", "BOOLEAN"
-                            ))
+                            "type", org.cses.flow.core.plugins.TestOutputTasks.Prepared.class.getCanonicalName()
                         ),
                         Map.of(
                             "key", "approval",
@@ -156,11 +152,7 @@ class FlowMaterializationTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "prepare",
-                                "type", Log.class.getName(), "message", "test step",
-                                "outputs", List.of(Map.of(
-                                    "key", "decision",
-                                    "type", "STRING"
-                                ))
+                                "type", org.cses.flow.core.plugins.TestOutputTasks.Decision.class.getCanonicalName()
                             ),
                             Map.of(
                                 "key", "approved-route",
@@ -182,11 +174,7 @@ class FlowMaterializationTest {
                         "maxIterations", 3,
                         "tasks", List.of(Map.of(
                             "key", "check",
-                            "type", Log.class.getName(), "message", "test step",
-                            "outputs", List.of(Map.of(
-                                "key", "status",
-                                "type", "STRING"
-                            ))
+                            "type", org.cses.flow.core.plugins.TestOutputTasks.Status.class.getCanonicalName()
                         ))
                     )
                 )
@@ -403,7 +391,7 @@ class FlowMaterializationTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "parent",
-                                "type", Log.class.getName(), "message", "test step"
+                                "type", org.cses.flow.core.plugins.TestOutputTasks.BooleanApproved.class.getCanonicalName()
                             ),
                             Map.of(
                                 "key", "route",
@@ -433,11 +421,7 @@ class FlowMaterializationTest {
                         "tasks", List.of(
                             Map.of(
                                 "key", "parent",
-                                "type", Log.class.getName(), "message", "test step",
-                                "outputs", List.of(Map.of(
-                                    "key", "approved",
-                                    "type", "BOOLEAN"
-                                ))
+                                "type", org.cses.flow.core.plugins.TestOutputTasks.BooleanApproved.class.getCanonicalName()
                             ),
                             Map.of(
                                 "key", "route",

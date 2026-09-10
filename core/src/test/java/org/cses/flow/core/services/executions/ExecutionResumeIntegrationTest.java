@@ -7,7 +7,7 @@ import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.runner.RunContext;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -492,9 +492,6 @@ class ExecutionResumeIntegrationTest {
                     onResume:
                       - key: decision
                         type: STRING
-                    outputs:
-                      - key: decision
-                        type: STRING
                   - key: explode
                     type: org.cses.flow.core.services.executions.ExecutionResumeIntegrationTest.ThrowingTask
                 """);
@@ -533,10 +530,10 @@ class ExecutionResumeIntegrationTest {
     @SuperBuilder
     @NoArgsConstructor
     public static final class ThrowingTask
-        extends Task implements RunnableTask {
+        extends Task implements RunnableTask<VoidOutput> {
 
         @Override
-        public RunResult run(RunContext context) {
+        public VoidOutput run(RunContext context) {
             throw new IllegalStateException(
                 "execution-resume-worker-failure"
             );

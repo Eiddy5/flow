@@ -69,8 +69,8 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 - 异常继续传播；已完成的其他保存或外部调用不会因为异常自动回滚。
 - Execution 快照、Worker 回调与 Queue 传输边界见
   [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
-  数据库执行入口内部限定加载元数据生命周期，业务使用普通 `find/save`，不启动
-  数据库事务；具体协议见 [ADR 0091](../decisions/0091-hide-repository-cas-behind-save.md)。
+  业务使用普通 `find/save`，版本随对象携带，执行入口不管理 CAS 作用域，也不启动
+  数据库事务；具体协议见 [ADR 0097](../decisions/0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)。
 
 ## Command 规则
 

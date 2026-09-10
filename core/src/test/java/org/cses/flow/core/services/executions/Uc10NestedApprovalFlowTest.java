@@ -7,7 +7,6 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -1033,9 +1032,6 @@ class Uc10NestedApprovalFlowTest {
               onResume:
                 - key: decision
                   type: STRING
-              outputs:
-                - key: decision
-                  type: STRING
             """.formatted(key, preparation.substring(2).indent(-2).indent(4));
     }
 
@@ -1043,42 +1039,56 @@ class Uc10NestedApprovalFlowTest {
      * Builds a real Worker step that publishes the approval results it consumed.
      * @param key record step key
      * @param approvals approval keys to expose as string outputs
-     * @return publishable YAML task with explicitly declared observation outputs
+     * @return 包含明确观察标识的可发布 YAML 任务
      */
     private static String recordYaml(String key, String... approvals) {
-        String outputs = List.of(approvals).stream()
-            .map(approval -> "    - key: " + approval + "\n      type: STRING\n")
-            .collect(Collectors.joining());
         return """
             - key: %s
               type: %s
-              outputs:
-            %s
-            """.formatted(key, ApprovalSnapshot.class.getCanonicalName(), outputs);
+              observed: [%s]
+            """.formatted(key, ApprovalSnapshot.class.getCanonicalName(), String.join(", ", approvals));
     }
 
     /** Records only declared approval decisions from the actual Worker context. */
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static class ApprovalSnapshot extends Task implements RunnableTask {
+    public static class ApprovalSnapshot extends Task implements RunnableTask<ApprovalOutput> {
+        @lombok.Builder.Default
+        private List<String> observed = List.of();
 
         /**
-         * Copies effective approval decisions into visible results without altering the flow.
-         * @param context actual Worker context for this record step
-         * @return declared string results; an unmatched approval is represented by an empty value
+         * 从前置结果读取本样本的审批字段，未命中的已声明审批用空字符串表示。
+         * @param context 当前步骤只读运行上下文
+         * @return 六个明确审批字段组成的输出；未声明字段为空且不序列化
          */
         @Override
-        public RunResult run(RunContext context) {
+        public ApprovalOutput run(RunContext context) {
             Map<?, ?> previous = (Map<?, ?>) context.variables().get("outputs");
-            Map<String, Object> observed = new LinkedHashMap<>();
-            outputs().forEach(output -> {
-                Object result = previous.get(output.getKey());
-                observed.put(output.getKey(), result instanceof Map<?, ?> values
-                    && values.get("decision") != null ? values.get("decision") : "");
-            });
-            return RunResult.success(observed);
+            java.util.Set<String> declared = java.util.Set.copyOf(observed);
+            return ApprovalOutput.from(
+                decision(previous, declared, "first"), decision(previous, declared, "second"),
+                decision(previous, declared, "sibling"), decision(previous, declared, "deep"),
+                decision(previous, declared, "high-review"), decision(previous, declared, "low-review")
+            );
         }
+
+        /**
+         * 读取一个已声明审批的当前决定。
+         * @param previous 只读前置任务结果
+         * @param declared 当前观察步骤声明的只读字段集合
+         * @param key 待读取的审批业务标识
+         * @return 未声明时为空；已声明未命中时为空字符串；否则为决定值
+         */
+        private static String decision(Map<?, ?> previous, java.util.Set<String> declared, String key) {
+            if (!declared.contains(key)) {
+                return null;
+            }
+            Object result = previous.get(key);
+            return result instanceof Map<?, ?> values && values.get("decision") != null
+                ? (String) values.get("decision") : "";
+        }
+
     }
 
     /**
@@ -1232,9 +1242,6 @@ class Uc10NestedApprovalFlowTest {
                     onResume:
                       - key: decision
                         type: STRING
-                    outputs:
-                      - key: decision
-                        type: STRING
                   - key: approved-route
                     type: org.cses.flow.extensions.flow.Route
                     route: '{{ outputs.initial-approval.decision }} == APPROVED'
@@ -1251,9 +1258,6 @@ class Uc10NestedApprovalFlowTest {
                             onResume:
                               - key: decision
                                 type: STRING
-                            outputs:
-                              - key: decision
-                                type: STRING
                           - key: legal-approval
                             type: org.cses.flow.extensions.flow.Pause
                             onPause:
@@ -1261,9 +1265,6 @@ class Uc10NestedApprovalFlowTest {
                               type: org.cses.flow.extensions.log.Log
                               message: "test step"
                             onResume:
-                              - key: decision
-                                type: STRING
-                            outputs:
                               - key: decision
                                 type: STRING
                       - key: record-approved
@@ -1302,9 +1303,6 @@ class Uc10NestedApprovalFlowTest {
                         onResume:
                           - key: decision
                             type: STRING
-                        outputs:
-                          - key: decision
-                            type: STRING
                       - key: first-reviewer
                         type: org.cses.flow.extensions.flow.Pause
                         onPause:
@@ -1312,9 +1310,6 @@ class Uc10NestedApprovalFlowTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: decision
-                            type: STRING
-                        outputs:
                           - key: decision
                             type: STRING
                   - key: second-approval-chain
@@ -1329,9 +1324,6 @@ class Uc10NestedApprovalFlowTest {
                         onResume:
                           - key: decision
                             type: STRING
-                        outputs:
-                          - key: decision
-                            type: STRING
                       - key: second-reviewer
                         type: org.cses.flow.extensions.flow.Pause
                         onPause:
@@ -1341,9 +1333,6 @@ class Uc10NestedApprovalFlowTest {
                         onResume:
                           - key: decision
                             type: STRING
-                        outputs:
-                          - key: decision
-                            type: STRING
               - key: final-approval
                 type: org.cses.flow.extensions.flow.Pause
                 onPause:
@@ -1351,9 +1340,6 @@ class Uc10NestedApprovalFlowTest {
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
                 onResume:
-                  - key: decision
-                    type: STRING
-                outputs:
                   - key: decision
                     type: STRING
               - key: summarize
@@ -1393,9 +1379,6 @@ class Uc10NestedApprovalFlowTest {
                         onResume:
                           - key: decision
                             type: STRING
-                        outputs:
-                          - key: decision
-                            type: STRING
                       - key: material-review
                         type: org.cses.flow.extensions.flow.Pause
                         onPause:
@@ -1403,9 +1386,6 @@ class Uc10NestedApprovalFlowTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: decision
-                            type: STRING
-                        outputs:
                           - key: decision
                             type: STRING
               - key: final-approval
@@ -1417,12 +1397,31 @@ class Uc10NestedApprovalFlowTest {
                 onResume:
                   - key: decision
                     type: STRING
-                outputs:
-                  - key: decision
-                    type: STRING
               - key: approved-record
                 type: org.cses.flow.extensions.log.Log
                 message: "test step"
             """.formatted(key, maxIterations);
+    }
+
+    /** 保存测试流程中六个具体审批的观察结果。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record ApprovalOutput(String first, String second, String sibling, String deep,
+        @com.fasterxml.jackson.annotation.JsonProperty("high-review") String highReview,
+        @com.fasterxml.jackson.annotation.JsonProperty("low-review") String lowReview)
+        implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建本次观察的审批结果；所有参数均只读，未声明时允许为空。
+         * @param first 首个审批决定
+         * @param second 第二个审批决定
+         * @param sibling 同级审批决定
+         * @param deep 深层审批决定
+         * @param highReview 高金额路径决定
+         * @param lowReview 低金额路径决定
+         * @return 保存对应值的新输出
+         */
+        public static ApprovalOutput from(String first, String second, String sibling,
+            String deep, String highReview, String lowReview) {
+            return new ApprovalOutput(first, second, sibling, deep, highReview, lowReview);
+        }
     }
 }

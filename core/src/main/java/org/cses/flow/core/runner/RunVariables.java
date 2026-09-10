@@ -6,6 +6,7 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.plugins.TaskOutputs;
 
 import java.util.*;
 
@@ -208,6 +209,10 @@ public class RunVariables {
             }
         }
 
+        /**
+         * 按任务 key 汇集成功或警告结果，省略声明 VoidOutput 的任务。
+         * @return 新建的结果映射；缺少流程或执行上下文时为空
+         */
         private Map<String, Object> completedTaskOutputs() {
             if (flow == null || execution == null) {
                 return Map.of();
@@ -223,7 +228,9 @@ public class RunVariables {
                                 "TaskRun references a missing Flow Task: "
                                         + completedRun.taskId()
                         ));
-                completed.put(completedTask.key(), completedRun.outputs());
+                if (!TaskOutputs.isVoid(completedTask.getClass())) {
+                    completed.put(completedTask.key(), completedRun.outputs());
+                }
             }
             return completed;
         }

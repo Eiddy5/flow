@@ -79,7 +79,7 @@ class PluginSchemaGeneratorTest {
         assertFalse(properties.containsKey("id"));
         assertTrue(properties.containsKey("key"));
         assertTrue(properties.containsKey("inputs"));
-        assertTrue(properties.containsKey("outputs"));
+        assertFalse(properties.containsKey("outputs"));
         assertFalse(properties.containsKey("route"));
         assertFalse(properties.containsKey("dependOn"));
         assertFalse(properties.containsKey("tasks"));

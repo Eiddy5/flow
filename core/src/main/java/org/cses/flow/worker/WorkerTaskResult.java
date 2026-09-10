@@ -1,7 +1,8 @@
 package org.cses.flow.worker;
 
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.Output;
+import org.cses.flow.core.plugins.TaskOutputs;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -109,15 +110,22 @@ public record WorkerTaskResult(
         );
     }
 
-    static WorkerTaskResult from(
+    /**
+     * 将具体 Output 的业务字段编码为传输映射，状态和错误使用独立信封字段。
+     * @param task 非 null 的投递信息，只读取身份
+     * @param result 非 null 的具体任务结果，只读
+     * @return 新建的结果信封；未声明状态时采用 SUCCESS
+     * @throws IllegalArgumentException 状态、错误或业务输出不合法时抛出
+     */
+    public static WorkerTaskResult from(
         WorkerTask task,
-        RunResult result
+        Output result
     ) {
         return result(
             task,
-            result.targetState(),
-            result.outputs(),
-            result.error()
+            result.state().orElse(State.Type.SUCCESS),
+            TaskOutputs.values(result),
+            result.error().orElse(null)
         );
     }
 

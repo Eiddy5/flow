@@ -10,7 +10,6 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.domains.flows.inputs.StringInput;
-import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -327,16 +326,10 @@ class Uc12BusinessInputsTest {
                     type: %s
                     prefix: TASK
                     defaultValue: ' task-20 '
-                outputs:
-                  - key: value
-                    type: STRING
             %s
               - key: after
                 type: %s
                 expression: '{{ inputs.order }}|{{ outputs.wait.decision }}|{{ inputs.reference }}'
-                outputs:
-                  - key: value
-                    type: STRING
             """.formatted(key, "BUSINESS_CODE", Snapshot.class.getCanonicalName(),
                 "BUSINESS_CODE", pauseYaml().indent(2), Snapshot.class.getCanonicalName());
     }
@@ -358,9 +351,6 @@ class Uc12BusinessInputsTest {
               - key: after
                 type: %s
                 expression: '{{ inputs.order }}'
-                outputs:
-                  - key: value
-                    type: STRING
             """.formatted(key, "BUSINESS_CODE", Snapshot.class.getCanonicalName());
     }
 
@@ -377,9 +367,6 @@ class Uc12BusinessInputsTest {
               - key: after
                 type: %s
                 expression: '{{ outputs.wait.decision }}'
-                outputs:
-                  - key: value
-                    type: STRING
             """.formatted(key, pauseYaml().indent(2), Snapshot.class.getCanonicalName());
     }
 
@@ -398,9 +385,6 @@ class Uc12BusinessInputsTest {
                   required: true
                   prefix: DEC
                   defaultValue: ' dec-30 '
-              outputs:
-                - key: decision
-                  type: STRING
             """.formatted("BUSINESS_CODE");
     }
 
@@ -408,7 +392,7 @@ class Uc12BusinessInputsTest {
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static class Snapshot extends Task implements RunnableTask {
+    public static class Snapshot extends Task implements RunnableTask<SnapshotOutput> {
         private String expression;
 
         /**
@@ -417,14 +401,26 @@ class Uc12BusinessInputsTest {
          * @return the observed string as a declared output
          */
         @Override
-        public RunResult run(RunContext context) {
-            return RunResult.success(Map.of("value", context.render(TemplateExpression.parse(expression))));
+        public SnapshotOutput run(RunContext context) {
+            return SnapshotOutput.from(context.render(TemplateExpression.parse(expression)));
         }
 
         /** @return the configured expression for Task definition equality */
         @Override
         protected Object typeSpecificEqualityState() {
             return expression;
+        }
+    }
+
+    /** 保存此测试任务的具体业务结果。 */
+    public record SnapshotOutput(String value) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建本次运行的业务输出。
+         * @param value 本次运行的只读结果值
+         * @return 包含该值的新输出
+         */
+        public static SnapshotOutput from(String value) {
+            return new SnapshotOutput(value);
         }
     }
 }

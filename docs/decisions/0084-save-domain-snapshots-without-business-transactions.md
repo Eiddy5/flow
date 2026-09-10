@@ -7,7 +7,8 @@ Accepted（2026-09-06），依据宿主 Workflow D02 修复要求。
 不改变 Queue 的传输事务、Flow 版本分配和业务 UC。
 技术版本来源和仓储会话生命周期已由
 [ADR 0086](0086-use-scoped-execution-lock-for-cas.md) 修订；普通 save 的通用 CAS 支持及
-自动清理进一步由 [ADR 0091](0091-hide-repository-cas-behind-save.md) 修订。
+自动清理曾由 ADR 0091 修订，现以
+[ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md) 的对象携带版本为准。
 
 ## 背景
 
@@ -29,8 +30,8 @@ Accepted（2026-09-06），依据宿主 Workflow D02 修复要求。
    Execution 和有序 TaskRun 一次读取、一次 SQL 保存。存储负责字段映射及子集合替换，
    不用 SQL 条件执行状态流转。完整 Map 必须保存显式 NULL，JSON 使用已有生成映射。
 3. Repository 读取技术版本并在保存时比较；过期快照写入失败，父子记录均不改变。
-   当前使用显式 `lock` 和 ADR 0091 的内部元数据生命周期，不再使用 PostgreSQL `xmin`。
-   版本只留在 Entry/Repository，不进入 Execution。
+   当前使用显式 `lock`，不再使用 PostgreSQL `xmin`。
+   版本随 Execution 快照携带，由 CasRepository 校验与回填，不参与业务规则，见 ADR 0097。
 4. Worker 开始前保存领域状态；Worker 返回后重读最新完整领域，再调用领域方法合入结果。
    快照冲突时重新应用已经取得的结果，不能重跑 Worker 或覆盖其他分支的 Resume/Cancel。
 5. 精确 PAUSED TaskRun 在 Execution 为 RUNNING、RESTARTED 或 PAUSED 时都可以恢复；

@@ -1,7 +1,7 @@
 package org.cses.flow.core.plugins;
 
 import io.micronaut.context.annotation.Requires;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.runner.RunContext;
@@ -262,14 +262,14 @@ class PluginRegistryTest {
     )
     @Requires(property = "flow.test.special-plugin", value = "true")
     public static final class SpecialTask
-        extends Task implements RunnableTask, SpecialExtension {
+        extends Task implements RunnableTask<VoidOutput>, SpecialExtension {
 
         public SpecialTask() {
         }
 
         @Override
-        public RunResult run(RunContext context) {
-            return RunResult.success(Map.of());
+        public VoidOutput run(RunContext context) {
+            return VoidOutput.from();
         }
     }
 

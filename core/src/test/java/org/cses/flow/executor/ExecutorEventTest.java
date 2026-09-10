@@ -1,21 +1,25 @@
 package org.cses.flow.executor;
 
-import io.micronaut.json.JsonMapper;
-import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
+import org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.paas.json.JsonFactory;
+import org.paas.json.JsonObject;
+import org.paas.pulsar.JacksonSchema;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
-final class ExecutorEventTest {
+class ExecutorEventTest {
 
+    /** 初始化实际 PAAS Schema 所需的 JSON 绑定组件。 */
     @BeforeAll
     static void initializeJsonMapper() {
-        JsonFactory.instance = JsonMapper.createDefault();
+        PulsarTestEnvironment.initializeJson();
     }
 
+    /** 通过 PAAS Schema 往返执行事件，验证仅传输生命周期身份与事件类型。 */
     @Test
     void persistsOnlyLifecycleIdentityInTheQueuePayload() {
         ExecutorEvent event = ExecutorEvent.from(
@@ -28,28 +32,26 @@ final class ExecutorEventTest {
         assertEquals("company-1", event.companyId());
         assertEquals(ExecutorEvent.EventType.UPDATED, event.eventType());
 
-        QueueMessageEntry entry = QueueMessageEntry.create(
-            "DISPATCH",
-            ExecutorEvent.QUEUE_NAME,
-            event
-        );
+        JacksonSchema<ExecutorEvent> schema = new JacksonSchema<>(ExecutorEvent.class);
+        byte[] encoded = schema.encode(event);
+        JsonObject payload = JsonObject.Parse(new String(encoded, StandardCharsets.UTF_8));
 
         assertEquals(
             "execution-1",
-            entry.payloadJson().getString("executionId")
+            payload.getString("executionId")
         );
         assertEquals(
             "company-1",
-            entry.payloadJson().getString("companyId")
+            payload.getString("companyId")
         );
         assertEquals(
             "UPDATED",
-            entry.payloadJson().getString("eventType")
+            payload.getString("eventType")
         );
-        assertFalse(entry.payloadJson().has("actorId"));
-        assertFalse(entry.payloadJson().has("flowId"));
-        assertFalse(entry.payloadJson().has("taskRunId"));
-        assertFalse(entry.payloadJson().has("outputs"));
-        assertEquals(event, entry.toEvent(ExecutorEvent.class));
+        assertFalse(payload.has("actorId"));
+        assertFalse(payload.has("flowId"));
+        assertFalse(payload.has("taskRunId"));
+        assertFalse(payload.has("outputs"));
+        assertEquals(event, schema.decode(encoded));
     }
 }

@@ -6,7 +6,7 @@ import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.plugins.TaskPluginTestSupport;
 import org.cses.flow.core.runner.RunContext;
 import org.junit.jupiter.api.Test;
@@ -32,7 +32,7 @@ class LogTest {
             ))
             .build();
 
-        RunResult result;
+        VoidOutput result;
         try (logs) {
             result = log.run(context(Map.of(
                 "outputs", Map.of(
@@ -41,8 +41,8 @@ class LogTest {
             )));
         }
 
-        assertEquals(State.Type.SUCCESS, result.targetState());
-        assertEquals(Map.of(), result.outputs());
+        assertEquals(java.util.Optional.empty(), result.state());
+        assertEquals(java.util.Optional.empty(), result.error());
         assertEquals(
             "结果：{{ outputs.prepare.result }}",
             log.message()
@@ -59,17 +59,17 @@ class LogTest {
             .message(TemplateExpression.parse("{{ outputs.missing }}"))
             .build();
 
-        RunResult result;
+        VoidOutput result;
         try (logs) {
             result = log.run(context(Map.of()));
         }
 
-        assertEquals(State.Type.FAILED, result.targetState());
+        assertEquals(State.Type.FAILED, result.state().orElseThrow());
         assertEquals(
             "Log message could not be rendered: "
                 + "Task template expression path is missing: "
                 + "outputs.missing",
-            result.error()
+            result.error().orElseThrow()
         );
         assertEquals(List.of(), logs.messages());
     }

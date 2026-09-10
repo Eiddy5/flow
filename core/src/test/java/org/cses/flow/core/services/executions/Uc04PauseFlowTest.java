@@ -7,7 +7,7 @@ import org.cses.flow.core.domains.executions.Generation;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -255,9 +255,6 @@ class Uc04PauseFlowTest {
                       - key: decision
                         type: STRING
                         required: true
-                    outputs:
-                      - key: decision
-                        type: STRING
                   - key: explode
                     type: org.cses.flow.core.services.executions.Uc04PauseFlowTest.ThrowingTask
                   - key: never-run
@@ -601,10 +598,10 @@ class Uc04PauseFlowTest {
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static class ThrowingTask extends Task implements RunnableTask {
+    public static class ThrowingTask extends Task implements RunnableTask<VoidOutput> {
 
         @Override
-        public RunResult run(RunContext context) {
+        public VoidOutput run(RunContext context) {
             throw new IllegalStateException("uc04-downstream-failure");
         }
     }
@@ -612,14 +609,11 @@ class Uc04PauseFlowTest {
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static class RewindProbeTask extends Task implements RunnableTask {
+    public static class RewindProbeTask extends Task implements RunnableTask<RewindOutput> {
 
         @Override
-        public RunResult run(RunContext context) {
-            return RunResult.success(Map.of(
-                "token",
-                context.taskRunInfo().id()
-            ));
+        public RewindOutput run(RunContext context) {
+            return RewindOutput.from(context.taskRunInfo().id());
         }
     }
 
@@ -771,9 +765,6 @@ class Uc04PauseFlowTest {
                   - key: decision
                     type: STRING
             %s
-                outputs:
-                  - key: decision
-                    type: STRING
               - key: record-result
                 type: org.cses.flow.extensions.log.Log
                 message: "test step"
@@ -787,14 +778,8 @@ class Uc04PauseFlowTest {
             tasks:
               - key: untouched-before
                 type: %s
-                outputs:
-                  - key: token
-                    type: STRING
               - key: recompute
                 type: %s
-                outputs:
-                  - key: token
-                    type: STRING
               - key: wait-confirmation
                 type: org.cses.flow.extensions.flow.Pause
                 onPause:
@@ -802,9 +787,6 @@ class Uc04PauseFlowTest {
                   type: org.cses.flow.extensions.log.Log
                   message: "test step"
                 onResume:
-                  - key: decision
-                    type: STRING
-                outputs:
                   - key: decision
                     type: STRING
               - key: record-result
@@ -824,22 +806,13 @@ class Uc04PauseFlowTest {
             tasks:
               - key: untouched-before
                 type: %s
-                outputs:
-                  - key: token
-                    type: STRING
               - key: recompute
                 type: %s
-                outputs:
-                  - key: token
-                    type: STRING
               - key: nested-fragment
                 type: org.cses.flow.extensions.flow.Sequence
                 tasks:
                   - key: real-child
                     type: %s
-                    outputs:
-                      - key: token
-                        type: STRING
               - key: skipped-path
                 type: org.cses.flow.extensions.flow.Route
                 route: '{{ outputs.recompute.token }} == NEVER_MATCHES'
@@ -856,9 +829,6 @@ class Uc04PauseFlowTest {
                 onResume:
                   - key: decision
                     type: STRING
-                outputs:
-                  - key: decision
-                    type: STRING
               - key: record-result
                 type: org.cses.flow.extensions.log.Log
                 message: "test step"
@@ -868,5 +838,17 @@ class Uc04PauseFlowTest {
                 RewindProbeTask.class.getCanonicalName(),
                 RewindProbeTask.class.getCanonicalName()
             );
+    }
+
+    /** 保存此测试任务的具体业务结果。 */
+    public record RewindOutput(String token) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建本次运行的业务输出。
+         * @param token 本次运行的只读结果值
+         * @return 包含该值的新输出
+         */
+        public static RewindOutput from(String token) {
+            return new RewindOutput(token);
+        }
     }
 }

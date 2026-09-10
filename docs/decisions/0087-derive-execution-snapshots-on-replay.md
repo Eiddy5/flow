@@ -97,7 +97,7 @@ erDiagram
 `task_runs` 只保存本实例首次产生的 TaskRun，继续保留全局 ID 主键及 `execution_id + id` 唯一约束，禁止抢占其他实例的实体身份。
 
 `ExecutionRepository.save(dsl, source, derived)` 将旧根 CAS、旧根子记录、新根 INSERT 和新根子记录组合为一条 SQL。
-旧根 CAS 成功才允许新根 INSERT；新根身份冲突或任意子写失败使整条 SQL 回滚。技术版本由数据库执行入口内部管理（[ADR 0091](0091-hide-repository-cas-behind-save.md)），不新增跨服务事务。
+旧根 CAS 成功才允许新根 INSERT；新根身份冲突或任意子写失败使整条 SQL 回滚。技术版本随对象携带，源根保留加载版本，新派生根初始为 null（[ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)），不新增跨服务事务。
 Worker 和 Queue 继续使用原有边界；数据库提交成功但内部事件发布失败时，同一 Rewind 重投会找到既有新实例并补发信号。
 
 ## 公开接口与历史回放

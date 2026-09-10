@@ -92,17 +92,31 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     }
 
     /**
+     * Setter for <code>public.executions.parent_task_run_id</code>.
+     */
+    public void setParentTaskRunId(String value) {
+        set(5, value);
+    }
+
+    /**
+     * Getter for <code>public.executions.parent_task_run_id</code>.
+     */
+    public String getParentTaskRunId() {
+        return (String) get(5);
+    }
+
+    /**
      * Setter for <code>public.executions.origin_id</code>.
      */
     public void setOriginId(String value) {
-        set(5, value);
+        set(6, value);
     }
 
     /**
      * Getter for <code>public.executions.origin_id</code>.
      */
     public String getOriginId() {
-        return (String) get(5);
+        return (String) get(6);
     }
 
     /**
@@ -110,7 +124,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
      * ][]]
      */
     public void setInheritedTaskRuns(JsonObjects value) {
-        set(6, value);
+        set(7, value);
     }
 
     /**
@@ -118,91 +132,91 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
      * ][]]
      */
     public JsonObjects getInheritedTaskRuns() {
-        return (JsonObjects) get(6);
+        return (JsonObjects) get(7);
     }
 
     /**
      * Setter for <code>public.executions.state</code>.
      */
     public void setState(JSONB value) {
-        set(7, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.executions.state</code>.
      */
     public JSONB getState() {
-        return (JSONB) get(7);
+        return (JSONB) get(8);
     }
 
     /**
      * Setter for <code>public.executions.generation</code>.
      */
     public void setGeneration(JSONB value) {
-        set(8, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.executions.generation</code>.
      */
     public JSONB getGeneration() {
-        return (JSONB) get(8);
+        return (JSONB) get(9);
     }
 
     /**
      * Setter for <code>public.executions.lock</code>.
      */
     public void setLock(Long value) {
-        set(9, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.executions.lock</code>.
      */
     public Long getLock() {
-        return (Long) get(9);
+        return (Long) get(10);
     }
 
     /**
      * Setter for <code>public.executions.creator</code>.
      */
     public void setCreator(JSONB value) {
-        set(10, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.executions.creator</code>.
      */
     public JSONB getCreator() {
-        return (JSONB) get(10);
+        return (JSONB) get(11);
     }
 
     /**
      * Setter for <code>public.executions.created_at</code>.
      */
     public void setCreatedAt(Long value) {
-        set(11, value);
+        set(12, value);
     }
 
     /**
      * Getter for <code>public.executions.created_at</code>.
      */
     public Long getCreatedAt() {
-        return (Long) get(11);
+        return (Long) get(12);
     }
 
     /**
      * Setter for <code>public.executions.inputs</code>.[[before= ][]]
      */
     public void setInputs(JsonObject value) {
-        set(12, value == null ? null : value.toString());
+        set(13, value == null ? null : value.toString());
     }
 
     /**
      * Getter for <code>public.executions.inputs</code>.[[before= ][]]
      */
     public JsonObject getInputs() {
-        return JsonObject.Parse((String) get(12));
+        return JsonObject.Parse((String) get(13));
     }
 
     // -------------------------------------------------------------------------
@@ -228,7 +242,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
     /**
      * Create a detached, initialised ExecutionsRecord
      */
-    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, String parentId, String originId, JsonObjects inheritedTaskRuns, JSONB state, JSONB generation, Long lock, JSONB creator, Long createdAt, JsonObject inputs) {
+    public ExecutionsRecord(String id, String companyId, String flowKey, Long flowVersion, String parentId, String parentTaskRunId, String originId, JsonObjects inheritedTaskRuns, JSONB state, JSONB generation, Long lock, JSONB creator, Long createdAt, JsonObject inputs) {
         super(ExecutionsTable.EXECUTIONS);
 
         setId(id);
@@ -236,6 +250,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         setFlowKey(flowKey);
         setFlowVersion(flowVersion);
         setParentId(parentId);
+        setParentTaskRunId(parentTaskRunId);
         setOriginId(originId);
         setInheritedTaskRuns(inheritedTaskRuns);
         setState(state);
@@ -260,6 +275,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
             setFlowKey(value.flowKey);
             setFlowVersion(value.flowVersion);
             setParentId(value.parentId);
+            setParentTaskRunId(value.parentTaskRunId);
             setOriginId(value.originId);
             setInheritedTaskRuns(value.inheritedTaskRuns);
             setState(value.state);
@@ -278,6 +294,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         object.flowKey = getFlowKey();
         object.flowVersion = getFlowVersion();
         object.parentId = getParentId();
+        object.parentTaskRunId = getParentTaskRunId();
         object.originId = getOriginId();
         object.inheritedTaskRuns = getInheritedTaskRuns();
         object.state = getState();
@@ -301,6 +318,7 @@ public class ExecutionsRecord extends UpdatableRecordImpl<ExecutionsRecord> {
         pojo.flowKey = getFlowKey();
         pojo.flowVersion = getFlowVersion();
         pojo.parentId = getParentId();
+        pojo.parentTaskRunId = getParentTaskRunId();
         pojo.originId = getOriginId();
         pojo.inheritedTaskRuns = getInheritedTaskRuns();
         pojo.state = getState();

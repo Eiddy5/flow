@@ -124,8 +124,25 @@ public class Pause extends Task implements OrchestrationTask<Pause.Output>, Mode
         return onPause == null ? List.of() : List.of(onPause);
     }
 
+    /** @return true，使 Executor 在前置任务完成后等待外部恢复 */
+    @Override
+    public boolean pausesTaskRun() {
+        return true;
+    }
+
     /**
-     * 按 onResume 声明收集每个 Input 自行绑定的回调值，独立于 Task.outputs。
+     * 从恢复输入声明提供 Pause 的动态输出字段，值由外部恢复产生。
+     * @return 新建的不可变字段映射，不接受单独的 outputs 配置
+     */
+    @Override
+    protected Map<String, Class<?>> outputFields() {
+        Map<String, Class<?>> fields = new LinkedHashMap<>();
+        onResume().forEach(input -> fields.put(input.getKey(), input.getValueType().getValueClass()));
+        return Map.copyOf(fields);
+    }
+
+    /**
+     * 按 onResume 声明收集每个 Input 自行绑定的回调值。
      * @param actualInputs 非 null 的只读提交映射，允许显式 null 值
      * @return 不可变结果映射，保留显式提交的 null，省略缺失且未绑定到值的字段
      * @throws WorkflowException 当提交映射为空引用、存在未声明字段或 Input 绑定失败时抛出

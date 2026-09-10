@@ -21,7 +21,6 @@ import org.cses.flow.core.serializers.JacksonMapper;
 import org.cses.flow.core.serializers.YamlParser;
 import org.cses.flow.core.validations.ModelValidator;
 import org.cses.flow.extensions.log.Log;
-import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.jooq.DSLContext;
 import org.jooq.Result;
 import org.jooq.SQLDialect;
@@ -162,7 +161,7 @@ public class FlowQueryProbe {
     }
 
     /**
-     * 在同一仓储会话中统计首次保存与 CAS 更新的 SQL 规模。
+     * 使用普通 save 统计首次保存与对象版本 CAS 更新的 SQL 规模。
      * @param session 测试身份
      * @param count 子记录数量
      */
@@ -172,24 +171,20 @@ public class FlowQueryProbe {
         for (int index = 0; index < count; index++) runs.add(org.cses.flow.core.domains.executions.TaskRun.create("task-" + index, null, Map.of()));
         execution.startWithTaskRuns(runs);
         DSLContext records = FlowJooqTestConfiguration.configure(DSL.using(SQLDialect.POSTGRES));
-        var id = org.flow.gen.flow.Tables.EXECUTIONS.ID;
         var lock = org.flow.gen.flow.Tables.EXECUTIONS.LOCK;
         long[] savedLock = {-1L};
         MockConnection connection = new MockConnection(context -> {
             System.out.println("PROBE execution.snapshot taskRuns=" + count + " sql=1 sqlChars=" + context.sql().length()
                 + " bindings=" + context.bindings().length);
-            var result = records.newResult(id, lock);
-            result.add(records.newRecord(id, lock).values(execution.id(), ++savedLock[0]));
+            var result = records.newResult(lock);
+            result.add(records.newRecord(lock).values(++savedLock[0]));
             return new MockResult[]{new MockResult(1, result)};
         });
         var dsl = FlowJooqTestConfiguration.configure(DSL.using(connection, SQLDialect.POSTGRES));
         var repository = new org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl();
-        FlowDatabase.execute(dsl, scoped -> {
-            repository.save(scoped, execution);
-            execution.startTaskRun(runs.get(0).id());
-            repository.save(scoped, execution);
-            return null;
-        });
+        repository.save(dsl, execution);
+        execution.startTaskRun(runs.get(0).id());
+        repository.save(dsl, execution);
     }
 
     private static <T> T run(JooqRunnableResult<T> callback, JooqDSLContext dsl) {

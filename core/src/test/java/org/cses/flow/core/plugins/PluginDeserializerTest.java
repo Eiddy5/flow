@@ -58,6 +58,10 @@ class PluginDeserializerTest {
         assertFalse(serialized.containsKey("pause"));
         assertFalse(serialized.containsKey("resume"));
         assertEquals(pause, context.jacksonMapper().convertValue(serialized, Task.class));
+        Map<String, Object> configuredOutputs = new java.util.LinkedHashMap<>(serialized);
+        configuredOutputs.put("outputs", List.of(Map.of("key", "decision", "type", "STRING")));
+        assertThrows(IllegalArgumentException.class,
+            () -> context.jacksonMapper().convertValue(configuredOutputs, Task.class));
         for (String oldField : List.of("pause", "resume")) {
             Map<String, Object> obsolete = new java.util.LinkedHashMap<>(serialized);
             String newField = oldField.equals("pause") ? "onPause" : "onResume";

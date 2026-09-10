@@ -18,14 +18,15 @@ import java.util.Objects;
  * All other fields are transient deltas produced during this cycle; the
  * context itself is never persisted.</p>
  */
-public final class ExecutorContext {
+public class ExecutorContext {
 
-    private final Execution execution;
-    private final Flow flow;
-    private final List<TaskRun> nexts;
-    private final List<WorkerTask> workerTasks;
-    private final List<String> orchestrationCompletions;
-    private final List<State.Type> states;
+    private Execution execution;
+    private Flow flow;
+    private List<TaskRun> nexts;
+    private List<WorkerTask> workerTasks;
+    private List<String> orchestrationCompletions;
+    private List<State.Type> states;
+    private List<String> subFlowTaskRuns = new ArrayList<>();
     private boolean executionUpdated;
 
     public ExecutorContext(Flow flow, Execution execution) {
@@ -103,6 +104,21 @@ public final class ExecutorContext {
             workerTask,
             "workerTask"
         ));
+    }
+
+    /**
+     * 暂存需要创建独立子运行的调用节点。
+     * @param taskRunId 当前 CREATED 调用节点编号
+     */
+    void stageSubFlow(String taskRunId) {
+        subFlowTaskRuns.add(taskRunId);
+    }
+
+    /** @return 消费本周期的子流程启动计划，返回后计划清空 */
+    public List<String> takeSubFlows() {
+        List<String> staged = List.copyOf(subFlowTaskRuns);
+        subFlowTaskRuns.clear();
+        return staged;
     }
 
     void stageWorkerTasks(List<WorkerTask> plannedWorkerTasks) {

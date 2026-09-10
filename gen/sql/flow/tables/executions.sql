@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS executions (
     flow_key         varchar(128) NOT NULL,
     flow_version      bigint NOT NULL,
     parent_id        varchar(64),
+    parent_task_run_id varchar(64),
     origin_id        varchar(64) NOT NULL,
     inherited_task_runs jsonb NOT NULL DEFAULT '[]'::jsonb,
     state            jsonb NOT NULL,

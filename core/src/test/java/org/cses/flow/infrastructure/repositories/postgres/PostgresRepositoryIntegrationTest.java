@@ -17,7 +17,6 @@ import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.extensions.flow.Route;
-import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.exception.DataChangedException;
@@ -341,39 +340,37 @@ class PostgresRepositoryIntegrationTest {
 
         DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
         direct.configuration().data(Session.class, actorSession);
-        FlowDatabase.execute(direct, scoped -> {
-            ExecutionRepositoryImpl firstWriter = new ExecutionRepositoryImpl();
-            ExecutionRepositoryImpl secondWriter = new ExecutionRepositoryImpl();
-            Execution staleFirst = firstWriter.findById(scoped, companyId, execution.id()).orElseThrow();
-            Execution staleSecond = secondWriter.findById(scoped, companyId, execution.id()).orElseThrow();
-            staleFirst.beginKilling();
-            staleFirst.killUnfinishedTaskRuns();
-            staleSecond.succeedTaskRun(execution.taskRuns().getFirst().id(), Map.of("approved", "stale"));
-            firstWriter.save(scoped, staleFirst);
+        DSLContext scoped = direct;
+        ExecutionRepositoryImpl firstWriter = new ExecutionRepositoryImpl();
+        ExecutionRepositoryImpl secondWriter = new ExecutionRepositoryImpl();
+        Execution staleFirst = firstWriter.findById(scoped, companyId, execution.id()).orElseThrow();
+        Execution staleSecond = secondWriter.findById(scoped, companyId, execution.id()).orElseThrow();
+        staleFirst.beginKilling();
+        staleFirst.killUnfinishedTaskRuns();
+        staleSecond.succeedTaskRun(execution.taskRuns().getFirst().id(), Map.of("approved", "stale"));
+        firstWriter.save(scoped, staleFirst);
 
-            assertThrows(DataChangedException.class, () -> secondWriter.save(scoped, staleSecond));
-            Execution retained = secondWriter.findById(scoped, companyId, execution.id()).orElseThrow();
-            assertEquals(staleFirst.state(), retained.state());
-            assertEquals(staleFirst.taskRuns().stream().map(TaskRun::id).toList(),
-                    retained.taskRuns().stream().map(TaskRun::id).toList());
-            assertEquals(staleFirst.taskRuns().stream().map(TaskRun::state).toList(),
-                    retained.taskRuns().stream().map(TaskRun::state).toList());
-            assertEquals(staleFirst.taskRuns().stream().map(TaskRun::inputs).toList(),
-                    retained.taskRuns().stream().map(TaskRun::inputs).toList());
-            assertEquals(staleFirst.taskRuns().stream().map(TaskRun::outputs).toList(),
-                    retained.taskRuns().stream().map(TaskRun::outputs).toList());
+        assertThrows(DataChangedException.class, () -> secondWriter.save(scoped, staleSecond));
+        Execution retained = secondWriter.findById(scoped, companyId, execution.id()).orElseThrow();
+        assertEquals(staleFirst.state(), retained.state());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::id).toList(),
+                retained.taskRuns().stream().map(TaskRun::id).toList());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::state).toList(),
+                retained.taskRuns().stream().map(TaskRun::state).toList());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::inputs).toList(),
+                retained.taskRuns().stream().map(TaskRun::inputs).toList());
+        assertEquals(staleFirst.taskRuns().stream().map(TaskRun::outputs).toList(),
+                retained.taskRuns().stream().map(TaskRun::outputs).toList());
 
-            retained.finishKilling();
-            secondWriter.save(scoped, retained);
-            Execution completed = firstWriter.findById(scoped, companyId, execution.id()).orElseThrow();
-            assertEquals(State.Type.KILLED, completed.state().current());
-            assertEquals(retained.taskRuns().stream().map(TaskRun::id).toList(),
-                    completed.taskRuns().stream().map(TaskRun::id).toList());
-            assertEquals(retained.taskRuns().stream().map(TaskRun::state).toList(),
-                    completed.taskRuns().stream().map(TaskRun::state).toList());
-            assertTrue(completed.unfinishedTaskRuns().isEmpty());
-            return null;
-        });
+        retained.finishKilling();
+        secondWriter.save(scoped, retained);
+        Execution completed = firstWriter.findById(scoped, companyId, execution.id()).orElseThrow();
+        assertEquals(State.Type.KILLED, completed.state().current());
+        assertEquals(retained.taskRuns().stream().map(TaskRun::id).toList(),
+                completed.taskRuns().stream().map(TaskRun::id).toList());
+        assertEquals(retained.taskRuns().stream().map(TaskRun::state).toList(),
+                completed.taskRuns().stream().map(TaskRun::state).toList());
+        assertTrue(completed.unfinishedTaskRuns().isEmpty());
     }
 
     /**
@@ -384,73 +381,71 @@ class PostgresRepositoryIntegrationTest {
     @Test
     void childSaveFailureDoesNotPersistHalfAnAggregateWithoutCallerTransaction() {
         DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
-        FlowDatabase.execute(direct, dsl -> {
-            dsl.configuration().data(Session.class, session());
-            Flow rejectedFlow = plugins.deploy(
-                    companyId,
-                    "atomic-flow",
-                    Map.of(
-                            "key", "atomic-flow",
-                            "tasks", List.of(Map.of(
-                                    "key", "x".repeat(FLOW_TASKS.KEY.getDataType().length() + 1),
-                                    "type", org.cses.flow.extensions.log.Log.class.getName(),
-                                    "message", "test step"
-                            ))
-                    ),
-                    null,
-                    ActorRef.create("repository-user", "Repository Test"),
-                    1_785_312_000_000L
-            );
+        DSLContext dsl = direct;
+        dsl.configuration().data(Session.class, session());
+        Flow rejectedFlow = plugins.deploy(
+                companyId,
+                "atomic-flow",
+                Map.of(
+                        "key", "atomic-flow",
+                        "tasks", List.of(Map.of(
+                                "key", "x".repeat(FLOW_TASKS.KEY.getDataType().length() + 1),
+                                "type", org.cses.flow.extensions.log.Log.class.getName(),
+                                "message", "test step"
+                        ))
+                ),
+                null,
+                ActorRef.create("repository-user", "Repository Test"),
+                1_785_312_000_000L
+        );
 
-            assertThrows(WorkflowException.class, () -> flowRepository.save(dsl, rejectedFlow));
-            assertEquals(0, dsl.fetchCount(FLOWS,
-                    FLOWS.COMPANY_ID.eq(companyId).and(FLOWS.KEY.eq(rejectedFlow.key()))));
-            assertEquals(0, dsl.fetchCount(FLOW_TASKS,
-                    FLOW_TASKS.COMPANY_ID.eq(companyId).and(FLOW_TASKS.FLOW_KEY.eq(rejectedFlow.key()))));
+        assertThrows(WorkflowException.class, () -> flowRepository.save(dsl, rejectedFlow));
+        assertEquals(0, dsl.fetchCount(FLOWS,
+                FLOWS.COMPANY_ID.eq(companyId).and(FLOWS.KEY.eq(rejectedFlow.key()))));
+        assertEquals(0, dsl.fetchCount(FLOW_TASKS,
+                FLOW_TASKS.COMPANY_ID.eq(companyId).and(FLOW_TASKS.FLOW_KEY.eq(rejectedFlow.key()))));
 
-            String oversizedTaskId = "x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1);
-            Execution rejected = Execution.create(
-                    null, session(), "atomic-create", 1L, Map.of("request", "new")
-            );
-            rejected.start();
-            rejected.createTaskRun(StringUtil.newId(), null, Map.of("step", "valid"));
-            rejected.createTaskRun(oversizedTaskId, null, Map.of());
+        String oversizedTaskId = "x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1);
+        Execution rejected = Execution.create(
+                null, session(), "atomic-create", 1L, Map.of("request", "new")
+        );
+        rejected.start();
+        rejected.createTaskRun(StringUtil.newId(), null, Map.of("step", "valid"));
+        rejected.createTaskRun(oversizedTaskId, null, Map.of());
 
-            assertThrows(WorkflowException.class, () -> executionRepository.save(dsl, rejected));
-            assertTrue(executionRepository.findById(dsl, companyId, rejected.id()).isEmpty());
-            assertEquals(0, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(rejected.id())));
+        assertThrows(WorkflowException.class, () -> executionRepository.save(dsl, rejected));
+        assertTrue(executionRepository.findById(dsl, companyId, rejected.id()).isEmpty());
+        assertEquals(0, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(rejected.id())));
 
-            Execution original = Execution.create(
-                    null, session(), "atomic-update", 1L, Map.of("request", "existing")
-            );
-            original.start();
-            TaskRun originalRun = original.createTaskRun(
-                    StringUtil.newId(), null, Map.of("step", "original")
-            );
-            original.startTaskRun(originalRun.id());
-            executionRepository.save(dsl, original);
-            Execution changed = executionRepository.findById(dsl, companyId, original.id())
-                    .orElseThrow();
-            changed.createTaskRun(oversizedTaskId, null, Map.of());
-            changed.beginKilling();
-            changed.killUnfinishedTaskRuns();
-            changed.finishKilling();
+        Execution original = Execution.create(
+                null, session(), "atomic-update", 1L, Map.of("request", "existing")
+        );
+        original.start();
+        TaskRun originalRun = original.createTaskRun(
+                StringUtil.newId(), null, Map.of("step", "original")
+        );
+        original.startTaskRun(originalRun.id());
+        executionRepository.save(dsl, original);
+        Execution changed = executionRepository.findById(dsl, companyId, original.id())
+                .orElseThrow();
+        changed.createTaskRun(oversizedTaskId, null, Map.of());
+        changed.beginKilling();
+        changed.killUnfinishedTaskRuns();
+        changed.finishKilling();
 
-            assertThrows(WorkflowException.class, () -> executionRepository.save(dsl, changed));
-            Execution retained = executionRepository.findById(dsl, companyId, original.id())
-                    .orElseThrow();
-            assertEquals(original.state(), retained.state());
-            assertEquals(original.inputs(), retained.inputs());
-            assertEquals(List.of(originalRun.id()), retained.taskRuns().stream().map(TaskRun::id).toList());
-            assertEquals(originalRun.state(), retained.requireTaskRun(originalRun.id()).state());
-            assertEquals(originalRun.inputs(), retained.requireTaskRun(originalRun.id()).inputs());
-            assertEquals(originalRun.outputs(), retained.requireTaskRun(originalRun.id()).outputs());
-            assertEquals(1, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(original.id())));
-            assertEquals(0L, dsl.select(EXECUTIONS.LOCK).from(EXECUTIONS)
-                    .where(EXECUTIONS.COMPANY_ID.eq(companyId)).and(EXECUTIONS.ID.eq(original.id()))
-                    .fetchOne(EXECUTIONS.LOCK));
-            return null;
-        });
+        assertThrows(WorkflowException.class, () -> executionRepository.save(dsl, changed));
+        Execution retained = executionRepository.findById(dsl, companyId, original.id())
+                .orElseThrow();
+        assertEquals(original.state(), retained.state());
+        assertEquals(original.inputs(), retained.inputs());
+        assertEquals(List.of(originalRun.id()), retained.taskRuns().stream().map(TaskRun::id).toList());
+        assertEquals(originalRun.state(), retained.requireTaskRun(originalRun.id()).state());
+        assertEquals(originalRun.inputs(), retained.requireTaskRun(originalRun.id()).inputs());
+        assertEquals(originalRun.outputs(), retained.requireTaskRun(originalRun.id()).outputs());
+        assertEquals(1, dsl.fetchCount(TASK_RUNS, TASK_RUNS.EXECUTION_ID.eq(original.id())));
+        assertEquals(0L, dsl.select(EXECUTIONS.LOCK).from(EXECUTIONS)
+                .where(EXECUTIONS.COMPANY_ID.eq(companyId)).and(EXECUTIONS.ID.eq(original.id()))
+                .fetchOne(EXECUTIONS.LOCK));
     }
 
     /**
@@ -920,16 +915,12 @@ class PostgresRepositoryIntegrationTest {
                         "tasks", List.of(
                                 Map.of(
                                         "key", taskKey,
-                                        "type", org.cses.flow.extensions.log.Log.class.getName(), "message", "test step",
+                                        "type", org.cses.flow.core.plugins.TestOutputTasks.Approved.class.getCanonicalName(),
                                         "inputs", List.of(Map.of(
                                                 "key", "request",
                                                 "type", "STRING",
                                                 "displayName", "Request",
                                                 "required", false
-                                        )),
-                                        "outputs", List.of(Map.of(
-                                                "key", "approved",
-                                                "type", "STRING"
                                         ))
                                 ),
                                 Map.of(
@@ -1021,27 +1012,25 @@ class PostgresRepositoryIntegrationTest {
                     DSL.using(connection, SQLDialect.POSTGRES)
             );
             dsl.configuration().data(Session.class, session());
-            return FlowDatabase.execute(dsl, scoped -> {
-                try {
-                    T result = operation.apply(scoped);
-                    if (write) {
-                        connection.commit();
-                    } else {
-                        connection.rollback();
-                    }
-                    return result;
-                } catch (Exception exception) {
-                    try {
-                        connection.rollback();
-                    } catch (java.sql.SQLException rollback) {
-                        exception.addSuppressed(rollback);
-                    }
-                    if (exception instanceof RuntimeException runtimeException) {
-                        throw runtimeException;
-                    }
-                    throw new IllegalStateException("PostgreSQL transaction failed", exception);
+            try {
+                T result = operation.apply(dsl);
+                if (write) {
+                    connection.commit();
+                } else {
+                    connection.rollback();
                 }
-            });
+                return result;
+            } catch (Exception exception) {
+                try {
+                    connection.rollback();
+                } catch (java.sql.SQLException rollback) {
+                    exception.addSuppressed(rollback);
+                }
+                if (exception instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                throw new IllegalStateException("PostgreSQL transaction failed", exception);
+            }
         } catch (Exception exception) {
             if (exception instanceof RuntimeException runtimeException) {
                 throw runtimeException;

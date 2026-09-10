@@ -254,6 +254,17 @@ public class TaskRun implements Identified {
         state = state.running();
     }
 
+    /**
+     * 记录已绑定的调用输入后启动本次运行。
+     * @param boundInputs 非 null 的已校验参数，复制保存
+     * @throws org.cses.flow.core.exceptions.WorkflowException 当前不是 CREATED 时抛出
+     */
+    void start(Map<String, ?> boundInputs) {
+        requireState(State.Type.CREATED);
+        inputs = immutableMap(boundInputs);
+        state = state.running();
+    }
+
     void pause() {
         requireState(State.Type.RUNNING);
         state = state.paused();

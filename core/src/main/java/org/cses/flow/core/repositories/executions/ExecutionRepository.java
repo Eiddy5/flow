@@ -22,20 +22,19 @@ public interface ExecutionRepository {
     long count(DSLContext dsl, String companyId);
 
     /**
-     * 原子保存完整聚合；已有行使用本次数据库操作加载的原对象，内部检查加载版本。
+     * 原子保存完整聚合并回填 lock；已有快照或其副本必须保留查询时版本。
      *
-     * @param dsl 执行入口提供的上下文，调用方无需单独管理 CAS 会话
-     * @param execution 已完成业务修改的完整聚合
+     * @param dsl 调用方数据库上下文，无需 CAS 会话
+     * @param execution 已完成业务修改的完整聚合；事务回滚后应丢弃并重读
      * @throws org.jooq.exception.DataChangedException 加载快照已过期或缺少已有行的加载版本
-     * @throws IllegalStateException 数据库操作未建立或已经结束
      */
     void save(DSLContext dsl, Execution execution);
     /**
-     * Atomically stores a changed source and one new derived Execution.
-     * @param dsl managed database operation used to load the source
-     * @param source loaded source after its transition
-     * @param derived new snapshot created from that source
-     * @throws org.jooq.exception.DataChangedException when the source snapshot is stale
+     * 原子保存变更后的源与新派生 Execution，成功后回填双方版本。
+     * @param dsl 调用方数据库上下文
+     * @param source 携带查询时版本的源对象
+     * @param derived 新派生对象，lock 为 null
+     * @throws org.jooq.exception.DataChangedException 源快照陈旧或新建/更新版本不符合要求
      */
     void save(DSLContext dsl, Execution source, Execution derived);
 

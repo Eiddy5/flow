@@ -3,8 +3,6 @@ package org.cses.flow.infrastructure.jooq;
 import com.zaxxer.hikari.util.DriverDataSource;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
-import org.cses.flow.executor.commands.ExecutionCommand;
-import org.cses.flow.executor.ExecutorEvent;
 import org.x9.jooq.JOOQ;
 import org.x9.jooq.intf.JooqRunnable;
 import org.x9.jooq.intf.JooqRunnableResult;
@@ -18,7 +16,6 @@ import java.util.Properties;
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 import static org.flow.gen.flow.Tables.FLOWS;
-import static org.flow.gen.flow.Tables.QUEUES;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
 
 /**
@@ -113,19 +110,12 @@ public class PostgresJooqTestAdapter extends JOOQ {
         });
     }
 
+    /**
+     * 删除指定测试租户的流程定义与运行数据，不操作 Broker 消息。
+     * @param companyId 本次测试创建的租户标识；不得传入其他租户
+     */
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
-            dsl.deleteFrom(QUEUES)
-                .where(QUEUES.QUEUE_NAME.in(
-                    ExecutionCommand.QUEUE_NAME,
-                    ExecutorEvent.QUEUE_NAME
-                ))
-                .and(DSL.field(
-                    "{0} ->> 'companyId'",
-                    String.class,
-                    QUEUES.PAYLOAD
-                ).eq(companyId))
-                .execute();
             dsl.deleteFrom(TASK_RUNS)
                 .where(TASK_RUNS.EXECUTION_ID.in(
                     dsl.select(EXECUTIONS.ID)

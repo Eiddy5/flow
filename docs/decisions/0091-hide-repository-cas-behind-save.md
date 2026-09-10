@@ -2,6 +2,9 @@
 
 ## 状态
 
+已由 [ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md) 替代：
+保留普通 save，删除缓存与执行作用域，改为对象携带 lock 并继承 CAS 仓储。以下保留历史背景。
+
 Accepted（2026-09-09）。修订 ADR 0086 的公开会话接口及元数据生命周期，保留
 ADR 0084 的无业务长事务边界和 ADR 0087 的新旧 Execution 单 SQL 交接。
 

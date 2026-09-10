@@ -83,10 +83,16 @@ Input 定义建立时即有效，建立后不再修改。所属定义管理字�
 属于 TaskRun。
 _Avoid_: Concrete Input, Input value, request DTO, untyped input Map
 
-**Output**:
-直接实现 Data、由 Flow 或 Task 持有的具体输出定义对象，以 `key` 和独立
-Data Type 描述所属定义可以产生并交给下游的数据；实际输出值属于 TaskRun。
-_Avoid_: Output interface, Output value, response DTO
+**Flow Output**:
+由 Flow 持有的输出定义，以 key 和 DataType 声明流程级结果结构；继续使用 flows.Output。
+_Avoid_: Task runtime result
+
+**Task Output**:
+具体 Task 代码通过 RunnableTask<T> 或 OrchestrationTask<T> 声明的结果类型，T 实现
+ tasks.Output。该类型的字段定义结果结构，实例承载本次运行值；state/error 为控制
+信息，不进入业务字段。Task 不接受流程配置的 outputs 列表。运行结果保存到 TaskRun，
+由 RunVariables 按原作用域构建后续 RunContext；见 ADR 0095。
+_Avoid_: RunResult, configurable Task outputs, writable shared RunContext
 
 **Task**:
 Flow 定义中不可分割的流程步骤定义；其领域字段 `id` 在正式 reversion 间保持稳定，
@@ -281,13 +287,16 @@ _Avoid_: Activity, Task instance
 `RUNNING` 并无条件执行完整 pause 子树，收敛后才使 Pause TaskRun 进入
 `PAUSED`；Execution 始终保持 `RUNNING`。`pause` 只表示暂停前必须完整执行的
 专有 Task，并通过 `definitionChildren()` 纳入定义树；Pause 直接继承 Task，不拥有
-Branch 的普通 `tasks`。Pause 的 `outputs` 直接使用
-Task 的普通可配置输出契约；`resume` 只定义外部回调输入，不从 resume 派生 outputs，
-也不要求两者字段一致。它不定义审批人、表单、工单或其他外部业务规则。
+Branch 的普通 `tasks`。Pause 的回调字段由 `onResume` 定义，输出元数据从该声明派生；
+恢复后的实际值保留在 Pause TaskRun 中，不再单独配置 Task.outputs。它不定义审批人、表单、工单或其他外部业务规则。
 _Avoid_: Approval Task, User Task, Assignment, External Task
 
+**SubFlow**:
+Flow 中沿用统一任务输入定义的子流程调用步骤。每次调用产生独立的 Execution，该运行保留自身进度和历史，并通过 Execution Origin 追溯到发起调用的运行及最初来源。子运行的 parentTaskRunId 标识发起调用的精确节点；父调用等待子终态后接收其结果。
+_Avoid_: inline task group, shared Execution
+
 **Execution Origin**:
-一次运行的直接父运行编号与整棵派生树最初运行编号组成的来源关系。首次运行没有父运行，后续每次派生指向直接来源，并沿用最初运行编号。
+一次运行的直接父运行编号与整棵来源树最初运行编号组成的来源关系。首次运行没有父运行，SubFlow 调用或退回产生的新运行指向发起它的运行，并沿用最初运行编号。
 _Avoid_: execution generation number, task parent, mutable current execution pointer
 
 **Inherited TaskRun**:

@@ -562,7 +562,7 @@ public class FlowModels {
             Pause pauseTask = task instanceof Pause candidate
                 ? candidate
                 : null;
-            Branch branch = task instanceof Branch candidate
+            Branch<?> branch = task instanceof Branch<?> candidate
                 ? candidate
                 : null;
             Route route = task instanceof Route candidate
@@ -677,6 +677,8 @@ public class FlowModels {
 
         String id;
         OriginView origin;
+        String parentTaskRunId;
+        Map<String, Object> inputs;
         List<String> inheritedTaskRunIds;
         List<String> effectiveTaskRunIds;
         String flowKey;
@@ -689,12 +691,14 @@ public class FlowModels {
         List<TaskRunView> taskRuns;
 
         /**
-         * Projects one complete snapshot without changing or executing any Task.
-         * @param execution source domain snapshot
+         * 投影完整运行、输入及精确调用关联，不改变运行事实。
+         * @param execution 只读的完整运行快照
          */
         private ExecutionView(Execution execution) {
             this.id = execution.id();
             this.origin = OriginView.from(execution.origin());
+            this.parentTaskRunId = execution.parentTaskRunId();
+            this.inputs = execution.inputs();
             this.inheritedTaskRunIds = execution.inheritedTaskRuns().stream().map(TaskRun::id).toList();
             this.effectiveTaskRunIds = execution.effectiveTaskRuns().stream().map(TaskRun::id).toList();
             this.flowKey = execution.flowKey();

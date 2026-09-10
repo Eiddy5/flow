@@ -18,7 +18,7 @@ public record WorkerTask(
     String executionId,
     String taskRunId,
     Optional<String> parentTaskRunId,
-    RunnableTask runnableTask,
+    RunnableTask<?> runnableTask,
     Map<String, Object> variables
 ) {
 
@@ -53,11 +53,20 @@ public record WorkerTask(
         );
     }
 
+    /**
+     * 创建携带具体输出类型任务的 Worker 投递信封。
+     * @param executionId 非 null 的执行身份
+     * @param taskRunId 非 null 的任务运行身份
+     * @param parentTaskRunId 非 null 的可选父任务运行身份
+     * @param runnableTask 非 null 的可执行任务，只读
+     * @param variables 非 null 的运行变量，将复制为不可变快照
+     * @return 新建的投递信封
+     */
     public static WorkerTask from(
         String executionId,
         String taskRunId,
         Optional<String> parentTaskRunId,
-        RunnableTask runnableTask,
+        RunnableTask<?> runnableTask,
         Map<String, Object> variables
     ) {
         return new WorkerTask(
@@ -100,9 +109,15 @@ public record WorkerTask(
         return inputs;
     }
 
-    private static RunnableTask requireRunnableTask(Task task) {
+    /**
+     * 检查 Task 只声明可执行能力后返回该能力。
+     * @param task 非 null 的任务定义，只读
+     * @return 原任务的 RunnableTask 能力
+     * @throws IllegalArgumentException 非 Runnable 或同时具有编排能力时抛出
+     */
+    private static RunnableTask<?> requireRunnableTask(Task task) {
         Task taskDefinition = Objects.requireNonNull(task, "task");
-        if (!(taskDefinition instanceof RunnableTask capability)) {
+        if (!(taskDefinition instanceof RunnableTask<?> capability)) {
             throw new IllegalArgumentException(
                 "WorkerTask requires a RunnableTask: "
                     + taskDefinition.getType()

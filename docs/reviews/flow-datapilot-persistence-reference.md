@@ -12,12 +12,14 @@ DataPilot 只承接后续新增、语义简单的单表 CRUD 与只读投影。
 继续保留 JOOQ 的链路包括：
 
 - `Flow` 草稿、正式版本及其 `flow_tasks` 定义树；
-- `Execution` 与 `task_runs` 的原子保存、恢复和乐观锁；
-- `queues` 的投递、竞争认领、事务内删除和崩溃恢复。
+- `Execution` 与 `task_runs` 的原子保存、恢复和乐观锁。
 
-这些链路包含聚合一致性、多表写入、显式租户条件、版本冲突或队列行锁语义。
-它们的现有入口分别见 [FlowRepositoryImpl.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/FlowRepositoryImpl.java)、[ExecutionRepositoryImpl.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/executions/ExecutionRepositoryImpl.java) 与 [PostgresQueueStore.java](../../core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java)。
-对应基线表见 [flows.sql](../../gen/sql/flow/tables/flows.sql)、[flow_tasks.sql](../../gen/sql/flow/tables/flow_tasks.sql)、[executions.sql](../../gen/sql/flow/tables/executions.sql)、[task_runs.sql](../../gen/sql/flow/tables/task_runs.sql) 与 [queues.sql](../../gen/sql/flow/tables/queues.sql)。
+原评审中的数据库队列已由 Pulsar 替代，旧源码和队列表基线已删除，见
+[ADR 0096](../decisions/0096-remove-legacy-postgres-queues.md)。
+
+这些链路包含聚合一致性、多表写入、显式租户条件、版本冲突等语义。
+它们的现有入口分别见 [FlowRepositoryImpl.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/flows/FlowRepositoryImpl.java)、[ExecutionRepositoryImpl.java](../../core/src/main/java/org/cses/flow/infrastructure/repositories/executions/ExecutionRepositoryImpl.java)。
+对应基线表见 [flows.sql](../../gen/sql/flow/tables/flows.sql)、[flow_tasks.sql](../../gen/sql/flow/tables/flow_tasks.sql)、[executions.sql](../../gen/sql/flow/tables/executions.sql)、[task_runs.sql](../../gen/sql/flow/tables/task_runs.sql)。
 
 DataPilot 的候选场景必须同时满足：新能力、单表、简单 CRUD 或读投影、无队列认领、无复杂聚合保存。
 任何需要 `FOR UPDATE`、`SKIP LOCKED`、复合主键批量保存或强租户兜底的场景继续使用 JOOQ。

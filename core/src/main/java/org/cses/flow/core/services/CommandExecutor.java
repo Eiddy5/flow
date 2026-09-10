@@ -37,15 +37,15 @@ public class CommandExecutor {
     }
 
     /**
-     * Loads and changes domains through a handler without opening a business transaction.
-     * @param <S> session type
-     * @param <U> session user type
-     * @param <R> command result type
-     * @param <C> command type
-     * @param session current tenant and actor
-     * @param command command to validate and apply
-     * @return saved domain result
-     * @throws RuntimeException when validation or persistence fails
+     * 通过处理器加载并修改领域，不创建 CAS 作用域或业务事务。
+     * @param <S> 会话类型
+     * @param <U> 会话用户类型
+     * @param <R> 命令结果类型
+     * @param <C> 命令类型
+     * @param session 当前租户与操作者
+     * @param command 待校验并执行的命令
+     * @return 已保存的领域结果
+     * @throws RuntimeException 校验或持久化失败时抛出
      */
     public <
             S extends Session<U>,
@@ -62,22 +62,20 @@ public class CommandExecutor {
 
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
-        return FlowDatabase.execute(jooq.createDSLContext(),
-                dsl -> handle(session, command, handler, dsl, null));
+        return handle(session, command, handler, jooq.createDSLContext(), null);
     }
 
     /**
-     * Executes a domain command, then invokes its transport completion after persistence.
-     * The callback uses the same context, without a shared business transaction.
-     * @param <S> session type
-     * @param <U> session user type
-     * @param <R> command result type
-     * @param <C> command type
-     * @param session current tenant and actor
-     * @param command command to validate and apply
-     * @param completion transport action after the handler returns
-     * @return saved domain result
-     * @throws RuntimeException when validation, persistence or completion fails
+     * 执行领域命令并在保存后调用传输回调；复用上下文，但不共享业务事务。
+     * @param <S> 会话类型
+     * @param <U> 会话用户类型
+     * @param <R> 命令结果类型
+     * @param <C> 命令类型
+     * @param session 当前租户与操作者
+     * @param command 待校验并执行的命令
+     * @param completion 处理器返回后的传输动作
+     * @return 已保存的领域结果
+     * @throws RuntimeException 校验、持久化或回调失败时抛出
      */
     public <
             S extends Session<U>,
@@ -96,12 +94,11 @@ public class CommandExecutor {
 
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
-        return FlowDatabase.execute(jooq.createDSLContext(),
-                dsl -> handle(session, command, handler, dsl, completion));
+        return handle(session, command, handler, jooq.createDSLContext(), completion);
     }
 
     /**
-     * 绑定用户上下文后调用 Handler；仓储元数据由外层数据库入口自动管理。
+     * 绑定用户上下文后调用 Handler，最后恢复原上下文；不建立 CAS 会话或数据库事务。
      * @param <S> 会话类型
      * @param <U> 用户类型
      * @param <R> 结果类型

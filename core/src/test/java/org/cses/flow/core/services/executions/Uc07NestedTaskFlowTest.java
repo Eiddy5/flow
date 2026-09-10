@@ -758,9 +758,6 @@ class Uc07NestedTaskFlowTest {
                     onResume:
                       - key: backendResult
                         type: STRING
-                    outputs:
-                      - key: backendResult
-                        type: STRING
                   - key: frontend-review
                     type: org.cses.flow.extensions.flow.Pause
                     onPause:
@@ -768,9 +765,6 @@ class Uc07NestedTaskFlowTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
                     onResume:
-                      - key: frontendResult
-                        type: STRING
-                    outputs:
                       - key: frontendResult
                         type: STRING
               - key: summarize-reviews
@@ -786,9 +780,6 @@ class Uc07NestedTaskFlowTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
                     onResume:
-                      - key: securityDecision
-                        type: STRING
-                    outputs:
                       - key: securityDecision
                         type: STRING
               - key: publish-artifact
@@ -823,9 +814,6 @@ class Uc07NestedTaskFlowTest {
                     onResume:
                       - key: backendResult
                         type: STRING
-                    outputs:
-                      - key: backendResult
-                        type: STRING
                   - key: frontend-build
                     type: org.cses.flow.extensions.flow.Sequence
                     tasks:
@@ -836,9 +824,6 @@ class Uc07NestedTaskFlowTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: frontendResult
-                            type: STRING
-                        outputs:
                           - key: frontendResult
                             type: STRING
               - key: summarize-reviews
@@ -854,9 +839,6 @@ class Uc07NestedTaskFlowTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
                     onResume:
-                      - key: securityDecision
-                        type: STRING
-                    outputs:
                       - key: securityDecision
                         type: STRING
               - key: publish-artifact
@@ -883,9 +865,6 @@ class Uc07NestedTaskFlowTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
                     onResume:
-                      - key: decision
-                        type: STRING
-                    outputs:
                       - key: decision
                         type: STRING
                   - key: finish-log

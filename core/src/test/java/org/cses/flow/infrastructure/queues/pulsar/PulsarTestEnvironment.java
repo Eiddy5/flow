@@ -1,5 +1,6 @@
 package org.cses.flow.infrastructure.queues.pulsar;
 
+import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.annotation.Executable;
 import io.micronaut.context.annotation.Replaces;
 import io.micronaut.context.annotation.Requires;
@@ -21,6 +22,22 @@ import java.util.Map;
 public class PulsarTestEnvironment {
     /** Prevents creation of this static test utility. */
     private PulsarTestEnvironment() {}
+
+    /**
+     * 通过真实 Micronaut 容器初始化 PAAS JSON 与 JacksonSchema 依赖，随后关闭容器；
+     * 仅序列化测试使用，不启用消费者或连接测试 Broker。
+     */
+    public static void initializeJson() {
+        try (ApplicationContext context = ApplicationContext.builder().deduceEnvironment(false)
+            .properties(Map.of("pulsar.consumer.enabled", false,
+                "datasources.default.enabled", false, "micronaut.config-client.enabled", false,
+                "consul.client.registration.enabled", false, "consul.client.watch.service.enabled", false,
+                "grpc.server.enabled", false, "thrift.server.enabled", false, "jooq.send-event", false))
+            .start()) {
+            context.getBean(org.paas.json.Jackson.class);
+            context.getBean(org.paas.json.JsonFactory.class);
+        }
+    }
 
     /**
      * @return PAAS host properties pointing only to the explicitly selected test broker

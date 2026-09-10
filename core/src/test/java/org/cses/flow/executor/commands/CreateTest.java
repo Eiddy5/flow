@@ -1,23 +1,24 @@
 package org.cses.flow.executor.commands;
 
-import io.micronaut.json.JsonMapper;
-import org.cses.flow.infrastructure.queues.entries.QueueMessageEntry;
+import org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.paas.json.JsonFactory;
+import org.paas.pulsar.JacksonSchema;
 
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
-final class CreateTest {
+class CreateTest {
 
+    /** 初始化实际 PAAS Schema 所需的 JSON 绑定组件。 */
     @BeforeAll
     static void initializeJsonMapper() {
-        JsonFactory.instance = JsonMapper.createDefault();
+        PulsarTestEnvironment.initializeJson();
     }
 
+    /** 通过 PAAS Schema 往返创建命令，验证具体类型、流程版本与输入保持不变。 */
     @Test
     void restoresTheConcreteCreateCommandThroughTheExecutorContract() {
         Create command = Create.from(
@@ -29,12 +30,9 @@ final class CreateTest {
             Map.of("amount", 1200.5)
         );
 
-        QueueMessageEntry entry = QueueMessageEntry.create(
-            "DISPATCH",
-            ExecutionCommand.QUEUE_NAME,
-            command
-        );
-        ExecutionCommand restored = entry.toEvent(ExecutionCommand.class);
+        JacksonSchema<ExecutionCommand> schema = new JacksonSchema<>(ExecutionCommand.class);
+        byte[] encoded = schema.encode(command);
+        ExecutionCommand restored = schema.decode(encoded);
 
         Create create = assertInstanceOf(Create.class, restored);
         assertEquals(ExecutionCommand.Type.CREATE, create.getType());

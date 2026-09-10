@@ -102,4 +102,46 @@ class PluginControllerTest {
         assertEquals("yaml", details.examples().getFirst().lang());
         assertEquals(true, details.examples().getFirst().full());
     }
+
+    /** 插件详情公布代码推导的只读输出，配置 Schema 不接受 outputs 字段。 */
+    @Test
+    void exposesTypedOutputsSeparatelyFromEditableSchema() {
+        DefaultPluginRegistry registry = new DefaultPluginRegistry(List.of(new ResultTask()));
+        JacksonMapper mapper = new JacksonMapper(new PluginModule(registry));
+        PluginController controller = new PluginController(new PluginService(registry,
+            new PluginSchemaGenerator(mapper, registry)));
+        PluginDetailsView details = controller.plugin(ResultTask.class.getCanonicalName());
+        assertEquals(List.of(java.util.Map.of("key", "result", "type", "STRING")), details.getOutputs());
+        java.util.Map<?, ?> properties = (java.util.Map<?, ?>) details.schema().get("properties");
+        org.junit.jupiter.api.Assertions.assertFalse(properties.containsKey("outputs"));
+        org.junit.jupiter.api.Assertions.assertThrows(UnsupportedOperationException.class,
+            () -> details.getOutputs().add(java.util.Map.of("key", "extra", "type", "STRING")));
+    }
+
+    /** 仅用于验证 HTTP 插件字段投影的具体输出任务。 */
+    @org.cses.flow.core.plugins.annotations.Plugin
+    public static class ResultTask extends org.cses.flow.core.domains.tasks.Task
+        implements org.cses.flow.core.domains.tasks.RunnableTask<ResultOutput> {
+        /**
+         * 返回确定的结果字段。
+         * @param context 本次上下文；此元数据样本不读取它
+         * @return 包含固定字符串的新输出
+         */
+        @Override
+        public ResultOutput run(org.cses.flow.core.runner.RunContext context) {
+            return ResultOutput.from("ready");
+        }
+    }
+
+    /** HTTP 详情中应识别的明确业务字段。 */
+    public record ResultOutput(String result) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建只读输出。
+         * @param result 结果字符串
+         * @return 包含传入值的新输出
+         */
+        public static ResultOutput from(String result) {
+            return new ResultOutput(result);
+        }
+    }
 }

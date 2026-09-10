@@ -24,9 +24,11 @@ public class Execution extends BaseDomain {
     List<TaskRun> taskRuns;
     Generation generation;
     Origin origin;
+    String parentTaskRunId;
     int inheritedTaskRunCount;
     State state;
     Map<String, Object> inputs;
+    Long lock;
 
     /**
      * Creates a root snapshot with fresh lifecycle facts and the supplied identity.
@@ -58,20 +60,22 @@ public class Execution extends BaseDomain {
     }
 
     /**
-     * Restores one independent snapshot and validates its complete runtime history.
-     * @param id persisted Execution ID
-     * @param companyId owning tenant
-     * @param creator original creator
-     * @param createdAt original creation time in milliseconds
-     * @param flowKey bound Flow key
-     * @param flowVersion positive bound version
-     * @param inputs copied start inputs
-     * @param generation copied replay history
-     * @param state immutable Execution lifecycle history
-     * @param taskRuns ordered runs created by this instance
-     * @param origin immutable parent and root references
-     * @param inheritedTaskRuns ordered source snapshots, independently copied
-     * @throws IllegalArgumentException when identity or history is inconsistent
+     * 从持久化事实恢复完整运行，校验来源、节点和状态的一致性。
+     * @param id 非空运行编号
+     * @param companyId 非空所属租户
+     * @param creator 原始创建人快照
+     * @param createdAt 原始创建毫秒时间
+     * @param flowKey 绑定的流程键
+     * @param flowVersion 绑定的正整数流程版本
+     * @param inputs 输入快照，复制保存
+     * @param generation 运行迭代历史，复制保存
+     * @param state 不可变状态历史
+     * @param taskRuns 本运行自有节点，按序复制
+     * @param origin 不可变的直接来源与根来源
+     * @param inheritedTaskRuns 沿用的节点快照，按序复制
+     * @param parentTaskRunId 子调用的精确父节点，非子调用为 null
+     * @param lock 查询时版本；内存副本尚未保存时允许 null
+     * @throws IllegalArgumentException 快照身份或历史不一致时抛出
      */
     private Execution(
             String id,
@@ -85,9 +89,13 @@ public class Execution extends BaseDomain {
             State state,
             List<TaskRun> taskRuns,
             Origin origin,
-            List<TaskRun> inheritedTaskRuns
+            List<TaskRun> inheritedTaskRuns,
+            String parentTaskRunId,
+            Long lock
     ) {
         super(id, companyId, creator, createdAt);
+        if (lock != null && lock < 0) throw new IllegalArgumentException("lock must not be negative");
+        this.lock = lock;
         this.flowKey = requireText(flowKey, "Flow key");
         if (flowVersion < 1) {
             throw new IllegalArgumentException("Flow version must be positive");
@@ -100,6 +108,7 @@ public class Execution extends BaseDomain {
         ).copy();
         this.state = RequiredUtil.required(state, "Execution state");
         this.origin = Objects.requireNonNull(origin, "Execution origin");
+        this.parentTaskRunId = parentTaskRunId;
         this.taskRuns = new ArrayList<>();
         Objects.requireNonNull(inheritedTaskRuns, "Inherited TaskRuns").stream()
                 .map(TaskRun::copy).forEach(this.taskRuns::add);
@@ -130,35 +139,83 @@ public class Execution extends BaseDomain {
     }
 
     /**
-     * Restores one stored Execution with its own runs and inherited run snapshots.
-     * @param id stable Execution identity
-     * @param companyId owning tenant
-     * @param creator original creator
-     * @param createdAt original creation time in milliseconds
-     * @param flowKey bound Flow key
-     * @param flowVersion bound positive Flow version
-     * @param inputs immutable start inputs, copied
-     * @param generation exact replay history, copied
-     * @param state exact lifecycle history
-     * @param taskRuns runs created by this Execution, copied in order
-     * @param origin exact parent and root relationship
-     * @param inheritedTaskRuns ordered inherited snapshots, copied before owned runs
-     * @return restored aggregate without creating execution facts
-     * @throws IllegalArgumentException when the snapshot is inconsistent
+     * 恢复已存储的完整运行，不生成新的运行事实。
+     * @param id 非空运行编号
+     * @param companyId 非空所属租户
+     * @param creator 原始创建人快照
+     * @param createdAt 原始创建毫秒时间
+     * @param flowKey 绑定的流程键
+     * @param flowVersion 绑定的正整数流程版本
+     * @param inputs 输入快照，复制保存
+     * @param generation 运行迭代历史，复制保存
+     * @param state 不可变状态历史
+     * @param taskRuns 本运行自有节点，按序复制
+     * @param origin 不可变的直接来源与根来源
+     * @param inheritedTaskRuns 沿用的节点快照，按序复制
+     * @param parentTaskRunId 子调用的精确父节点，非子调用为 null
+     * @param lock 数据库中非负的查询时版本
+     * @return 已校验的独立运行快照
+     * @throws IllegalArgumentException 快照身份或历史不一致时抛出
      */
     public static Execution rehydrate(
             String id, String companyId, ActorRef creator, long createdAt,
             String flowKey, long flowVersion, Map<String, ?> inputs,
             Generation generation, State state, List<TaskRun> taskRuns,
-            Origin origin, List<TaskRun> inheritedTaskRuns
+            Origin origin, List<TaskRun> inheritedTaskRuns, String parentTaskRunId, long lock
     ) {
         return new Execution(id, companyId, creator, createdAt, flowKey, flowVersion,
-                inputs, generation, state, taskRuns, origin, inheritedTaskRuns);
+                inputs, generation, state, taskRuns, origin, inheritedTaskRuns, parentTaskRunId, lock);
+    }
+
+    /** @return 此快照的持久化版本；null 表示尚未入库，不参与业务状态判断 */
+    public Long lock() {
+        return lock;
+    }
+
+    /**
+     * 由仓储在保存成功后回填版本，不改变领域事实；业务调用方不得自行推进。
+     * @param version 数据库返回的非负版本，显式事务回滚后必须丢弃本对象并重读
+     * @throws IllegalArgumentException 当版本为负数时抛出
+     */
+    public void lock(long version) {
+        if (version < 0) throw new IllegalArgumentException("lock must not be negative");
+        lock = version;
     }
 
     /** @return immutable direct-parent and root Execution relationship */
     public Origin origin() {
         return origin;
+    }
+
+    /** @return 发起本次子调用的父 TaskRun；根运行和退回派生运行为 null */
+    public String parentTaskRunId() {
+        return parentTaskRunId;
+    }
+
+    /**
+     * 启动指定调用节点并创建独立子 Execution，保存来源与调用身份。
+     * @param session 与父运行同租户的可信会话
+     * @param taskRunId 父运行中尚未启动的精确调用节点
+     * @param flowKey 已解析的子流程键
+     * @param flowVersion 已解析的子流程版本
+     * @param boundInputs 经 Task 和子 Flow 校验的实际输入
+     * @return 尚未持久化的子 Execution；调用方必须原子保存父子快照
+     * @throws IllegalArgumentException 会话租户或目标定义非法时抛出
+     * @throws WorkflowException 父运行或调用节点不能启动时抛出
+     */
+    public Execution startSubFlow(Session<? extends User> session, String taskRunId,
+            String flowKey, long flowVersion, Map<String, ?> boundInputs) {
+        requireRunning();
+        if (!companyId().equals(session.getCompanyId())) {
+            throw new IllegalArgumentException("SubFlow must remain in the parent tenant");
+        }
+        TaskRun caller = requireTaskRun(taskRunId);
+        requireTaskRunState(caller, State.Type.CREATED);
+        Execution child = create(null, session, flowKey, flowVersion, boundInputs);
+        child.origin = Origin.create(id(), origin.originId());
+        child.parentTaskRunId = caller.id();
+        caller.start(boundInputs);
+        return child;
     }
 
     /** @return inherited run snapshots in their original order */
@@ -727,7 +784,7 @@ public class Execution extends BaseDomain {
         return findTaskRun(taskRunId).orElseThrow(() -> new WorkflowException("TaskRun does not exist: " + taskRunId));
     }
 
-    /** @return an independent snapshot retaining all identities, origins and inherited boundaries */
+    /** @return 保留身份、来源、自有与继承快照及当前 lock 的独立副本 */
     public Execution copy() {
         return new Execution(
                 id(),
@@ -741,12 +798,21 @@ public class Execution extends BaseDomain {
                 state,
                 ownTaskRuns(),
                 origin,
-                inheritedTaskRuns()
+                inheritedTaskRuns(),
+                parentTaskRunId,
+                lock
         );
     }
 
-    /** Validates identity, inherited boundaries and runtime history without changing the snapshot. */
+    /**
+     * 校验当前快照的来源身份、继承边界及运行历史，不改变快照。
+     * @throws IllegalArgumentException 身份、来源或历史不一致时抛出
+     */
     private void validateRehydratedState() {
+        if (parentTaskRunId != null && (parentTaskRunId.isBlank() || origin.parentId() == null
+                || inheritedTaskRunCount != 0)) {
+            throw new IllegalArgumentException("SubFlow requires a caller and no inherited TaskRuns");
+        }
         if (origin.parentId() == null) {
             if (!id().equals(origin.originId()) || inheritedTaskRunCount != 0) {
                 throw new IllegalArgumentException("Root Execution must reference itself without inherited runs");

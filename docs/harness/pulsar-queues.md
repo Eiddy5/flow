@@ -18,7 +18,7 @@ Factory 按泛型解析声明，无需 `@Named` 或逐队列 Factory。
 消费端使用 `@FlowQueueListener(subscription = QUEUE_NAME)`，每个 Topic 每实例一个
 Shared Consumer。两个方法均为 singleton 上的 public void 方法，调用对应 Handler。
 Handler 正常返回后 PAAS 才 ACK；任何处理、保存或后续发布失败都会进入 NACK 重投。
-它们不创建独立 QueueSubscription，也不自行关闭共享 PAAS 资源。
+它们不创建独立订阅生命周期对象，也不自行关闭共享 PAAS 资源。
 
 业务调用方继续通过 ExecutionService 使用流程能力，不直接调用内部消费 Handler。
 如需声明另一条队列，在消息类型标注 FlowQueue，并在 singleton 的同步 void 方法
@@ -43,7 +43,7 @@ Handler 正常返回后 PAAS 才 ACK；任何处理、保存或后续发布失�
 4. 用公开 Service 完成一条启动、暂停、恢复到终态的验证，并观察 Broker 订阅积压。
    新消息应只进入 Pulsar，不应再增加旧表对应消息。
 
-旧积压检查（部署侧对所选 Flow 数据库只读执行）：
+旧版本数据库仍有 queues 表时才执行以下只读检查；新四表基线没有该表：
 
 ```sql
 SELECT queue_name, count(*)
@@ -53,8 +53,9 @@ WHERE queue_type = 'DISPATCH'
 GROUP BY queue_name;
 ```
 
-有积压时继续由旧版本消费，不能直接删除消息后切换。本次代码不自动迁移积压、删除
-旧表或变更 Broker 策略；旧适配器保留但不装配，也没有 Pulsar 失败回退路径。
+有积压时继续由旧版本消费，不能直接删除消息后切换。旧适配器、专属契约及队列表
+基线和生成类已删除，见 [ADR 0096](../decisions/0096-remove-legacy-postgres-queues.md)。
+本次不连接旧环境删表或清空积压；没有 Pulsar 失败回退路径。
 
 ## 发布语义
 

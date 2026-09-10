@@ -191,6 +191,7 @@ public class PluginModels {
         private PluginMetadataView metadata;
         private List<PluginExampleView> examples;
         private Map<String, Object> schema;
+        private List<Map<String, String>> outputs = List.of();
 
         public PluginDetailsView() {
         }
@@ -217,14 +218,27 @@ public class PluginModels {
             return schema;
         }
 
+        /**
+         * 返回插件配置 Schema 及代码定义的只读标量输出字段。
+         * @param details 非 null 的插件详情，只读
+         * @return 新建的 HTTP 详情；Input 插件没有任务输出
+         */
         static PluginDetailsView from(PluginDetails details) {
-            return new PluginDetailsView(
+            PluginDetailsView view = new PluginDetailsView(
                 PluginMetadataView.from(details.metadata()),
-                details.examples().stream()
-                    .map(PluginExampleView::from)
-                    .toList(),
+                details.examples().stream().map(PluginExampleView::from).toList(),
                 details.schema()
             );
+            if (org.cses.flow.core.domains.tasks.Task.class.isAssignableFrom(details.metadata().type())) {
+                view.outputs = org.cses.flow.core.plugins.TaskOutputs.fields(
+                    details.metadata().type().asSubclass(org.cses.flow.core.domains.tasks.Task.class)
+                ).entrySet().stream()
+                    .filter(entry -> org.cses.flow.core.plugins.TaskOutputs.dataType(entry.getValue()) != null)
+                    .map(entry -> Map.of("key", entry.getKey(), "type",
+                        org.cses.flow.core.plugins.TaskOutputs.dataType(entry.getValue()).name()))
+                    .toList();
+            }
+            return view;
         }
     }
 }

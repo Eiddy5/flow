@@ -84,11 +84,11 @@ public class ExecutionCommandEventHandler implements
     }
 
     /**
-     * Applies the command to a complete domain snapshot, saves it, then signals scheduling.
-     * Redelivery also signals an already saved nonterminal execution after a prior publish failure.
-     * @param command accepted external execution command
-     * @return empty because this handler does not run a scheduling cycle
-     * @throws RuntimeException when command validation, persistence or publication fails
+     * 对完整快照应用命令，保存后发送调度信号；不创建 CAS 作用域或业务事务。
+     * 重投时也为已保存的非终态运行补发信号，以处理上次发布失败的情况。
+     * @param command 已受理的外部运行命令
+     * @return 空结果，本处理器不执行调度周期
+     * @throws RuntimeException 命令校验、持久化或发布失败时抛出
      */
     @Override
     public Optional<ExecutorContext> handle(ExecutionCommand command) {
@@ -97,24 +97,23 @@ public class ExecutionCommandEventHandler implements
                 "command"
         );
         accepted.validate();
-        return FlowDatabase.execute(jooq.createDSLContext(), dsl -> {
-            route(dsl, accepted);
-            String scheduledId = accepted instanceof Rewind rewind
-                    ? rewind.getReplayExecutionId() : accepted.key();
-            Optional<Execution> scheduled = executionRepository.findById(dsl, companyId(accepted), scheduledId);
-            if (scheduled.isEmpty() && accepted instanceof Rewind) return Optional.empty();
-            Execution execution = scheduled.orElseThrow(() ->
-                    new WorkflowException("Execution does not exist: " + scheduledId));
-            if (!execution.isTerminal()) {
-                ExecutorEvent.EventType type = switch (execution.state().current()) {
-                    case CREATED -> ExecutorEvent.EventType.CREATED;
-                    case KILLING -> ExecutorEvent.EventType.TERMINATED;
-                    default -> ExecutorEvent.EventType.UPDATED;
-                };
-                eventQueue.emit(ExecutorEvent.from(execution, type));
-            }
-            return Optional.empty();
-        });
+        DSLContext dsl = jooq.createDSLContext();
+        route(dsl, accepted);
+        String scheduledId = accepted instanceof Rewind rewind
+                ? rewind.getReplayExecutionId() : accepted.key();
+        Optional<Execution> scheduled = executionRepository.findById(dsl, companyId(accepted), scheduledId);
+        if (scheduled.isEmpty() && accepted instanceof Rewind) return Optional.empty();
+        Execution execution = scheduled.orElseThrow(() ->
+                new WorkflowException("Execution does not exist: " + scheduledId));
+        if (!execution.isTerminal()) {
+            ExecutorEvent.EventType type = switch (execution.state().current()) {
+                case CREATED -> ExecutorEvent.EventType.CREATED;
+                case KILLING -> ExecutorEvent.EventType.TERMINATED;
+                default -> ExecutorEvent.EventType.UPDATED;
+            };
+            eventQueue.emit(ExecutorEvent.from(execution, type));
+        }
+        return Optional.empty();
     }
 
     /**

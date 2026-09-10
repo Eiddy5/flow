@@ -45,9 +45,6 @@ class LogFlowIntegrationTest {
                     onResume:
                       - key: result
                         type: STRING
-                    outputs:
-                      - key: result
-                        type: STRING
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
                     message: "处理结果：{{ outputs.prepare.result }}"

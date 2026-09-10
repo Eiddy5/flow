@@ -9,7 +9,6 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -628,9 +627,6 @@ class Uc09LoopOrchestrationTest {
                 tasks:
                   - key: body-step
                     type: %s
-                    outputs:
-                      - key: iteration
-                        type: INTEGER
                   - key: wait-round
                     type: org.cses.flow.extensions.flow.Pause
                     onPause:
@@ -638,9 +634,6 @@ class Uc09LoopOrchestrationTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "continue round"
                     onResume:
-                      - key: continue
-                        type: STRING
-                    outputs:
                       - key: continue
                         type: STRING
               - key: after-loop
@@ -669,9 +662,6 @@ class Uc09LoopOrchestrationTest {
                 tasks:
                   - key: body-step
                     type: %s
-                    outputs:
-                      - key: iteration
-                        type: INTEGER
                   - key: wait-round
                     type: org.cses.flow.extensions.flow.Pause
                     onPause:
@@ -682,9 +672,6 @@ class Uc09LoopOrchestrationTest {
                       - key: status
                         type: STRING
                         required: true
-                    outputs:
-                      - key: status
-                        type: STRING
               - key: after-loop
                 type: %s
             """.formatted(
@@ -712,14 +699,8 @@ class Uc09LoopOrchestrationTest {
                 tasks:
                   - key: body-step
                     type: %s
-                    outputs:
-                      - key: iteration
-                        type: INTEGER
                   - key: %s
                     type: %s
-                    outputs:
-                      - key: status
-                        type: STRING
               - key: after-loop
                 type: %s
             """.formatted(
@@ -750,14 +731,8 @@ class Uc09LoopOrchestrationTest {
                     tasks:
                       - key: body-step
                         type: %s
-                        outputs:
-                          - key: iteration
-                            type: INTEGER
                       - key: condition-never
                         type: %s
-                        outputs:
-                          - key: status
-                            type: STRING
                       - key: body-fail
                         type: %s
                   - key: after-loop
@@ -781,14 +756,8 @@ class Uc09LoopOrchestrationTest {
                 tasks:
                   - key: body-step
                     type: %s
-                    outputs:
-                      - key: iteration
-                        type: INTEGER
                   - key: condition-never
                     type: %s
-                    outputs:
-                      - key: status
-                        type: STRING
                   - key: body-fail
                     type: %s
               - key: after-loop
@@ -842,9 +811,6 @@ class Uc09LoopOrchestrationTest {
                         tasks:
                           - key: check
                             type: %s
-                            outputs:
-                              - key: status
-                                type: STRING
                     """.formatted(
                         LoopUntil.class.getCanonicalName(),
                         Log.class.getCanonicalName()
@@ -862,9 +828,6 @@ class Uc09LoopOrchestrationTest {
                         tasks:
                           - key: check
                             type: %s
-                            outputs:
-                              - key: status
-                                type: STRING
                     """.formatted(
                         LoopUntil.class.getCanonicalName(),
                         Log.class.getCanonicalName()
@@ -882,9 +845,6 @@ class Uc09LoopOrchestrationTest {
                         tasks:
                           - key: check
                             type: %s
-                            outputs:
-                              - key: status
-                                type: STRING
                     """.formatted(
                         LoopUntil.class.getCanonicalName(),
                         Log.class.getCanonicalName()
@@ -909,29 +869,25 @@ class Uc09LoopOrchestrationTest {
     @Requires(property = "flow.uc09.loop-probe", value = "true")
     @SuperBuilder
     @NoArgsConstructor
-    public static final class LoopProbeTask
-        extends Task implements RunnableTask {
+    public static class LoopProbeTask
+        extends Task implements RunnableTask<LoopProbeOutput> {
 
+        /**
+         * 返回本轮的具体序号、状态或显式失败；不修改调用上下文。
+         * @param context 当前循环的只读调用上下文
+         * @return 此样本定义的循环输出
+         */
         @Override
-        public RunResult run(RunContext context) {
+        public LoopProbeOutput run(RunContext context) {
             return switch (key()) {
                 case "body-first", "body-second", "body-step" ->
-                    RunResult.success(Map.of(
-                        "iteration",
-                        iteration(context)
-                    ));
-                case "condition-first" ->
-                    RunResult.success(Map.of("status", "DONE"));
-                case "condition-second" -> RunResult.success(Map.of(
-                    "status",
-                    iteration(context) >= 2 ? "DONE" : "WAIT"
-                ));
-                case "condition-never" ->
-                    RunResult.success(Map.of("status", "WAIT"));
-                case "body-fail" -> RunResult.failed(
-                    "uc09-body-failure"
-                );
-                default -> RunResult.success(Map.of());
+                    LoopProbeOutput.from(iteration(context), null, null);
+                case "condition-first" -> LoopProbeOutput.from(null, "DONE", null);
+                case "condition-second" -> LoopProbeOutput.from(
+                    null, iteration(context) >= 2 ? "DONE" : "WAIT", null);
+                case "condition-never" -> LoopProbeOutput.from(null, "WAIT", null);
+                case "body-fail" -> LoopProbeOutput.from(null, null, "uc09-body-failure");
+                default -> LoopProbeOutput.from(null, null, null);
             };
         }
 
@@ -944,6 +900,33 @@ class Uc09LoopOrchestrationTest {
                 );
             }
             return value.intValue();
+        }
+    }
+
+    /** 循环测试的序号与状态输出，失败原因只用于运行控制。 */
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+    public record LoopProbeOutput(Integer iteration, String status,
+        @com.fasterxml.jackson.annotation.JsonIgnore String failure)
+        implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建循环步骤的具体结果。
+         * @param iteration 当前迭代序号；未产生时为空
+         * @param status 本轮 WAIT 或 DONE；未产生时为空
+         * @param failure 失败原因；成功时为空
+         * @return 包含上述字段的新输出
+         */
+        public static LoopProbeOutput from(Integer iteration, String status, String failure) {
+            return new LoopProbeOutput(iteration, status, failure);
+        }
+        /** @return 有失败原因时为 FAILED，否则由执行边界采用 SUCCESS */
+        @Override
+        public java.util.Optional<State.Type> state() {
+            return failure == null ? java.util.Optional.empty() : java.util.Optional.of(State.Type.FAILED);
+        }
+        /** @return 本轮失败原因；成功时为空 */
+        @Override
+        public java.util.Optional<String> error() {
+            return java.util.Optional.ofNullable(failure);
         }
     }
 }

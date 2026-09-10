@@ -41,19 +41,15 @@ class TaskTest {
     @Test
     void exposesReadOnlyBoundDefinitionState() {
         Task task = PLUGINS.modelValidator().validate(
-            Log.builder()
+            org.cses.flow.core.plugins.TestOutputTasks.Result.builder()
                 .id("task-id")
                 .key("task")
-                .message(TemplateExpression.parse("test step"))
                 .inputs(List.of(input("request", DataType.STRING)))
-                .outputs(List.of(Output.create(
-                    "result",
-                    DataType.STRING
-                )))
+
                 .build()
         );
 
-        assertEquals(Log.class.getName(), task.getType());
+        assertEquals(org.cses.flow.core.plugins.TestOutputTasks.Result.class.getCanonicalName(), task.getType());
         assertEquals("task", task.key());
         assertTrue(task.declaresOutput("result"));
         assertTrue(task.definitionChildren().isEmpty());
@@ -76,17 +72,14 @@ class TaskTest {
             .key("approval")
             .message(TemplateExpression.parse("test step"))
             .inputs(List.of(input("request", DataType.STRING)))
-            .outputs(List.of(Output.create("decision", DataType.STRING)))
+
             .build();
         Task restored = Log.builder()
             .id("task-1")
             .key("approval")
             .message(TemplateExpression.parse("test step"))
             .inputs(List.of(input("request", DataType.STRING)))
-            .outputs(List.of(Output.rehydrate(
-                "decision",
-                DataType.STRING
-            )))
+
             .build();
 
         assertEquals(first, restored);
@@ -138,7 +131,7 @@ class TaskTest {
             .toList();
 
         assertEquals(
-            List.of("id", "key", "displayName", "inputs", "outputs"),
+            List.of("id", "key", "displayName", "inputs"),
             fields
         );
         assertFalse(fields.contains("route"));
@@ -149,15 +142,11 @@ class TaskTest {
     @Test
     void allowsTheSameDataKeyAcrossInputAndOutputDirections() {
         Task task = PLUGINS.modelValidator().validate(
-            Log.builder()
+            org.cses.flow.core.plugins.TestOutputTasks.Payload.builder()
                 .id("task-1")
                 .key("transform")
-                .message(TemplateExpression.parse("test step"))
                 .inputs(List.of(input("payload", DataType.STRING)))
-                .outputs(List.of(Output.create(
-                    "payload",
-                    DataType.STRING
-                )))
+
                 .build()
         );
 
@@ -167,11 +156,10 @@ class TaskTest {
 
     @Test
     void validatesProvidedAndDeclaredRuntimeOutputs() {
-        Task task = Log.builder()
+        Task task = org.cses.flow.core.plugins.TestOutputTasks.Decision.builder()
             .id("task-1")
             .key("wait")
-            .message(TemplateExpression.parse("test step"))
-            .outputs(List.of(Output.create("decision", DataType.STRING)))
+
             .build();
 
         assertDoesNotThrow(() ->
@@ -196,11 +184,10 @@ class TaskTest {
             () -> task.validateOutputs(Map.of("decision", true))
         );
 
-        Task numericTask = Log.builder()
+        Task numericTask = org.cses.flow.core.plugins.TestOutputTasks.Count.builder()
             .id("task-2")
             .key("numeric-wait")
-            .message(TemplateExpression.parse("test step"))
-            .outputs(List.of(Output.create("count", DataType.LONG)))
+
             .build();
         assertEquals(
             1L,
@@ -224,6 +211,59 @@ class TaskTest {
             assertTrue(
                 Modifier.isPublic(constructor.getModifiers())
             );
+        }
+    }
+
+    /** 从泛型任务父类和泛型输出父类解析具体业务字段类型。 */
+    @Test
+    void derivesOutputFieldsThroughGenericParentTypes() {
+        List<Output> fields = new InheritedTask().outputs();
+
+        assertEquals(Map.of("value", String.class),
+            org.cses.flow.core.plugins.TaskOutputs.fields(InheritedTask.class));
+
+        assertEquals(List.of("value"), fields.stream().map(Output::getKey).toList());
+        assertEquals(DataType.STRING, fields.getFirst().getType());
+        assertEquals(Map.of("value", "ready"),
+            org.cses.flow.core.plugins.TaskOutputs.values(new InheritedOutput()));
+    }
+
+    /** 由子类绑定具体输出类型的任务父类。 */
+    abstract static class GenericTask<T extends org.cses.flow.core.domains.tasks.Output>
+        extends Task implements RunnableTask<T> {
+    }
+
+    /** 绑定明确输出类型的测试任务。 */
+    static class InheritedTask extends GenericTask<InheritedOutput> {
+        /**
+         * 返回固定输出以验证继承关系。
+         * @param context 运行上下文；此样本不读取它
+         * @return 具体字符串输出
+         */
+        @Override
+        public InheritedOutput run(org.cses.flow.core.runner.RunContext context) {
+            return new InheritedOutput();
+        }
+    }
+
+    /** 由输出子类绑定业务字段类型的父类。 */
+    public abstract static class GenericOutput<T> implements org.cses.flow.core.domains.tasks.Output {
+        protected T value;
+
+        /**
+         * 读取继承的业务字段。
+         * @return 具体类型的业务值
+         */
+        public T getValue() {
+            return value;
+        }
+    }
+
+    /** 将继承字段绑定为字符串的输出。 */
+    public static class InheritedOutput extends GenericOutput<String> {
+        /** 创建固定字符串样本。 */
+        public InheritedOutput() {
+            value = "ready";
         }
     }
 

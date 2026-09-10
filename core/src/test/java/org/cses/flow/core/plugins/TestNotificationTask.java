@@ -4,7 +4,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
@@ -35,8 +34,8 @@ import java.util.Map;
 )
 @SuperBuilder
 @NoArgsConstructor
-public final class TestNotificationTask
-    extends Task implements RunnableTask {
+public class TestNotificationTask
+    extends Task implements RunnableTask<TestNotificationTask.NotificationOutput> {
 
     @NotBlank
     @Schema(
@@ -50,13 +49,30 @@ public final class TestNotificationTask
         return channel;
     }
 
+    /**
+     * 返回配置频道作为后续步骤可读取的通知结果。
+     * @param context 运行上下文；本样本不读取它
+     * @return 包含频道值的新输出
+     */
     @Override
-    public RunResult run(RunContext context) {
-        return RunResult.success(Map.of("channel", channel));
+    public NotificationOutput run(RunContext context) {
+        return NotificationOutput.from(channel);
     }
 
     @Override
     protected Object typeSpecificEqualityState() {
         return channel;
+    }
+
+    /** 保存此测试任务的具体业务结果。 */
+    public record NotificationOutput(String channel) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建本次运行的业务输出。
+         * @param channel 本次运行的只读结果值
+         * @return 包含该值的新输出
+         */
+        public static NotificationOutput from(String channel) {
+            return new NotificationOutput(channel);
+        }
     }
 }

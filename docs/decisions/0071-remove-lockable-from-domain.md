@@ -4,6 +4,9 @@
 
 Accepted
 
+技术版本的对象归属已由 [ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)
+修订：需要 CAS 的根允许携带 lock 元数据，但不恢复 Lockable 或领域并发行为。
+
 本决策修订 ADR 0041、ADR 0067 及各领域决策中关于 `Lockable`、领域
 `lockVersion` 和聚合乐观锁的实现条款；不改变 Flow、Execution、Task 或 TaskRun
 的业务身份、生命周期和聚合边界。

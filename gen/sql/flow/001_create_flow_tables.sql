@@ -10,6 +10,5 @@ BEGIN;
 \ir tables/flow_tasks.sql
 \ir tables/executions.sql
 \ir tables/task_runs.sql
-\ir tables/queues.sql
 
 COMMIT;

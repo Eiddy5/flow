@@ -7,7 +7,7 @@ import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
@@ -31,10 +31,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WorkerDispatcherTest {
 
-    private static final Context PLUGINS = builtInContext(
+    private static Context PLUGINS = builtInContext(
         new TestNotificationTask()
     );
     private WorkerDispatcher dispatcher = new WorkerDispatcher();
+
+    /** 初始化无 Micronaut 容器的 PAAS JSON 序列化边界。 */
+    @org.junit.jupiter.api.BeforeEach
+    void initializeJson() {
+        org.paas.json.JsonFactory.instance = io.micronaut.json.JsonMapper.createDefault();
+    }
 
     @Test
     void directlyInvokesTheRunnableTask() {
@@ -57,12 +63,13 @@ class WorkerDispatcherTest {
         assertEquals(Map.of(), result.outputs());
     }
 
+    /** 具体 Output 和传输信封均拒绝 SKIPPED 作为 Worker 结果。 */
     @Test
     void runnableAndWorkerResultsRejectSkippedAsAWorkerOutcome() {
-        assertThrows(
-            IllegalArgumentException.class,
-            () -> RunResult.from(State.Type.SKIPPED, Map.of(), null)
-        );
+        Log task = Log.builder().id("task-1").key("log").build();
+        WorkerTask worker = workerTask("execution-1", "task-run-1", null, task, Map.of());
+        assertThrows(IllegalArgumentException.class,
+            () -> WorkerTaskResult.from(worker, StatusOutput.from(State.Type.SKIPPED, null)));
         assertThrows(
             IllegalArgumentException.class,
             () -> WorkerTaskResult.from(
@@ -136,11 +143,7 @@ class WorkerDispatcherTest {
                     "key", "notify",
                     "type",
                     TestNotificationTask.class.getCanonicalName(),
-                    "channel", "operations",
-                    "outputs", List.of(Map.of(
-                        "key", "channel",
-                        "type", "STRING"
-                    ))
+                    "channel", "operations"
                 ))
             ),
             null,
@@ -318,6 +321,25 @@ class WorkerDispatcherTest {
         );
     }
 
+    /** 具体业务 POJO 的字段成为结果，状态和错误仅进入运行信封。 */
+    @Test
+    void projectsTypedPojoFieldsAndKeepsControlMetadataOutOfOutputs() {
+        Log task = Log.builder().id("task-1").key("log").build();
+        WorkerTask worker = workerTask("execution-1", "task-run-1", null, task, Map.of());
+        WorkerTaskResult warning = WorkerTaskResult.from(worker,
+            StatusOutput.from(State.Type.WARNING, null));
+        assertEquals(State.Type.WARNING, warning.targetState());
+        assertEquals(Map.of("notice", "typed-result"), warning.outputs());
+        WorkerTaskResult failure = WorkerTaskResult.from(worker, VoidOutput.failed("expected-failure"));
+        assertEquals(State.Type.FAILED, failure.targetState());
+        assertEquals("expected-failure", failure.error());
+        assertEquals(Map.of(), failure.outputs());
+        assertThrows(IllegalArgumentException.class,
+            () -> WorkerTaskResult.from(worker, StatusOutput.from(State.Type.FAILED, null)));
+        assertThrows(IllegalArgumentException.class,
+            () -> WorkerTaskResult.from(worker, StatusOutput.from(State.Type.SUCCESS, "unexpected-error")));
+    }
+
     private static WorkerTask workerTask(
         String executionId,
         String taskRunId,
@@ -396,29 +418,74 @@ class WorkerDispatcherTest {
     @SuperBuilder
     @NoArgsConstructor
     private static class ContextRecordingTask
-        extends Task implements RunnableTask {
+        extends Task implements RunnableTask<PayloadOutput> {
 
         @Builder.Default
         private List<RunContext> contexts = new ArrayList<>();
 
         @Override
-        public RunResult run(RunContext context) {
+        public PayloadOutput run(RunContext context) {
             contexts.add(context);
-            return RunResult.success(Map.of(
-                "payload",
-                context.taskInputs().get("payload")
-            ));
+            return PayloadOutput.from((String) context.taskInputs().get("payload"));
         }
     }
 
     @SuperBuilder
     @NoArgsConstructor
     private static class FailingTask
-        extends Task implements RunnableTask {
+        extends Task implements RunnableTask<VoidOutput> {
 
         @Override
-        public RunResult run(RunContext context) {
+        public VoidOutput run(RunContext context) {
             throw new IllegalStateException("unexpected-task-failure");
+        }
+    }
+
+    /** 当前上下文样本的业务字段。 */
+    public record PayloadOutput(String payload) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建读取到的 payload 输出。
+         * @param payload 本次调用读取到的字符串
+         * @return 保存该值的新输出
+         */
+        public static PayloadOutput from(String payload) {
+            return new PayloadOutput(payload);
+        }
+    }
+
+    /** 含具体通知字段的 POJO，用于核对状态元数据不进入业务 Map。 */
+    @lombok.Getter
+    @lombok.Setter
+    @NoArgsConstructor
+    public static class StatusOutput implements org.cses.flow.core.domains.tasks.Output {
+        String notice;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        State.Type targetState;
+        @com.fasterxml.jackson.annotation.JsonIgnore
+        String failure;
+
+        /**
+         * 创建指定状态的通知结果。
+         * @param state 本次 Worker 状态；测试同时使用非法值检查边界
+         * @param error 失败原因；成功时应为空
+         * @return 包含固定 notice 的新结果
+         */
+        public static StatusOutput from(State.Type state, String error) {
+            StatusOutput result = new StatusOutput();
+            result.notice = "typed-result";
+            result.targetState = state;
+            result.failure = error;
+            return result;
+        }
+        /** @return 明确请求的运行状态 */
+        @Override
+        public java.util.Optional<State.Type> state() {
+            return java.util.Optional.ofNullable(targetState);
+        }
+        /** @return 明确请求的失败原因；无错误时为空 */
+        @Override
+        public java.util.Optional<String> error() {
+            return java.util.Optional.ofNullable(failure);
         }
     }
 }

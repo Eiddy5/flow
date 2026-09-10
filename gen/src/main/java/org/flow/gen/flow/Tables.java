@@ -7,7 +7,6 @@ package org.flow.gen.flow;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
-import org.flow.gen.flow.tables.QueuesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 
 
@@ -31,11 +30,6 @@ public class Tables {
      * The table <code>public.flows</code>.
      */
     public static final FlowsTable FLOWS = FlowsTable.FLOWS;
-
-    /**
-     * The table <code>public.queues</code>.
-     */
-    public static final QueuesTable QUEUES = QueuesTable.QUEUES;
 
     /**
      * The table <code>public.task_runs</code>.

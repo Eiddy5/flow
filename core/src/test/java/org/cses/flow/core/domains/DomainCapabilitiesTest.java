@@ -9,7 +9,6 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.SessionUtil;
@@ -61,7 +60,7 @@ final class DomainCapabilitiesTest {
         assertFalse(
             Identified.class.isAssignableFrom(TemplateExpression.class)
         );
-        assertFalse(Identified.class.isAssignableFrom(RunResult.class));
+        assertFalse(Identified.class.isAssignableFrom(org.cses.flow.core.domains.tasks.Output.class));
     }
 
     @Test

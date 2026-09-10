@@ -10,6 +10,7 @@ import org.cses.flow.core.domains.Identified;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
 import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.core.plugins.TaskOutputs;
 
 import java.util.*;
 import java.util.stream.Stream;
@@ -36,9 +37,6 @@ public abstract class Task implements TaskInterface {
     @Builder.Default
     List<Input<?>> inputs = List.of();
 
-    @NotNull
-    @Builder.Default
-    List<Output> outputs = List.of();
 
     public final String id() {
         return id;
@@ -69,8 +67,39 @@ public abstract class Task implements TaskInterface {
         return inputs == null ? List.of() : List.copyOf(inputs);
     }
 
+    /**
+     * 按统一 Input 声明从调用方同名值绑定本任务参数。
+     * @param values 非 null 的调用方输入，只读；未声明的键不传给本任务
+     * @return 已转换并校验的不可变输入
+     * @throws IllegalArgumentException 输入缺失或类型、约束不满足时抛出
+     */
+    public Map<String, Object> bindInputs(Map<String, ?> values) {
+        Objects.requireNonNull(values, "Task inputs");
+        Map<String, Object> bound = new LinkedHashMap<>();
+        for (Input<?> input : inputs()) {
+            Object value = input.bind(values);
+            if (value != null) bound.put(input.getKey(), value);
+        }
+        return Collections.unmodifiableMap(bound);
+    }
+
+    /**
+     * 从具体 Output 类型返回只读标量字段元数据，供现有条件与视图消费。
+     * @return 代码定义的基础输出字段；复合对象不进入标量字段列表
+     */
     public List<Output> outputs() {
-        return outputs == null ? List.of() : List.copyOf(outputs);
+        return outputFields().entrySet().stream()
+            .filter(entry -> TaskOutputs.dataType(entry.getValue()) != null)
+            .map(entry -> Output.create(entry.getKey(), TaskOutputs.dataType(entry.getValue())))
+            .toList();
+    }
+
+    /**
+     * 读取本任务代码定义的输出类型，供字段列表和传输值校验共用。
+     * @return 不可变的字段名称与 Java 类型映射
+     */
+    protected Map<String, Class<?>> outputFields() {
+        return TaskOutputs.fields(getClass());
     }
 
     /**
@@ -84,10 +113,13 @@ public abstract class Task implements TaskInterface {
         return List.of();
     }
 
+    /**
+     * 判断代码定义的结果类型是否声明指定字段，包括复合字段。
+     * @param outputKey 非 null 的业务字段名
+     * @return 声明存在时为 true
+     */
     public final boolean declaresOutput(String outputKey) {
-        return outputs().stream().anyMatch(output ->
-                output.getKey().equals(outputKey)
-        );
+        return outputFields().containsKey(outputKey);
     }
 
     public final boolean declaresInput(String inputKey) {
@@ -97,39 +129,25 @@ public abstract class Task implements TaskInterface {
     }
 
     /**
-     * Validates runtime outputs against this bound Task definition.
+     * 校验传输结果只包含具体 Output 中声明的字段，并规范化已知标量。
+     * @param actualOutputs 非 null 的运行输出映射，只读
+     * @return 不可变结果映射；复合字段保留原传输值
+     * @throws WorkflowException 结果为空引用、字段未声明或标量类型错误时抛出
      */
-    public final Map<String, Object> validateOutputs(
-            Map<String, ?> actualOutputs
-    ) {
+    public final Map<String, Object> validateOutputs(Map<String, ?> actualOutputs) {
         if (actualOutputs == null) {
             throw new WorkflowException("Task outputs must be provided");
         }
-        LinkedHashSet<String> declared = outputs().stream()
-                .map(Output::getKey)
-                .collect(java.util.stream.Collectors.toCollection(
-                        LinkedHashSet::new
-                ));
-        LinkedHashSet<String> unsupported = new LinkedHashSet<>(
-                actualOutputs.keySet()
-        );
-        unsupported.removeAll(declared);
-        if (!unsupported.isEmpty()) {
-            throw new WorkflowException(
-                    "Task outputs were not declared: " + unsupported
-            );
-        }
+        var fields = outputFields();
         Map<String, Object> normalized = new LinkedHashMap<>();
-        for (Map.Entry<String, ?> entry : actualOutputs.entrySet()) {
-            Output output = outputs().stream()
-                    .filter(candidate -> candidate.getKey().equals(entry.getKey()))
-                    .findFirst()
-                    .orElseThrow();
+        for (var entry : actualOutputs.entrySet()) {
+            if (!fields.containsKey(entry.getKey())) {
+                throw new WorkflowException("Task outputs were not declared: " + entry.getKey());
+            }
+            var type = TaskOutputs.dataType(fields.get(entry.getKey()));
             try {
-                normalized.put(
-                        entry.getKey(),
-                        output.normalized(entry.getValue())
-                );
+                normalized.put(entry.getKey(), type == null || entry.getValue() == null
+                    ? entry.getValue() : type.normalize(entry.getValue()));
             } catch (IllegalArgumentException exception) {
                 throw new WorkflowException(exception.getMessage());
             }

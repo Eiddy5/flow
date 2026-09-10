@@ -1,7 +1,7 @@
 package org.cses.flow.executor;
 
 import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.queues.event.DispatchEvent;
+import org.cses.flow.queues.event.Event;
 import org.cses.flow.queues.annotations.FlowQueue;
 
 import java.util.Objects;
@@ -19,7 +19,7 @@ public record ExecutorEvent(
     String executionId,
     String companyId,
     EventType eventType
-) implements DispatchEvent {
+) implements Event {
 
     public static final String QUEUE_NAME = "flow-executor-event";
 

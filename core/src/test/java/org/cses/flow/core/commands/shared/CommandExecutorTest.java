@@ -1,7 +1,6 @@
 package org.cses.flow.core.commands.shared;
 
 import org.cses.flow.core.services.*;
-import org.cses.flow.infrastructure.repositories.CasSupport;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
@@ -45,8 +44,7 @@ class CommandExecutorTest {
         assertSame(session, handler.session);
         assertTrue(handler.sessionWasBound);
         assertTrue(handler.contextWasBound);
-        assertTrue(handler.casWasBound);
-        assertNull(handler.transactionalDsl.configuration().data(CasSupport.class));
+        assertSame(dsl, handler.transactionalDsl);
         assertNull(dsl.configuration().data(Session.class));
         assertNull(dsl.configuration().data(CommandContext.class));
     }
@@ -90,7 +88,7 @@ class CommandExecutorTest {
             (handled, transactionalDsl) -> {
                 assertEquals("handled:flow", handled);
                 assertSame(handler.transactionalDsl, transactionalDsl);
-                assertNotNull(transactionalDsl.configuration().data(CasSupport.class));
+                assertSame(dsl, transactionalDsl);
                 assertSame(
                     session,
                     transactionalDsl.configuration().data(Session.class)
@@ -203,7 +201,6 @@ class CommandExecutorTest {
         private TestSession session;
         private boolean sessionWasBound;
         private boolean contextWasBound;
-        private boolean casWasBound;
 
         @Override
         public Class<TextCommand> type() {
@@ -220,7 +217,6 @@ class CommandExecutorTest {
                 .data(Session.class) == context.session();
             contextWasBound = context.dsl().configuration()
                 .data(CommandContext.class) == context;
-            casWasBound = context.dsl().configuration().data(CasSupport.class) != null;
             return "handled:" + context.command().value();
         }
     }

@@ -7,7 +7,7 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
@@ -39,7 +39,7 @@ class ExecutorEventMessageHandlerTest {
     private static AtomicReference<RunIdentity> CAPTURED_RUN =
         new AtomicReference<>();
     private static Context PLUGINS = builtInContext(
-        new ParentTaskRunRecordingTask()
+        new ParentTaskRunRecordingTask(), new EchoTask(), new SummarySequence()
     );
 
     @Test
@@ -144,6 +144,31 @@ class ExecutorEventMessageHandlerTest {
             completed.taskRuns().stream().map(taskRun -> taskRun.id()).toList(),
             persisted.taskRuns().stream().map(taskRun -> taskRun.id()).toList()
         );
+    }
+
+    /** 通过真实 Executor 和 Worker 将 Runnable 与编排输出送入后续 RunContext。 */
+    @Test
+    void typedOutputsReachFollowingRunContextsWithoutOutputConfiguration() {
+        Flow flow = PLUGINS.deploy(
+            "typed-company", "typed-flow",
+            Map.of("key", "typed-flow", "tasks", List.of(
+                Map.of("key", "stage", "type", SummarySequence.class.getCanonicalName(),
+                    "tasks", List.of(Map.of("key", "prepare", "type",
+                        org.cses.flow.core.plugins.TestOutputTasks.Decision.class.getCanonicalName()))),
+                Map.of("key", "consume", "type", EchoTask.class.getCanonicalName())
+            )), null, ActorRef.create("user", "User"), 1L);
+        Execution execution = Execution.create(null, session(flow.companyId()),
+            flow.key(), flow.reversion(), Map.of());
+        ExecutorEventMessageHandler handler = new ExecutorEventMessageHandler(
+            new TestExecutionRepository(), new ExecutorService(), new WorkerDispatcher());
+        Execution completed = handler.execute(session(flow.companyId()), DSL.using(SQLDialect.POSTGRES),
+            new ExecutorContext(flow, execution));
+        assertEquals(State.Type.SUCCESS, completed.state().current());
+        assertEquals(3, completed.taskRuns().size());
+        for (TaskRun run : completed.taskRuns()) {
+            assertEquals(Map.of("decision", "approved"), run.outputs());
+        }
+        assertTrue(completed.activeTaskRuns().isEmpty());
     }
 
     @Test
@@ -374,15 +399,15 @@ class ExecutorEventMessageHandlerTest {
     @SuperBuilder
     @NoArgsConstructor
     public static class ParentTaskRunRecordingTask
-        extends Task implements RunnableTask {
+        extends Task implements RunnableTask<VoidOutput> {
 
         @Override
-        public RunResult run(RunContext context) {
+        public VoidOutput run(RunContext context) {
             CAPTURED_RUN.set(RunIdentity.from(
                 context.taskRunInfo().id(),
                 context.parentTaskRunId().orElseThrow()
             ));
-            return RunResult.success(Map.of());
+            return VoidOutput.from();
         }
     }
 
@@ -393,5 +418,56 @@ class ExecutorEventMessageHandlerTest {
         Session<User> session = new Session<>();
         session.setUser(user);
         return session;
+    }
+
+    /** 从具体编排输出中读取结果的后续任务。 */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static class EchoTask extends Task implements RunnableTask<DecisionOutput> {
+        /**
+         * 读取上一个编排的具体业务结果。
+         * @param context 当前任务只读运行上下文
+         * @return 前一步输出在本次上下文中的实际值
+         */
+        @Override
+        public DecisionOutput run(RunContext context) {
+            return DecisionOutput.from(context.render(
+                org.cses.flow.core.domains.expressions.TemplateExpression.parse("{{ outputs.stage.decision }}")));
+        }
+    }
+
+    /** 子任务完成后生成具体汇总结果的编排样本。 */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static class SummarySequence extends org.cses.flow.extensions.flow.Branch<DecisionOutput> {
+        /** @return 等待子任务全部完成后再生成自身输出 */
+        @Override
+        public boolean holdsTaskRunUntilChildrenSettle() {
+            return true;
+        }
+        /**
+         * 将子任务结果转为本编排的具体输出。
+         * @param context 子任务完成后的只读运行上下文
+         * @return 实际读取到的前置决定
+         */
+        @Override
+        public DecisionOutput outputs(RunContext context) {
+            return DecisionOutput.from(context.render(
+                org.cses.flow.core.domains.expressions.TemplateExpression.parse("{{ outputs.prepare.decision }}")));
+        }
+    }
+
+    /** 下游能够读取的明确决定字段。 */
+    public record DecisionOutput(String decision) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建观察到的决定结果。
+         * @param decision 只读的实际决定值
+         * @return 包含该值的新输出
+         */
+        public static DecisionOutput from(String decision) {
+            return new DecisionOutput(decision);
+        }
     }
 }

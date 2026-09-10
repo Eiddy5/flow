@@ -16,6 +16,7 @@ erDiagram
     FLOW_TASKS o|--o{ FLOW_TASKS : "parent_id 形成任务树"
     EXECUTIONS ||--o{ TASK_RUNS : "execution_id 形成运行历史"
     FLOW_TASKS ||--o{ TASK_RUNS : "Execution 的版本范围内由 task_id 解析"
+    TASK_RUNS o|--o| EXECUTIONS : "parent_task_run_id 子调用"
     TASK_RUNS o|--o{ TASK_RUNS : "parent_id 形成运行树"
 
     FLOWS {
@@ -53,6 +54,7 @@ erDiagram
         varchar id PK
         varchar parent_id
         varchar origin_id
+        varchar parent_task_run_id
         jsonb inherited_task_runs
         varchar flow_key
         bigint flow_version
@@ -94,6 +96,8 @@ Execution
 运行 `status` 或 `state_history` 字段；Flow 的 Audit Status 则以独立文本
 `status` 持久化。
 
+旧 PostgreSQL 队列表已移除；当前基线仅包含上述四张领域表，关系图保持不变。
+
 ## 准备数据库
 
 开发期只维护一个完整建表基线入口；入口会在同一事务中包含全部表级脚本。在空的
@@ -113,8 +117,7 @@ psql "$FLOW_POSTGRES_PSQL_URL" \
 转换。应用不携带 Flyway，也不会在启动时创建、升级或清理 Schema。
 
 领域时间在 Java 中使用 Epoch 毫秒 `long/Long`，当前 Flow 基线中的领域时间列使用
-`bigint`，由 Entry 直接映射；Queue 的 `created_at` 是数据库消息顺序字段，可由
-Queue Adapter 使用数据库默认值生成。领域审计列不由数据库默认值或生成列补齐。
+`bigint`，由 Entry 直接映射。领域审计列不由数据库默认值或生成列补齐。
 
 Flow 的 creator/updater/deleter、状态和时间由 Flow 领域产生并由 `FlowEntry` 写入；
 Execution 只保留 `BaseDomain` 的 creator/created_at；TaskRun 不保存独立审计或
@@ -143,21 +146,36 @@ FLOW_POSTGRES_TEST_PASSWORD=flow \
 
 未设置 `FLOW_POSTGRES_TEST_URL` 时，Repository 集成测试会跳过。
 
-业务使用普通 `find/save`；CommandExecutor 和消息处理入口内部自动管理加载版本。
-直接运行 Repository 的测试或探针使用 `FlowDatabase.execute(dsl, operation)`，读取、
-领域修改和保存使用回调提供的 DSL。操作结束即清除加载版本，不能把查询副本带到
-另一个操作直接更新。该入口不启动事务，根 CAS 与 TaskRun 仍通过单 SQL 原子提交。
-`lock` 初始为 0，每次成功更新加 1；重复读取不改变它。完整并发回归还应运行：
+业务、测试和探针均直接使用普通 DSLContext 调用 `find/save`，无需执行作用域。
+对象携带加载时的 `lock`，copy 保留版本，可以跨操作传递；保存不能重读最新版本
+替换旧凭据。新对象为 null，首次保存为 0，每次成功更新加 1，SQL 失败不回填。
+根 CAS 与 TaskRun 仍通过单 SQL 原子提交。显式事务或 savepoint 回滚后必须丢弃
+已修改对象并重新加载。完整并发回归还应运行：
 
 ```bash
-./gradlew :core:test --tests '*CasSupportTest' --tests '*ExecutionCasIntegrationTest'
+./gradlew :core:test --tests '*CasRepositoryTest' --tests '*ExecutionCasIntegrationTest'
 ```
 
 此命令使用上文相同的 Java 与 PostgreSQL 环境变量。字段更名后，已有开发库必须
 显式重建；基线的 `IF NOT EXISTS` 不会把旧列自动改名。验证优先使用独立临时数据库，
 不要为了运行测试清空现有开发数据。
 
-### 2026-09-09 通用 CAS 最小重构验证
+### 2026-09-10 对象版本与 CAS 仓储基类验证
+
+使用独立 PostgreSQL 17 容器及当前完整结构基线，未操作已有开发库。常规测试配置
+定向 49/49 通过，0 跳过：CasRepositoryTest 3、ExecutionCasIntegrationTest 12、
+ExecutionEntryTest 3、ExecutionTest 14、PostgresRepositoryIntegrationTest 7、
+CommandExecutorTest 5、ExecutorEventMessageHandlerTest 5。证据目录为
+`core/build/cas-inline-lock-targeted-current/core/test/xml/`。
+覆盖另一个根类型继承、重复保存、跨上下文副本、真实双线程竞争、根子和双根原子性、
+SQL 失败不回填，以及显式事务/savepoint 回滚后重载。此结果不代替 UC 或全量验收；
+使用 JDK 25 执行，不构成 Java 21 兼容性验证。
+最终全项目回归为 447 通过、8 失败、1 跳过，其中 CAS 专项仍为 49/49；
+正常 SQL 探针已执行，根子保存保持单 SQL，不作为数据库性能证据。场景覆盖、失败
+详情、环境复核及临时资源清理见
+[本轮批次报告](../test-reports/flow/BATCH-2026-09-10-1311.md)。
+
+### 2026-09-09 通用 CAS 最小重构验证（历史实现）
 
 使用独立 PostgreSQL 17 容器，未操作已有开发库。定向测试 32/32 通过：
 `CasSupportTest` 4、`ExecutionCasIntegrationTest` 12、`PostgresRepositoryIntegrationTest`

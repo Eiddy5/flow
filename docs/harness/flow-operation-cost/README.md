@@ -117,8 +117,8 @@ Repository 对所有 TaskRun 构造 VALUES，冲突时更新所有字段，并�
 ## 由源码确认、尚未测量现场耗时的热点
 
 1. **运行列表和详情负载过重。** `ExecutionRepository.findAll` 使用一条含子集合的 SQL，读取租户所有 Execution 和全部 TaskRun，没有分页。页面首次打开等待该接口；当前执行轮询反复加载整份历史。这里是数据量问题，不是 SQL N+1。[仓储查询](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/infrastructure/repositories/executions/ExecutionRepositoryImpl.java:61)、[页面初始化](/System/Volumes/Data/workspace/java/flow/server/src/main/resources/flow/flow.js:178)、[轮询](/System/Volumes/Data/workspace/java/flow/server/src/main/resources/flow/flow.js:4573)。
-2. **内部事件消费通道同步等待 Worker。** `DefaultExecutor` 每个实例只订阅一次内部事件队列；订阅线程依次消费，`WorkerDispatcher` 直接调用任务的 `run`。同实例长任务会阻挡该消费者处理后面的执行事件。多个部署实例可以竞争消费，因此不是全集群只有一个线程。[订阅](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/executor/DefaultExecutor.java:46)、[消费循环](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/infrastructure/queues/PollingQueueSubscription.java:137)、[Worker](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/worker/WorkerDispatcher.java:20)。
-3. **队列事务跨越消费者处理。** `PostgresQueueStore` 在自己的事务中领取消息、调用 consumer，等整个处理返回后才删除 ACK。同步 Worker 期间队列消息行锁和事务连接仍被占用；这是队列传输事务，不是已被移除的 Execution 业务行锁。[事务](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java:116)、[回调与 ACK](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/infrastructure/queues/PostgresQueueStore.java:197)。
+2. **内部事件消费通道同步等待 Worker。** 当前 DefaultExecutor 通过 Pulsar 方法监听进入内部处理器，同一消费者仍同步等待 Worker；多个应用实例竞争消费。
+3. **原数据库队列事务成本已退出当前链路。** 本文原有 PostgresQueueStore/轮询器证据来自切换前版本；ADR 0094 改用 Pulsar，ADR 0096 已删除旧实现。该历史成本不能作为当前 Pulsar 链路的实测结论。
 4. **事件推进反复恢复同一个完整领域。** 事件开始读取 Execution 和精确版本 Flow；每个 Worker 前重读 Execution，返回后再重读并合入结果。全量持久化与历史增长相乘。但 Worker 返回后的重读和存储版本冲突检查用于避免覆盖并行 Resume/Cancel，不能直接删除。[事件处理](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventMessageHandler.java:168)、[结果合并](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventMessageHandler.java:285)。
 5. **退回路径重复计算。** 同一个 plan 调用先 validate，再通过 affectedTaskRunIds 重复 validate；候选之间还进行两两路径比较。先消除同一快照内的重复工作；跨宿主提交、排队和消费的重新校验仍必要。[计划](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java:265)、[重复校验](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java:505)、[候选比较](/System/Volumes/Data/workspace/java/flow/core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java:525)。
 
@@ -156,4 +156,4 @@ Repository 对所有 TaskRun 构造 VALUES，冲突时更新所有字段，并�
 
 加上 `-Dprobe.check=true` 会在记录全部数据后，针对当前列表逐条查询抛出诊断断言，当前基线预期失败。普通模式运行成功并输出上述计数。该断言用于复现查询放大，不是 UC 或完整功能回归；调整查询形态后，Mock 返回分支也需相应维护。
 
-后续测量实际耗时，应在独立测试库使用相同数据规模，分别记录 HTTP/用例耗时、SQL 次数与总时间、返回体大小、连接池等待、Worker 耗时和队列积压。已有队列负载方法见 [dispatch-queue-load-test.md](/System/Volumes/Data/workspace/java/flow/docs/harness/dispatch-queue-load-test.md)。
+后续测量实际耗时，应在独立测试库使用相同数据规模，分别记录 HTTP/用例耗时、SQL 次数与总时间、返回体大小、连接池等待、Worker 耗时和队列积压。旧 PostgreSQL 队列压测任务已删除；当前 Pulsar 验证环境见 [pulsar-queues.md](../pulsar-queues.md)，负载数据需针对当前传输重新测量。

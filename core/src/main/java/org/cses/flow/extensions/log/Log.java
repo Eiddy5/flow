@@ -51,13 +51,18 @@ public class Log extends Task implements RunnableTask<VoidOutput> {
         return message.source();
     }
 
+    /**
+     * 渲染消息并写入日志，模板错误返回无业务字段的失败结果。
+     * @param context 非 null 的本次运行上下文，只读
+     * @return 非 null 的空成功结果或携带模板错误的失败结果
+     */
     @Override
     public VoidOutput run(RunContext context) {
         try {
             LOGGER.info("{}", context.render(message));
-            return null;
+            return VoidOutput.from();
         } catch (WorkflowException exception) {
-            return null;
+            return VoidOutput.failed("Log message could not be rendered: " + exception.getMessage());
         }
     }
 

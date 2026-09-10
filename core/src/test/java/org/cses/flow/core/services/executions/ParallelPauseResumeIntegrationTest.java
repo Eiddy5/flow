@@ -50,9 +50,6 @@ class ParallelPauseResumeIntegrationTest {
                         onResume:
                           - key: backendResult
                             type: STRING
-                        outputs:
-                          - key: backendResult
-                            type: STRING
                       - key: frontend-branch
                         type: org.cses.flow.extensions.flow.Sequence
                         tasks:
@@ -63,9 +60,6 @@ class ParallelPauseResumeIntegrationTest {
                               type: org.cses.flow.extensions.log.Log
                               message: "frontend ready"
                             onResume:
-                              - key: frontendResult
-                                type: STRING
-                            outputs:
                               - key: frontendResult
                                 type: STRING
                           - key: target-block
@@ -514,9 +508,6 @@ class ParallelPauseResumeIntegrationTest {
                     onResume:
                       - key: backendResult
                         type: STRING
-                    outputs:
-                      - key: backendResult
-                        type: STRING
                   - key: frontend-check
                     type: org.cses.flow.extensions.flow.Pause
                     onPause:
@@ -524,9 +515,6 @@ class ParallelPauseResumeIntegrationTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
                     onResume:
-                      - key: frontendResult
-                        type: STRING
-                    outputs:
                       - key: frontendResult
                         type: STRING
               - key: join-checks

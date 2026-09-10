@@ -1049,9 +1049,6 @@ class NestedPauseResumeIntegrationTest {
                         onResume:
                           - key: backendResult
                             type: STRING
-                        outputs:
-                          - key: backendResult
-                            type: STRING
 
                   - key: frontend-build
                     type: org.cses.flow.extensions.flow.Sequence
@@ -1063,9 +1060,6 @@ class NestedPauseResumeIntegrationTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: frontendResult
-                            type: STRING
-                        outputs:
                           - key: frontendResult
                             type: STRING
 
@@ -1086,9 +1080,6 @@ class NestedPauseResumeIntegrationTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: securityDecision
-                            type: STRING
-                        outputs:
                           - key: securityDecision
                             type: STRING
 
@@ -1127,9 +1118,6 @@ class NestedPauseResumeIntegrationTest {
                     onResume:
                       - key: backendResult
                         type: STRING
-                    outputs:
-                      - key: backendResult
-                        type: STRING
 
                   - key: frontend-build
                     type: org.cses.flow.extensions.flow.Sequence
@@ -1141,9 +1129,6 @@ class NestedPauseResumeIntegrationTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: frontendResult
-                            type: STRING
-                        outputs:
                           - key: frontendResult
                             type: STRING
 
@@ -1164,9 +1149,6 @@ class NestedPauseResumeIntegrationTest {
                           type: org.cses.flow.extensions.log.Log
                           message: "test step"
                         onResume:
-                          - key: securityDecision
-                            type: STRING
-                        outputs:
                           - key: securityDecision
                             type: STRING
 
@@ -1195,9 +1177,6 @@ class NestedPauseResumeIntegrationTest {
                       type: org.cses.flow.extensions.log.Log
                       message: "test step"
                     onResume:
-                      - key: decision
-                        type: STRING
-                    outputs:
                       - key: decision
                         type: STRING
                   - key: route-approval

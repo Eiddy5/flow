@@ -163,7 +163,7 @@ core/src/main/java/org/cses/flow/
 ├── executor/         # Executor Command、队列路由/处理、状态机与 Worker 投递协调
 ├── extensions/       # 可插拔的工作流能力扩展
 ├── infrastructure/   # Flow 数据库、Repository 与 DataPilot 适配
-├── queues/           # 类型化 Event、Dispatch Queue 契约与订阅生命周期
+├── queues/           # 类型化发布接口、消息 key 与队列注解
 └── worker/           # RunnableTask 调用、Worker 投递与关联结果信封
 
 server/src/main/java/org/cses/flow/
@@ -342,21 +342,23 @@ Execution 编排推进组件。它与 `core` 平级，负责：
   两种消息由 `@FlowQueue` 声明 Pulsar Topic，发布端注入公共 `Queue<T>`。
   外部消息只路由给 `executor/handlers/ExecutionCommandEventHandler`；该 Handler 恢复
   宿主 Session、校验并物化 Execution，保存后投递 `ExecutorEvent`。
-- `executor/handlers/ExecutorEventHandler` 是内部状态循环的唯一处理器：每次领取一个
+- `executor/handlers/ExecutorEventMessageHandler` 是内部状态循环的唯一处理器：每次领取一个
   `ExecutorEvent`，从 Repository 普通读取精确 Flow/Execution 的完整快照，创建一个
   `ExecutorContext`，推进一个周期，保存本轮变化，再把后续周期投回 Event Queue。
 - 使用 `ExecutorContext` 组合 Execution、精确 Flow、nexts、workerTasks、
-  orchestrationCompletions、本轮 states 与变更标记；Session 和 DSLContext 不进入
+  orchestrationCompletions、subFlowTaskRuns、本轮 states 与变更标记；Session 和 DSLContext 不进入
   Context。
-- 由 `ExecutorService.handle` 循环调用 `handleNext` 与 `onNexts`：前者根据
-  不可变 Flow 定义和 TaskRun 事实暂存下一批 TaskRun，后者原子应用该批次并
-  判断 RunnableTask 与 OrchestrationTask。
+- `ExecutorService.process` 根据不可变 Flow 定义和 TaskRun 事实推进一个周期，
+  接纳下一批 TaskRun，并分别处理 RunnableTask 与 OrchestrationTask 的暂存动作。
 - 创建、开始、完成、失败、恢复或取消 TaskRun，并判断 Execution 是否收敛；
   `handleNext` 本身不改变 Execution。
 - 校验每个具体 Task 恰好实现 RunnableTask 或 OrchestrationTask；RunnableTask
-  形成 WorkerTask 后返回提交边界，OrchestrationTask 直接在 `handle` 循环内完成
+  形成 WorkerTask 后返回提交边界，OrchestrationTask 直接在调度周期内完成
   Pause 前置 Task 子树执行、Pause TaskRun 暂停、编排作用域推进和收敛；Pause
   自身不形成 WorkerTask，其 `onPause` 字段中的 RunnableTask 仍按正常 Worker 链路执行。
+- `executor/handlers/SubFlowExecutionHandler` 根据编排能力创建同租户的独立子 Execution，
+  原子保存父调用与子运行，子终态回传精确父 TaskRun；具体插件与结果定义位于
+  `extensions/flow/SubFlow`。参见 ADR 0098。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
 - 内部 `ExecutorEventMessageHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
   Worker 结果应用后通过新的 `ExecutorEvent` 再次进入下一周期。`ExecutorContext` 不
@@ -373,54 +375,26 @@ Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor`
 
 ### `queues/`
 
-类型化异步消息传输契约。它与 `core`、`executor` 和 `worker` 平级，只保存公开
-Interface 与队列声明注解。公共 `Queue<T>` 只提供 queueName、emit、emitAsync，
-不拥有资源关闭或订阅。当前运行装配见 [ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md)。
-`Event` 只表达业务 key。独立旧适配器的 `DispatchQueue.emitInTransaction(...)` 使用 JOOQ
-`DSLContext` 显式表达一次发布的调用方事务；Event 不携带事务状态。该目录不包含
-存储、序列化或中间件产品实现：
+类型化异步消息发布契约，与 `core`、`executor` 和 `worker` 平级。`Queue<T>` 只提供
+queueName、emit、emitAsync，不拥有关闭或订阅；`Event` 只保留命令和内部事件的业务 key。
+消费由 `@FlowQueueListener` 声明，PAAS 拥有接收循环及 ACK/NACK。当前结构为：
 
 ```text
 queues/
 ├── Queue.java
-├── DispatchQueue.java
-├── QueueSubscription.java
 ├── QueueException.java
 ├── annotations/
-│   ├── FlowQueue.java         # 消息类型的逻辑名与 PAAS Topic 声明
-│   └── FlowQueueListener.java # singleton 方法的订阅名、并发与可执行元数据
+│   ├── FlowQueue.java
+│   └── FlowQueueListener.java
 └── event/
-    ├── Event.java
-    └── DispatchEvent.java
+    └── Event.java
 ```
 
-业务 Module 拥有具体消息字段、key 和内部分类；默认 Executor 通过类型注入发布到
-Pulsar，订阅在方法注解中声明。以下 Dispatch 契约只用于未自动装配的旧独立适配器。`DispatchQueue` 提供单条与批量、同步与异步发布，并使用
-Java `Consumer` 注册竞争消费者；`QueueSubscription` 独立管理一次注册的暂停、恢复
-和关闭生命周期。普通 `emit(...)` 由具体 Adapter 使用 Queue 自有事务；调用方已经
-持有事务且要求业务写入与消息原子提交时，必须通过 `emitInTransaction(...)` 在调用点
-显式传入。事务是发布操作元数据，不属于 Event，也不能进入持久化消息。
-
-本目录不执行 JOOQ SQL，也不保存消息表、JSONB 转换、后台轮询器、ACK、重试或具体
-Consumer。业务 Event 的内部 `eventType` 仍由所属 Module 自行维护，Queue 不建立中心
-类型目录。当前只定义 Dispatch Interface；Broadcast Interface、消费游标和保留清理
-尚未定义。数据库 Adapter 的所有传输类别共用 `queues` 载荷表，并通过
-`queue_type + queue_name` 逻辑隔离；未来专属消费状态可以独立建表，但不拆分载荷表。
-
-当前 Execution 启动和内部周期交接均依赖注解式 Pulsar Queue；外部 Command Handler 与
-内部 Event Handler 分别加载领域、执行领域方法并完整保存，Worker 回调不持有业务事务。
-Execution 的完整快照保存与冲突检测见 [ADR 0084](decisions/0084-save-domain-snapshots-without-business-transactions.md)。
-业务通过普通 `find/save` 读写；数据库执行入口内部使用通用 `CasSupport` 管理加载
-版本并自动清理，显式 `lock` CAS 及生命周期见 [ADR 0091](decisions/0091-hide-repository-cas-behind-save.md)。
-Execution 的 `Origin` 与继承运行快照、新旧实例单 SQL 交接和同源查询见
-[ADR 0087](decisions/0087-derive-execution-snapshots-on-replay.md)。继承快照只存于 Execution，
-`task_runs` 继续保存每个实例首次产生的运行记录。
-`core/services/executions/RewindPath` 负责嵌套路径的前驱与影响范围计算；精确 Generation 失效范围和部分祖先重开见 [ADR 0085](decisions/0085-rewind-across-nested-orchestration-scopes.md)。
-具体 Queue Adapter 放入对应基础设施目录；Default Adapter 负责消息自己的传输事务和
-周期轮询消费生命周期。完整决策见
-[`ADR 0046`](decisions/0046-define-typed-dispatch-queue-framework.md) 与
-[`ADR 0047`](decisions/0047-implement-default-dispatch-queue.md)，Execution 接入见
-[`ADR 0051`](decisions/0051-start-executions-through-dispatch-queue.md)。
+本目录没有 SQL、消息存储、事务发布或独立订阅生命周期。`FlowQueueListener` 唯一
+允许引用 Micronaut `Executable` 元注解；装配实现位于 `infrastructure/queues/pulsar`。
+Execution 启动与内部周期交接使用 Pulsar，领域保存和后续发布仍为独立边界，见
+[ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md)。旧 PostgreSQL 队列、专属
+契约、建表基线和生成类已移除，见 [ADR 0096](decisions/0096-remove-legacy-postgres-queues.md)。
 
 ### `worker/`
 
@@ -433,7 +407,7 @@ worker/
 └── WorkerTaskResult.java
 ```
 
-`RunnableTask`、`OrchestrationTask` 和 `RunResult` 归属于 `core/domains/tasks`；
+`RunnableTask<T>`、`OrchestrationTask<T>`、`Output` 和 `VoidOutput` 归属于 `core/domains/tasks`；
 Runnable 的直接调用上下文 `RunContext` 以及变量投影 `RunVariables` 归属于
 `core/runner`。Worker 只消费这些能力：接收包装 RunnableTask 和规范变量树的不可变
 `WorkerTask`，为一次调用通过 Builder 创建只保存 `variables` 的 `RunContext`。
@@ -540,11 +514,10 @@ Java Class 转换为字符串 DTO。
 ```text
 core/src/main/java/org/cses/flow/infrastructure/
 ├── jooq/            # 具名 flow 数据源和 JOOQ 装配
-├── queues/          # Default Dispatch Queue、统一消息表、JsonFactory 类型恢复与周期轮询
-│   ├── entries/     # 保存业务 payload、queue_type 与 queue_name 的 Queue Message Entry
+├── queues/          # 消息传输基础设施
 │   └── pulsar/      # PAAS 薄适配：PulsarQueue、类型注入 Factory、注解消费者注册
 ├── repositories/    # Repository 的具体生产实现
-│   ├── CasSupport.java # 按弱引用对象身份管理加载版本、CAS 条件及自动失效
+│   ├── CasRepository.java # 通用 CAS 仓储基类，校验对象版本并回填保存结果
 │   └── <业务模块>/
 │       ├── XxxRepositoryImpl.java
 │       ├── entries/
@@ -558,27 +531,18 @@ core/src/main/java/org/cses/flow/infrastructure/
 
 - Repository 的 PostgreSQL、DataPilot 等生产实现。
 - `queues/pulsar` 中的注解式 PAAS Pulsar 适配；连接、编码、消费循环与 ACK/NACK
-  复用 PAAS。它实现公共 Queue，作为两条 Executor 队列的默认传输，不实现旧 DispatchQueue，具体见
+  复用 PAAS。它实现公共 Queue，作为两条 Executor 队列的默认传输，具体见
   [ADR 0094](decisions/0094-use-pulsar-for-executor-queues.md) 和
   [接入说明](harness/pulsar-queues.md)。
 - `entries` 子包中的数据库 Entry，以及 Entry 与领域对象之间的转换。
 - 与 `entries` 平级的 `codec` 子包；只保存 Entry 静态调用的序列化和专用字段转换。
-- `queues` 中未自动装配的独立旧 `DefaultDispatchQueue`；普通发布使用 Queue
-  自有事务，显式事务发布使用调用方传入的 `DSLContext`。它使用项目现有 `JsonFactory`
-  把 Event 重组为只含业务数据的 JSONB Queue Entry，并通过装配时传入的 `Class<T>`
-  恢复业务类型。所有传输类别的
-  Entry 写入统一 `queues`，用可扩展 `queue_type + queue_name` 隔离；当前
-  Default Adapter 固定使用 `DISPATCH`。Adapter 使用具名 `flow` JOOQ、周期轮询和
-  `FOR UPDATE SKIP LOCKED` 竞争消费；异步发布始终使用 Queue 自有事务。
-  原两条 Executor Queue Factory 已删除，运行链路改用 `PulsarQueueFactory` 与注解消费者。
 - 缓存、远程服务等其他技术适配器。
 - 只与具体框架或外部系统有关的配置和连接代码。
 
 基础设施实现 Core 定义的端口，可以依赖 Core；Core 领域对象和状态机不能反向依赖
 DataPilot、JOOQ Record 或具体数据库实现。
 
-JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository 或数据库 Queue
-Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中
+JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中
 完成数据库字段与项目对象的转换；需要序列化或专用字段转换时，在同级 `codec`
 子包提供静态 Codec。详细规则见
 [`docs/standards/jooq.md`](standards/jooq.md)。
@@ -655,7 +619,7 @@ executor
   -> worker 的结果协议
 
 worker
-  -> core/domains/tasks 的 RunnableTask、RunResult
+  -> core/domains/tasks 的 RunnableTask、Output
   -> core/runner 的 RunContext 与 RunVariables 变量协议
   -> core 的 Task 定义与统一 State 词汇
 
@@ -671,12 +635,9 @@ infrastructure
   -> core/repositories 等核心端口
   -> 具名 flow JOOQ、PostgreSQL 或其他外部技术
 
-infrastructure/queues
-  -> queues 的类型化 Event、发布和订阅契约
-  -> 具名 flow JOOQ 与 gen 生成的统一 Queue Message 表类型
-
-queues/event
-  -> JOOQ DSLContext 类型（只表达同步发布可空事务）
+infrastructure/queues/pulsar
+  -> queues 的发布接口与声明注解
+  -> PAAS Pulsar 的连接、编码与消费生命周期
 ```
 
 核心依赖方向：
@@ -698,9 +659,7 @@ queues/event
 - `core` 不能依赖 `controller` 或具体基础设施实现。
 - `queues` 不依赖 Executor、Worker、Core Domain 或具体 Queue Adapter；只有
   `annotations/FlowQueueListener` 可引用 Micronaut `Executable` 元注解以生成方法元数据，
-  其他 Queue 契约不依赖 Micronaut。只有
-  `DispatchQueue.emitInTransaction(...)` 的公开发布契约依赖 JOOQ `DSLContext` 类型，
-  `Event` 不依赖 JOOQ，Queue 契约不执行 SQL。Executor 的具体启动 Event 依赖该公开
+  其他 Queue 契约不依赖 Micronaut 或 JOOQ，也不执行 SQL。Executor 的具体启动 Event 依赖该公开
   契约，消费后再进入 Worker 链路。
 - `core` 内不能重新建立 `executors` 或 `workers` 技术目录。
 - 具体扩展实现和 Worker 不能接管 Executor 的 Execution 状态推进。
@@ -734,11 +693,10 @@ queues/event
 | Execution 编排推进、单轮上下文或 nexts 批次逻辑 | `core/src/main/java/org/cses/flow/executor/` |
 | Execution 启动 Queue Command、Publisher 与 Consumer | `core/src/main/java/org/cses/flow/executor/` |
 | Worker 调度器、投递信封或关联结果信封 | `core/src/main/java/org/cses/flow/worker/` |
-| 类型化 Event、Dispatch Queue 与订阅生命周期契约 | `core/src/main/java/org/cses/flow/queues/` |
+| 类型化消息 key、Queue 发布接口与注解 | `core/src/main/java/org/cses/flow/queues/` |
 | Queue Event 分类 Interface | `core/src/main/java/org/cses/flow/queues/event/` |
-| Default Dispatch Queue、统一消息表、Event JSONB 重组、类型恢复与轮询订阅 | `core/src/main/java/org/cses/flow/infrastructure/queues/` |
+| PAAS Pulsar 类型发布、注入与方法消费者注册 | `core/src/main/java/org/cses/flow/infrastructure/queues/pulsar/` |
 | Executor Command/Event 的 Pulsar 声明与回调 | `core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`、`executor/ExecutorEvent.java`、`executor/DefaultExecutor.java` |
-| 包含 `queue_type + queue_name` 的统一 Queue Message JOOQ Entry | `core/src/main/java/org/cses/flow/infrastructure/queues/entries/` |
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/XxxRepositoryImpl.java` |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
 | Entry 序列化和专用字段转换 | 与具体 Repository 的 `entries/` 平级的 `codec/` 子包 |
@@ -777,3 +735,7 @@ AI Agent 接到开发、测试、审查或文档任务后：
 
 如果实际目录与本文不一致，应先判断是尚未完成的迁移、空目录，还是架构边界已经
 变化。架构边界已经变化时，应同步更新 ADR、本文和 `AGENTS.md`，不能只修改代码。
+
+Task 输出契约见 [ADR 0095](decisions/0095-return-typed-task-outputs.md)：具体 Output 类型
+由 Task 代码声明，`core/plugins/TaskOutputs` 负责泛型字段元数据及 PAAS JSON 输出映射；
+Task 不接受 outputs 配置。Worker/Executor 保存结果到 TaskRun，后续 RunContext 按原作用域投影。

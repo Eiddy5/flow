@@ -33,6 +33,11 @@ public class FlowTaskEntry extends FlowTasksObject {
         return entry;
     }
 
+    /**
+     * 使用已保存身份和插件配置恢复 Task，输出结构由 Task 类型提供。
+     * @param children 普通子任务，只读；可为 null
+     * @return 恢复的 Task，不从数据库输出元数据创建流程配置
+     */
     public Task to(List<Task> children) {
         return TaskPropertiesCodec.decode(
             properties,
@@ -40,7 +45,6 @@ public class FlowTaskEntry extends FlowTasksObject {
             type,
             key,
             DataJsonCodec.decodeInputs(inputs, "Task.inputs"),
-            DataJsonCodec.decodeOutputs(outputs, "Task.outputs"),
             children
         );
     }

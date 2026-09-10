@@ -2,7 +2,7 @@ package org.cses.flow.executor.commands;
 
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import org.cses.flow.queues.event.DispatchEvent;
+import org.cses.flow.queues.event.Event;
 import org.cses.flow.queues.annotations.FlowQueue;
 
 /**
@@ -27,7 +27,7 @@ import org.cses.flow.queues.annotations.FlowQueue;
         @JsonSubTypes.Type(value = Cancel.class, name = "CANCEL")
 })
 @FlowQueue(name = ExecutionCommand.QUEUE_NAME, topic = ExecutionCommand.QUEUE_NAME)
-public sealed interface ExecutionCommand extends DispatchEvent permits Create, Resume, Rewind, Cancel {
+public sealed interface ExecutionCommand extends Event permits Create, Resume, Rewind, Cancel {
 
     String QUEUE_NAME = "flow-executor-command";
 

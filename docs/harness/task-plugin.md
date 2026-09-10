@@ -17,7 +17,7 @@ import jakarta.validation.constraints.NotBlank;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.tasks.RunResult;
+import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
@@ -45,7 +45,7 @@ import java.util.Map;
 )
 @SuperBuilder
 @NoArgsConstructor
-public final class Notification extends Task implements RunnableTask {
+public class Notification extends Task implements RunnableTask<Notification.Result> {
 
     @NotBlank
     @Schema(
@@ -60,8 +60,14 @@ public final class Notification extends Task implements RunnableTask {
     }
 
     @Override
-    public RunResult run(RunContext context) {
-        return RunResult.success(Map.of());
+    public Result run(RunContext context) {
+        return Result.from(channel);
+    }
+
+    public record Result(String channel) implements Output {
+        public static Result from(String channel) {
+            return new Result(channel);
+        }
     }
 
     @Override
@@ -198,3 +204,10 @@ Schema 在第一次详情查询时生成并缓存。Schema 生成失败不影响
   `Task.definitionChildren()` 暴露。Repository 写入定义树时派生 `parent_id`，读取后
   必须按具体 Task 类型恢复 Branch 子树或类型专有定义树。
 - 重命名 Task 类或修改 package 会改变持久化类型，是一次显式兼容性变更。
+
+## Task 输出
+
+具体返回类型的字段由 Task 开发者声明，Flow YAML 的 Task 节点不再配置 `outputs`。
+上例无需重复配置 channel 输出，后续任务即可引用 `{{ outputs.notify-operations.channel }}`。
+输出结果通过 PAAS JSON 编码并保存到 TaskRun，再由 RunVariables 构造后续 RunContext；
+不要修改当前 RunContext 来跨任务传值。详见 [ADR 0095](../decisions/0095-return-typed-task-outputs.md)。

@@ -246,7 +246,7 @@ class CoreArchitectureStandardTest {
                     "RunVariables.java"
                 ))
                 && Files.isRegularFile(taskDomain.resolve(
-                    "RunResult.java"
+                    "Output.java"
                 )),
             "Task capabilities and results must remain in the Task domain, "
                 + "with invocation context in the Core runner"
@@ -374,11 +374,8 @@ class CoreArchitectureStandardTest {
 
         for (Path contract : List.of(
             queues.resolve("Queue.java"),
-            queues.resolve("DispatchQueue.java"),
-            queues.resolve("QueueSubscription.java"),
             queues.resolve("QueueException.java"),
-            events.resolve("Event.java"),
-            events.resolve("DispatchEvent.java")
+            events.resolve("Event.java")
         )) {
             assertTrue(
                 Files.isRegularFile(contract),
@@ -392,9 +389,6 @@ class CoreArchitectureStandardTest {
         );
 
         String queueContract = Files.readString(queues.resolve("Queue.java"));
-        String dispatchContract = Files.readString(
-            queues.resolve("DispatchQueue.java")
-        );
         String eventContract = Files.readString(
             events.resolve("Event.java")
         );
@@ -403,24 +397,12 @@ class CoreArchitectureStandardTest {
                 && !queueContract.contains("extends Event")
                 && !queueContract.contains("AutoCloseable")
                 && !queueContract.contains("void close(")
-                && queueContract.contains("CompletionStage<Void> emitAsync(T event)")
-                && dispatchContract.contains("AutoCloseable"),
-            "Base Queue must not own Dispatch subscription semantics"
+                && queueContract.contains("CompletionStage<Void> emitAsync(T event)"),
+            "Queue publishing must not own subscriptions or client resources"
         );
         assertTrue(
-            dispatchContract.contains(
-                "QueueSubscription subscribe(Consumer<T> consumer);"
-            ),
-            "DispatchQueue must own competing Consumer registration"
-        );
-        assertTrue(
-            !eventContract.contains("DSLContext")
-                && !eventContract.contains("dsl()")
-                && dispatchContract.contains(
-                    "void emitInTransaction(T event, DSLContext dsl);"
-                ),
-            "Event must remain pure business data and DispatchQueue must "
-                + "own explicit caller transaction publishing"
+            !eventContract.contains("DSLContext") && !eventContract.contains("dsl()"),
+            "Event must remain pure business data"
         );
 
         List<String> coupled = new ArrayList<>();
@@ -454,9 +436,9 @@ class CoreArchitectureStandardTest {
                             coupled.add(path.toString());
                         }
                         if (source.contains("import org.jooq.")
-                            && !path.equals(queues.resolve(
-                                "DispatchQueue.java"
-                            ))) {
+                            || source.contains("import java.sql.")
+                            || source.contains("import javax.sql.")
+                            || source.contains("import org.flow.gen.")) {
                             unexpectedJooqDependencies.add(path.toString());
                         }
                     } catch (IOException exception) {
@@ -472,8 +454,7 @@ class CoreArchitectureStandardTest {
         );
         assertTrue(
             unexpectedJooqDependencies.isEmpty(),
-            () -> "Only DispatchQueue transaction publishing may "
-                + "expose the confirmed JOOQ dependency: "
+            () -> "Queue contracts must not depend on database APIs: "
                 + unexpectedJooqDependencies
         );
     }
@@ -507,62 +488,43 @@ class CoreArchitectureStandardTest {
         assertTrue(Files.notExists(FLOW.resolve("infrastructure/queues/ExecutorEventQueueFactory.java")));
     }
 
+    /**
+     * 检查已移除的 PostgreSQL 队列源码和生成表不存在，并禁止队列依赖数据库 API。
+     * @throws IOException 当队列实现源码无法读取时抛出
+     */
     @Test
-    void defaultQueueAdapterRemainsInInfrastructure() throws IOException {
-        Path defaultQueue = FLOW.resolve("infrastructure/queues");
-        for (Path adapter : List.of(
-            defaultQueue.resolve("DefaultDispatchQueue.java"),
-            defaultQueue.resolve("PostgresQueueStore.java"),
-            defaultQueue.resolve("PollingQueueSubscription.java"),
-            defaultQueue.resolve(
-                "entries/QueueMessageEntry.java"
-            )
+    void queueImplementationHasNoDatabaseAdapter() throws IOException {
+        for (String removed : List.of(
+            "queues/DispatchQueue.java",
+            "queues/QueueSubscription.java",
+            "queues/event/DispatchEvent.java",
+            "infrastructure/queues/DefaultDispatchQueue.java",
+            "infrastructure/queues/PostgresQueueStore.java",
+            "infrastructure/queues/PollingQueueSubscription.java",
+            "infrastructure/queues/entries/QueueMessageEntry.java"
         )) {
-            assertTrue(
-                Files.isRegularFile(adapter),
-                () -> "Missing Default Queue adapter: " + adapter
-            );
+            assertTrue(Files.notExists(FLOW.resolve(removed)), () -> "Obsolete queue source: " + removed);
         }
-
-        String queue = Files.readString(
-            defaultQueue.resolve("DefaultDispatchQueue.java")
-        );
-        String store = Files.readString(
-            defaultQueue.resolve("PostgresQueueStore.java")
-        );
-        String entry = Files.readString(defaultQueue.resolve(
-            "entries/QueueMessageEntry.java"
-        ));
-        assertTrue(
-            queue.contains("implements DispatchQueue<T>")
-                && queue.contains("Class<T> eventType")
-                && queue.contains("emitInTransaction")
-                && !queue.contains("event.dsl()"),
-            "Default Queue must implement the Core seam and accept caller "
-                + "transactions only through explicit publishing"
-        );
-        assertTrue(
-            store.contains(".forUpdate()")
-                && store.contains(".skipLocked()"),
-            "Default Queue competition must remain database-backed"
-        );
-        assertTrue(
-            store.contains(
-                ".fetchOneInto(QueueMessageEntry.class)"
-            )
-                && !store.contains("QueuesRecord")
-                && !entry.contains("QueuesRecord")
-                && !entry.contains("fromRecord("),
-            "Default Queue reads must map complete rows directly into "
-                + "QueueMessageEntry"
-        );
-        assertTrue(
-            Files.isRegularFile(Path.of(
-                "../gen/src/main/java/org/flow/gen/flow/tables/"
-                    + "QueuesTable.java"
-            )),
-            "Default Queue table must come from generated JOOQ sources"
-        );
+        for (String removed : List.of(
+            "../gen/sql/flow/tables/queues.sql",
+            "../gen/src/main/java/org/flow/gen/flow/tables/QueuesTable.java",
+            "../gen/src/main/java/org/flow/gen/flow/records/QueuesRecord.java",
+            "../gen/src/main/java/org/flow/gen/flow/pojos/QueuesObject.java"
+        )) {
+            assertTrue(Files.notExists(Path.of(removed)), () -> "Obsolete queue schema: " + removed);
+        }
+        try (var paths = Files.walk(FLOW.resolve("infrastructure/queues"))) {
+            for (Path path : paths.filter(p -> p.toString().endsWith(".java")).toList()) {
+                String source = Files.readString(path);
+                assertFalse(source.contains("import org.jooq.")
+                    || source.contains("import org.flow.gen.")
+                    || source.contains("import java.sql.")
+                    || source.contains("import javax.sql.")
+                    || source.contains("import org.x9.jooq.")
+                    || source.contains("import org.cses.flow.infrastructure.jooq."),
+                    () -> "Queue implementation depends on database APIs: " + path);
+            }
+        }
     }
 
     /**
@@ -688,11 +650,9 @@ class CoreArchitectureStandardTest {
     }
 
     /**
-     * Preserves Flow and Queue batching and rejects generated Record allocation
-     * in batch writers. Real PostgreSQL tests verify Execution snapshot
-     * atomicity and stale-write rejection without prescribing SQL syntax.
+     * 检查 Flow 批量写入使用 VALUES 且不分配生成 Record；Execution 的原子性另由真实数据库测试验证。
      *
-     * @throws IOException when a repository or queue source cannot be read
+     * @throws IOException 当 Repository 源码无法读取时抛出
      */
     @Test
     void postgresBatchWritesBuildOneValuesInsert() throws IOException {
@@ -703,18 +663,12 @@ class CoreArchitectureStandardTest {
             "infrastructure/repositories/executions/"
                 + "ExecutionRepositoryImpl.java"
         ));
-        String queue = Files.readString(FLOW.resolve(
-            "infrastructure/queues/PostgresQueueStore.java"
-        ));
 
         assertTrue(
             flows.contains("values(FlowTaskEntry.from(")
                 && flows.contains("values.execute()")
                 && !flows.contains("newRecord()")
-                && !executions.contains("newRecord()")
-                && queue.contains("values.values(")
-                && queue.contains("values.execute()")
-                && !queue.contains("newRecord()"),
+                && !executions.contains("newRecord()"),
             "PostgreSQL batch writes must concatenate VALUES rows and execute once"
         );
     }
@@ -900,12 +854,12 @@ class CoreArchitectureStandardTest {
                 && !dispatcher.contains("PluginLoader")
                 && !dispatcher.contains("WorkerTaskHandler")
                 && !workerResult.contains("State.Type.PAUSED")
-                && !orchestrationTask.contains("RunResult run("),
+                && !orchestrationTask.contains(" run(RunContext"),
             "Worker must directly run RunnableTask and cannot return PAUSED"
         );
         assertTrue(
             log.contains("implements RunnableTask")
-                && log.contains("RunResult run(RunContext context)")
+                && log.contains("VoidOutput run(RunContext context)")
                 && pause.contains("implements OrchestrationTask")
                 && parallel.contains("implements OrchestrationTask")
                 && loop.contains("implements OrchestrationTask")
@@ -1525,9 +1479,6 @@ class CoreArchitectureStandardTest {
 
     private static boolean isAllowedDomainRecord(Path path) {
         return path.endsWith(Path.of(
-                "org/cses/flow/core/domains/tasks/RunResult.java"
-            ))
-            || path.endsWith(Path.of(
                 "org/cses/flow/core/domains/flows/FlowId.java"
             ));
     }

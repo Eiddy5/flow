@@ -43,7 +43,7 @@ class ExecutionEntryTest {
             1,
             Map.of("amount", 1200),
             Generation.empty(), state,
-            List.of(), Origin.create(null, "execution-1"), List.of()
+            List.of(), Origin.create(null, "execution-1"), List.of(), null, 7L
         );
 
         ExecutionEntry entry = ExecutionEntry.from(execution);
@@ -54,6 +54,11 @@ class ExecutionEntryTest {
             storedState.asMap().keySet()
         );
         Execution restored = entry.to(List.of());
+        assertEquals(7L, entry.lock);
+        assertEquals(7L, restored.lock());
+        assertEquals(7L, restored.copy().lock());
+        entry.lock = null;
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> entry.to(List.of()));
         assertEquals(state, restored.state());
         assertEquals(execution.inputs(), restored.inputs());
     }
@@ -80,7 +85,10 @@ class ExecutionEntryTest {
         source.pause();
         Execution derived = source.replay(org.paas.common.util.StringUtil.newId(), session,
             pause.id(), target.id(), "redo", List.of(pause.id(), target.id()));
-        var restored = ExecutionEntry.from(derived).to(List.of());
+        org.junit.jupiter.api.Assertions.assertNull(derived.lock());
+        var entry = ExecutionEntry.from(derived);
+        entry.lock = 0L;
+        var restored = entry.to(List.of());
         assertEquals(derived.origin(), restored.origin());
         assertEquals(derived.inputs(), restored.inputs());
         assertEquals(derived.generation().current(), restored.generation().current());

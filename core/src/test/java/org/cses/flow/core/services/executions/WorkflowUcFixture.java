@@ -537,9 +537,6 @@ public class WorkflowUcFixture implements AutoCloseable {
                 onResume:
                   - key: decision
                     type: STRING
-                outputs:
-                  - key: decision
-                    type: STRING
             %s
             """.formatted(key, description, trailing);
     }

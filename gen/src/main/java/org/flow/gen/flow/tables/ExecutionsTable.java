@@ -80,6 +80,11 @@ public class ExecutionsTable extends TableImpl<ExecutionsRecord> {
     public final TableField<ExecutionsRecord, String> PARENT_ID = createField(DSL.name("parent_id"), SQLDataType.VARCHAR(64), this, "");
 
     /**
+     * The column <code>public.executions.parent_task_run_id</code>.
+     */
+    public final TableField<ExecutionsRecord, String> PARENT_TASK_RUN_ID = createField(DSL.name("parent_task_run_id"), SQLDataType.VARCHAR(64), this, "");
+
+    /**
      * The column <code>public.executions.origin_id</code>.
      */
     public final TableField<ExecutionsRecord, String> ORIGIN_ID = createField(DSL.name("origin_id"), SQLDataType.VARCHAR(64).nullable(false), this, "");
