@@ -343,8 +343,8 @@
 - [`ADR 0053`](0053-restore-flow-management-surface.md)：恢复正式 Flow 管理页面，并按
   Flow、Execution 和 Session 资源拆分真实 HTTP Controllers；页面使用
   `@UserSession`，不恢复 Demo/Memory 运行时。
-- [`ADR 0054`](0054-temporary-admin-session-for-flow-management.md)：在宿主认证尚未
-  接入前，为正式管理页面提供可关闭的固定 `admin` 管理员身份。
+- [`ADR 0054`](0054-temporary-admin-session-for-flow-management.md)：临时固定 `admin`
+  身份方案已废止；用户会话统一由 PAAS／宿主认证提供。
 - [`ADR 0056`](0056-bind-paas-jooq-to-named-datasource.md)：替换 PAAS 的无限定名
   JOOQ Factory，按 DataSource 名称绑定同名 Configuration，避免嵌入宿主的额外
   Configuration Bean 造成启动冲突。

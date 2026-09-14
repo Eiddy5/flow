@@ -29,7 +29,7 @@ flow/
 ├── gen/               # Flow 数据库脚本及 JOOQ 代码生成模块
 ├── processor/         # Jackson Input 类型的编译期索引生成
 ├── core/              # 完整的非 HTTP Flow 能力与生产适配器
-├── server/            # HTTP 服务、启动入口、资源与会话绑定
+├── server/            # HTTP 服务、启动入口、资源与会话查询
 └── docs/              # 项目规范、决策、UC 和验证记忆
 ```
 
@@ -193,17 +193,16 @@ controller/
 ├── execution/     # Execution 生命周期 HTTP 入口
 ├── flow/          # Flow 定义、草稿、部署和版本 HTTP 入口
 ├── plugins/       # 插件目录与详情 HTTP 入口
-└── session/       # 管理会话查询与 Session 参数绑定
+└── session/       # 管理会话查询
 ```
 
 Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务编排。当前
 `controller/plugins` 桥接全局只读插件查询，`controller/flow` 只提供 Flow 草稿、
 定义、部署与版本查询，`controller/execution` 提供 Execution 启动、查询、取消、恢复与
-退回，`controller/session` 提供管理会话查询和 Session 绑定。三个业务 Controller
+退回，`controller/session` 提供管理会话查询。三个业务 Controller
 复用 `/api` 前缀，但分别只依赖自己负责的 Core Service。Flow Server 同时发布
-`/flow/**` 下的正式管理页面；默认由
-`controller/session/AdminSessionArgumentBinder` 注入临时 `admin` 管理员身份，
-可通过 `flow.management.admin-session.enabled=false` 关闭并交回宿主认证。页面不启用
+`/flow/**` 下的正式管理页面；由
+PAAS／宿主认证提供 `@UserSession` 会话，Flow 不配置或注入默认登录用户。页面不启用
 Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 和 Pulsar 队列。
 
 ### `core/`

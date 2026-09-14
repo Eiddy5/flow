@@ -73,12 +73,6 @@ micronaut:
       mattermost-http-im-local:
         url: "http://cses-im-server.cses.svc.cluster.local:8066"
 
-flow:
-  management:
-    admin-session:
-      # Temporary standalone identity. Disable when the host provides real auth.
-      enabled: true
-
 cluster:
   dataCenter: "beijing"
   clusterName: "okr"
