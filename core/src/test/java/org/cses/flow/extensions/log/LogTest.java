@@ -5,7 +5,7 @@ import ch.qos.logback.core.read.ListAppender;
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.plugins.TaskPluginTestSupport;
 import org.cses.flow.core.runner.RunContext;
@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LogTest {
 
+    /** 渲染日志后返回无属性且无控制元数据的空输出。 */
     @Test
     void rendersMessageAndCompletesWithoutOutputs() {
         LogCapture logs = LogCapture.start();
@@ -41,6 +42,7 @@ class LogTest {
             )));
         }
 
+        assertEquals(0, VoidOutput.class.getDeclaredFields().length);
         assertEquals(java.util.Optional.empty(), result.state());
         assertEquals(java.util.Optional.empty(), result.error());
         assertEquals(
@@ -50,8 +52,9 @@ class LogTest {
         assertEquals(List.of("结果：ready"), logs.messages());
     }
 
+    /** 缺失模板路径时抛出包含原因的异常，不将错误装入空输出。 */
     @Test
-    void returnsExplicitFailureWhenRuntimePathIsMissing() {
+    void throwsWorkflowExceptionWhenRuntimePathIsMissing() {
         LogCapture logs = LogCapture.start();
         Log log = Log.builder()
             .id("log-id")
@@ -59,17 +62,17 @@ class LogTest {
             .message(TemplateExpression.parse("{{ outputs.missing }}"))
             .build();
 
-        VoidOutput result;
+        WorkflowException failure;
         try (logs) {
-            result = log.run(context(Map.of()));
+            failure = assertThrows(WorkflowException.class, () -> log.run(context(Map.of())));
         }
 
-        assertEquals(State.Type.FAILED, result.state().orElseThrow());
+        assertInstanceOf(WorkflowException.class, failure.getCause());
         assertEquals(
             "Log message could not be rendered: "
                 + "Task template expression path is missing: "
                 + "outputs.missing",
-            result.error().orElseThrow()
+            failure.getMessage()
         );
         assertEquals(List.of(), logs.messages());
     }

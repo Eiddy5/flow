@@ -7,6 +7,8 @@ Accepted（2026-09-09，按本次用户确认的输出契约）。修订 ADR 001
 
 ## 背景
 
+2026-09-14：运行能力及编排输出入口由 [ADR 0099](0099-resolve-task-orchestration-as-read-only-plans.md) 修订；旧接口方法不保留。
+
 用户在编写具体 Task 时已经知道其输出结构。将同一结构再次配置在 Flow 的 Task
 节点中会产生两个来源；任务执行得到的具体输出应进入后续 RunContext。
 
@@ -24,7 +26,9 @@ Accepted（2026-09-09，按本次用户确认的输出契约）。修订 ADR 001
 - `OrchestrationTask<T>.outputs(RunContext)` 在编排完成时收集结果；默认返回 null
   表示不覆盖已有结果，尤其保留 Pause 由外部恢复写入的回调值。
 - 删除 `RunResult`。各具体 Task 使用自己的结果 POJO/record；没有业务输出时使用
-  `VoidOutput.from()`，失败时可用 `VoidOutput.failed(error)`。
+  `VoidOutput.from()`。`VoidOutput` 不声明任何字段，不保存状态或错误，不提供失败工厂。
+  无输出任务失败时抛出 `WorkflowException`，Worker 调用边界将其转为
+  `WorkerTaskResult.failed(...)`，错误只进入结果信封；其他异常仍由原调用边界处理。
 - `Output.state()` 为空时采用 SUCCESS；允许 SUCCESS、WARNING、FAILED、KILLED。
   FAILED 必须提供非空白 `error()`，其他状态不得提供错误；状态机仍由 Executor 所有。
 - `Task.outputs` 不再是可配置或可绑定字段。`Task.outputs()` 是从代码中具体泛型

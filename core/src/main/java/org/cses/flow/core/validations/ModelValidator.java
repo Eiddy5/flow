@@ -6,6 +6,7 @@ import jakarta.validation.ConstraintViolationException;
 import io.micronaut.validation.validator.Validator;
 import org.cses.flow.core.domains.flows.Data;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.ExecutableTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 
@@ -56,7 +57,7 @@ public class ModelValidator {
         requireTrimmedText(task.key(), "Task key");
         boolean runnable = task instanceof RunnableTask;
         boolean orchestration = task instanceof OrchestrationTask;
-        if (runnable == orchestration) {
+        if ((runnable ? 1 : 0) + (orchestration ? 1 : 0) + (task instanceof ExecutableTask ? 1 : 0) != 1) {
             throw new IllegalArgumentException(
                 "Task must implement exactly one runtime capability: "
                     + task.getType()

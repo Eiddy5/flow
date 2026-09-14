@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import io.micronaut.core.reflect.ReflectionUtils;
 import org.cses.flow.core.domains.flows.DataType;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.ExecutableTask;
 import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -35,6 +36,7 @@ public class TaskOutputs {
             if (capability == null) {
                 capability = resolved.findSupertype(OrchestrationTask.class);
             }
+            if (capability == null) capability = resolved.findSupertype(ExecutableTask.class);
             if (capability == null || capability.getTypeParameters().size() != 1
                 || capability.getTypeParameters().getFirst().getErasedType() == Output.class) {
                 throw new IllegalArgumentException("Task must declare a concrete Output type: " + type.getName());
@@ -79,7 +81,8 @@ public class TaskOutputs {
      */
     public static boolean isVoid(Class<? extends Task> type) {
         var capability = new TypeResolver().resolve(type).findSupertype(
-            RunnableTask.class.isAssignableFrom(type) ? RunnableTask.class : OrchestrationTask.class);
+            RunnableTask.class.isAssignableFrom(type) ? RunnableTask.class
+                : ExecutableTask.class.isAssignableFrom(type) ? ExecutableTask.class : OrchestrationTask.class);
         return capability != null && capability.getTypeParameters().size() == 1
             && VoidOutput.class.isAssignableFrom(capability.getTypeParameters().getFirst().getErasedType());
     }

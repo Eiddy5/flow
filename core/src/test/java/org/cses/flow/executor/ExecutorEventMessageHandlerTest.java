@@ -39,7 +39,7 @@ class ExecutorEventMessageHandlerTest {
     private static AtomicReference<RunIdentity> CAPTURED_RUN =
         new AtomicReference<>();
     private static Context PLUGINS = builtInContext(
-        new ParentTaskRunRecordingTask(), new EchoTask(), new SummarySequence()
+        new ParentTaskRunRecordingTask(), new EchoTask(), new SummaryTask()
     );
 
     @Test
@@ -146,15 +146,16 @@ class ExecutorEventMessageHandlerTest {
         );
     }
 
-    /** 通过真实 Executor 和 Worker 将 Runnable 与编排输出送入后续 RunContext。 */
+    /** 通过标准 Sequence 和具体 Runnable 汇总任务，将业务输出送入后续 RunContext。 */
     @Test
     void typedOutputsReachFollowingRunContextsWithoutOutputConfiguration() {
         Flow flow = PLUGINS.deploy(
             "typed-company", "typed-flow",
             Map.of("key", "typed-flow", "tasks", List.of(
-                Map.of("key", "stage", "type", SummarySequence.class.getCanonicalName(),
+                Map.of("key", "sequence", "type", org.cses.flow.extensions.flow.Sequence.class.getCanonicalName(),
                     "tasks", List.of(Map.of("key", "prepare", "type",
                         org.cses.flow.core.plugins.TestOutputTasks.Decision.class.getCanonicalName()))),
+                Map.of("key", "stage", "type", SummaryTask.class.getCanonicalName()),
                 Map.of("key", "consume", "type", EchoTask.class.getCanonicalName())
             )), null, ActorRef.create("user", "User"), 1L);
         Execution execution = Execution.create(null, session(flow.companyId()),
@@ -164,9 +165,11 @@ class ExecutorEventMessageHandlerTest {
         Execution completed = handler.execute(session(flow.companyId()), DSL.using(SQLDialect.POSTGRES),
             new ExecutorContext(flow, execution));
         assertEquals(State.Type.SUCCESS, completed.state().current());
-        assertEquals(3, completed.taskRuns().size());
+        assertEquals(4, completed.taskRuns().size());
         for (TaskRun run : completed.taskRuns()) {
-            assertEquals(Map.of("decision", "approved"), run.outputs());
+            String key = flow.findTask(run.taskId()).orElseThrow().key();
+            assertEquals(key.equals("sequence") ? Map.of() : Map.of("decision", "approved"), run.outputs());
+            assertEquals(State.Type.SUCCESS, run.state().current());
         }
         assertTrue(completed.activeTaskRuns().isEmpty());
     }
@@ -420,13 +423,13 @@ class ExecutorEventMessageHandlerTest {
         return session;
     }
 
-    /** 从具体编排输出中读取结果的后续任务。 */
+    /** 从具体业务输出中读取结果的后续任务。 */
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
     public static class EchoTask extends Task implements RunnableTask<DecisionOutput> {
         /**
-         * 读取上一个编排的具体业务结果。
+         * 读取上一个汇总任务的具体业务结果。
          * @param context 当前任务只读运行上下文
          * @return 前一步输出在本次上下文中的实际值
          */
@@ -437,23 +440,18 @@ class ExecutorEventMessageHandlerTest {
         }
     }
 
-    /** 子任务完成后生成具体汇总结果的编排样本。 */
+    /** 在标准编排之后生成业务汇总结果的 Runnable 样本。 */
     @Plugin
     @SuperBuilder
     @NoArgsConstructor
-    public static class SummarySequence extends org.cses.flow.extensions.flow.Branch<DecisionOutput> {
-        /** @return 等待子任务全部完成后再生成自身输出 */
-        @Override
-        public boolean holdsTaskRunUntilChildrenSettle() {
-            return true;
-        }
+    public static class SummaryTask extends Task implements RunnableTask<DecisionOutput> {
         /**
-         * 将子任务结果转为本编排的具体输出。
-         * @param context 子任务完成后的只读运行上下文
+         * 将前置步骤结果转为独立业务任务的具体输出。
+         * @param context 当前任务的只读运行上下文
          * @return 实际读取到的前置决定
          */
         @Override
-        public DecisionOutput outputs(RunContext context) {
+        public DecisionOutput run(RunContext context) {
             return DecisionOutput.from(context.render(
                 org.cses.flow.core.domains.expressions.TemplateExpression.parse("{{ outputs.prepare.decision }}")));
         }

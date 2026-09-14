@@ -236,7 +236,7 @@ core/
 ├── plugins/        # Plugin 契约、发现注册、元信息与 Jackson 多态绑定
 ├── queries/        # 只读查询处理
 ├── repositories/   # 核心定义的持久化端口
-├── runner/         # 运行变量投影与一次 RunnableTask 调用上下文
+├── runner/         # 运行变量投影、调用上下文与只读编排搜索
 ├── serializers/    # 严格 Jackson/YAML、Flow 物化与定义 Schema
 ├── services/       # 对 Controller 和其他调用方公开的业务入口
 └── validations/    # 领域模型的统一主动校验入口
@@ -253,7 +253,7 @@ core/
 | `plugins` | 提供 Plugin 契约、`@Plugin`、Micronaut 编译期发现、按真实 Java 包分组的两级只读目录、精确类注册和 Jackson 多态绑定 | 具体 Task、RunnableTask 执行逻辑、OrchestrationTask 编排逻辑、页面布局元数据 |
 | `queries` | 执行只读查询并维护查询边界 | 写状态和推进 Execution |
 | `repositories` | 定义 Core 所需的持久化接口 | DataPilot/JOOQ Record 等具体技术实现 |
-| `runner` | 由 RunVariables Builder 投影统一表达式变量树，并提供只保存该树的 RunContext | Session、领域聚合、Worker/Executor 状态推进 |
+| `runner` | RunVariables/RunContext 提供调用变量；OrchestrationContext 只读解析直接子任务并查询运行事实 | Session、持久化、队列、聚合修改与 Executor 状态推进 |
 | `serializers` | 集中配置严格 Jackson/YAML，解析通用 YAML，把 Flow 定义物化为完整领域对象，并按同一契约生成插件定义 Schema；目录保持扁平 | Controller 协议、执行调度、持久化 SQL |
 | `services` | 提供稳定、少量的公开业务入口 | 具体 HTTP 或数据库代码 |
 | `validations` | 对框架绑定或项目代码直接创建的模型执行统一主动校验 | YAML 语法解析、Flow 树身份生成 |
@@ -314,7 +314,7 @@ core/
 | `conditions` | Condition 递归树、`{{ path.to.value }}` 完整 Map 路径引用、typed constant 比较和一次只读求值；`Condition.parser(source)` 是领域入口，包内 `ConditionParser` 承担解析实现；Route 从 `route` 按需形成 Condition，Loop Until 直接持有 Condition，两者通过 RunVariables 提供可见上下文 |
 | `expressions` | VariablePath 的安全 Map-only 路径语义和 TemplateExpression 的受限解析、渲染；由 Condition 与需要渲染运行值的 Task 复用，不执行脚本或方法 |
 | `plugins` | 按真实 Java 包分组的全局只读插件、Task 元信息和具体定义 Schema 查询 |
-| `tasks` | Task 抽象定义、RunnableTask/OrchestrationTask 能力及其直接调用契约 |
+| `tasks` | Task 抽象定义、RunnableTask/OrchestrationTask/ExecutableTask 能力及其直接调用契约 |
 | `shared` | 被多个业务模块稳定复用的核心协议，不作为兜底目录 |
 
 同一条业务链路在不同技术目录中必须使用相同模块名。例如：
@@ -346,19 +346,19 @@ Execution 编排推进组件。它与 `core` 平级，负责：
   `ExecutorEvent`，从 Repository 普通读取精确 Flow/Execution 的完整快照，创建一个
   `ExecutorContext`，推进一个周期，保存本轮变化，再把后续周期投回 Event Queue。
 - 使用 `ExecutorContext` 组合 Execution、精确 Flow、nexts、workerTasks、
-  orchestrationCompletions、subFlowTaskRuns、本轮 states 与变更标记；Session 和 DSLContext 不进入
+  subFlowTaskRuns、本轮 states 与变更标记；Session 和 DSLContext 不进入
   Context。
 - `ExecutorService.process` 根据不可变 Flow 定义和 TaskRun 事实推进一个周期，
-  接纳下一批 TaskRun，并分别处理 RunnableTask 与 OrchestrationTask 的暂存动作。
+  调用具体 Task 的编排行为，接纳 ResolvedNextTask 中的 TaskRun、应用 State.Type，并在接纳新轮子任务时更新 Generation。
 - 创建、开始、完成、失败、恢复或取消 TaskRun，并判断 Execution 是否收敛；
-  `handleNext` 本身不改变 Execution。
-- 校验每个具体 Task 恰好实现 RunnableTask 或 OrchestrationTask；RunnableTask
+  搜索本身不改变 Execution；`handleNext` 是任务接纳与状态应用入口。
+- 校验每个具体 Task 恰好实现 RunnableTask、OrchestrationTask、ExecutableTask 之一；RunnableTask
   形成 WorkerTask 后返回提交边界，OrchestrationTask 直接在调度周期内完成
   Pause 前置 Task 子树执行、Pause TaskRun 暂停、编排作用域推进和收敛；Pause
   自身不形成 WorkerTask，其 `onPause` 字段中的 RunnableTask 仍按正常 Worker 链路执行。
-- `executor/handlers/SubFlowExecutionHandler` 根据编排能力创建同租户的独立子 Execution，
+- `executor/handlers/SubFlowExecutionHandler` 消费 ExecutableTask 生成的调用请求，创建同租户的独立子 Execution，
   原子保存父调用与子运行，子终态回传精确父 TaskRun；具体插件与结果定义位于
-  `extensions/flow/SubFlow`。参见 ADR 0098。
+  `extensions/flow/SubFlow`。参见 ADR 0098、0099。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
 - 内部 `ExecutorEventMessageHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
   Worker 结果应用后通过新的 `ExecutorEvent` 再次进入下一周期。`ExecutorContext` 不
@@ -407,7 +407,8 @@ worker/
 └── WorkerTaskResult.java
 ```
 
-`RunnableTask<T>`、`OrchestrationTask<T>`、`Output` 和 `VoidOutput` 归属于 `core/domains/tasks`；
+`RunnableTask<T>`、`OrchestrationTask<T>`、`ExecutableTask<T>`、`Output` 和 `VoidOutput` 归属于 `core/domains/tasks`；
+只读编排上下文 `OrchestrationContext` 及下一步的 Task/TaskRun 配对 `ResolvedNextTask` 归属于 `core/runner`。
 Runnable 的直接调用上下文 `RunContext` 以及变量投影 `RunVariables` 归属于
 `core/runner`。Worker 只消费这些能力：接收包装 RunnableTask 和规范变量树的不可变
 `WorkerTask`，为一次调用通过 Builder 创建只保存 `variables` 的 `RunContext`。
@@ -439,7 +440,7 @@ extensions/
 
 - 标注 `@Plugin`、实现 `Plugin` 和一种 Task 运行能力的新 Task 类型。
 - RunnableTask 的具体 `run(RunContext)` 执行逻辑。
-- OrchestrationTask 的固定编排特征；实际状态推进仍由 Executor 完成。
+- OrchestrationTask 的 resolveNexts/resolveState 行为；实际状态推进仍由 Executor 完成。
 
 不适合放入：
 
@@ -483,7 +484,8 @@ Subflow 都属于该目录。
 Log、Notification 等能够作为独立扩展能力演进的 Task，才使用自己的能力目录。
 
 扩展可以依赖 Core 提供的插件 SPI 与 Task 能力接口，不应为了声明 Task 能力而
-依赖 Worker 或 Executor；Core、Executor 和 Worker 调度器不能依赖某个具体扩展实现。
+依赖 Worker 或 Executor。Worker 不依赖具体扩展；Executor 通过能力接口解析任务，
+仅在写入 Flow 内置循环的历史原因时识别 LoopUntil，具体条件与次数仍由任务自身解释（ADR 0099）。
 
 领域对象的创建入口属于领域类型自身。`core/factories` 不属于项目目录结构，
 不得新增或恢复。`Plugin`、`PluginRegistry`、`DefaultPluginRegistry`、
@@ -492,7 +494,7 @@ Log、Notification 等能够作为独立扩展能力演进的 Task，才使用�
 `PluginSchemaGenerator` 位于 `core/serializers`。
 新的独立项目内 Task 扩展在 `extensions/<extension-name>` 中以能力名称提供一个
 具体类；Flow 自有 OrchestrationTask 统一放在 `extensions/flow`。两者都继承
-`Task`、实现 `RunnableTask` 或 `OrchestrationTask` 之一，并标注
+`Task`、实现三类运行能力之一，并标注
 `@Plugin`，类名不强制增加 `Task` 后缀。宿主应用只需把自己的插件类放在有名称的
 真实 Java 包中并标注 `@Plugin`，无需声明额外的来源对象或标识。Micronaut 在编译期
 发现这些 Bean，注册表按 `Class#getPackageName()` 分组，再按

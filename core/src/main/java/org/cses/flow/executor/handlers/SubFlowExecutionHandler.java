@@ -5,11 +5,11 @@ import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.core.domains.tasks.ExecutableTask;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorEvent;
 import org.cses.flow.executor.ExecutorService;
@@ -60,18 +60,21 @@ public class SubFlowExecutionHandler {
         if (!parent.state().is(State.Type.RUNNING)
                 || !parent.requireTaskRun(taskRunId).state().is(State.Type.CREATED)) return current;
         Task task = context.flow().findTask(parent.requireTaskRun(taskRunId).taskId()).orElseThrow();
-        var reference = ((OrchestrationTask<?>) task).subFlow().orElseThrow();
+        if (!(task instanceof ExecutableTask<?> executable)) {
+            throw new WorkflowException("Child execution caller must implement ExecutableTask");
+        }
         Flow childFlow;
         Map<String, Object> inputs;
         try {
-            Flow latest = flows.findLatestByFlowId(dsl, FlowId.from(parent.companyId(), reference.key()))
-                    .orElseThrow(() -> new WorkflowException("SubFlow does not exist: " + reference.key()));
-            if (latest.deleted()) throw new WorkflowException("SubFlow is deleted: " + reference.key());
+            ExecutableTask.Request request = executable.createExecution(parent.inputs());
+            Flow latest = flows.findLatestByFlowId(dsl, FlowId.from(parent.companyId(), request.flowKey()))
+                    .orElseThrow(() -> new WorkflowException("SubFlow does not exist: " + request.flowKey()));
+            if (latest.deleted()) throw new WorkflowException("SubFlow is deleted: " + request.flowKey());
             childFlow = flows.findByFlowId(dsl,
-                    FlowId.from(parent.companyId(), reference.key(), reference.version()))
-                    .orElseThrow(() -> new WorkflowException("SubFlow version does not exist: " + reference));
-            if (childFlow.deleted()) throw new WorkflowException("SubFlow version is deleted: " + reference);
-            inputs = childFlow.bindInputs(task.bindInputs(parent.inputs()));
+                    FlowId.from(parent.companyId(), request.flowKey(), request.flowVersion()))
+                    .orElseThrow(() -> new WorkflowException("SubFlow version does not exist: " + request.flowKey() + "@" + request.flowVersion()));
+            if (childFlow.deleted()) throw new WorkflowException("SubFlow version is deleted: " + request.flowKey() + "@" + request.flowVersion());
+            inputs = childFlow.bindInputs(request.inputs());
         } catch (IllegalArgumentException | WorkflowException failure) {
             parent.startTaskRun(taskRunId);
             parent.failTaskRun(taskRunId, "SubFlow could not start: " + failure.getMessage());

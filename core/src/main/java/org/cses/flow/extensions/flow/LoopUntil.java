@@ -3,20 +3,23 @@ package org.cses.flow.extensions.flow;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import java.util.Optional;
+import java.util.List;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.conditions.ConditionContext;
 import org.cses.flow.core.domains.conditions.Operand;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.OrchestrationContext;
+import org.cses.flow.core.runner.ResolvedNextTask;
 import org.cses.flow.core.validations.ModelInvariant;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
 
 /**
  * Post-condition serial orchestration scope with a bounded iteration count.
@@ -75,52 +78,38 @@ public class LoopUntil extends Branch<LoopUntil.Output> implements ModelInvarian
         return condition;
     }
 
-    @Override
-    public boolean iteratesChildren() {
-        return true;
-    }
-
-    @Override
-    public boolean holdsTaskRunUntilChildrenSettle() {
-        return true;
-    }
-
-    @Override
+    /** @return 配置的循环上限；未完成绑定时为 0，正式使用前须通过模型校验 */
     public int maxIterations() {
         return maxIterations == null ? 0 : maxIterations;
     }
 
+    /**
+     * 完整循环体结束后读取条件，尚未满足且未达到上限时请求下一轮。
+     * @param context 当前只读运行上下文
+     * @return 当前轮或下一轮的可启动任务列表
+     */
     @Override
-    public IterationDecision decideAfterIteration(
-        int completedIterations,
-        Map<String, Map<String, Object>> iterationOutputs
-    ) {
-        Map<String, Object> variables = new LinkedHashMap<>();
-        variables.put("inputs", Map.of());
-        variables.put("outputs", iterationOutputs);
-        variables.put("vars", Map.of());
-        return decideAfterIteration(
-            completedIterations,
-            ConditionContext.from(variables)
-        );
+    public List<ResolvedNextTask> resolveNexts(OrchestrationContext context) {
+        int current = context.iteration();
+        if (current == 0) return context.serial(tasks(), 1);
+        if (!context.settled(tasks(), current)) return context.serial(tasks(), current);
+        if (condition.matches(ConditionContext.from(context.variables())) || current >= maxIterations()) return List.of();
+        return context.serial(tasks(), current + 1);
     }
 
-    public IterationDecision decideAfterIteration(
-        int completedIterations,
-        ConditionContext context
-    ) {
-        if (condition != null && condition.matches(context)) {
-            return IterationDecision.SUCCESS;
-        }
-        return completedIterations < maxIterations()
-            ? IterationDecision.CONTINUE
-            : IterationDecision.FAILURE;
-    }
-
+    /**
+     * 当前循环体收敛后判断条件结果；达到上限仍不成立则失败。
+     * @param context 当前只读运行上下文
+     * @return 成功状态，仍有工作时为空
+     * @throws WorkflowException 达到上限且条件仍未满足时抛出
+     */
     @Override
-    public String iterationFailureMessage(int completedIterations) {
-        return "LOOP UNTIL condition was not satisfied after "
-            + completedIterations + " iterations: " + condition;
+    public Optional<State.Type> resolveState(OrchestrationContext context) {
+        if (context.iteration() == 0 || !context.settled(tasks(), context.iteration())) return Optional.empty();
+        if (condition.matches(ConditionContext.from(context.variables()))) return Optional.of(State.Type.SUCCESS);
+        if (context.iteration() < maxIterations()) return Optional.empty();
+        throw new WorkflowException("LOOP UNTIL condition was not satisfied after "
+                + context.iteration() + " iterations: " + condition);
     }
 
     @Override

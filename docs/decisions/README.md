@@ -139,8 +139,11 @@
 
 ## Data、Input 与 Output
 
+- [`ADR 0099`](0099-resolve-task-orchestration-as-read-only-plans.md)：三类 Task 互斥能力，
+  resolveNexts 返回 Task/TaskRun 列表、resolveState 返回 State.Type、Executor 统一应用，以及独立子执行请求与结果。
+
 - [`ADR 0098`](0098-run-subflow-as-linked-execution.md)：SubFlow 统一 inputs、独立运行、
-  精确父调用关联、等待和结果返回；首次调用闭环不包含重试或重启恢复。
+  精确父调用关联、等待和结果返回；流程引用字段由 SubFlow 直接持有。首次调用闭环不包含重试或重启恢复。
 - [`ADR 0095`](0095-return-typed-task-outputs.md)：Task 类型声明具体 Output，替代
   RunResult 与 Task 可配置输出列表，结果经 TaskRun 投影到后续 RunContext。
 

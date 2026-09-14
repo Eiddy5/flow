@@ -12,8 +12,6 @@ import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-
 @Plugin(
     title = "日志",
     description = "将模板消息写入应用日志",
@@ -52,9 +50,10 @@ public class Log extends Task implements RunnableTask<VoidOutput> {
     }
 
     /**
-     * 渲染消息并写入日志，模板错误返回无业务字段的失败结果。
+     * 渲染消息并写入日志，模板错误通过异常交给执行边界处理。
      * @param context 非 null 的本次运行上下文，只读
-     * @return 非 null 的空成功结果或携带模板错误的失败结果
+     * @return 非 null 的无属性空输出
+     * @throws WorkflowException 模板渲染失败时抛出，保留原始原因
      */
     @Override
     public VoidOutput run(RunContext context) {
@@ -62,7 +61,9 @@ public class Log extends Task implements RunnableTask<VoidOutput> {
             LOGGER.info("{}", context.render(message));
             return VoidOutput.from();
         } catch (WorkflowException exception) {
-            return VoidOutput.failed("Log message could not be rendered: " + exception.getMessage());
+            throw new WorkflowException(
+                "Log message could not be rendered: " + exception.getMessage(), exception
+            );
         }
     }
 

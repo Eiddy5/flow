@@ -24,7 +24,7 @@ tasks:
         required: true
 ```
 
-发布父流程，将下面 version 替换为子流程的实际发布版本：
+发布父流程，将下面 flowVersion 替换为子流程的实际发布版本：
 
 ```yaml
 key: review-parent
@@ -35,9 +35,8 @@ inputs:
 tasks:
   - key: call
     type: org.cses.flow.extensions.flow.SubFlow
-    flow:
-      key: review-child
-      version: 2
+    flowKey: review-child
+    flowVersion: 2
     inputs:
       - key: request
         type: STRING
@@ -51,6 +50,8 @@ tasks:
 具有新的 ID，origin.parentId 指向父运行，parentTaskRunId 指向 call 的 TaskRun。
 子 Pause 等待时父 call 保持 RUNNING；向子运行实际 Pause 提交 `approved: true`，
 父后续 Log 会自动消费返回值，父子最终均 SUCCESS。多层 SubFlow 沿用同一个 originId。
+
+引用字段直接配置在 SubFlow 上；旧的嵌套 `flow.key/version` 定义须调整并重新发布。
 
 当前 inputs 从父 Execution.inputs 按同名声明绑定，支持 Input 既有默认值；未提供
 从前置输出到参数的表达式映射。返回 outputs 是有效节点结果，VoidOutput 节点省略。

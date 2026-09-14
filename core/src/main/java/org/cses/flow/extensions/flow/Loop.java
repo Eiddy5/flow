@@ -3,15 +3,18 @@ package org.cses.flow.extensions.flow;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
+import java.util.List;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.OrchestrationContext;
+import org.cses.flow.core.runner.ResolvedNextTask;
 import org.cses.flow.core.validations.ModelInvariant;
+import java.util.Optional;
+import org.cses.flow.core.domains.flows.State;
 
-import java.util.Map;
 
 /**
  * Serial orchestration scope repeated a fixed number of times.
@@ -54,29 +57,27 @@ public class Loop extends Branch<Loop.Output> implements ModelInvariant {
         return times == null ? 0 : times;
     }
 
+    /**
+     * 当前轮完成且次数未达到时请求下一轮。
+     * @param context 当前只读运行上下文
+     * @return 当前轮或下一轮的可启动任务列表
+     */
     @Override
-    public boolean iteratesChildren() {
-        return true;
+    public List<ResolvedNextTask> resolveNexts(OrchestrationContext context) {
+        int current = context.iteration();
+        int next = current == 0 || context.settled(tasks(), current) ? current + 1 : current;
+        return next <= times() ? context.serial(tasks(), next) : List.of();
     }
 
+    /**
+     * 最后一轮全部完成后返回成功。
+     * @param context 当前只读运行上下文
+     * @return 成功状态，未完成时为空
+     */
     @Override
-    public boolean holdsTaskRunUntilChildrenSettle() {
-        return true;
-    }
-
-    @Override
-    public int maxIterations() {
-        return times();
-    }
-
-    @Override
-    public IterationDecision decideAfterIteration(
-        int completedIterations,
-        Map<String, Map<String, Object>> iterationOutputs
-    ) {
-        return completedIterations < times()
-            ? IterationDecision.CONTINUE
-            : IterationDecision.SUCCESS;
+    public Optional<State.Type> resolveState(OrchestrationContext context) {
+        return context.iteration() == times() && context.settled(tasks(), context.iteration())
+                ? Optional.of(State.Type.SUCCESS) : Optional.empty();
     }
 
     @Override

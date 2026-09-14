@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 import org.cses.flow.core.domains.flows.Input;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.ExecutableTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Example;
@@ -284,6 +285,11 @@ public class DefaultPluginRegistry implements PluginRegistry {
         }
     }
 
+    /**
+     * 校验插件类恰好声明一种任务执行能力。
+     * @param pluginClass 已识别的任务插件类，只读
+     * @throws IllegalStateException 执行能力缺失或冲突时抛出
+     */
     private static void requireTaskCapability(
             Class<? extends Plugin> pluginClass
     ) {
@@ -291,7 +297,7 @@ public class DefaultPluginRegistry implements PluginRegistry {
         boolean orchestration = OrchestrationTask.class.isAssignableFrom(
                 pluginClass
         );
-        if (runnable == orchestration) {
+        if ((runnable ? 1 : 0) + (orchestration ? 1 : 0) + (ExecutableTask.class.isAssignableFrom(pluginClass) ? 1 : 0) != 1) {
             throw new IllegalStateException(
                     "Task plugin must implement exactly one runtime capability: "
                             + pluginClass.getName()

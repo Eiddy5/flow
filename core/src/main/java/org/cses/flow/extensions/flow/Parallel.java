@@ -2,14 +2,16 @@ package org.cses.flow.extensions.flow;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Positive;
+import java.util.OptionalInt;
+import java.util.List;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Output;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
-
-import java.util.OptionalInt;
+import org.cses.flow.core.runner.OrchestrationContext;
+import org.cses.flow.core.runner.ResolvedNextTask;
+import org.cses.flow.extensions.flow.Parallel;
 
 /**
  * Explicit orchestration scope whose selected direct branches run in
@@ -58,14 +60,14 @@ public class Parallel extends Branch<Parallel.Output> {
             : OptionalInt.of(concurrent);
     }
 
+    /**
+     * 并行解析各分支，分支之间保持输入隔离。
+     * @param context 当前只读运行上下文
+     * @return 所有可启动分支的任务列表
+     */
     @Override
-    public boolean startsChildrenInParallel() {
-        return true;
-    }
-
-    @Override
-    public boolean holdsTaskRunUntilChildrenSettle() {
-        return true;
+    public List<ResolvedNextTask> resolveNexts(OrchestrationContext context) {
+        return context.parallel(tasks());
     }
 
     @Override

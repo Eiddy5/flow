@@ -1,25 +1,24 @@
 package org.cses.flow.core.domains.flows;
 
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import lombok.AccessLevel;
 import lombok.NoArgsConstructor;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.conditions.Condition;
 import org.cses.flow.core.domains.conditions.Operand;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.RequiredUtil;
 import org.cses.flow.core.utils.SessionUtil;
-import org.cses.flow.extensions.flow.Route;
 import org.cses.flow.extensions.flow.LoopUntil;
+import org.cses.flow.extensions.flow.Parallel;
+import org.cses.flow.extensions.flow.Route;
 import org.paas.common.util.StringUtil;
 import org.paas.session.RecordState;
 import org.paas.session.Session;
 import org.paas.session.User;
-
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Concrete Flow aggregate for editable drafts and deployed versions.
@@ -888,6 +887,15 @@ public class Flow extends AbstractFlow {
             : owner.getClass().getSimpleName() + " condition";
     }
 
+    /**
+     * 校验路由引用的输出来自当前可见的前置任务，拒绝并行兄弟引用。
+     * @param route 当前路由定义，只读
+     * @param condition 待校验条件，只读
+     * @param reference 条件中的输出引用，只读
+     * @param precedingTasks 当前作用域的前置定义，只读
+     * @param parent 父结构任务，顶层为 null
+     * @throws WorkflowException 引用路径、来源、字段或类型不合法时抛出
+     */
     private static void requireVisibleOutput(
         Route route,
         Condition condition,
@@ -895,8 +903,7 @@ public class Flow extends AbstractFlow {
         List<Task> precedingTasks,
         Task parent
     ) {
-        if (parent instanceof OrchestrationTask orchestrationTask
-            && orchestrationTask.startsChildrenInParallel()) {
+        if (parent instanceof Parallel) {
             throw new WorkflowException(
                 "Route.route cannot read sibling outputs in a parallel scope: "
                     + route.key()

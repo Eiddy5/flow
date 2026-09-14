@@ -1061,6 +1061,45 @@ final class ExecutorServiceTest {
         ));
     }
 
+    /** 同批编排决定包含失败和兄弟成功时，失败收敛后不再修改兄弟节点。 */
+    @Test
+    void parallelFailureStopsApplyingSiblingCompletionAfterTerminalState() {
+        Map<String, Object> polling = Map.of("key", "poll", "type",
+            org.cses.flow.extensions.flow.LoopUntil.class.getName(),
+            "condition", "{{ outputs.check.status }} == DONE", "maxIterations", 1,
+            "tasks", List.of(Map.of("key", "check", "type",
+                org.cses.flow.core.plugins.TestOutputTasks.Status.class.getCanonicalName())));
+        Map<String, Object> sibling = Map.of("key", "sibling", "type",
+            org.cses.flow.extensions.flow.Sequence.class.getName(),
+            "tasks", List.of(Map.of("key", "other", "type",
+                org.cses.flow.extensions.log.Log.class.getName(), "message", "other")));
+        Flow flow = deploy(Map.of("key", "parallel-settle", "tasks", List.of(Map.of(
+            "key", "branches", "type", org.cses.flow.extensions.flow.Parallel.class.getName(),
+            "tasks", List.of(polling, sibling)))));
+        Execution execution = execution(flow);
+        ExecutorContext context = new ExecutorContext(flow, execution);
+        java.util.List<WorkerTask> workers = new java.util.ArrayList<>();
+        for (int cycle = 0; cycle < 10 && workers.size() < 2; cycle++) {
+            executorService.process(context);
+            for (WorkerTask worker : context.takeWorkerTasks()) {
+                executorService.dispatch(context, worker);
+                workers.add(worker);
+            }
+        }
+        assertEquals(2, workers.size());
+        for (WorkerTask worker : workers) {
+            executorService.applyResult(context, WorkerTaskResult.success(worker,
+                task(worker, execution, flow).key().equals("check") ? Map.of("status", "WAIT") : Map.of()));
+        }
+        processUntilBoundary(context);
+        assertEquals(State.Type.FAILED, execution.state().current());
+        assertEquals(State.Type.FAILED, run(execution, flow, "poll").state().current());
+        assertEquals(State.Type.KILLED, run(execution, flow, "sibling").state().current());
+        assertTrue(run(execution, flow, "sibling").state().history().stream()
+            .noneMatch(item -> item.state() == State.Type.SUCCESS));
+        assertTrue(execution.unfinishedTaskRuns().isEmpty());
+    }
+
     private void completeNextWorker(
         ExecutorContext context,
         Map<String, ?> outputs
@@ -1111,10 +1150,17 @@ final class ExecutorServiceTest {
         throw new AssertionError("Executor did not reach a cycle boundary");
     }
 
+    /**
+     * 统计状态和轮次进展，避免将仅推进 Generation 的周期误判为等待边界。
+     * @param execution 当前技术测试运行快照
+     * @return 可观察的推进计数
+     */
     private static int transitionCount(Execution execution) {
         return execution.state().history().size()
             + execution.taskRuns().stream()
-            .mapToInt(taskRun -> taskRun.state().history().size())
+            .mapToInt(taskRun -> taskRun.state().history().size()
+                + taskRun.generation().history().currents().size()
+                + taskRun.generation().current().map(value -> value.version()).orElse(0))
             .sum();
     }
 
@@ -1207,8 +1253,30 @@ final class ExecutorServiceTest {
 
     @SuperBuilder
     @NoArgsConstructor
-    private static final class ConflictingCapabilityTask
+    private static class ConflictingCapabilityTask
         extends NoCapabilityTask implements RunnableTask<VoidOutput>, OrchestrationTask<VoidOutput> {
+
+        /**
+         * 返回无子任务的解析结果，仅供能力冲突检查。
+         * @param context 未使用的只读运行上下文
+         * @return 空列表
+         */
+        @Override
+        public java.util.List<org.cses.flow.core.runner.ResolvedNextTask> resolveNexts(
+                org.cses.flow.core.runner.OrchestrationContext context) {
+            return java.util.List.of();
+        }
+
+        /**
+         * 返回完成状态；能力冲突必须在调用此方法前被拒绝。
+         * @param context 未使用的只读运行上下文
+         * @return 成功状态
+         */
+        @Override
+        public java.util.Optional<State.Type> resolveState(
+                org.cses.flow.core.runner.OrchestrationContext context) {
+            return java.util.Optional.of(State.Type.SUCCESS);
+        }
 
         @Override
         public VoidOutput run(RunContext context) {

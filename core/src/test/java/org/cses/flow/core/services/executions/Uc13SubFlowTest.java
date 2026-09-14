@@ -7,6 +7,13 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.extensions.log.Log;
+import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.tasks.RunnableTask;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
+import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.RunContext;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -44,11 +51,11 @@ class Uc13SubFlowTest {
                         type: BOOLEAN
                         required: true
                   - key: returned
-                    type: org.cses.flow.extensions.log.Log
-                    message: 'child result {{ inputs.request }} {{ outputs.wait.approved }}'
-                """);
+                    type: %s
+                    value: 'child result {{ inputs.request }} {{ outputs.wait.approved }}'
+                """.formatted(ReturnValueTask.class.getCanonicalName()));
             Flow parent = fixture.deploy(parentYaml("uc13-s1-parent", child,
-                "parent result {{ inputs.request }} {{ outputs.call.outputs.wait.approved }}"));
+                "parent result {{ outputs.call.outputs.returned.result }}"));
             String parentId = start(fixture, parent, Map.of("request", "request-s1"));
             Execution running = fixture.awaitExecution(fixture.session(), parentId,
                 e -> fixture.executionService().executions(fixture.session()).size() == 2);
@@ -68,7 +75,10 @@ class Uc13SubFlowTest {
             assertEquals(childRun.id(), run(completed, parent, "call").outputs().get("executionId"));
             assertEquals(Map.of("approved", true), ((Map<?, ?>) run(completed, parent, "call").outputs().get("outputs")).get("wait"));
             assertEquals(State.Type.SUCCESS, run(completed, parent, "after").state().current());
-            assertTrue(logs.messages().containsAll(List.of("child received request-s1", "child result request-s1 true", "parent result request-s1 true")));
+            assertEquals(Map.of("result", "child result request-s1 true"),
+                ((Map<?, ?>) run(completed, parent, "call").outputs().get("outputs")).get("returned"));
+            assertEquals(Map.of("result", "child result request-s1 true"), run(query(fixture, childRun.id()), child, "returned").outputs());
+            assertTrue(logs.messages().containsAll(List.of("child received request-s1", "parent result child result request-s1 true")));
             assertOrigin(query(fixture, childRun.id()), parentId, parentId);
             assertFinished(fixture, 2, State.Type.SUCCESS);
         }
@@ -83,17 +93,16 @@ class Uc13SubFlowTest {
                 inputs:
                   - key: request
                     type: STRING
+                  - key: level
+                    type: STRING
+                    defaultValue: leaf
                 tasks:
-                  - key: received
-                    type: org.cses.flow.extensions.log.Log
-                    message: 'leaf {{ inputs.request }}'
                   - key: produce
                     type: %s
-                """.formatted(Uc08DynamicLogFlowTest.LogInputTask.class.getCanonicalName()));
-            Flow middle = fixture.deploy(parentYaml("uc13-s2-middle", leaf,
-                "middle {{ inputs.request }} {{ outputs.call.outputs.produce.result }}"));
-            Flow root = fixture.deploy(parentYaml("uc13-s2-root", middle,
-                "root {{ inputs.request }} {{ outputs.call.outputs.call.outputs.produce.result }}"));
+                    value: '{{ inputs.level }} {{ inputs.request }}'
+                """.formatted(ReturnValueTask.class.getCanonicalName()));
+            Flow middle = fixture.deploy(layerYaml("uc13-s2-middle", leaf, "middle"));
+            Flow root = fixture.deploy(layerYaml("uc13-s2-root", middle, "root"));
             String rootId = start(fixture, root, Map.of("request", "request-s2"));
             fixture.awaitStable(rootId);
             Execution middleRun = children(fixture, rootId).getFirst();
@@ -101,14 +110,16 @@ class Uc13SubFlowTest {
             assertEquals(3, Set.of(rootId, middleRun.id(), leafRun.id()).size());
             assertOrigin(middleRun, rootId, rootId);
             assertOrigin(leafRun, middleRun.id(), rootId);
-            for (Execution execution : fixture.executionService().lineage(fixture.session(), leafRun.id())) {
-                assertEquals(Map.of("request", "request-s2"), query(fixture, execution.id()).inputs());
-            }
+            assertEquals(Map.of("request", "request-s2", "level", "root"), query(fixture, rootId).inputs());
+            assertEquals(Map.of("request", "request-s2", "level", "middle"), query(fixture, middleRun.id()).inputs());
+            assertEquals(Map.of("request", "request-s2", "level", "leaf"), query(fixture, leafRun.id()).inputs());
             assertEquals(3, fixture.executionService().lineage(fixture.session(), leafRun.id()).size());
-            assertEquals("ready", run(leafRun, leaf, "produce").outputs().get("result"));
+            assertEquals("leaf request-s2", run(leafRun, leaf, "produce").outputs().get("result"));
+            assertEquals("middle leaf request-s2", run(middleRun, middle, "produce").outputs().get("result"));
+            assertEquals("root middle leaf request-s2", run(query(fixture, rootId), root, "produce").outputs().get("result"));
             assertEquals(leafRun.id(), run(middleRun, middle, "call").outputs().get("executionId"));
             assertEquals(middleRun.id(), run(query(fixture, rootId), root, "call").outputs().get("executionId"));
-            assertTrue(logs.messages().containsAll(List.of("leaf request-s2", "middle request-s2 ready", "root request-s2 ready")));
+            assertTrue(logs.messages().containsAll(List.of("middle leaf request-s2", "root middle leaf request-s2")));
             assertFinished(fixture, 3, State.Type.SUCCESS);
         }
     }
@@ -278,9 +289,8 @@ class Uc13SubFlowTest {
             tasks:
               - key: call
                 type: org.cses.flow.extensions.flow.SubFlow
-                flow:
-                  key: %s
-                  version: %s
+                flowKey: %s
+                flowVersion: %s
                 inputs:
                   - key: request
                     type: STRING
@@ -309,6 +319,69 @@ class Uc13SubFlowTest {
                 type: org.cses.flow.extensions.log.Log
                 message: '%s'
             """.formatted(key, type, message);
+    }
+
+    /**
+     * 创建具有独立层级输入与返回值的父调用。
+     * @param key 当前流程业务键
+     * @param child 已发布子流程
+     * @param level 本层默认输入标识
+     * @return 用于发布的独立 YAML
+     */
+    private static String layerYaml(String key, Flow child, String level) {
+        return """
+            key: %s
+            inputs:
+              - key: request
+                type: STRING
+              - key: level
+                type: STRING
+                defaultValue: %s
+            tasks:
+              - key: call
+                type: org.cses.flow.extensions.flow.SubFlow
+                flowKey: %s
+                flowVersion: %s
+                inputs:
+                  - key: request
+                    type: STRING
+              - key: produce
+                type: %s
+                value: '{{ inputs.level }} {{ outputs.call.outputs.produce.result }}'
+              - key: after
+                type: org.cses.flow.extensions.log.Log
+                message: '{{ outputs.produce.result }}'
+            """.formatted(key, level, child.key(), child.version(), ReturnValueTask.class.getCanonicalName());
+    }
+
+    /** 通过真实 Worker 返回配置模板的结果，证明子输入与逐层结果均实际返回。 */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static class ReturnValueTask extends Task implements RunnableTask<ReturnedValue> {
+        private TemplateExpression value;
+
+        /**
+         * 渲染本次真实上下文并返回结果。
+         * @param context 当前只读上下文
+         * @return 包含输入及此前结果的确定输出
+         */
+        @Override
+        public ReturnedValue run(RunContext context) {
+            return ReturnedValue.from(context.render(value));
+        }
+    }
+
+    /** 测试任务的明确返回契约。 */
+    public record ReturnedValue(String result) implements org.cses.flow.core.domains.tasks.Output {
+        /**
+         * 创建不可变结果。
+         * @param result 实际渲染文本
+         * @return 含文本的新输出
+         */
+        public static ReturnedValue from(String result) {
+            return new ReturnedValue(result);
+        }
     }
 
     /** 捕获真实 Log Worker 的用户日志，不替换任务执行。 */

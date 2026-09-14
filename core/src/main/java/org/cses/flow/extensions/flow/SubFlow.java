@@ -1,35 +1,55 @@
 package org.cses.flow.extensions.flow;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
+import org.cses.flow.core.domains.tasks.ExecutableTask;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.plugins.annotations.Plugin;
 import org.cses.flow.core.runner.RunContext;
 
+import java.util.Arrays;
 import java.util.Map;
-import java.util.Optional;
 
 /** 调用独立子流程并等待其完成的编排任务。 */
 @Plugin(title = "子流程", description = "通过统一 inputs 调用指定版本的流程，等待并返回结果")
 @SuperBuilder
 @NoArgsConstructor
-public class SubFlow extends Task implements OrchestrationTask<SubFlow.Output> {
+public class SubFlow extends Task implements ExecutableTask<SubFlow.Output> {
+
+    @NotBlank
+    private String flowKey;
 
     @NotNull
-    private FlowReference flow;
+    @Positive
+    private Long flowVersion;
 
-    /** @return 当前调用的精确流程引用 */
-    @Override
-    public Optional<FlowReference> subFlow() {
-        return Optional.ofNullable(flow);
+    /** @return 要调用的子流程业务键 */
+    public String flowKey() {
+        return flowKey;
     }
 
-    /** @return 参与任务定义相等判断的流程引用 */
+    /** @return 要调用的子流程精确版本 */
+    public Long flowVersion() {
+        return flowVersion;
+    }
+
+    /** @return 参与任务定义相等判断的子流程键与版本；允许尚未绑定的字段为空 */
     @Override
     protected Object typeSpecificEqualityState() {
-        return flow;
+        return Arrays.asList(flowKey, flowVersion);
+    }
+
+    /**
+     * 使用 Task 的统一输入绑定生成子执行请求。
+     * @param inputs 父运行输入，只读
+     * @return 精确流程版本与本次绑定参数
+     */
+    @Override
+    public Request createExecution(Map<String, Object> inputs) {
+        return Request.from(flowKey, flowVersion, bindInputs(inputs));
     }
 
     /**
@@ -39,7 +59,7 @@ public class SubFlow extends Task implements OrchestrationTask<SubFlow.Output> {
      */
     @Override
     @SuppressWarnings("unchecked")
-    public Output outputs(RunContext context) {
+    public Output completeExecution(RunContext context) {
         Map<String, Object> execution = (Map<String, Object>) context.variables().get("execution");
         return Output.from((String) execution.get("id"),
                 (Map<String, Object>) context.variables().get("outputs"));

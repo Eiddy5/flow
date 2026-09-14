@@ -63,6 +63,19 @@ class WorkerDispatcherTest {
         assertEquals(Map.of(), result.outputs());
     }
 
+    /** 无输出任务渲染失败时，错误仅进入 Worker 信封，业务输出保持为空。 */
+    @Test
+    void capturesLogFailureWithoutOutputProperties() {
+        Log task = Log.builder().id("task-1").key("log")
+            .message(TemplateExpression.parse("{{ outputs.missing }}")).build();
+        WorkerTaskResult result = dispatcher.dispatch(
+            workerTask("execution-1", "task-run-1", null, task, Map.of()));
+        assertEquals(State.Type.FAILED, result.targetState());
+        assertEquals(Map.of(), result.outputs());
+        assertEquals("Log message could not be rendered: "
+            + "Task template expression path is missing: outputs.missing", result.error());
+    }
+
     /** 具体 Output 和传输信封均拒绝 SKIPPED 作为 Worker 结果。 */
     @Test
     void runnableAndWorkerResultsRejectSkippedAsAWorkerOutcome() {
@@ -330,7 +343,7 @@ class WorkerDispatcherTest {
             StatusOutput.from(State.Type.WARNING, null));
         assertEquals(State.Type.WARNING, warning.targetState());
         assertEquals(Map.of("notice", "typed-result"), warning.outputs());
-        WorkerTaskResult failure = WorkerTaskResult.from(worker, VoidOutput.failed("expected-failure"));
+        WorkerTaskResult failure = WorkerTaskResult.failed(worker, "expected-failure");
         assertEquals(State.Type.FAILED, failure.targetState());
         assertEquals("expected-failure", failure.error());
         assertEquals(Map.of(), failure.outputs());

@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class LoopTest {
 
-    private final Context plugins = builtInContext();
+    private Context plugins = builtInContext();
 
     @Test
     void materializesFixedIterationScopeFromRealFields() {
@@ -43,7 +43,6 @@ class LoopTest {
 
         Loop loop = assertInstanceOf(Loop.class, flow.tasks().getFirst());
         assertEquals(3, loop.times());
-        assertEquals(3, loop.maxIterations());
         assertInstanceOf(Log.class, loop.tasks().getFirst());
     }
 

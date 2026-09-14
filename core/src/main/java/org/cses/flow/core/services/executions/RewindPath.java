@@ -1,16 +1,18 @@
 package org.cses.flow.core.services.executions;
 
-import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.tasks.OrchestrationTask;
-import org.cses.flow.core.domains.tasks.Task;
-import org.cses.flow.core.exceptions.WorkflowException;
-import org.cses.flow.extensions.flow.Route;
-
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.executions.TaskRun;
+import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.exceptions.WorkflowException;
+import org.cses.flow.extensions.flow.Branch;
+import org.cses.flow.extensions.flow.Loop;
+import org.cses.flow.extensions.flow.LoopUntil;
+import org.cses.flow.extensions.flow.Parallel;
+import org.cses.flow.extensions.flow.Route;
 
 /** Definition ancestry determines causality; append order cannot order parallel branches. */
 public class RewindPath {
@@ -46,13 +48,13 @@ public class RewindPath {
     }
 
     /**
-     * Compares the first diverging definition ancestors without changing the Flow.
+     * 比较两个定义首次分叉的祖先，不修改流程，并排除并行兄弟的先后关系。
      *
-     * @param flow definition tree to read
-     * @param beforeTaskId candidate predecessor definition ID
-     * @param afterTaskId candidate successor definition ID
-     * @param isolateRoutes true isolates conditional siblings; false uses their declared serial order
-     * @return true for an earlier serial branch; false for equal, missing or unordered definitions
+     * @param flow 只读流程定义树，非 null
+     * @param beforeTaskId 候选前置定义编号，非 null
+     * @param afterTaskId 候选后置定义编号，非 null
+     * @param isolateRoutes 为 true 时隔离条件兄弟分支，为 false 时使用声明顺序
+     * @return 存在串行先后关系时为 true，相同、缺失或无序时为 false
      */
     private static boolean precedes(Flow flow, String beforeTaskId, String afterTaskId, boolean isolateRoutes) {
         List<Task> before = path(flow.tasks(), beforeTaskId);
@@ -66,8 +68,7 @@ public class RewindPath {
             return false;
         }
         Task parent = common == 0 ? null : before.get(common - 1);
-        if (parent instanceof OrchestrationTask orchestration
-                && orchestration.startsChildrenInParallel()) {
+        if (parent instanceof Parallel) {
             return false;
         }
         List<Task> siblings = parent == null ? flow.tasks() : parent.definitionChildren();
@@ -78,21 +79,20 @@ public class RewindPath {
     }
 
     /**
-     * Rejects rewind endpoints whose ancestors cannot hold and resume their child scope.
+     * 校验退回端点不位于循环体且祖先均拥有可恢复的 Branch 子作用域。
      *
-     * @param flow definition tree to read
-     * @param run source or target occurrence to validate
-     * @throws WorkflowException when the endpoint belongs to an iterative or unsupported scope
+     * @param flow 只读流程定义树，非 null
+     * @param run 要校验的源或目标运行节点，非 null
+     * @throws WorkflowException 端点属于循环或不支持的祖先作用域时抛出
      */
     public static void requireNonIterated(Flow flow, TaskRun run) {
         List<Task> ancestry = path(flow.tasks(), run.taskId());
         if (ancestry.stream().anyMatch(task ->
-                task instanceof OrchestrationTask orchestration && orchestration.iteratesChildren())) {
+                task instanceof Loop || task instanceof LoopUntil)) {
             throw new WorkflowException("Rewind endpoints must be outside iterative scopes");
         }
         for (int index = 0; index < ancestry.size() - 1; index++) {
-            if (!(ancestry.get(index) instanceof OrchestrationTask orchestration)
-                    || !orchestration.holdsTaskRunUntilChildrenSettle()) {
+            if (!(ancestry.get(index) instanceof Branch<?>)) {
                 throw new WorkflowException("Rewind endpoint ancestors must hold their child scopes");
             }
         }

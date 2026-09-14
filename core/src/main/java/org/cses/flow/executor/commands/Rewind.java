@@ -68,11 +68,32 @@ public record Rewind(
             String targetTaskRunId,
             String reason
     ) {
+        return from(session, executionId, StringUtil.newId(), sourceTaskRunId, targetTaskRunId, reason);
+    }
+
+    /**
+     * 使用宿主预分配 ID 构建可重复投递的回退命令。
+     * @param session 可信租户和操作者
+     * @param executionId 来源实例 ID
+     * @param replayExecutionId 宿主已保存的新实例 ID
+     * @param sourceTaskRunId 暂停的源 TaskRun ID
+     * @param targetTaskRunId 已完成的目标 TaskRun ID
+     * @param reason 非空回退原因
+     * @return 保留指定新实例 ID 的命令
+     */
+    public static Rewind from(
+            Session<? extends User> session,
+            String executionId,
+            String replayExecutionId,
+            String sourceTaskRunId,
+            String targetTaskRunId,
+            String reason
+    ) {
         Objects.requireNonNull(session, "Session must not be null");
         ActorRef actor = SessionUtil.user(session);
         return new Rewind(
                 executionId,
-                StringUtil.newId(),
+                replayExecutionId,
                 session.getCompanyId(),
                 actor.id(),
                 sourceTaskRunId,

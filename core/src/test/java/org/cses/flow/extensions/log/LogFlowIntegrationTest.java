@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LogFlowIntegrationTest {
 
+    /** 通过真实恢复链路读取前置结果，并核对三个日志任务的完整输出顺序。 */
     @Test
     void rendersPrecedingOutputThroughTheExecutorAndWorkerChain() {
         LogCapture logs = LogCapture.start();
@@ -70,7 +71,7 @@ class LogFlowIntegrationTest {
             );
 
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertEquals(List.of("处理结果：ready"), logs.messages());
+            assertEquals(List.of("test step", "处理结果：ready", "test step"), logs.messages());
             assertTrue(completed.activeTaskRuns().isEmpty());
             assertTrue(fixture.pausedTaskRuns(session).isEmpty());
         }

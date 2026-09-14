@@ -308,7 +308,7 @@ public class ExecutionCommandEventHandler implements
                         "Task definition does not exist: " + taskRun.taskId()
                 )
         );
-        if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
+        if (!(task instanceof Pause pause)) {
             throw new WorkflowException(
                     "Only a paused Orchestration TaskRun can be resumed: "
                             + taskRun.id()

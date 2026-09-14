@@ -240,16 +240,10 @@ class NestedPauseResumeIntegrationTest {
                 tasks.get("integrate-results")
             ));
             assertEquals(State.Type.SUCCESS, integration.state().current());
-            assertEquals(
-                Map.of(
-                    "outputs",
-                    Map.of(
-                        "receive-request", Map.of(),
-                        "prepare-release", Map.of()
-                    )
-                ),
-                integration.inputs()
-            );
+            // ADR0095：前置 Log 返回 VoidOutput，不生成空结果键或其输入快照。
+            assertEquals(Map.of(), integration.inputs());
+            assertTrue(run(afterFrontend, tasks.get("receive-request")).outputs().isEmpty());
+            assertTrue(run(afterFrontend, tasks.get("prepare-release")).outputs().isEmpty());
 
             TaskRun securityCheck = run(
                 afterFrontend,
@@ -883,16 +877,10 @@ class NestedPauseResumeIntegrationTest {
             execution,
             tasks.get("integrate-results")
         ));
-        assertEquals(
-            Map.of(
-                "outputs",
-                Map.of(
-                    "receive-request", Map.of(),
-                    "prepare-release", Map.of()
-                )
-            ),
-            run(execution, tasks.get("integrate-results")).inputs()
-        );
+        // ADR0095：只包含无返回值日志的前置作用域不生成 outputs 空键。
+        assertEquals(Map.of(), run(execution, tasks.get("integrate-results")).inputs());
+        assertTrue(run(execution, tasks.get("receive-request")).outputs().isEmpty());
+        assertTrue(run(execution, tasks.get("prepare-release")).outputs().isEmpty());
     }
 
     private static void assertCompleted(

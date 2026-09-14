@@ -88,7 +88,7 @@ _Avoid_: Concrete Input, Input value, request DTO, untyped input Map
 _Avoid_: Task runtime result
 
 **Task Output**:
-具体 Task 代码通过 RunnableTask<T> 或 OrchestrationTask<T> 声明的结果类型，T 实现
+具体 Task 代码通过 RunnableTask<T>、OrchestrationTask<T> 或 ExecutableTask<T> 声明的结果类型，T 实现
  tasks.Output。该类型的字段定义结果结构，实例承载本次运行值；state/error 为控制
 信息，不进入业务字段。Task 不接受流程配置的 outputs 列表。运行结果保存到 TaskRun，
 由 RunVariables 按原作用域构建后续 RunContext；见 ADR 0095。
@@ -101,7 +101,7 @@ Flow 定义中不可分割的流程步骤定义；其领域字段 `id` 在正式
 运行结果。定义树的 parentId 是持久化 Adapter 从结构关系派生的关系字段，不是 Task
 公共领域字段。YAML 只声明业务 `key`，创建时可先物化，正式部署时才确认完整约束和
 跨 reversion 的身份稳定性。
-RunnableTask 与 OrchestrationTask 是具体 Task 可拥有的两种互斥能力，离开 Task 后没有
+RunnableTask、OrchestrationTask 与 ExecutableTask 是具体 Task 可拥有的三种互斥能力，离开 Task 后没有
 独立业务意义；Worker 和 Executor 分别调用或解释这些能力，但不拥有它们。
 _Avoid_: Node, Activity
 
@@ -117,14 +117,19 @@ _Avoid_: WorkerTaskHandler, executable OrchestrationTask, generic Task execution
 ROUTE、SEQUENCE、PARALLEL、LOOP 和 LOOP UNTIL。需要拥有有序子 Task 的结构类型
 继承抽象 Branch；PAUSE 直接继承 Task 并拥有自己的 pause 关系。Orchestration Task
 没有实际工作和
-`run` 方法，不形成 WorkerTask；Executor 直接根据其编排特征管理 TaskRun、暂停、
-作用域收敛和后续路线。
+`run` 方法，不形成 WorkerTask；其 resolveNexts 只返回 Task 与 TaskRun 列表，resolveState 只返回可选 State.Type。
+Executor 接纳 TaskRun、应用状态，在接纳新轮子任务时更新轮次。
 _Avoid_: tasks on every Task, runnable orchestration, structural WorkerTask
 
 **Branch**:
 所有结构型流程 Task 的抽象基类，继承 Task 并独占有序 `tasks` 定义。Route、Sequence、
 Parallel、Loop 和 Loop Until 通过继承 Branch 获得子树；Runnable Task 和 Pause 不
-拥有该字段。Branch 只表达结构关系，不自动获得 route、condition 或 DAG dependency。
+拥有该字段。Branch 提供顺序搜索与子任务收敛的默认行为，不自动获得 route、condition 或 DAG dependency。
+
+**Executable Task**:
+创建独立子 Execution 并等待结果的任务能力，当前由 SubFlow 实现。调用请求由任务
+绑定输入产生；流程查询、父子保存与消息由运行协调器负责，结果经 Executor 应用。
+SubFlow 的流程键和版本直接属于自身定义。见 ADR 0099。
 _Avoid_: tasks on Task, route on Branch, condition on Branch, concrete generic branch plugin
 
 **Run Context**:
@@ -173,7 +178,7 @@ _Avoid_: Loop cursor, retry attempt, Task definition version
 **Task Extension**:
 为一个稳定 Task `type` 提供具体 Task 定义及其物化、重建和专有 properties 规则的
 Plugin 扩展点；注册后 Flow 可以用该 `type` 部署 Task。运行能力由具体 Task 自身
-实现 RunnableTask 或 OrchestrationTask，不由 Plugin 注册机制执行。Plugin 不分配
+实现 RunnableTask、OrchestrationTask 或 ExecutableTask，不由 Plugin 注册机制执行。Plugin 不分配
 Task 身份、不拥有 Flow 聚合或 TaskRun 状态。
 _Avoid_: Task instance, WorkerTaskHandler, Task type catalog, generic Task
 

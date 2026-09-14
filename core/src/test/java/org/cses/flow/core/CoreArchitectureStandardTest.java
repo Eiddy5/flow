@@ -204,7 +204,7 @@ class CoreArchitectureStandardTest {
                     "executor/handlers/ExecutionCommandEventHandler.java"
                 ))
                 && Files.isRegularFile(FLOW.resolve(
-                    "executor/handlers/ExecutorEventHandler.java"
+                    "executor/handlers/ExecutorEventMessageHandler.java"
                 ))
                 && Files.isRegularFile(FLOW.resolve(
                     "executor/commands/ExecutionCommand.java"
@@ -235,7 +235,8 @@ class CoreArchitectureStandardTest {
                 + "package"
         );
         assertTrue(
-            Files.isRegularFile(taskDomain.resolve("RunnableTask.java"))
+            Files.isRegularFile(taskDomain.resolve("ExecutableTask.java"))
+                && Files.isRegularFile(taskDomain.resolve("RunnableTask.java"))
                 && Files.isRegularFile(taskDomain.resolve(
                     "OrchestrationTask.java"
                 ))
@@ -276,11 +277,12 @@ class CoreArchitectureStandardTest {
         String contextSource = Files.readString(executorContext);
         assertTrue(
             contextSource.contains(
-                "private final List<TaskRun> nexts;"
+                "private List<ResolvedNextTask> nexts;"
             )
-                && contextSource.contains(
-                    "private final List<String> orchestrationCompletions;"
-                )
+                && !contextSource.contains("orchestrationStates")
+                && Files.isRegularFile(runner.resolve("ResolvedNextTask.java"))
+                && Files.notExists(runner.resolve("OrchestrationPlan.java"))
+                && Files.notExists(runner.resolve("OrchestrationState.java"))
                 && !contextSource.contains("DSLContext")
                 && !contextSource.contains("Session<")
                 && Files.notExists(FLOW.resolve(
@@ -289,8 +291,7 @@ class CoreArchitectureStandardTest {
                 && Files.notExists(CORE.resolve(
                     "handlers/executions/ExecutionHandler.java"
                 )),
-            "ExecutorContext must expose TaskRun nexts and orchestration "
-                + "completions "
+            "ExecutorContext must expose resolved Task/TaskRun nexts "
                 + "without carrying transaction runtime objects"
         );
 
@@ -307,7 +308,7 @@ class CoreArchitectureStandardTest {
             "executor/handlers/ExecutionCommandEventHandler.java"
         ));
         String eventHandler = Files.readString(FLOW.resolve(
-            "executor/handlers/ExecutorEventHandler.java"
+            "executor/handlers/ExecutorEventMessageHandler.java"
         ));
         long publicCreateMethods = Pattern.compile(
             "(?m)^\\s*public\\s+.*\\sCreate\\s+create\\("
@@ -753,7 +754,7 @@ class CoreArchitectureStandardTest {
             "DefaultExecutor.java"
         ));
         String executorEventHandler = Files.readString(executor.resolve(
-            "handlers/ExecutorEventHandler.java"
+            "handlers/ExecutorEventMessageHandler.java"
         ));
 
         assertTrue(
@@ -860,16 +861,24 @@ class CoreArchitectureStandardTest {
         assertTrue(
             log.contains("implements RunnableTask")
                 && log.contains("VoidOutput run(RunContext context)")
-                && pause.contains("implements OrchestrationTask")
-                && parallel.contains("implements OrchestrationTask")
-                && loop.contains("implements OrchestrationTask")
-                && loopUntil.contains("implements OrchestrationTask")
+                && pause.contains("OrchestrationTask<Pause.Output>")
+                && parallel.contains("extends Branch<Parallel.Output>")
+                && loop.contains("extends Branch<Loop.Output>")
+                && loopUntil.contains("extends Branch<LoopUntil.Output>")
                 && Files.notExists(taskDomain.resolve("LoopTask.java"))
                 && executorService.contains(
                     "public ExecutorContext process(ExecutorContext context)"
                 )
                 && executorService.contains("handleOrchestration(")
-                && executorService.contains("runnable == orchestration"),
+                && executorService.contains("task instanceof ExecutableTask")
+                && executorService.contains("exactly one runtime capability")
+                && orchestrationTask.contains("resolveNexts(")
+                && orchestrationTask.contains("resolveState(")
+                && orchestrationTask.contains("List<ResolvedNextTask>")
+                && orchestrationTask.contains("Optional<State.Type>")
+                && !orchestrationTask.contains("outputs(")
+                && !orchestrationTask.contains("IterationDecision")
+                && !orchestrationTask.contains("holdsTaskRun"),
             "Concrete Tasks must declare one capability and Executor must "
                 + "handle orchestration directly"
         );

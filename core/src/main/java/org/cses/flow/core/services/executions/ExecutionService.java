@@ -231,6 +231,30 @@ public class ExecutionService {
             String targetTaskRunId,
             String reason
     ) {
+        return rewind(session, executionId, StringUtil.newId(), sourceTaskRunId, targetTaskRunId, reason);
+    }
+
+    /**
+     * 使用调用方已持久化的派生实例 ID 提交回退命令。
+     * 宿主先保存当前处理坐标，再调用本方法，避免新实例先回调而宿主尚未绑定。
+     * @param session 当前租户和操作者
+     * @param executionId 回退来源实例 ID
+     * @param replayExecutionId 与来源不同的预分配新实例 ID
+     * @param sourceTaskRunId 发起回退的暂停实例 ID
+     * @param targetTaskRunId 重新执行的历史目标实例 ID
+     * @param reason 非空回退原因
+     * @return 队列受理结果，携带同一个预分配 ID；不表示新实例已运行
+     * @throws WorkflowException 来源实例或回退路径不合法时抛出
+     * @throws IllegalArgumentException 身份或原因不合法时抛出
+     */
+    public <S extends Session<U>, U extends User> RewindResult rewind(
+            S session,
+            String executionId,
+            String replayExecutionId,
+            String sourceTaskRunId,
+            String targetTaskRunId,
+            String reason
+    ) {
         RewindPlan plan = planRewind(
                 session,
                 executionId,
@@ -240,6 +264,7 @@ public class ExecutionService {
         Rewind command = Rewind.from(
                 session,
                 executionId,
+                replayExecutionId,
                 sourceTaskRunId,
                 targetTaskRunId,
                 reason
@@ -413,7 +438,7 @@ public class ExecutionService {
                         "Task definition does not exist: " + taskRun.taskId()
                 )
         );
-        if (!(task instanceof Pause pause) || !pause.pausesTaskRun()) {
+        if (!(task instanceof Pause pause)) {
             throw new WorkflowException(
                     "Only a paused Orchestration TaskRun can be resumed: "
                             + taskRun.id()

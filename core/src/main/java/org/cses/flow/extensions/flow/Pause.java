@@ -4,6 +4,15 @@ import com.fasterxml.jackson.annotation.JsonSetter;
 import io.micronaut.core.annotation.ReflectiveAccess;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+import javax.xml.datatype.DatatypeConfigurationException;
+import javax.xml.datatype.DatatypeFactory;
 import lombok.Builder;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -15,17 +24,9 @@ import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.annotations.Example;
 import org.cses.flow.core.plugins.annotations.Plugin;
+import org.cses.flow.core.runner.OrchestrationContext;
+import org.cses.flow.core.runner.ResolvedNextTask;
 import org.cses.flow.core.validations.ModelInvariant;
-
-import javax.xml.datatype.DatatypeConfigurationException;
-import javax.xml.datatype.DatatypeFactory;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * External-resume orchestration gate with one mandatory pre-pause Task.
@@ -61,7 +62,7 @@ import java.util.Optional;
 @NoArgsConstructor
 public class Pause extends Task implements OrchestrationTask<Pause.Output>, ModelInvariant {
 
-    private static final DatatypeFactory DURATION_FACTORY = durationFactory();
+    private static DatatypeFactory DURATION_FACTORY = durationFactory();
 
     @NotNull
     @Schema(
@@ -124,10 +125,26 @@ public class Pause extends Task implements OrchestrationTask<Pause.Output>, Mode
         return onPause == null ? List.of() : List.of(onPause);
     }
 
-    /** @return true，使 Executor 在前置任务完成后等待外部恢复 */
+    /**
+     * 执行暂停前任务；外部恢复后不重复执行。
+     * @param context 当前只读运行上下文
+     * @return 可启动的前置任务列表，恢复后为空
+     */
     @Override
-    public boolean pausesTaskRun() {
-        return true;
+    public List<ResolvedNextTask> resolveNexts(OrchestrationContext context) {
+        return context.hasReached(State.Type.PAUSED) ? List.of()
+                : context.serial(List.of(onPause()), null, context.inputs());
+    }
+
+    /**
+     * 前置任务结束后暂停，恢复后完成并由 Executor 保留恢复输出。
+     * @param context 当前只读运行上下文
+     * @return 暂停或成功决定，前置任务未完成时为空
+     */
+    @Override
+    public Optional<State.Type> resolveState(OrchestrationContext context) {
+        if (context.hasReached(State.Type.PAUSED)) return Optional.of(State.Type.SUCCESS);
+        return context.settled(List.of(onPause()), null) ? Optional.of(State.Type.PAUSED) : Optional.empty();
     }
 
     /**
@@ -294,7 +311,7 @@ public class Pause extends Task implements OrchestrationTask<Pause.Output>, Mode
         CANCEL(State.Type.KILLED),
         FAIL(State.Type.FAILED);
 
-        private final State.Type state;
+        private State.Type state;
 
         Behavior(State.Type state) {
             this.state = state;

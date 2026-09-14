@@ -104,6 +104,10 @@ Worker 和 Queue 继续使用原有边界；数据库提交成功但内部事件
 
 - 正式 `ExecutionService.rewind` 与 HTTP `POST /executions/executions/{executionId}/task-runs/{taskRunId}/rewind` 直接采用新语义，无同实例旧实现分支。完整路径包含现有 Controller 的 `/executions` 前缀。
 - 返回 `executionId`（预分配的新实例 ID）、`sourceExecution`（受理时原实例快照）、`affectedTaskRunIds`。返回只证明 Queue 受理，调用方重新查询新实例，不能把受理当成异步交接完成。
+- 2026-09-10 宿主对接补充：`ExecutionService.rewind` 允许调用方传入预分配的
+  `replayExecutionId`，与 `create` 的宿主身份协议一致。宿主先将新 ID 与本地回退事实
+  一起保存，再调用公开 Service 投递同一个 ID；不在队列受理后才切换绑定，避免新实例
+  回调先于业务关联。原便捷入口仍分配 ID 后委托，不增加第二套执行协议或旧版回退行为。
 - 调用方需持久保留业务历史引用，并将当前处理坐标切换为新 executionId。继承等待任务沿用 taskRunId，新生成任务使用查询得到的新 ID。
 - `ExecutionService.lineage(session, executionId)` 和对应 `GET /executions/executions/{executionId}/lineage` 返回当前租户内同源的全部快照。
 - HTTP ExecutionView 暴露 `origin`、`inheritedTaskRunIds` 和 `effectiveTaskRunIds`；原有 TaskRun 继续提供父子、轮次、输入、输出、状态和时间。

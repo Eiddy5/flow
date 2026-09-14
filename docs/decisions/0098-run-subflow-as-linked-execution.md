@@ -4,16 +4,22 @@
 
 Accepted（2026-09-10）。用户确认统一 inputs、独立 Execution 与来源追溯，
 本阶段完成首次调用闭环，暂不实现重试、重启恢复和 Replay 接续。
+2026-09-14 根据用户确认，将流程引用字段直接放在 SubFlow，移除通用接口中的子流程业务。
 
 ## 背景与选项
+
+2026-09-14：SubFlow 的独立执行能力由 [ADR 0099](0099-resolve-task-orchestration-as-read-only-plans.md) 修订，不再实现 OrchestrationTask。
 
 内嵌子 TaskRun 无法表达独立运行；只保存 Origin 无法区分同一父运行中的多个调用。
 选择复用 OrchestrationTask、Execution 与现有队列，保存精确调用节点。
 
 ## 决策
 
-- SubFlow 位于 extensions/flow，实现 OrchestrationTask，配置 `flow.key/version`。
-  引用版本必须明确且为正数。Executor 通过编排能力识别引用，不按具体插件类分派。
+- SubFlow 位于 extensions/flow，实现 OrchestrationTask，直接配置 `flowKey`、`flowVersion`，
+  不再封装引用对象。流程键非空，引用版本必须明确且为正数。
+  OrchestrationTask 只声明分支、循环、等待等通用编排特征，不参与具体任务业务。
+  Executor 和子流程处理器识别 SubFlow 并读取其自身字段；通用接口不提供子流程引用能力。
+  旧的 `flow.key/version` 配置不做兼容，已有定义须调整后重新发布。
 - 沿用 Task.inputs 与 Input.bind；按声明从父 Execution.inputs 取得同名值，
   支持已有 Input 默认值与校验。绑定后再次通过目标 Flow.bindInputs 校验，最终值
   同时保存于父调用 TaskRun.inputs 和子 Execution.inputs。不新增 arguments 或表达式参数协议。

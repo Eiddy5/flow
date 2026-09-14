@@ -123,4 +123,40 @@ class ExecutionServiceResumeTest {
             fixture.cancel(started.id());
         }
     }
+    /** 验证宿主预分配编号随队列受理、派生实例和恢复完成保持一致。 */
+    @Test
+    void rewindsIntoTheExecutionIdAllocatedByTheHost() {
+        try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
+            Flow flow = fixture.deploy("""
+                key: host-allocated-replay
+                tasks:
+                  - key: target
+                    type: org.cses.flow.extensions.log.Log
+                    message: target
+                  - key: approval
+                    type: org.cses.flow.extensions.flow.Pause
+                    onPause:
+                      key: open-approval
+                      type: org.cses.flow.extensions.log.Log
+                      message: ready
+                    onResume:
+                      - {key: decision, type: STRING, required: true}
+                """);
+            Execution source = fixture.startAndAwait(flow);
+            var waiting = fixture.waitingForExecution(source.id());
+            String target = source.taskRuns().getFirst().id();
+            String replayId = org.paas.common.util.StringUtil.newId();
+            var accepted = fixture.executionService().rewind(fixture.session(), source.id(), replayId,
+                waiting.taskRunId(), target, "host correction");
+            assertEquals(replayId, accepted.executionId());
+            Execution replay = fixture.awaitStable(replayId);
+            assertEquals(replayId, replay.id());
+            assertEquals(source.id(), replay.origin().parentId());
+            fixture.resume(fixture.waitingForExecution(replayId), Map.of("decision", "APPROVED"));
+            assertEquals(State.Type.SUCCESS, fixture.awaitStable(replayId).state().current());
+            assertEquals(State.Type.KILLED, fixture.executionService().execution(fixture.session(), source.id())
+                .orElseThrow().state().current());
+        }
+    }
+
 }

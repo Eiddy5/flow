@@ -1,15 +1,14 @@
 package org.cses.flow.executor;
 
-import org.cses.flow.core.domains.executions.Execution;
-import org.cses.flow.core.domains.executions.TaskRun;
-import org.cses.flow.core.domains.flows.Flow;
-import org.cses.flow.core.domains.flows.State;
-import org.cses.flow.worker.WorkerTask;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.cses.flow.core.domains.executions.Execution;
+import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.runner.ResolvedNextTask;
+import org.cses.flow.worker.WorkerTask;
 
 /**
  * Mutable work unit for one recoverable executor scheduling cycle.
@@ -22,9 +21,8 @@ public class ExecutorContext {
 
     private Execution execution;
     private Flow flow;
-    private List<TaskRun> nexts;
+    private List<ResolvedNextTask> nexts;
     private List<WorkerTask> workerTasks;
-    private List<String> orchestrationCompletions;
     private List<State.Type> states;
     private List<String> subFlowTaskRuns = new ArrayList<>();
     private boolean executionUpdated;
@@ -40,7 +38,6 @@ public class ExecutorContext {
         }
         this.nexts = new ArrayList<>();
         this.workerTasks = new ArrayList<>();
-        this.orchestrationCompletions = new ArrayList<>();
         this.states = new ArrayList<>();
         this.states.add(execution.state().current());
     }
@@ -61,16 +58,13 @@ public class ExecutorContext {
         return List.copyOf(states);
     }
 
-    public List<TaskRun> nexts() {
+    /** @return 本周期已解析的任务定义与运行记录，只读列表 */
+    public List<ResolvedNextTask> nexts() {
         return List.copyOf(nexts);
     }
 
     public List<WorkerTask> workerTasks() {
         return List.copyOf(workerTasks);
-    }
-
-    public List<String> orchestrationCompletions() {
-        return List.copyOf(orchestrationCompletions);
     }
 
     public boolean canBeProcessed() {
@@ -83,16 +77,14 @@ public class ExecutorContext {
             || execution.state().is(State.Type.RUNNING);
     }
 
-    void stageNexts(List<TaskRun> plannedNexts) {
+    /**
+     * 替换本周期待启动任务。
+     * @param plannedNexts 已解析任务列表，非 null，仅复制列表
+     */
+    void stageNexts(List<ResolvedNextTask> plannedNexts) {
         Objects.requireNonNull(plannedNexts, "plannedNexts");
         nexts.clear();
         nexts.addAll(plannedNexts);
-    }
-
-    List<TaskRun> takeNexts() {
-        List<TaskRun> staged = List.copyOf(nexts);
-        nexts.clear();
-        return staged;
     }
 
     void clearNexts() {
@@ -132,18 +124,6 @@ public class ExecutorContext {
     public List<WorkerTask> takeWorkerTasks() {
         List<WorkerTask> staged = List.copyOf(workerTasks);
         workerTasks.clear();
-        return staged;
-    }
-
-    void stageOrchestrationCompletions(List<String> taskRunIds) {
-        Objects.requireNonNull(taskRunIds, "TaskRun ids");
-        orchestrationCompletions.clear();
-        orchestrationCompletions.addAll(taskRunIds);
-    }
-
-    List<String> takeOrchestrationCompletions() {
-        List<String> staged = List.copyOf(orchestrationCompletions);
-        orchestrationCompletions.clear();
         return staged;
     }
 

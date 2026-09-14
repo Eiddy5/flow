@@ -346,7 +346,10 @@ flowchart TD
    TaskRun，再计算 Condition；未命中时该 Route TaskRun 进入 `SKIPPED`，不产生
    outputs、error 或子 TaskRun，Execution 仍继续收敛。`SKIPPED` 不属于 Execution，
    也不能由 Worker 上报。
-6. `RunnableTask` 只由 Worker 调用；`OrchestrationTask` 只由 Executor 解释。当前 Worker
+6. 三类 Task 按 [ADR 0099](decisions/0099-resolve-task-orchestration-as-read-only-plans.md) 互斥：
+   `RunnableTask` 只由 Worker 调用；`OrchestrationTask.resolveNexts/resolveState` 通过只读上下文
+   分别返回 `List<ResolvedNextTask>` 和 `Optional<State.Type>`，由 Executor 接纳任务并应用状态；`ExecutableTask` 生成独立子运行请求与完成结果。
+   SubFlow 直接保存 flowKey/flowVersion，调用协调器负责查询、父子保存和消息。当前 Worker
    同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。RunContext 通过 Builder 创建且
    只保存规范 variables，不保存 Session 或重复运行身份；常用身份通过
    `taskRunInfo()`、`flowInfo()` 等只读视图从变量路径派生。
@@ -366,7 +369,8 @@ flowchart TD
    移入 History；恢复新源 Pause 后清空 Current并沿最新有效输出继续。
 9. Loop 与 LoopUntil 的作用域 TaskRun 各自拥有 Generation：当前轮是 Current，完成
    轮次进入 History，继续原因随新 Current 保存；直接子 TaskRun 的 iteration 等于
-   当轮 version，但不再作为推导循环游标的唯一来源。
+   当轮 version，但不再作为推导循环游标的唯一来源。搜索只返回新轮次请求，Executor 应用后，
+   下一周期才创建该轮子节点；搜索不能修改 Generation。
 10. `ExecutorEventMessageHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
    的 OrchestrationTask、同步调用 Worker、持久化本轮变化，并将仍可推进的下一周期
    重新投回 Event Queue。`DefaultExecutor` 不拥有状态机，只负责两条 Queue 路由。

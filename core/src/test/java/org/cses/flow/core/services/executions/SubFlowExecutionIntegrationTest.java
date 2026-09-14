@@ -32,14 +32,12 @@ class SubFlowExecutionIntegrationTest {
                     tasks:
                       - key: first
                         type: org.cses.flow.extensions.flow.SubFlow
-                        flow:
-                          key: %s
-                          version: %s
+                        flowKey: %s
+                        flowVersion: %s
                       - key: second
                         type: org.cses.flow.extensions.flow.SubFlow
-                        flow:
-                          key: %s
-                          version: %s
+                        flowKey: %s
+                        flowVersion: %s
                       - key: sibling-log
                         type: org.cses.flow.extensions.log.Log
                         message: sibling completed
