@@ -23,9 +23,9 @@ import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.Queue;
 import org.jooq.DSLContext;
+import org.cses.flow.core.utils.SessionUtil;
 import org.paas.session.Session;
 import org.paas.session.SessionFactory;
-import org.paas.session.User;
 import org.x9.jooq.JOOQ;
 
 import java.util.List;
@@ -426,20 +426,14 @@ public class ExecutionCommandEventHandler implements
         }
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private Session<?> restoreSession(
-            String companyId,
-            String actorId
-    ) {
-        Session restored = sessionFactory.session();
-        User user = restoreUser(actorId);
-        user.setId(actorId);
-        user.setCompanyId(companyId);
-
-        restored.setCompanyId(companyId);
-        restored.setUser(user);
-        user.onSessionBound();
-        return restored;
+    /**
+     * 恢复命令携带的最小租户与操作者上下文。
+     * @param companyId 非空租户 ID
+     * @param actorId 非空操作者 ID
+     * @return 当前工厂创建的会话
+     */
+    private Session<?> restoreSession(String companyId, String actorId) {
+        return SessionUtil.restore(sessionFactory, companyId, actorId);
     }
 
     private Session<?> restoreSession(Resume command) {
@@ -450,13 +444,4 @@ public class ExecutionCommandEventHandler implements
         return restoreSession(command.getCompanyId(), command.getActorId());
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private User restoreUser(String actorId) {
-        List<? extends User> users = ((SessionFactory) sessionFactory)
-                .buildSessionUser(List.of(actorId));
-        if (users != null && !users.isEmpty()) {
-            return users.getFirst();
-        }
-        return sessionFactory.user();
-    }
 }

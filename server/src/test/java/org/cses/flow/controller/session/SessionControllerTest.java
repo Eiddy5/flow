@@ -3,7 +3,7 @@ package org.cses.flow.controller.session;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import org.junit.jupiter.api.Test;
-import org.paas.session.Session;
+import org.pass.authx.security.session.AuthxSession;
 
 import java.lang.reflect.Method;
 
@@ -18,7 +18,7 @@ class SessionControllerTest {
         );
         Method session = SessionController.class.getDeclaredMethod(
             "session",
-            Session.class
+            AuthxSession.class
         );
 
         assertEquals("/api", controller.value());

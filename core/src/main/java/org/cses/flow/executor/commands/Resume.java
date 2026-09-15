@@ -3,7 +3,7 @@ package org.cses.flow.executor.commands;
 import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.utils.SessionUtil;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -33,7 +33,7 @@ public record Resume(
     }
 
     public static Resume from(
-        Session<? extends User> session,
+        Session<? extends SessionUser> session,
         String executionId,
         String taskRunId,
         Map<String, ?> outputs

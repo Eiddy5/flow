@@ -20,6 +20,9 @@
 
 ## Core 组件与依赖方向
 
+- [`ADR 0102`](0102-use-local-paas-authx-session.md)：三个本地联合构建、AuthX HTTP 会话、
+  Core SessionUser 契约及异步最小会话恢复。
+
 - [`ADR 0096`](0096-remove-legacy-postgres-queues.md)：清理旧 PostgreSQL 队列、专属契约、
   压测及队列表基线/生成类，保留 PAAS Pulsar 为唯一运行传输。
 

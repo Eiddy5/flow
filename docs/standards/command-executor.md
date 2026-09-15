@@ -38,7 +38,7 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 ## 泛型契约
 
 - `Command<R>` 使用 `R` 声明命令返回类型。
-- `CommandHandler<S extends Session<U>, U extends User, R, C extends Command<R>>`
+- `CommandHandler<S extends Session<U>, U extends SessionUser, R, C extends Command<R>>`
   只处理一个具体 Command，并同时保留具体 Session 和 User 类型。
 - `CommandExecutor.execute(S, C)` 返回与 `Command<R>` 一致的 `R`。
 - `CommandExecutor` 的 JOOQ 和 Registry 由 Micronaut 构造器注入。
@@ -48,7 +48,7 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 ## Session 规则
 
 - 用户上下文统一使用 `S extends Session<U>`，其中 `S` 是具体 Session
-  子类型，`U` 是 Session 内部的具体 User 类型。
+  子类型，`U` 是 Session 内部的具体 SessionUser 子类型。
 - 例如 `CsesSession extends Session<CsesUser>`，对应
   `S = CsesSession`、`U = CsesUser`。
 - Controller 从 PAAS Session 参数绑定能力获取 Session，Service 原样传给 CommandExecutor。

@@ -23,3 +23,26 @@ rootProject.name = "flow"
 include("gen")
 include("core")
 include("server")
+
+// 将本地构建选择传给 AuthX 等嵌套构建，统一依赖来源。
+def localBuilds = [
+    [flag: 'useLocalPaas', path: 'localPaasPath', fallback: '../paas'],
+    [flag: 'useLocalPaasService', path: 'localPaasServicePath', fallback: '../paas-service'],
+    [flag: 'useLocalPassAuthx', path: 'localPassAuthxPath', fallback: '../pass-auth']
+]
+def sharedProperties = new LinkedHashMap(gradle.startParameter.projectProperties)
+localBuilds.each { local ->
+    def enabled = providers.gradleProperty(local.flag).orNull ?: 'false'
+    sharedProperties.put(local.flag, enabled)
+    if (enabled.toBoolean()) {
+        def path = file(providers.gradleProperty(local.path).orNull ?: local.fallback)
+            .toPath().toRealPath().toString()
+        sharedProperties.put(local.path, path)
+    }
+}
+gradle.startParameter.projectProperties = sharedProperties
+localBuilds.each { local ->
+    if (sharedProperties[local.flag].toBoolean()) {
+        includeBuild(sharedProperties[local.path])
+    }
+}

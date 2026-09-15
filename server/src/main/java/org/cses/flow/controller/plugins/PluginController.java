@@ -1,5 +1,6 @@
 package org.cses.flow.controller.plugins;
 
+import org.paas.response.wrapper.annotation.SkipResponseWrap;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.PathVariable;
@@ -12,6 +13,7 @@ import java.util.List;
 /**
  * HTTP adapter for the global read-only plugin catalog.
  */
+@SkipResponseWrap
 @Controller("/api/plugins")
 public final class PluginController {
 

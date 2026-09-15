@@ -1,7 +1,7 @@
 package org.cses.flow.core.services;
 
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 /**
  * Executes one concrete command type.
@@ -13,7 +13,7 @@ import org.paas.session.User;
  */
 public interface CommandHandler<
         S extends Session<U>,
-        U extends User,
+        U extends SessionUser,
         R,
         C extends Command<R>
         > {

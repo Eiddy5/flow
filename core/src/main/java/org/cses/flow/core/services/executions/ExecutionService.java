@@ -15,7 +15,7 @@ import org.cses.flow.extensions.flow.Pause;
 import org.cses.flow.queues.Queue;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,7 +57,7 @@ public class ExecutionService {
      * @param inputs  针对选定 Flow 版本提交的启动输入
      * @return Executor Command Queue 的受理回执
      */
-    public <S extends Session<U>, U extends User> Create create(
+    public <S extends Session<U>, U extends SessionUser> Create create(
             S session,
             String key,
             Optional<Long> version,
@@ -87,7 +87,7 @@ public class ExecutionService {
      * @param inputs      针对选定 Flow 版本提交的启动输入
      * @return Executor Command Queue 的受理回执
      */
-    public <S extends Session<U>, U extends User> Create create(
+    public <S extends Session<U>, U extends SessionUser> Create create(
             S session,
             String executionId,
             String key,
@@ -107,7 +107,7 @@ public class ExecutionService {
         return command;
     }
 
-    public <S extends Session<U>, U extends User> Execution cancel(
+    public <S extends Session<U>, U extends SessionUser> Execution cancel(
             S session,
             String executionId
     ) {
@@ -142,7 +142,7 @@ public class ExecutionService {
      * @return queue-accepted current execution snapshot
      * @throws WorkflowException when the execution or occurrence cannot resume
      */
-    public <S extends Session<U>, U extends User> Execution resume(
+    public <S extends Session<U>, U extends SessionUser> Execution resume(
             S session, String executionId, String taskRunId, Map<String, ?> outputs
     ) {
         return submitResume(session, executionId, taskRunId, outputs, false);
@@ -161,7 +161,7 @@ public class ExecutionService {
      * @return queue-accepted current execution snapshot
      * @throws WorkflowException when the target is neither paused nor awaiting its first pause
      */
-    public <S extends Session<U>, U extends User> Execution resumeWhenPaused(
+    public <S extends Session<U>, U extends SessionUser> Execution resumeWhenPaused(
             S session, String executionId, String taskRunId, Map<String, ?> outputs
     ) {
         return submitResume(session, executionId, taskRunId, outputs, true);
@@ -180,7 +180,7 @@ public class ExecutionService {
      * @return queue-accepted current execution snapshot
      * @throws WorkflowException when the request is invalid
      */
-    private <S extends Session<U>, U extends User> Execution submitResume(
+    private <S extends Session<U>, U extends SessionUser> Execution submitResume(
             S session,
             String executionId,
             String taskRunId,
@@ -224,7 +224,7 @@ public class ExecutionService {
      * @return queue-accepted rewind result based on the validated snapshot
      * @throws WorkflowException when the Execution or rewind path is invalid
      */
-    public <S extends Session<U>, U extends User> RewindResult rewind(
+    public <S extends Session<U>, U extends SessionUser> RewindResult rewind(
             S session,
             String executionId,
             String sourceTaskRunId,
@@ -247,7 +247,7 @@ public class ExecutionService {
      * @throws WorkflowException 来源实例或回退路径不合法时抛出
      * @throws IllegalArgumentException 身份或原因不合法时抛出
      */
-    public <S extends Session<U>, U extends User> RewindResult rewind(
+    public <S extends Session<U>, U extends SessionUser> RewindResult rewind(
             S session,
             String executionId,
             String replayExecutionId,
@@ -293,7 +293,7 @@ public class ExecutionService {
      * @return validated read-only rewind plan and affected TaskRun IDs
      * @throws WorkflowException when the Execution or rewind path is invalid
      */
-    public <S extends Session<U>, U extends User> RewindPlan planRewind(
+    public <S extends Session<U>, U extends SessionUser> RewindPlan planRewind(
             S session,
             String executionId,
             String sourceTaskRunId,
@@ -328,7 +328,7 @@ public class ExecutionService {
         );
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     Optional<Execution> execution(
             S session,
             String executionId
@@ -337,7 +337,7 @@ public class ExecutionService {
         return queryHandler.execution(session, executionId);
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     List<Execution> executions(S session) {
 
         return queryHandler.executions(session);
@@ -350,7 +350,7 @@ public class ExecutionService {
      * @return complete snapshots with explicit origins and inherited run boundaries
      * @throws WorkflowException when the selected Execution cannot be read
      */
-    public <S extends Session<U>, U extends User> List<Execution> lineage(S session, String executionId) {
+    public <S extends Session<U>, U extends SessionUser> List<Execution> lineage(S session, String executionId) {
         return queryHandler.lineage(session, executionId);
     }
 
@@ -362,7 +362,7 @@ public class ExecutionService {
      * @param version 要查询的 Flow 版本；为空查询最新版本
      * @return 指定或最新的未删除正式 Flow
      */
-    private <S extends Session<U>, U extends User> Flow requireFlow(
+    private <S extends Session<U>, U extends SessionUser> Flow requireFlow(
             S session,
             String key,
             Optional<Long> version
@@ -403,7 +403,7 @@ public class ExecutionService {
      * @return outputs validated against the bound Pause definition
      * @throws WorkflowException when the execution or selected occurrence cannot resume
      */
-    private <S extends Session<U>, U extends User>
+    private <S extends Session<U>, U extends SessionUser>
     Map<String, Object> validateResume(
             S session,
             Execution execution,
@@ -457,7 +457,7 @@ public class ExecutionService {
      * @return the exact Flow version bound to the execution
      * @throws WorkflowException when the Flow or rewind path is unavailable
      */
-    private <S extends Session<U>, U extends User> Flow validateRewind(
+    private <S extends Session<U>, U extends SessionUser> Flow validateRewind(
             S session,
             Execution execution,
             String sourceTaskRunId,
@@ -564,7 +564,7 @@ public class ExecutionService {
      * @return immutable list from the loaded snapshot; empty when the source is no longer effective or no predecessor exists
      * @throws WorkflowException when execution, Flow or source is missing
      */
-    public <S extends Session<U>, U extends User> List<TaskRun> previousCompletedTaskRuns(
+    public <S extends Session<U>, U extends SessionUser> List<TaskRun> previousCompletedTaskRuns(
             S session, String executionId, String sourceTaskRunId, Set<String> taskKeys
     ) {
         Execution execution = queryHandler.execution(session, executionId).orElseThrow(() ->

@@ -14,7 +14,7 @@ import org.cses.flow.core.services.shared.SessionValidation;
 import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.core.validations.ModelValidator;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -22,8 +22,8 @@ import java.util.Set;
 
 @Singleton
 public class PublishFlowHandler implements CommandHandler<
-        Session<User>,
-        User,
+        Session<SessionUser>,
+        SessionUser,
         Flow,
         PublishFlowCommand
         > {
@@ -72,8 +72,8 @@ public class PublishFlowHandler implements CommandHandler<
     @Override
     public Flow handle(
             CommandContext<
-                    Session<User>,
-                    User,
+                    Session<SessionUser>,
+                    SessionUser,
                     Flow,
                     PublishFlowCommand
                     > context
@@ -109,7 +109,7 @@ public class PublishFlowHandler implements CommandHandler<
      *                           the appended row is rejected
      */
     private Flow saveDraft(
-            CommandContext<Session<User>, User, Flow, PublishFlowCommand>
+            CommandContext<Session<SessionUser>, SessionUser, Flow, PublishFlowCommand>
                     context,
             String companyId,
             String source,
@@ -153,7 +153,7 @@ public class PublishFlowHandler implements CommandHandler<
      *                           definition or persistence rejects the new row
      */
     private Flow saveDeployed(
-            CommandContext<Session<User>, User, Flow, PublishFlowCommand>
+            CommandContext<Session<SessionUser>, SessionUser, Flow, PublishFlowCommand>
                     context,
             String companyId,
             String flowKey,
@@ -182,7 +182,7 @@ public class PublishFlowHandler implements CommandHandler<
      *                                  exists for the key
      */
     private String resolveSource(
-            CommandContext<Session<User>, User, Flow, PublishFlowCommand> context,
+            CommandContext<Session<SessionUser>, SessionUser, Flow, PublishFlowCommand> context,
             String companyId,
             PublishFlowCommand command
     ) {

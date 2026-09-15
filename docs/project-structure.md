@@ -198,7 +198,8 @@ Controller 不实现 Flow 状态流转、Task 调度、数据库访问或事务�
 退回，`controller/session` 提供管理会话查询。三个业务 Controller
 复用 `/api` 前缀，但分别只依赖自己负责的 Core Service。Flow Server 同时发布
 `/flow/**` 下的正式管理页面；由
-PAAS／宿主认证提供 `@UserSession` 会话，Flow 不配置或注入默认登录用户。页面不启用
+AuthX／宿主认证通过 PAAS `@UserSession` 提供 `AuthxSession`，Core 依赖 `SessionUser`
+基础契约；本地联合构建入口见 [联调手册](harness/local-paas-authx.md)。Flow 不配置或注入默认登录用户。页面不启用
 Demo/Memory 运行时，所有写操作仍通过 Core Service 进入 PostgreSQL 和 Pulsar 队列。
 
 ### `core/`

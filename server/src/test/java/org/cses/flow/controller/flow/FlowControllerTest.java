@@ -6,7 +6,7 @@ import org.cses.flow.controller.flow.FlowModels.DraftView;
 import org.cses.flow.controller.flow.FlowModels.FlowView;
 import org.cses.flow.controller.flow.FlowModels.TaskView;
 import org.junit.jupiter.api.Test;
-import org.paas.session.Session;
+import org.pass.authx.security.session.AuthxSession;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -102,7 +102,7 @@ class FlowControllerTest {
         throws NoSuchMethodException {
         Method endpoint = FlowController.class.getDeclaredMethod(
             "flowDefinition",
-            Session.class,
+            AuthxSession.class,
             String.class,
             long.class
         );

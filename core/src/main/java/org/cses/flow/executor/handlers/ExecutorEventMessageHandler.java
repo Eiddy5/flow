@@ -20,9 +20,10 @@ import org.cses.flow.worker.WorkerDispatcher;
 import org.cses.flow.worker.WorkerTask;
 import org.cses.flow.worker.WorkerTaskResult;
 import org.jooq.DSLContext;
+import org.cses.flow.core.utils.SessionUtil;
 import org.paas.session.Session;
+import org.paas.session.SessionUser;
 import org.paas.session.SessionFactory;
-import org.paas.session.User;
 import org.x9.jooq.JOOQ;
 
 import java.util.List;
@@ -147,7 +148,7 @@ public class ExecutorEventMessageHandler implements
      * local operation for the Core cancel command and state-machine tests;
      * durable Create/Resume delivery enters through {@link #handle}.
      */
-    public <S extends Session<U>, U extends User> Execution execute(
+    public <S extends Session<U>, U extends SessionUser> Execution execute(
             S session,
             DSLContext dsl,
             ExecutorContext context
@@ -156,7 +157,7 @@ public class ExecutorEventMessageHandler implements
         return drive(session, dsl, context, true);
     }
 
-    public <S extends Session<U>, U extends User> Execution resume(
+    public <S extends Session<U>, U extends SessionUser> Execution resume(
             S session,
             DSLContext dsl,
             ExecutorContext context,
@@ -168,7 +169,7 @@ public class ExecutorEventMessageHandler implements
         return drive(session, dsl, context, true);
     }
 
-    public <S extends Session<U>, U extends User> Execution cancel(
+    public <S extends Session<U>, U extends SessionUser> Execution cancel(
             S session,
             DSLContext dsl,
             ExecutorContext context
@@ -375,7 +376,7 @@ public class ExecutorEventMessageHandler implements
      * @return 稳定边界的运行副本
      * @throws RuntimeException 缺少运行设施或持久化失败时抛出
      */
-    private <S extends Session<U>, U extends User> Execution drive(
+    private <S extends Session<U>, U extends SessionUser> Execution drive(
             S session,
             DSLContext dsl,
             ExecutorContext context,
@@ -453,30 +454,18 @@ public class ExecutorEventMessageHandler implements
         executionRepository.save(dsl, context.execution());
     }
 
+    /**
+     * 从 Flow 的租户和创建者恢复内部执行上下文，保留创建时的显示名称。
+     * @param flow 非空的持久化 Flow
+     * @return 当前工厂创建的最小会话
+     */
     private Session<?> restoreSession(Flow flow) {
-        @SuppressWarnings({"rawtypes", "unchecked"})
-        Session restored = sessionFactory.session();
-        User user = restoreUser(flow.creator().id());
-        user.setId(flow.creator().id());
-        user.setCompanyId(flow.companyId());
+        Session<?> restored = SessionUtil.restore(sessionFactory, flow.companyId(), flow.creator().id());
         flow.creator().name().ifPresent(name -> {
-            user.setName(name);
-            user.setUserName(name);
+            restored.getUser().setName(name);
+            restored.getUser().setUserName(name);
         });
-        restored.setCompanyId(flow.companyId());
-        restored.setUser(user);
-        user.onSessionBound();
         return restored;
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private User restoreUser(String actorId) {
-        List<? extends User> users = ((SessionFactory) sessionFactory)
-                .buildSessionUser(List.of(actorId));
-        if (users != null && !users.isEmpty()) {
-            return users.getFirst();
-        }
-        return sessionFactory.user();
     }
 
     private void inEventScope(
@@ -506,7 +495,7 @@ public class ExecutorEventMessageHandler implements
         }
     }
 
-    private static <S extends Session<U>, U extends User> void requireRuntime(
+    private static <S extends Session<U>, U extends SessionUser> void requireRuntime(
             S session,
             DSLContext dsl,
             ExecutorContext context

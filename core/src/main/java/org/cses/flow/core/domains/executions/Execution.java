@@ -9,7 +9,7 @@ import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.utils.RequiredUtil;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.*;
 
@@ -41,7 +41,7 @@ public class Execution extends BaseDomain {
      */
     private Execution(
             String id,
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String flowKey,
             long flowVersion,
             Map<String, ?> inputs
@@ -121,7 +121,7 @@ public class Execution extends BaseDomain {
 
     public static Execution create(
             String requestedId,
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String flowKey,
             long flowVersion,
             Map<String, ?> inputs
@@ -203,7 +203,7 @@ public class Execution extends BaseDomain {
      * @throws IllegalArgumentException 会话租户或目标定义非法时抛出
      * @throws WorkflowException 父运行或调用节点不能启动时抛出
      */
-    public Execution startSubFlow(Session<? extends User> session, String taskRunId,
+    public Execution startSubFlow(Session<? extends SessionUser> session, String taskRunId,
             String flowKey, long flowVersion, Map<String, ?> boundInputs) {
         requireRunning();
         if (!companyId().equals(session.getCompanyId())) {
@@ -532,7 +532,7 @@ public class Execution extends BaseDomain {
      * @throws WorkflowException when this snapshot cannot replay
      * @throws IllegalArgumentException when identities or the session do not match
      */
-    public Execution replay(String executionId, Session<? extends User> session,
+    public Execution replay(String executionId, Session<? extends SessionUser> session,
             String sourceTaskRunId, String targetTaskRunId, String reason,
             List<String> affectedTaskRunIds) {
         if (identifiedBy(executionId) || !companyId().equals(session.getCompanyId())) {

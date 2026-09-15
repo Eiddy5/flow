@@ -2,7 +2,7 @@ package org.cses.flow.core.services;
 
 import org.jooq.DSLContext;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.Objects;
 
@@ -16,14 +16,14 @@ import java.util.Objects;
  */
 public record CommandContext<
         S extends Session<U>,
-        U extends User,
+        U extends SessionUser,
         R,
         C extends Command<R>
         >(C command, S session, DSLContext dsl) {
 
     public static <
             S extends Session<U>,
-            U extends User,
+            U extends SessionUser,
             R,
             C extends Command<R>
         > CommandContext<S, U, R, C> from(

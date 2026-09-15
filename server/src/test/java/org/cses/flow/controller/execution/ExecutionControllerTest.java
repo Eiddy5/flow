@@ -12,7 +12,9 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import io.micronaut.json.JsonMapper;
 import org.paas.json.JsonFactory;
 import org.paas.json.JsonObject;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
+import org.pass.authx.security.session.AuthxSession;
+import org.pass.authx.security.session.AuthxUser;
 import org.junit.jupiter.api.Test;
 import org.paas.session.Session;
 
@@ -49,18 +51,18 @@ class ExecutionControllerTest {
         throws NoSuchMethodException {
         Method start = ExecutionController.class.getDeclaredMethod(
             "start",
-            Session.class,
+            AuthxSession.class,
             String.class,
             Optional.class,
             Map.class
         );
         Method executions = ExecutionController.class.getDeclaredMethod(
             "executions",
-            Session.class
+            AuthxSession.class
         );
         Method rewind = ExecutionController.class.getDeclaredMethod(
             "rewind",
-            Session.class,
+            AuthxSession.class,
             String.class,
             String.class,
             Map.class
@@ -86,7 +88,7 @@ class ExecutionControllerTest {
         throws NoSuchMethodException {
         Method endpoint = ExecutionController.class.getDeclaredMethod(
             "execution",
-            Session.class,
+            AuthxSession.class,
             String.class
         );
 
@@ -97,8 +99,8 @@ class ExecutionControllerTest {
     @Test
     void declaresTheCompleteLineageAndRewindRoutes() throws NoSuchMethodException {
         String prefix = ExecutionController.class.getAnnotation(Controller.class).value();
-        Method lineage = ExecutionController.class.getDeclaredMethod("lineage", Session.class, String.class);
-        Method rewind = ExecutionController.class.getDeclaredMethod("rewind", Session.class, String.class,
+        Method lineage = ExecutionController.class.getDeclaredMethod("lineage", AuthxSession.class, String.class);
+        Method rewind = ExecutionController.class.getDeclaredMethod("rewind", AuthxSession.class, String.class,
             String.class, Map.class);
         assertEquals("/executions/executions/{executionId}/lineage",
             prefix + lineage.getAnnotation(Get.class).value());
@@ -112,10 +114,10 @@ class ExecutionControllerTest {
     @Test
     void serializesOriginMembershipAndAcceptedRewindThroughAdapterMethods() {
         JsonFactory.instance = JsonMapper.createDefault();
-        User user = new User();
+        AuthxUser user = new AuthxUser();
         user.setId("view-user");
         user.setCompanyId("view-company");
-        Session<User> session = new Session<>();
+        AuthxSession session = new AuthxSession();
         session.setCompanyId("view-company");
         session.setUser(user);
         Execution source = Execution.create("view-root", session, "view-flow", 1, Map.of());
@@ -135,7 +137,7 @@ class ExecutionControllerTest {
         ExecutionController controller = new ExecutionController(new ExecutionService(null, null, null) {
             /** 返回受理时的独立原快照，验证请求字段准确交给 Service。 */
             @Override
-            public <S extends Session<U>, U extends User> RewindResult rewind(S caller, String id,
+            public <S extends Session<U>, U extends SessionUser> RewindResult rewind(S caller, String id,
                     String sourceTaskRunId, String targetTaskRunId, String reason) {
                 assertSame(session, caller);
                 assertEquals(source.id(), id);
@@ -147,7 +149,7 @@ class ExecutionControllerTest {
 
             /** Service 租户隔离由 Core 真实集成测试验证，此处只验证传参和映射。 */
             @Override
-            public <S extends Session<U>, U extends User> List<Execution> lineage(S caller, String id) {
+            public <S extends Session<U>, U extends SessionUser> List<Execution> lineage(S caller, String id) {
                 assertSame(session, caller);
                 assertEquals(derived.id(), id);
                 return List.of(source, derived);

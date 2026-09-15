@@ -2,7 +2,7 @@ package org.cses.flow.core.services;
 
 import io.micronaut.context.annotation.Context;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.LinkedHashMap;
 import java.util.Collection;
@@ -49,7 +49,7 @@ public final class CommandHandlerRegistry {
     @SuppressWarnings("unchecked")
     public <
         S extends Session<U>,
-        U extends User,
+        U extends SessionUser,
         R,
         C extends Command<R>
     > CommandHandler<S, U, R, C> require(C command) {

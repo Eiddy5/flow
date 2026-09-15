@@ -7,7 +7,7 @@ import org.cses.flow.core.utils.SessionUtil;
 import org.cses.flow.core.utils.TimeUtil;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 /**
  * Base for tenant-scoped domain objects with a stable string entity id.
@@ -23,7 +23,7 @@ public abstract class BaseDomain implements Identified {
 
     protected BaseDomain(
             String id,
-            Session<? extends User> session
+            Session<? extends SessionUser> session
     ) {
         this(
                 id,
@@ -56,7 +56,7 @@ public abstract class BaseDomain implements Identified {
         this.createdAt = createdAt;
     }
 
-    protected void initializeIdentity(Session<? extends User> session) {
+    protected void initializeIdentity(Session<? extends SessionUser> session) {
         if (id != null) {
             throw new IllegalStateException("Domain identity is initialized");
         }
@@ -84,7 +84,7 @@ public abstract class BaseDomain implements Identified {
     }
 
     protected final void requireSessionCompany(
-            Session<? extends User> session
+            Session<? extends SessionUser> session
     ) {
         String sessionCompanyId = SessionUtil.company(session);
         if (!companyId.equals(sessionCompanyId)) {

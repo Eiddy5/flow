@@ -4,7 +4,7 @@ import jakarta.inject.Singleton;
 import jakarta.inject.Named;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 import org.x9.jooq.JOOQ;
 
 import java.util.Objects;
@@ -49,17 +49,14 @@ public class CommandExecutor {
      */
     public <
             S extends Session<U>,
-            U extends User,
+            U extends SessionUser,
             R,
             C extends Command<R>
             > R execute(
             S session,
             C command
     ) {
-        Objects.requireNonNull(session, "session");
-        Objects.requireNonNull(command, "command");
         command.validate();
-
         CommandHandler<S, U, R, C> handler =
                 handlerRegistry.require(command);
         return handle(session, command, handler, jooq.createDSLContext(), null);
@@ -79,7 +76,7 @@ public class CommandExecutor {
      */
     public <
             S extends Session<U>,
-            U extends User,
+            U extends SessionUser,
             R,
             C extends Command<R>
             > R execute(
@@ -112,7 +109,7 @@ public class CommandExecutor {
      */
     private static <
             S extends Session<U>,
-            U extends User,
+            U extends SessionUser,
             R,
             C extends Command<R>
             > R handle(

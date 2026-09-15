@@ -7,7 +7,7 @@ import org.cses.flow.core.services.flows.commands.DeleteFlowCommand;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.services.flows.queries.FlowQueryHandler;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.List;
 import java.util.Optional;
@@ -26,14 +26,14 @@ public class FlowService {
         this.queryHandler = queryHandler;
     }
 
-    public <S extends Session<U>, U extends User> Flow save(
+    public <S extends Session<U>, U extends SessionUser> Flow save(
             S session,
             PublishFlowCommand command
     ) {
         return commandExecutor.execute(session, command);
     }
 
-    public <S extends Session<U>, U extends User> Flow delete(
+    public <S extends Session<U>, U extends SessionUser> Flow delete(
             S session,
             String flowKey,
             Boolean draft
@@ -45,19 +45,19 @@ public class FlowService {
         );
     }
 
-    public <S extends Session<U>, U extends User> List<Flow> drafts(S session) {
+    public <S extends Session<U>, U extends SessionUser> List<Flow> drafts(S session) {
 
         return queryHandler.drafts(session);
     }
 
-    public <S extends Session<U>, U extends User> Optional<Flow> draft(
+    public <S extends Session<U>, U extends SessionUser> Optional<Flow> draft(
             S session,
             String flowKey
     ) {
         return queryHandler.draftByFlowKey(session, flowKey);
     }
 
-    public <S extends Session<U>, U extends User> Optional<Flow> flow(
+    public <S extends Session<U>, U extends SessionUser> Optional<Flow> flow(
             S session,
             String flowKey,
             long flowVersion
@@ -66,7 +66,7 @@ public class FlowService {
         return queryHandler.flow(session, flowKey, flowVersion);
     }
 
-    public <S extends Session<U>, U extends User> Optional<Flow> latestFlow(
+    public <S extends Session<U>, U extends SessionUser> Optional<Flow> latestFlow(
             S session,
             String flowKey
     ) {

@@ -4,7 +4,7 @@ import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.utils.SessionUtil;
 import org.paas.common.util.StringUtil;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.Objects;
 
@@ -62,7 +62,7 @@ public record Rewind(
      * @return command retaining the same new identity through redelivery
      */
     public static Rewind from(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String executionId,
             String sourceTaskRunId,
             String targetTaskRunId,
@@ -82,7 +82,7 @@ public record Rewind(
      * @return 保留指定新实例 ID 的命令
      */
     public static Rewind from(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String executionId,
             String replayExecutionId,
             String sourceTaskRunId,

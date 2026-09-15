@@ -8,7 +8,7 @@ import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 import org.x9.jooq.JOOQ;
 
 import java.util.List;
@@ -29,7 +29,7 @@ public class ExecutionQueryHandler {
         this.executionRepository = executionRepository;
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
         Optional<Execution> execution(
             S session,
             String executionId
@@ -42,7 +42,7 @@ public class ExecutionQueryHandler {
         ));
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
         List<Execution> executions(S session) {
 
         return jooq.get(dsl -> executionRepository.findAll(
@@ -58,7 +58,7 @@ public class ExecutionQueryHandler {
      * @return independently restored snapshots in creation order
      * @throws org.cses.flow.core.exceptions.WorkflowException when the member is not accessible
      */
-    public <S extends Session<U>, U extends User> List<Execution> lineage(S session, String executionId) {
+    public <S extends Session<U>, U extends SessionUser> List<Execution> lineage(S session, String executionId) {
         String companyId = SessionValidation.requireCompanyId(session);
         return jooq.get(dsl -> {
             Execution member = executionRepository.findById(dsl, companyId, executionId)

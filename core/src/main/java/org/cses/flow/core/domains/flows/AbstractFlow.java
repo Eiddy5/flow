@@ -5,7 +5,7 @@ import org.cses.flow.core.domains.ActorRef;
 import org.cses.flow.core.domains.Audited;
 import org.paas.session.RecordState;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.*;
 
@@ -29,7 +29,7 @@ public abstract class AbstractFlow extends Audited {
             String key,
             Long version,
             boolean draft,
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String description,
             Map<String, ?> variables,
             List<? extends Input<?>> inputs,
@@ -128,7 +128,7 @@ public abstract class AbstractFlow extends Audited {
     }
 
     protected void reviseDraftDefinition(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             long revisedAt,
             String description,
             Map<String, ?> variables,

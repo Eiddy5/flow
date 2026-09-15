@@ -9,7 +9,7 @@ import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 import org.x9.jooq.JOOQ;
 
 import java.util.List;
@@ -30,7 +30,7 @@ public class FlowQueryHandler {
         this.flowRepository = flowRepository;
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     List<Flow> drafts(S session) {
 
         return jooq.read(dsl -> flowRepository.findDrafts(
@@ -39,7 +39,7 @@ public class FlowQueryHandler {
         ));
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     Optional<Flow> draft(S session, String flowKey) {
 
         String normalizedFlowKey = requireFlowKey(flowKey);
@@ -53,7 +53,7 @@ public class FlowQueryHandler {
         );
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     Optional<Flow> flow(
             S session,
             String flowKey,
@@ -76,7 +76,7 @@ public class FlowQueryHandler {
         ));
     }
 
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     Optional<Flow> latestFlow(S session, String flowKey) {
 
         String normalizedFlowKey = requireFlowKey(flowKey);
@@ -92,7 +92,7 @@ public class FlowQueryHandler {
     /**
      * Resolves the unique editable draft by its stable Flow key.
      */
-    public <S extends Session<U>, U extends User>
+    public <S extends Session<U>, U extends SessionUser>
     Optional<Flow> draftByFlowKey(S session, String flowKey) {
         return draft(session, flowKey);
     }

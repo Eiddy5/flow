@@ -12,12 +12,12 @@ import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.services.shared.SessionValidation;
 import org.cses.flow.core.utils.TimeUtil;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 @Singleton
 public class DeleteFlowHandler implements CommandHandler<
-        Session<User>,
-        User,
+        Session<SessionUser>,
+        SessionUser,
         Flow,
         DeleteFlowCommand
         > {
@@ -50,8 +50,8 @@ public class DeleteFlowHandler implements CommandHandler<
     @Override
     public Flow handle(
             CommandContext<
-                    Session<User>,
-                    User,
+                    Session<SessionUser>,
+                    SessionUser,
                     Flow,
                     DeleteFlowCommand
                     > context

@@ -19,9 +19,6 @@ repositories {
 configurations.configureEach {
     exclude group: "io.netty", module: "netty-transport-native-io_uring"
     exclude group: "io.netty", module: "netty-transport-classes-io_uring"
-    exclude group: "org.paas", module: "paas-diagnostic"
-    exclude group: "org.paas", module: "paas-response-wrapper"
-    exclude group: "org.paas", module: "paas-temporal"
     resolutionStrategy {
         force(libs.hikaricp)
     }
@@ -29,6 +26,7 @@ configurations.configureEach {
 
 dependencies {
     api(project(':core'))
+    implementation(libs.pass.authx)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)

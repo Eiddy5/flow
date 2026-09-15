@@ -18,7 +18,7 @@ import org.cses.flow.extensions.flow.Route;
 import org.paas.common.util.StringUtil;
 import org.paas.session.RecordState;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 /**
  * Concrete Flow aggregate for editable drafts and deployed versions.
@@ -34,7 +34,7 @@ public class Flow extends AbstractFlow {
             String key,
             Long version,
             boolean draft,
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String description,
             Map<String, ?> variables,
             List<? extends Input<?>> inputs,
@@ -102,7 +102,7 @@ public class Flow extends AbstractFlow {
     }
 
     public static Flow create(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String key,
             String description,
             Map<String, ?> variables,
@@ -123,7 +123,7 @@ public class Flow extends AbstractFlow {
     }
 
     public static Flow create(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String key,
             String description,
             Map<String, ?> variables,
@@ -174,7 +174,7 @@ public class Flow extends AbstractFlow {
      *         new definition
      */
     public static Flow deploy(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String key,
             String description,
             Map<String, ?> variables,
@@ -307,7 +307,7 @@ public class Flow extends AbstractFlow {
      * @throws WorkflowException when deployed validation fails
      */
     public void initialize(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             boolean draft,
             Flow latest,
             String rawSource
@@ -383,7 +383,7 @@ public class Flow extends AbstractFlow {
             List<? extends Input<?>> inputs,
             List<? extends Output> outputs,
             String revisedSource,
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             long revisedAt
     ) {
         revise(
@@ -405,7 +405,7 @@ public class Flow extends AbstractFlow {
             List<? extends Output> outputs,
             List<? extends Task> revisedTasks,
             String revisedSource,
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             long revisedAt
     ) {
         requireDraft();
@@ -564,7 +564,7 @@ public class Flow extends AbstractFlow {
      *         differs, or a stable Task identity changes
      */
     protected static void validateNextDefinition(
-            Session<? extends User> session,
+            Session<? extends SessionUser> session,
             String flowKey,
             List<Task> tasks,
             Flow latest

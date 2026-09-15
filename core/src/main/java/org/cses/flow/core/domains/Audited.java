@@ -7,7 +7,7 @@ import org.cses.flow.core.utils.RequiredUtil;
 import org.cses.flow.core.utils.SessionUtil;
 import org.paas.session.RecordState;
 import org.paas.session.Session;
-import org.paas.session.User;
+import org.paas.session.SessionUser;
 
 import java.util.Optional;
 
@@ -25,7 +25,7 @@ public abstract class Audited extends BaseDomain {
 
     protected Audited(
         String id,
-        Session<? extends User> session
+        Session<? extends SessionUser> session
     ) {
         super(id, session);
         status = RecordState.Open;
@@ -53,7 +53,7 @@ public abstract class Audited extends BaseDomain {
         validateAuditState();
     }
 
-    protected void initializeAudit(Session<? extends User> session) {
+    protected void initializeAudit(Session<? extends SessionUser> session) {
         initializeIdentity(session);
         status = RecordState.Open;
         updater = creator;
@@ -91,7 +91,7 @@ public abstract class Audited extends BaseDomain {
      */
     public final void withState(
         RecordState nextStatus,
-        Session<? extends User> session,
+        Session<? extends SessionUser> session,
         long changedAt
     ) {
         requireSessionCompany(session);
@@ -121,7 +121,7 @@ public abstract class Audited extends BaseDomain {
     }
 
     public final void delete(
-        Session<? extends User> session,
+        Session<? extends SessionUser> session,
         long deletedAt
     ) {
         requireSessionCompany(session);
@@ -148,7 +148,7 @@ public abstract class Audited extends BaseDomain {
     }
 
     protected void update(
-        Session<? extends User> session,
+        Session<? extends SessionUser> session,
         long updateTime
     ) {
         requireSessionCompany(session);
