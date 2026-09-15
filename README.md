@@ -1,5 +1,7 @@
 # Flow
 
+内部 Maven 打包、发布与接入命令见 [Maven 发布手册](docs/harness/maven-publishing.md)。
+
 Flow 由 `gen`、`core` 和 `server` 三个 Gradle 模块组成：`gen` 维护
 PostgreSQL/JOOQ 构建输入，`core` 承载非 HTTP Flow 能力，`server` 承载数据库适配、
 HTTP 接口、正式管理页面和可启动应用。

@@ -12,7 +12,7 @@ typed Route 于 2026-08-13 由 ADR 0052 修订）
 [`ADR 0089`](0089-validate-input-during-materialization.md) 修订：Creator 和 Builder
 在返回前完成校验，不再采用无参/Setter 半成品和外部追加校验。
 
-ADR 0090 进一步分离 Input 定义类型标识与基础值类型，并允许宿主注册业务 Input。
+ADR 0090 曾允许宿主注册业务 Input；该扩展需求已撤回，ADR 0101 恢复固定九种内置类型。
 
 ## 背景
 

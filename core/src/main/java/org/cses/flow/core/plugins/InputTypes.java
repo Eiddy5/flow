@@ -1,118 +1,54 @@
 package org.cses.flow.core.plugins;
 
-import com.fasterxml.jackson.annotation.JsonTypeName;
 import org.cses.flow.core.domains.flows.Input;
+import org.cses.flow.core.domains.flows.DataType;
+import org.cses.flow.core.domains.flows.inputs.*;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.lang.reflect.Modifier;
-import java.nio.charset.StandardCharsets;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 
-/** Input names and read aliases shared by Jackson versions and plugin discovery. */
+/** 固定的九种内置 Input 类型，供 JSON、YAML 和类型目录共用。 */
 public class InputTypes {
-    private Map<String, Class<? extends Input>> bindings;
+    private static Map<String, Class<? extends Input>> bindings = Map.of(
+        "STRING", StringInput.class,
+        "BOOLEAN", BooleanInput.class,
+        "BYTE", ByteInput.class,
+        "SHORT", ShortInput.class,
+        "INTEGER", IntegerInput.class,
+        "LONG", LongInput.class,
+        "FLOAT", FloatInput.class,
+        "DOUBLE", DoubleInput.class,
+        "CHARACTER", CharacterInput.class
+    );
 
     /**
-     * Validates concrete types and builds annotation names plus legacy class-name aliases.
-     * @param types nonnull collection of distinct, annotated Input classes, not modified
-     * @throws IllegalStateException if a class or a name is invalid or duplicated
-     */
-    public InputTypes(Collection<Class<?>> types) {
-        Map<String, Class<? extends Input>> result = new LinkedHashMap<>();
-        for (Class<?> type : Objects.requireNonNull(types, "Input types")) {
-            String name = name(type);
-            Class<? extends Input> input = type.asSubclass(Input.class);
-            register(result, name, input);
-            if (!name.equals(type.getCanonicalName())) {
-                register(result, type.getCanonicalName(), input);
-            }
-        }
-        bindings = Collections.unmodifiableMap(result);
-    }
-
-    /**
-     * Reads every compiler-generated index visible to the application loader.
-     * @param loader nonnull application class loader
-     * @return distinct indexed classes without initializing or constructing them
-     * @throws IllegalStateException if an index cannot be read or a listed class is absent
-     */
-    public static Collection<Class<?>> discover(ClassLoader loader) {
-        LinkedHashSet<Class<?>> types = new LinkedHashSet<>();
-        try {
-            var resources = loader.getResources("META-INF/flow/inputs");
-            while (resources.hasMoreElements()) {
-                try (var reader = new BufferedReader(new InputStreamReader(
-                    resources.nextElement().openStream(), StandardCharsets.UTF_8))) {
-                    for (String line; (line = reader.readLine()) != null;) {
-                        if (!line.isBlank()) {
-                            types.add(Class.forName(line.trim(), false, loader));
-                        }
-                    }
-                }
-            }
-            return Collections.unmodifiableSet(types);
-        } catch (IOException | ClassNotFoundException exception) {
-            throw new IllegalStateException("Cannot load Flow Input index", exception);
-        }
-    }
-
-    /**
-     * Reads the sole definition name owned by a concrete Input class.
-     * @param type public concrete Input class with its own nonblank JsonTypeName
-     * @return exact annotation value, never normalized
-     * @throws IllegalStateException if the class or annotation is invalid
+     * 返回内置类的固定代码，不接受宿主自定义子类。
+     * @param type 待查询的具体类，只读；null 和非内置类均拒绝
+     * @return 内置类型的大写代码
+     * @throws IllegalStateException 当类型不属于内置清单时抛出
      */
     public static String name(Class<?> type) {
-        if (type == null || !Input.class.isAssignableFrom(type)
-            || !Modifier.isPublic(type.getModifiers()) || Modifier.isAbstract(type.getModifiers())
-            || type.getCanonicalName() == null || type.getPackageName().isBlank()) {
-            throw new IllegalStateException("Input must be a public concrete class: " + type);
-        }
-        JsonTypeName annotation = type.getDeclaredAnnotation(JsonTypeName.class);
-        if (annotation == null || annotation.value().isBlank()
-            || !annotation.value().equals(annotation.value().trim())) {
-            throw new IllegalStateException("Input requires a nonblank @JsonTypeName: " + type.getName());
-        }
-        return annotation.value();
+        return bindings.entrySet().stream()
+            .filter(entry -> entry.getValue().equals(type))
+            .map(Map.Entry::getKey)
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException("Unsupported Input type: " + type));
     }
 
-    /** @return immutable names and class-name aliases accepted when reading */
-    public Map<String, Class<? extends Input>> bindings() {
+    /** @return 九种内置类型的只读映射，不包含业务类型或完整类名别名 */
+    public static Map<String, Class<? extends Input>> bindings() {
         return bindings;
     }
 
     /**
-     * Preserves the historical whitespace and case tolerance of built-in codes only.
-     * @param name unrecognized textual type identifier
-     * @return registered built-in class or null when no legacy code matches
+     * 按已有 DataType 规则解析内置代码，保留大小写和首尾空白规则。
+     * @param name 待解析的类型代码，只读，可以为 null
+     * @return 匹配的内置类；未知或空代码返回 null，由绑定入口报告错误
      */
-    public Class<? extends Input> legacyType(String name) {
-        Class<? extends Input> type = bindings.get(name.trim().toUpperCase(Locale.ROOT));
-        return type != null && type.getPackageName().equals(Input.class.getPackageName() + ".inputs")
-            ? type : null;
-    }
-
-    /**
-     * Adds one unique name, failing instead of letting Jackson silently overwrite it.
-     * @param bindings mutable destination
-     * @param name exact nonblank definition name or read alias
-     * @param type registered concrete Input class
-     * @throws IllegalStateException if the name already belongs to a registration
-     */
-    private static void register(Map<String, Class<? extends Input>> bindings,
-                                 String name, Class<? extends Input> type) {
-        Class<?> previous = bindings.putIfAbsent(name, type);
-        if (previous != null) {
-            throw new IllegalStateException("Duplicate Input type '" + name + "': "
-                + previous.getName() + " and " + type.getName());
+    public static Class<? extends Input> legacyType(String name) {
+        try {
+            return bindings.get(DataType.parse(name).name());
+        } catch (IllegalArgumentException exception) {
+            return null;
         }
     }
 }

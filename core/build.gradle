@@ -4,12 +4,9 @@ plugins {
     id 'java-library'
 }
 
-version = "0.1"
-group = "org.cses.flow"
-
 repositories {
     maven {
-        url = uri("http://maven.wehanyu.com:8082/artifactory/java3/")
+        url = uri(repoUrl)
         allowInsecureProtocol = true
     }
     mavenCentral()
@@ -33,7 +30,6 @@ dependencies {
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
-    annotationProcessor(project(':processor'))
     annotationProcessor(libs.micronaut.http.validation)
 
     implementation(libs.micronaut.jackson.databind)
@@ -64,7 +60,6 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testCompileOnly(libs.lombok)
     testAnnotationProcessor(libs.lombok)
-    testAnnotationProcessor(project(':processor'))
     testAnnotationProcessor(libs.micronaut.http.validation)
 }
 

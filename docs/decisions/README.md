@@ -28,6 +28,8 @@
 - [`ADR 0092`](0092-add-annotation-driven-paas-pulsar-queues.md)：新增注解式 PAAS Pulsar
   队列与方法消费者，复用 PAAS 发送、消费和 ACK/NACK；保留现有 PostgreSQL Executor
   队列及其 Interface 的初始阶段，不增加 Flow 队列 YAML；默认链路已由 ADR 0094 切换。
+- [`ADR 0100`](0100-publish-flow-modules-to-maven.md)：统一三个模块的 Maven 坐标、
+  版本和发布配置，Server 保持 `org.cses.flow:flow`，凭据读取 Gradle 属性。
 - [`ADR 0042`](0042-split-core-from-http-server.md)：采用 `gen + core + server` 的
   浅拆分；Core 保存完整非 HTTP Flow 能力，Server 只保存 HTTP、启动和资源，并
   通过 `api` 依赖 Core 维持 CSES 的单坐标接入。
@@ -153,10 +155,11 @@
   转换和校验；Flow/Pause 仅管理声明集合，持久化层仅物化并触发定义检查。
 - [`ADR 0089`](0089-validate-input-during-materialization.md)：Input 在 JSON/YAML Creator
   与 Builder 共用的构造路径完成定义校验，移除外部事后校验和无参/Setter 半成品。
-- [`ADR 0090`](0090-register-host-input-types.md)：宿主业务 Input 按类加入插件注册表，
+- [`ADR 0090`](0090-register-host-input-types.md)（已由 ADR 0101 取代）：宿主业务 Input 按类加入插件注册表，
   定义类型与基础值类型分离，复用受控绑定和持久化入口。
-- [`ADR 0093`](0093-discover-inputs-from-jackson-type-names.md)：自动索引 JsonTypeName，
+- [`ADR 0093`](0093-discover-inputs-from-jackson-type-names.md)（已由 ADR 0101 取代）：自动索引 JsonTypeName，
   内置和业务 Input 共用 Jackson 原生多态，PAAS/JSON/YAML 与目录 Schema 统一。
+- [ADR 0101](0101-restore-built-in-input-types.md)：撤回宿主 Input 扩展，恢复固定九种内置类型并移除 processor。
 - [`ADR 0043`](0043-use-serializable-object-for-json-models.md)：JSON 模型统一继承
   PAAS `SerializableObject`，并由 Jackson Databind 作为 Micronaut HTTP codec，移除
   逐类 Micronaut Serialization 注解。

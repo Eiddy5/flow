@@ -2,6 +2,8 @@
 
 ## 状态
 
+已于 2026-09-14 撤回宿主 Input 扩展需求，由 [ADR 0101](0101-restore-built-in-input-types.md) 取代。下文仅保留历史决策。
+
 Accepted（2026-09-09）。依据用户确认的“新增 Input 只继承基类并声明 Jackson 注解”，
 取代 ADR 0090 中的 InputPlugin 注解、固定内置类型映射和 Input 手写反序列化路径。
 

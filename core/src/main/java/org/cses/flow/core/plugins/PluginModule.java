@@ -23,7 +23,6 @@ public class PluginModule extends SimpleModule {
     @Serial
     private static long serialVersionUID = 1L;
     private PluginRegistry registry;
-    private InputTypes inputTypes;
 
     public PluginModule(PluginRegistry registry) {
         this(registry, false);
@@ -40,9 +39,7 @@ public class PluginModule extends SimpleModule {
     ) {
         super("flow-plugin");
         this.registry = requireNonNull(registry, "Plugin registry");
-        inputTypes = new InputTypes(registry.plugins().stream()
-            .flatMap(group -> group.inputs().stream()).<Class<?>>map(PluginMetadata::type).toList());
-        inputTypes.bindings().forEach((name, type) -> registerSubtypes(new NamedType(type, name)));
+        InputTypes.bindings().forEach((name, type) -> registerSubtypes(new NamedType(type, name)));
         addDeserializer(
             Task.class,
             new PluginDeserializer<>(registry, sourceDefinition)
@@ -69,7 +66,7 @@ public class PluginModule extends SimpleModule {
             @Override
             public JavaType handleUnknownTypeId(DeserializationContext context, JavaType baseType,
                                                String id, TypeIdResolver resolver, String failure) {
-                Class<?> type = baseType.hasRawClass(Input.class) ? inputTypes.legacyType(id) : null;
+                Class<?> type = baseType.hasRawClass(Input.class) ? InputTypes.legacyType(id) : null;
                 return type == null ? null : context.constructType(type);
             }
         });

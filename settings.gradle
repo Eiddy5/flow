@@ -1,7 +1,7 @@
 pluginManagement {
     repositories {
         maven {
-            url = uri("http://maven.wehanyu.com:8082/artifactory/java3/")
+            url = uri(providers.gradleProperty("repoUrl").get())
             allowInsecureProtocol = true
         }
         gradlePluginPortal()
@@ -23,4 +23,3 @@ rootProject.name = "flow"
 include("gen")
 include("core")
 include("server")
-include("processor")

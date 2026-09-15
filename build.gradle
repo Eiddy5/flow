@@ -5,3 +5,38 @@ plugins {
     alias(libs.plugins.micronaut.test.resources) apply false
     alias(libs.plugins.shadow) apply false
 }
+
+subprojects {
+    group = 'org.cses.flow'
+    version = providers.gradleProperty('flowVersion').get()
+
+    apply plugin: 'maven-publish'
+
+    plugins.withId('java') {
+        publishing {
+            publications {
+                mavenJava(MavenPublication) {
+                    from components.java
+                    artifactId = project.name == 'server' ? 'flow' : project.name
+                }
+            }
+            repositories {
+                maven {
+                    name = 'internal'
+                    url = uri(providers.gradleProperty('repoUrl').get())
+                    allowInsecureProtocol = true
+                    credentials {
+                        username = providers.gradleProperty('repoUser').orNull
+                        password = providers.gradleProperty('repoPassword').orNull
+                    }
+                }
+            }
+        }
+    }
+
+    plugins.withId('com.gradleup.shadow') {
+        components.java.withVariantsFromConfiguration(configurations.shadowRuntimeElements) {
+            skip()
+        }
+    }
+}

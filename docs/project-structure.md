@@ -27,7 +27,6 @@ flow/
 ├── buildSrc/          # 仓库共享的 Gradle 构建约定
 ├── gradle/            # Gradle Wrapper 和版本目录
 ├── gen/               # Flow 数据库脚本及 JOOQ 代码生成模块
-├── processor/         # Jackson Input 类型的编译期索引生成
 ├── core/              # 完整的非 HTTP Flow 能力与生产适配器
 ├── server/            # HTTP 服务、启动入口、资源与会话查询
 └── docs/              # 项目规范、决策、UC 和验证记忆
@@ -72,6 +71,10 @@ flow/
 
 保存仓库内部复用的 Gradle 构建逻辑。它只负责构建约定，不放业务代码。
 
+根 `build.gradle` 统一三个模块的 Maven 发布配置，`gradle.properties` 保存
+`flowVersion` 和 `repoUrl`；发布凭据读取 `repoUser` 和 `repoPassword`。坐标与操作命令见
+[`Maven 发布手册`](harness/maven-publishing.md)。
+
 ### `gradle/`
 
 - `gradle/wrapper/`：Gradle Wrapper。
@@ -105,13 +108,6 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 `core` 构建依赖 `gen` 中 Flow 数据库的生成类型。Flow 基线由开发或部署人员在
 应用启动前手工执行，不进入 Core 或 Server 运行资源。基线变化后重建对应开发数据库，不
 维护旧数据升级路径；Generator 和代码生成依赖仍只属于 `gen`，业务代码不能调用它们。
-
-### `processor/`
-
-独立的 JDK 注解处理器，源码位于 `org.cses.flow.processor`，不依赖 Core 或 Micronaut。
-处理具体 Input 的 `@JsonTypeName`，在编译输出生成 `META-INF/flow/inputs`；
-Core、Server 和宿主业务模块将其作为 annotationProcessor 使用。服务声明和 Gradle
-增量编译元数据位于 `src/main/resources/META-INF/`。它不参与运行期构造或业务校验。
 
 ### `core/`
 
@@ -271,9 +267,9 @@ Flow、Task 等业务类型。`PluginModule` 在 Mapper 创建时注册
 `PluginDeserializer` 通过构造器接收注册中心，解析具体 Task 并由 Jackson 自然
 递归绑定嵌套插件，不再由 Flow 反射扫描插件字段。
 `plugins` 的运行机制放在包根，只有注解位于 `plugins/annotations`；
-其中 `InputTypes` 读取处理器生成的索引，按 `@JsonTypeName` 注册内置和业务 Input，
+其中 `InputTypes` 固定列出九种内置 Input，不扫描或注册宿主自定义类型，
 不创建空实例。`PluginModule` 安装 Jackson 2 的原生名称多态，`InputJacksonModule`
-位于 `serializers`，为 PAAS/Micronaut 的 Jackson 3 安装同一套名称配置（ADR 0093）。
+位于 `serializers`，为 PAAS/Micronaut 的 Jackson 3 安装同一套内置名称配置（ADR 0101）。
 `DefaultPluginRegistry` 直接从插件类的 `Class#getPackageName()` 取得真实包路径，
 并以此构造全局只读目录。`PluginSchemaGenerator` 位于
 保持扁平的 `serializers`，使用 `JacksonMapper` 的隔离副本按需生成定义 Schema。具体扩展

@@ -6,13 +6,10 @@ plugins {
     id 'java-library'
 }
 
-version = "0.1"
-group = "org.cses.flow"
-
 // 将代码中的 repositories 替换为如下所示
 repositories {
     maven {
-        url = uri("http://maven.wehanyu.com:8082/artifactory/java3/")    //uri可也配置到gradle.properties中当一个变量方便多模块引用
+        url = uri(repoUrl)
         allowInsecureProtocol = true
     }
     mavenCentral()
@@ -22,14 +19,8 @@ repositories {
 configurations.configureEach {
     exclude group: "io.netty", module: "netty-transport-native-io_uring"
     exclude group: "io.netty", module: "netty-transport-classes-io_uring"
-    // The Flow server does not expose the PAAS diagnostic module. Its eager
-    // ServerService bean requires MongoDB and prevents a standalone local boot.
     exclude group: "org.paas", module: "paas-diagnostic"
-    // The PAAS response filter has a hard runtime reference to the diagnostic
-    // module. Flow controllers will define their own HTTP contract later.
     exclude group: "org.paas", module: "paas-response-wrapper"
-    // Temporal is not part of the current Flow Core phase. Its application
-    // listener requires Redisson and a Temporal server during startup.
     exclude group: "org.paas", module: "paas-temporal"
     resolutionStrategy {
         force(libs.hikaricp)
@@ -41,7 +32,6 @@ dependencies {
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)
-    annotationProcessor(project(':processor'))
     annotationProcessor(libs.micronaut.http.validation)
 
     implementation(libs.micronaut.http.client)
@@ -58,7 +48,6 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
     testCompileOnly(libs.lombok)
     testAnnotationProcessor(libs.lombok)
-    testAnnotationProcessor(project(':processor'))
     testAnnotationProcessor(libs.micronaut.http.validation)
 }
 
@@ -94,7 +83,6 @@ tasks.named("dockerfileNative") {
 tasks.configureEach {
     if (name in ["shadowJar", "optimizedJitJarAll"]) {
         zip64 = true
-        append('META-INF/flow/inputs')
         mergeServiceFiles()
     }
 }

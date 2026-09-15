@@ -1,7 +1,6 @@
 package org.cses.flow.controller.plugins;
 
 import org.cses.flow.controller.plugins.PluginModels.PluginDetailsView;
-import org.cses.flow.controller.flow.InputViewTest;
 import org.cses.flow.core.domains.flows.inputs.StringInput;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -21,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PluginControllerTest {
 
-    /** 查询包含自动发现 Input 的真实包目录，同时保留 Task 能力、示例与包路径。 */
+    /** 查询包含固定内置 Input 的真实包目录，同时保留 Task 能力、示例与包路径。 */
     @Test
     void exposesRealPackagePathsInCatalogGroupsAndTaskMetadata() {
         DefaultPluginRegistry registry = new DefaultPluginRegistry(
@@ -44,7 +43,6 @@ class PluginControllerTest {
 
         assertEquals(
             List.of(
-                InputViewTest.BusinessInput.class.getPackageName(),
                 StringInput.class.getPackageName(),
                 Parallel.class.getPackageName(),
                 Log.class.getPackageName()
@@ -58,7 +56,6 @@ class PluginControllerTest {
         assertEquals(Set.of("STRING", "BOOLEAN", "BYTE", "SHORT", "INTEGER", "LONG", "FLOAT", "DOUBLE", "CHARACTER"),
             builtIns.getInputs().stream().map(PluginModels.PluginMetadataView::type).collect(Collectors.toSet()));
         assertEquals(List.of(), builtIns.tasks());
-        assertEquals("BUSINESS_VIEW", plugins.getFirst().getInputs().getFirst().type());
         assertEquals("STRING", controller.plugin("STRING").metadata().type());
         assertEquals(
             Parallel.class.getPackageName(),

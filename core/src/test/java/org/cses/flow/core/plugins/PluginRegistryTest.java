@@ -40,6 +40,7 @@ class PluginRegistryTest {
         );
     }
 
+    /** 核对内置输入与 Task 按真实包名稳定排序，以及任务元数据不变。 */
     @Test
     void groupsPluginsByTheirRealPackagesInDeterministicOrder() {
         PluginRegistry registry = registry(
@@ -49,6 +50,7 @@ class PluginRegistryTest {
 
         assertEquals(
             List.of(
+                org.cses.flow.core.domains.flows.inputs.StringInput.class.getPackageName(),
                 SpecialTask.class.getPackageName(),
                 Log.class.getPackageName()
             ),
@@ -56,7 +58,7 @@ class PluginRegistryTest {
                 .map(RegisteredPlugin::packageName)
                 .toList()
         );
-        RegisteredPlugin specialPackage = registry.plugins().getFirst();
+        RegisteredPlugin specialPackage = registry.plugins().get(1);
         assertEquals(
             List.of(SpecialTask.class.getCanonicalName()),
             specialPackage.tasks().stream()
@@ -223,10 +225,13 @@ class PluginRegistryTest {
         assertTrue(exception.getMessage().contains("missing @Plugin"));
     }
 
-    /** 显式空注册集合不创建虚构包目录。 */
+    /** 没有 Task 时目录仍提供固定内置 Input。 */
     @Test
     void doesNotCreateSyntheticPackageGroups() {
-        assertTrue(new DefaultPluginRegistry(List.of(), List.of()).plugins().isEmpty());
+        var groups = new DefaultPluginRegistry(List.of()).plugins();
+        assertEquals(1, groups.size());
+        assertEquals(9, groups.getFirst().inputs().size());
+        assertTrue(groups.getFirst().tasks().isEmpty());
     }
 
     private interface SpecialExtension
@@ -261,7 +266,7 @@ class PluginRegistryTest {
         }
     )
     @Requires(property = "flow.test.special-plugin", value = "true")
-    public static final class SpecialTask
+    public static class SpecialTask
         extends Task implements RunnableTask<VoidOutput>, SpecialExtension {
 
         public SpecialTask() {
@@ -273,7 +278,7 @@ class PluginRegistryTest {
         }
     }
 
-    public static final class UnannotatedPlugin
+    public static class UnannotatedPlugin
         implements org.cses.flow.core.plugins.Plugin {
 
         public UnannotatedPlugin() {
@@ -283,11 +288,11 @@ class PluginRegistryTest {
     /**
      * 为 Task 独立技术测试创建只包含指定 Task 的目录。
      * @param plugins 非空 Task 集合，不修改
-     * @return 不发现额外 Input 的独立注册表
+     * @return 包含固定内置 Input 的独立注册表
      */
     private static DefaultPluginRegistry registry(
         org.cses.flow.core.plugins.Plugin... plugins
     ) {
-        return new DefaultPluginRegistry(List.of(plugins), List.of());
+        return new DefaultPluginRegistry(List.of(plugins));
     }
 }

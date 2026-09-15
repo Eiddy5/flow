@@ -28,9 +28,9 @@ import java.util.Map;
 public abstract class Input<T> extends SerializableObject implements Data, Plugin {
 
     /**
-     * 返回具体 Input 自身声明的 Jackson 类型名称。
+     * 返回具体内置 Input 的固定类型代码。
      * @return 与序列化和插件目录一致的类型名称
-     * @throws IllegalStateException 当具体类缺少合法 JsonTypeName 时抛出
+     * @throws IllegalStateException 当具体类不属于内置类型时抛出
      */
     @Override
     public final String getType() {
@@ -39,7 +39,7 @@ public abstract class Input<T> extends SerializableObject implements Data, Plugi
 
     /**
      * 返回本 Input 接受的基础值类型，供条件兼容性检查使用，不作为定义类型标识序列化。
-     * @return 非空基础值类型；业务类型可复用同一种值类型
+     * @return 非空基础值类型，与当前内置 Input 的类型代码一致
      */
     @Override
     @JsonIgnore
