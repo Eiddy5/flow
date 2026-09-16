@@ -20,6 +20,9 @@
 
 ## Core 组件与依赖方向
 
+- [`ADR 0103`](0103-add-event-driven-schedule-triggers.md)：Flow 自有 Trigger、源码纳入
+  db-scheduler、独立 scheduler 模块、持久化命中与事件恢复。
+
 - [`ADR 0102`](0102-use-local-paas-authx-session.md)：三个本地联合构建、AuthX HTTP 会话、
   Core SessionUser 契约及异步最小会话恢复。
 

@@ -11,4 +11,7 @@ BEGIN;
 \ir tables/executions.sql
 \ir tables/task_runs.sql
 
+\ir tables/scheduler_events.sql
+\ir tables/trigger_runs.sql
+
 COMMIT;

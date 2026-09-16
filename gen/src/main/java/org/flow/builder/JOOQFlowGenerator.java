@@ -9,6 +9,11 @@ import org.jooq.meta.jaxb.*;
 @Getter
 public class JOOQFlowGenerator {
 
+    /**
+     * 从指定 PostgreSQL 基线生成应用表代码，排除上游调度表。
+     * @param args 当前不使用的命令行参数
+     * @throws Exception 连接数据库或生成代码失败时抛出
+     */
     public static void main(String[] args) throws Exception {
         Configuration configuration = new Configuration()
                 .withJdbc(new Jdbc()
@@ -24,10 +29,9 @@ public class JOOQFlowGenerator {
                         .withName("org.jooq.codegen.ext.generator.ExtJavaGenerator")
                         .withStrategy(new Strategy().withName("org.jooq.codegen.ext.generator.ExtJavaGeneratorStrategy"))
                         .withDatabase(new Database()
-                                .withExcludes("databasechangelog")
                                 .withName("org.jooq.meta.postgres.PostgresDatabase")
                                 .withInputSchema("public")
-                                .withExcludes("pgp_armor_headers|auth_permission_definition_backup_20260629_contacts")
+                                .withExcludes("databasechangelog|pgp_armor_headers|auth_permission_definition_backup_20260629_contacts|scheduled_tasks")
                         )
                         .withTarget(new Target()
                                 .withPackageName("org.flow.gen.flow")

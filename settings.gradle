@@ -22,6 +22,7 @@ rootProject.name = "flow"
 
 include("gen")
 include("core")
+include("scheduler")
 include("server")
 
 // 将本地构建选择传给 AuthX 等嵌套构建，统一依赖来源。

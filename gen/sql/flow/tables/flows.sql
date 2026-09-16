@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS flows (
     source         text NOT NULL,
     description    text NOT NULL,
 
+    triggers       jsonb NOT NULL DEFAULT '[]'::jsonb,
     variables      jsonb NOT NULL,
     inputs         jsonb NOT NULL,
     outputs        jsonb NOT NULL,

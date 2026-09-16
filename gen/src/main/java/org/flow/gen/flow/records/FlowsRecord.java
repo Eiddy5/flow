@@ -9,6 +9,7 @@ import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.UpdatableRecordImpl;
+import org.paas.json.JsonObjects;
 
 
 /**
@@ -118,143 +119,157 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     }
 
     /**
+     * Setter for <code>public.flows.triggers</code>.[[before= ][]]
+     */
+    public void setTriggers(JsonObjects value) {
+        set(7, value);
+    }
+
+    /**
+     * Getter for <code>public.flows.triggers</code>.[[before= ][]]
+     */
+    public JsonObjects getTriggers() {
+        return (JsonObjects) get(7);
+    }
+
+    /**
      * Setter for <code>public.flows.variables</code>.
      */
     public void setVariables(JSONB value) {
-        set(7, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.flows.variables</code>.
      */
     public JSONB getVariables() {
-        return (JSONB) get(7);
+        return (JSONB) get(8);
     }
 
     /**
      * Setter for <code>public.flows.inputs</code>.
      */
     public void setInputs(JSONB value) {
-        set(8, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.flows.inputs</code>.
      */
     public JSONB getInputs() {
-        return (JSONB) get(8);
+        return (JSONB) get(9);
     }
 
     /**
      * Setter for <code>public.flows.outputs</code>.
      */
     public void setOutputs(JSONB value) {
-        set(9, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.flows.outputs</code>.
      */
     public JSONB getOutputs() {
-        return (JSONB) get(9);
+        return (JSONB) get(10);
     }
 
     /**
      * Setter for <code>public.flows.status</code>.
      */
     public void setStatus(String value) {
-        set(10, value);
+        set(11, value);
     }
 
     /**
      * Getter for <code>public.flows.status</code>.
      */
     public String getStatus() {
-        return (String) get(10);
+        return (String) get(11);
     }
 
     /**
      * Setter for <code>public.flows.creator</code>.
      */
     public void setCreator(JSONB value) {
-        set(11, value);
+        set(12, value);
     }
 
     /**
      * Getter for <code>public.flows.creator</code>.
      */
     public JSONB getCreator() {
-        return (JSONB) get(11);
+        return (JSONB) get(12);
     }
 
     /**
      * Setter for <code>public.flows.created_at</code>.
      */
     public void setCreatedAt(Long value) {
-        set(12, value);
+        set(13, value);
     }
 
     /**
      * Getter for <code>public.flows.created_at</code>.
      */
     public Long getCreatedAt() {
-        return (Long) get(12);
+        return (Long) get(13);
     }
 
     /**
      * Setter for <code>public.flows.updater</code>.
      */
     public void setUpdater(JSONB value) {
-        set(13, value);
+        set(14, value);
     }
 
     /**
      * Getter for <code>public.flows.updater</code>.
      */
     public JSONB getUpdater() {
-        return (JSONB) get(13);
+        return (JSONB) get(14);
     }
 
     /**
      * Setter for <code>public.flows.updated_at</code>.
      */
     public void setUpdatedAt(Long value) {
-        set(14, value);
+        set(15, value);
     }
 
     /**
      * Getter for <code>public.flows.updated_at</code>.
      */
     public Long getUpdatedAt() {
-        return (Long) get(14);
+        return (Long) get(15);
     }
 
     /**
      * Setter for <code>public.flows.deleter</code>.
      */
     public void setDeleter(JSONB value) {
-        set(15, value);
+        set(16, value);
     }
 
     /**
      * Getter for <code>public.flows.deleter</code>.
      */
     public JSONB getDeleter() {
-        return (JSONB) get(15);
+        return (JSONB) get(16);
     }
 
     /**
      * Setter for <code>public.flows.deleted_at</code>.
      */
     public void setDeletedAt(Long value) {
-        set(16, value);
+        set(17, value);
     }
 
     /**
      * Getter for <code>public.flows.deleted_at</code>.
      */
     public Long getDeletedAt() {
-        return (Long) get(16);
+        return (Long) get(17);
     }
 
     // -------------------------------------------------------------------------
@@ -280,7 +295,7 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
     /**
      * Create a detached, initialised FlowsRecord
      */
-    public FlowsRecord(String companyId, String id, String key, Long version, Boolean draft, String source, String description, JSONB variables, JSONB inputs, JSONB outputs, String status, JSONB creator, Long createdAt, JSONB updater, Long updatedAt, JSONB deleter, Long deletedAt) {
+    public FlowsRecord(String companyId, String id, String key, Long version, Boolean draft, String source, String description, JsonObjects triggers, JSONB variables, JSONB inputs, JSONB outputs, String status, JSONB creator, Long createdAt, JSONB updater, Long updatedAt, JSONB deleter, Long deletedAt) {
         super(FlowsTable.FLOWS);
 
         setCompanyId(companyId);
@@ -290,6 +305,7 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         setDraft(draft);
         setSource(source);
         setDescription(description);
+        setTriggers(triggers);
         setVariables(variables);
         setInputs(inputs);
         setOutputs(outputs);
@@ -318,6 +334,7 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
             setDraft(value.draft);
             setSource(value.source);
             setDescription(value.description);
+            setTriggers(value.triggers);
             setVariables(value.variables);
             setInputs(value.inputs);
             setOutputs(value.outputs);
@@ -340,6 +357,7 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         object.draft = getDraft();
         object.source = getSource();
         object.description = getDescription();
+        object.triggers = getTriggers();
         object.variables = getVariables();
         object.inputs = getInputs();
         object.outputs = getOutputs();
@@ -367,6 +385,7 @@ public class FlowsRecord extends UpdatableRecordImpl<FlowsRecord> {
         pojo.draft = getDraft();
         pojo.source = getSource();
         pojo.description = getDescription();
+        pojo.triggers = getTriggers();
         pojo.variables = getVariables();
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();

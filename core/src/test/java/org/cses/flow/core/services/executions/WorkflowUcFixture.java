@@ -436,6 +436,19 @@ public class WorkflowUcFixture implements AutoCloseable {
         context.getBean(org.cses.flow.executor.handlers.ExecutionCommandEventHandler.class).handle(command);
     }
 
+    /**
+     * 将技术重投场景的既有事件发往真实 Broker，不直接调用消费处理器。
+     * @param eventType 已声明 FlowQueue 的事件根类型
+     * @param event 稳定身份的原事件；不得为 null
+     * @param <E> 队列事件协议类型
+     */
+    @SuppressWarnings("unchecked")
+    public <E extends org.cses.flow.queues.event.Event> void emitEvent(Class<E> eventType, E event) {
+        org.cses.flow.queues.Queue<E> queue = context.getBean(
+            org.cses.flow.queues.Queue.class, Qualifiers.byTypeArguments(eventType));
+        queue.emit(event);
+    }
+
     public Execution cancel(String executionId) {
         return cancel(session, executionId);
     }

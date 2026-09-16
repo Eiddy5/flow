@@ -1,6 +1,7 @@
 package org.cses.flow.infrastructure.repositories.flows.entries;
 
 import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.infrastructure.repositories.flows.codec.TriggerJsonCodec;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.infrastructure.repositories.flows.codec.ActorRefJsonCodec;
 import org.cses.flow.infrastructure.repositories.flows.codec.AuditStatusCodec;
@@ -16,16 +17,13 @@ import java.util.List;
 public class FlowEntry extends FlowsObject {
 
     /**
-     * Maps a Flow to one versioned database row.
-     *
-     * @param flow non-null definition and domain-owned audit facts to read;
-     *        the object and its collections are not modified
-     * @param rowId non-blank technical identifier for the new database row
-     * @param version positive Repository-assigned Flow version
-     * @return a new persistence entry with converted values independent of
-     *         mutable containers owned by the supplied Flow
-     * @throws IllegalArgumentException when a value cannot be encoded
-     * @throws NullPointerException when {@code flow} is {@code null}
+     * 将 Flow 定义、触发配置和审计事实编码为一行持久化数据。
+     * @param flow 非空 Flow，只读不修改
+     * @param rowId 新行的非空技术身份
+     * @param version Repository 分配的正版本号
+     * @return 编码后的新行，不共享可变容器
+     * @throws IllegalArgumentException 字段无法编码时抛出
+     * @throws NullPointerException Flow 为空时抛出
      */
     public static FlowEntry from(
             Flow flow,
@@ -52,6 +50,7 @@ public class FlowEntry extends FlowsObject {
             .orElse(null);
         entry.inputs = DataJsonCodec.encodeJsonb(flow.inputs());
         entry.outputs = DataJsonCodec.encodeJsonb(flow.outputs());
+        entry.triggers = TriggerJsonCodec.encode(flow.triggers());
         entry.variables = FlowVariablesJsonCodec.encodeJsonb(flow.variables());
         return entry;
     }
@@ -66,15 +65,12 @@ public class FlowEntry extends FlowsObject {
     }
 
     /**
-     * Restores a Flow with the supplied Task snapshot.
-     *
-     * @param tasks Task snapshot associated with this Flow version;
-     *        {@code null} becomes an empty immutable list
-     * @return a detached Flow containing persisted entry facts and a shallow
-     *         immutable copy of the Task list; Task elements remain shared
-     * @throws IllegalArgumentException when persisted values are invalid
-     * @throws IllegalStateException when a required timestamp is absent
-     * @throws NullPointerException when {@code tasks} contains a null element
+     * 从行数据和指定任务树恢复完整 Flow，保留触发器原身份。
+     * @param tasks 该版本任务快照，null 作为空集合处理
+     * @return 容器独立但任务元素共享的完整 Flow
+     * @throws IllegalArgumentException 持久化字段或触发配置非法时抛出
+     * @throws IllegalStateException 必需审计时间缺失时抛出
+     * @throws NullPointerException 任务集合包含空元素时抛出
      */
     public Flow to(List<Task> tasks) {
         return Flow.rehydrate(
@@ -88,6 +84,7 @@ public class FlowEntry extends FlowsObject {
             DataJsonCodec.decodeInputs(inputs, "Flow.inputs"),
             DataJsonCodec.decodeOutputs(outputs, "Flow.outputs"),
             tasks,
+            TriggerJsonCodec.decode(triggers),
             AuditStatusCodec.decode(status, "Flow.status"),
             ActorRefJsonCodec.decode(creator, "Flow.creator"),
             ActorRefJsonCodec.decode(updater, "Flow.updater"),

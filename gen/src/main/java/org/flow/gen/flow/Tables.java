@@ -7,7 +7,9 @@ package org.flow.gen.flow;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
+import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
+import org.flow.gen.flow.tables.TriggerRunsTable;
 
 
 /**
@@ -32,7 +34,17 @@ public class Tables {
     public static final FlowsTable FLOWS = FlowsTable.FLOWS;
 
     /**
+     * The table <code>public.scheduler_events</code>.
+     */
+    public static final SchedulerEventsTable SCHEDULER_EVENTS = SchedulerEventsTable.SCHEDULER_EVENTS;
+
+    /**
      * The table <code>public.task_runs</code>.
      */
     public static final TaskRunsTable TASK_RUNS = TaskRunsTable.TASK_RUNS;
+
+    /**
+     * The table <code>public.trigger_runs</code>.
+     */
+    public static final TriggerRunsTable TRIGGER_RUNS = TriggerRunsTable.TRIGGER_RUNS;
 }

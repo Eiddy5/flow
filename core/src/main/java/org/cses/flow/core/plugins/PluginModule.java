@@ -29,9 +29,9 @@ public class PluginModule extends SimpleModule {
     }
 
     /**
-     * 安装 Task 绑定和 Input 原生 Jackson 子类型配置。
+     * 安装 Task、Trigger 绑定和 Input 原生 Jackson 子类型配置。
      * @param registry 非空只读类型注册表
-     * @param sourceDefinition true 时处理新 Task 身份，false 时恢复已存身份
+     * @param sourceDefinition true 时处理新 Task/Trigger 身份，false 时恢复已存身份
      */
     private PluginModule(
         PluginRegistry registry,
@@ -40,6 +40,8 @@ public class PluginModule extends SimpleModule {
         super("flow-plugin");
         this.registry = requireNonNull(registry, "Plugin registry");
         InputTypes.bindings().forEach((name, type) -> registerSubtypes(new NamedType(type, name)));
+        addDeserializer(org.cses.flow.core.domains.triggers.Trigger.class,
+            new PluginDeserializer<>(registry, sourceDefinition, org.cses.flow.core.domains.triggers.Trigger.class));
         addDeserializer(
             Task.class,
             new PluginDeserializer<>(registry, sourceDefinition)

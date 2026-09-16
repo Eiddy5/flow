@@ -116,6 +116,10 @@ public class PostgresJooqTestAdapter extends JOOQ {
      */
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
+            dsl.deleteFrom(org.flow.gen.flow.Tables.SCHEDULER_EVENTS)
+                .where(org.flow.gen.flow.Tables.SCHEDULER_EVENTS.COMPANY_ID.eq(companyId)).execute();
+            dsl.deleteFrom(org.flow.gen.flow.Tables.TRIGGER_RUNS)
+                .where(org.flow.gen.flow.Tables.TRIGGER_RUNS.COMPANY_ID.eq(companyId)).execute();
             dsl.deleteFrom(TASK_RUNS)
                 .where(TASK_RUNS.EXECUTION_ID.in(
                     dsl.select(EXECUTIONS.ID)

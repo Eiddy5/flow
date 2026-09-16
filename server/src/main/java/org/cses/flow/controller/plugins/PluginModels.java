@@ -146,6 +146,7 @@ public class PluginModels {
         private String packageName;
         private List<PluginMetadataView> tasks;
         private List<PluginMetadataView> inputs = List.of();
+        private List<PluginMetadataView> triggers = List.of();
 
         public RegisteredPluginView() {
         }
@@ -167,9 +168,9 @@ public class PluginModels {
         }
 
         /**
-         * 将同包 Task 与 Input 元信息转换为 HTTP 目录，隐藏 Java Class 对象。
+         * 将同包 Task、Input 与 Trigger 元信息转换为 HTTP 目录，隐藏 Java Class 对象。
          * @param plugin 非空的只读插件分组
-         * @return 保留两类插件的目录视图
+         * @return 保留全部插件能力的目录视图
          */
         static RegisteredPluginView from(RegisteredPlugin plugin) {
             RegisteredPluginView view = new RegisteredPluginView(
@@ -179,6 +180,7 @@ public class PluginModels {
                     .toList()
             );
             view.inputs = plugin.inputs().stream().map(PluginMetadataView::from).toList();
+            view.triggers = plugin.triggers().stream().map(PluginMetadataView::from).toList();
             return view;
         }
     }

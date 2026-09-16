@@ -13,6 +13,7 @@ import org.flow.gen.flow.Tables;
 import org.flow.gen.flow.records.FlowsRecord;
 import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.JSONB;
+import org.paas.json.JsonObjects;
 import org.x9.jooq.common.JooqPojo;
 
 
@@ -31,6 +32,7 @@ public class FlowsObject extends JooqPojo implements Serializable {
     public Boolean draft;
     public String source;
     public String description;
+    public JsonObjects triggers;
     public JSONB variables;
     public JSONB inputs;
     public JSONB outputs;
@@ -52,6 +54,7 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.draft = value.draft;
         this.source = value.source;
         this.description = value.description;
+        this.triggers = value.triggers;
         this.variables = value.variables;
         this.inputs = value.inputs;
         this.outputs = value.outputs;
@@ -72,6 +75,7 @@ public class FlowsObject extends JooqPojo implements Serializable {
         Boolean draft,
         String source,
         String description,
+        JsonObjects triggers,
         JSONB variables,
         JSONB inputs,
         JSONB outputs,
@@ -90,6 +94,7 @@ public class FlowsObject extends JooqPojo implements Serializable {
         this.draft = draft;
         this.source = source;
         this.description = description;
+        this.triggers = triggers;
         this.variables = variables;
         this.inputs = inputs;
         this.outputs = outputs;
@@ -198,6 +203,20 @@ public class FlowsObject extends JooqPojo implements Serializable {
      */
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    /**
+     * Getter for <code>public.flows.triggers</code>.
+     */
+    public JsonObjects getTriggers() {
+        return this.triggers;
+    }
+
+    /**
+     * Setter for <code>public.flows.triggers</code>.
+     */
+    public void setTriggers(JsonObjects triggers) {
+        this.triggers = triggers;
     }
 
     /**
@@ -391,6 +410,12 @@ public class FlowsObject extends JooqPojo implements Serializable {
         }
         else if (!this.description.equals(other.description))
             return false;
+        if (this.triggers == null) {
+            if (other.triggers != null)
+                return false;
+        }
+        else if (!this.triggers.equals(other.triggers))
+            return false;
         if (this.variables == null) {
             if (other.variables != null)
                 return false;
@@ -465,6 +490,7 @@ public class FlowsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.draft == null) ? 0 : this.draft.hashCode());
         result = prime * result + ((this.source == null) ? 0 : this.source.hashCode());
         result = prime * result + ((this.description == null) ? 0 : this.description.hashCode());
+        result = prime * result + ((this.triggers == null) ? 0 : this.triggers.hashCode());
         result = prime * result + ((this.variables == null) ? 0 : this.variables.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
@@ -506,6 +532,7 @@ public class FlowsObject extends JooqPojo implements Serializable {
         map.put("draft", draft);
         map.put("source", source);
         map.put("description", description);
+        map.put("triggers", triggers == null ? null : triggers.toString());
         map.put("variables", variables);
         map.put("inputs", inputs);
         map.put("outputs", outputs);

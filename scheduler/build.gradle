@@ -1,0 +1,52 @@
+plugins {
+    id 'org.flow.build.base'
+    alias(libs.plugins.micronaut.library)
+    id 'java-library'
+}
+sourceSets.main.java.srcDir('src/upstream/java')
+dependencies {
+    api(project(':core'))
+    implementation('org.slf4j:slf4j-api:2.0.17')
+    implementation('org.jspecify:jspecify:1.0.0')
+    implementation(libs.cron.utils)
+    implementation(libs.micronaut.jdbc.hikari)
+    implementation(libs.micronaut.jooq)
+    compileOnly(libs.lombok)
+    annotationProcessor(libs.lombok)
+    annotationProcessor(libs.micronaut.http.validation)
+    testImplementation('org.junit.jupiter:junit-jupiter-params')
+    testImplementation(libs.micronaut.validation)
+    testImplementation(libs.logback.classic)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+micronaut {
+    testRuntime('junit5')
+    processing { incremental(true); annotations('org.cses.flow.*') }
+}
+
+// Reuse the existing real PostgreSQL/Pulsar fixtures, without importing Core test cases.
+sourceSets.test.java {
+    srcDir('../core/src/test/java')
+    include('org/cses/flow/core/services/executions/WorkflowUcFixture.java')
+    include('org/cses/flow/infrastructure/jooq/PostgresJooqTestAdapter.java')
+    include('org/cses/flow/infrastructure/jooq/FlowJooqTestConfiguration.java')
+    include('org/cses/flow/infrastructure/queues/pulsar/PulsarTestEnvironment.java')
+    include('org/cses/flow/infrastructure/websocket/NoopWebsocketRepository.java')
+    include('org/cses/flow/core/services/executions/Uc14ScheduleTriggerTest.java')
+    include('org/cses/flow/scheduler/**')
+}
+dependencies {
+    testImplementation(libs.paas.pulsar)
+    testImplementation(libs.org.x9.cloud.datapilot)
+}
+tasks.withType(Test).configureEach { useJUnitPlatform() }
+configurations.matching { it.name.startsWith('test') }.configureEach {
+    exclude group: 'org.paas', module: 'paas-temporal'
+    exclude group: 'org.paas', module: 'paas-diagnostic'
+    exclude group: 'org.paas', module: 'paas-response-wrapper'
+}
+
+// 分发源码与二进制时均保留上游许可证和固定版本来源。
+tasks.matching { it.name in ["processResources", "sourcesJar"] }.configureEach {
+    from(files("LICENSE-db-scheduler", "UPSTREAM.md")) { into("META-INF/db-scheduler") }
+}

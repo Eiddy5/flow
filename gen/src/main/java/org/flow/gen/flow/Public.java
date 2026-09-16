@@ -10,7 +10,9 @@ import java.util.List;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
+import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
+import org.flow.gen.flow.tables.TriggerRunsTable;
 import org.jooq.Catalog;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
@@ -46,9 +48,19 @@ public class Public extends SchemaImpl {
     public final FlowsTable FLOWS = FlowsTable.FLOWS;
 
     /**
+     * The table <code>public.scheduler_events</code>.
+     */
+    public final SchedulerEventsTable SCHEDULER_EVENTS = SchedulerEventsTable.SCHEDULER_EVENTS;
+
+    /**
      * The table <code>public.task_runs</code>.
      */
     public final TaskRunsTable TASK_RUNS = TaskRunsTable.TASK_RUNS;
+
+    /**
+     * The table <code>public.trigger_runs</code>.
+     */
+    public final TriggerRunsTable TRIGGER_RUNS = TriggerRunsTable.TRIGGER_RUNS;
 
     /**
      * No further instances allowed
@@ -69,7 +81,9 @@ public class Public extends SchemaImpl {
             ExecutionsTable.EXECUTIONS,
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,
-            TaskRunsTable.TASK_RUNS
+            SchedulerEventsTable.SCHEDULER_EVENTS,
+            TaskRunsTable.TASK_RUNS,
+            TriggerRunsTable.TRIGGER_RUNS
         );
     }
 
@@ -80,6 +94,6 @@ public class Public extends SchemaImpl {
 
     @Override
     public String getDbName() {
-        return "flow_subflow_uc13";
+        return "flow_trigger_test";
     }
 }

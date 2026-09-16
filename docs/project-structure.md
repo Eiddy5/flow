@@ -28,6 +28,7 @@ flow/
 ├── gradle/            # Gradle Wrapper 和版本目录
 ├── gen/               # Flow 数据库脚本及 JOOQ 代码生成模块
 ├── core/              # 完整的非 HTTP Flow 能力与生产适配器
+├── scheduler/         # 持久化定时调度与触发事件消费
 ├── server/            # HTTP 服务、启动入口、资源与会话查询
 └── docs/              # 项目规范、决策、UC 和验证记忆
 ```
@@ -115,6 +116,17 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 扩展、具名 Flow 数据源与 JOOQ 装配、PostgreSQL Repository 以及 DataPilot 兼容适配。Core
 不包含 `Application`、HTTP Controller、HTTP 参数绑定或静态资源，可以由 CSES 等
 宿主通过 Server 的传递依赖直接注入和调用公开 Service。
+
+### `scheduler/`
+
+独立调度模块。`src/main/java/org/cses/flow/scheduler/` 保存自有接线、定时回调、
+outbox 发布与触发事件消费；`src/upstream/java/` 保存固定版本 db-scheduler 源码；
+`sql/scheduled_tasks.sql` 保存上游表；`UPSTREAM.md` 与 `LICENSE-db-scheduler` 记录来源。
+测试在 `src/test/java/`。依赖 Core，Core 不依赖 Scheduler。
+Core 模块中的 `org.cses.flow.scheduler.events` 只保存共享事件协议，供 Core 发出配置
+变更；具体运行时在 scheduler 模块，Core 不反向引用该模块。
+Trigger 契约在 `org.cses.flow.core.domains.triggers`，ScheduleTrigger 插件在
+`org.cses.flow.extensions.triggers`。应用表仍放 `gen/sql/flow/tables/`，见 ADR 0103。
 
 ### `server/`
 
@@ -595,7 +607,8 @@ UC 测试的目录和一对一映射要求见
 gen（生成类和数据库基线来源）
   -> core 编译
 
-core（完整非 HTTP Flow 能力）
+core（流程定义与执行能力）
+  -> scheduler（定时调度与触发事件）
   -> server（HTTP Adapter 与可启动应用）
   -> CSES ApplicationContext（经 server 传递依赖）
 CSES Approval -> core 中公开的 ExecutionService Resume 能力

@@ -7,11 +7,15 @@ package org.flow.gen.flow;
 import org.flow.gen.flow.records.ExecutionsRecord;
 import org.flow.gen.flow.records.FlowTasksRecord;
 import org.flow.gen.flow.records.FlowsRecord;
+import org.flow.gen.flow.records.SchedulerEventsRecord;
 import org.flow.gen.flow.records.TaskRunsRecord;
+import org.flow.gen.flow.records.TriggerRunsRecord;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
+import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
+import org.flow.gen.flow.tables.TriggerRunsTable;
 import org.jooq.TableField;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
@@ -35,7 +39,11 @@ public class Keys {
     public static final UniqueKey<FlowTasksRecord> PK_FLOW_TASKS = Internal.createUniqueKey(FlowTasksTable.FLOW_TASKS, DSL.name("pk_flow_tasks"), new TableField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_KEY, FlowTasksTable.FLOW_TASKS.FLOW_VERSION, FlowTasksTable.FLOW_TASKS.ID }, true);
     public static final UniqueKey<FlowTasksRecord> UQ_FLOW_TASKS_KEY = Internal.createUniqueKey(FlowTasksTable.FLOW_TASKS, DSL.name("uq_flow_tasks_key"), new TableField[] { FlowTasksTable.FLOW_TASKS.COMPANY_ID, FlowTasksTable.FLOW_TASKS.FLOW_KEY, FlowTasksTable.FLOW_TASKS.FLOW_VERSION, FlowTasksTable.FLOW_TASKS.KEY }, true);
     public static final UniqueKey<FlowsRecord> PK_FLOWS = Internal.createUniqueKey(FlowsTable.FLOWS, DSL.name("pk_flows"), new TableField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.ID }, true);
+    public static final UniqueKey<SchedulerEventsRecord> PK_SCHEDULER_EVENTS = Internal.createUniqueKey(SchedulerEventsTable.SCHEDULER_EVENTS, DSL.name("pk_scheduler_events"), new TableField[] { SchedulerEventsTable.SCHEDULER_EVENTS.COMPANY_ID, SchedulerEventsTable.SCHEDULER_EVENTS.ID }, true);
     public static final UniqueKey<TaskRunsRecord> PK_TASK_RUNS = Internal.createUniqueKey(TaskRunsTable.TASK_RUNS, DSL.name("pk_task_runs"), new TableField[] { TaskRunsTable.TASK_RUNS.ID }, true);
     public static final UniqueKey<TaskRunsRecord> UQ_TASK_RUNS_EXECUTION_ID = Internal.createUniqueKey(TaskRunsTable.TASK_RUNS, DSL.name("uq_task_runs_execution_id"), new TableField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.ID }, true);
     public static final UniqueKey<TaskRunsRecord> UQ_TASK_RUNS_ORDER = Internal.createUniqueKey(TaskRunsTable.TASK_RUNS, DSL.name("uq_task_runs_order"), new TableField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.ORDER }, true);
+    public static final UniqueKey<TriggerRunsRecord> PK_TRIGGER_RUNS = Internal.createUniqueKey(TriggerRunsTable.TRIGGER_RUNS, DSL.name("pk_trigger_runs"), new TableField[] { TriggerRunsTable.TRIGGER_RUNS.COMPANY_ID, TriggerRunsTable.TRIGGER_RUNS.ID }, true);
+    public static final UniqueKey<TriggerRunsRecord> UQ_TRIGGER_RUNS_EXECUTION = Internal.createUniqueKey(TriggerRunsTable.TRIGGER_RUNS, DSL.name("uq_trigger_runs_execution"), new TableField[] { TriggerRunsTable.TRIGGER_RUNS.COMPANY_ID, TriggerRunsTable.TRIGGER_RUNS.EXECUTION_ID }, true);
+    public static final UniqueKey<TriggerRunsRecord> UQ_TRIGGER_RUNS_OCCURRENCE = Internal.createUniqueKey(TriggerRunsTable.TRIGGER_RUNS, DSL.name("uq_trigger_runs_occurrence"), new TableField[] { TriggerRunsTable.TRIGGER_RUNS.COMPANY_ID, TriggerRunsTable.TRIGGER_RUNS.FLOW_KEY, TriggerRunsTable.TRIGGER_RUNS.TRIGGER_KEY, TriggerRunsTable.TRIGGER_RUNS.SCHEDULED_AT }, true);
 }

@@ -2,6 +2,9 @@ package org.cses.flow.infrastructure.repositories.flows;
 
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.flows.Flow;
+import org.cses.flow.scheduler.events.SchedulerEvent;
+import org.cses.flow.infrastructure.repositories.triggers.entries.SchedulerEventEntry;
+import java.util.Map;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
@@ -25,6 +28,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import static org.flow.gen.flow.Tables.FLOWS;
+import static org.flow.gen.flow.Tables.SCHEDULER_EVENTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 
 @Singleton
@@ -137,17 +141,12 @@ public class FlowRepositoryImpl implements FlowRepository {
     }
 
     /**
-     * Appends a Flow row after assigning the next version across all rows for
-     * the same tenant and key. Deployed rows also append their Task snapshot.
-     *
-     * @param dsl ordinary database context; the parent and Task inserts share one SQL statement
-     * @param flow non-null Flow whose definition and domain-owned tenant,
-     *        status and audit facts are read without modifying the object
-     * @return a detached Flow containing the assigned row id and version; its
-     *         mutable containers are independent of the input Flow
-     * @throws WorkflowException when the database rejects the appended rows
-     * @throws ArithmeticException when the stored version is
-     *         {@link Long#MAX_VALUE}
+     * 追加 Flow 行并分配下一版本；正式版本将任务与配置事件一并原子写入。
+     * @param dsl 调用方数据库上下文，同一条 SQL 包含全部快照及事件
+     * @param flow 非空完整定义，只读其身份和审计事实
+     * @return 具有新行 ID 和版本的快照，容器不共享可变状态
+     * @throws WorkflowException 数据库拒绝写入时抛出
+     * @throws ArithmeticException 版本超过 Long 最大值时抛出
      */
     @Override
     public Flow save(DSLContext dsl, Flow flow) {
@@ -169,10 +168,22 @@ public class FlowRepositoryImpl implements FlowRepository {
             );
             var parent = org.jooq.impl.DSL.name("stored_flow").as(
                     dsl.insertInto(FLOWS).set(entry.toMap()).returning(FLOWS.ID));
+            var statement = dsl.with(parent);
+            if (flow.deployed()) {
+                var event = SchedulerEvent.from("FLOW_CHANGED",
+                    entry.companyId, entry.id, entry.key, entry.version, null, null, null,
+                    flow.updater().id(), Map.of());
+                var outbox = SchedulerEventEntry.from(
+                    event, flow.updatedAt());
+                var savedEvent = org.jooq.impl.DSL.name("stored_scheduler_event").as(
+                    dsl.insertInto(SCHEDULER_EVENTS)
+                        .set(outbox.toMap()).returning(SCHEDULER_EVENTS.ID));
+                statement = statement.with(savedEvent);
+            }
             if (flow.deployed() && !flow.tasks().isEmpty()) {
-                writeTasks(dsl.with(parent), flow, version);
+                writeTasks(statement, flow, version);
             } else {
-                dsl.with(parent).selectFrom(parent).fetch();
+                statement.selectFrom(parent).fetch();
             }
             return entry.to(flow.tasks());
         } catch (DataAccessException exception) {
@@ -261,11 +272,10 @@ public class FlowRepositoryImpl implements FlowRepository {
     }
 
     /**
-     * Appends the Task snapshot for one deployed Flow version.
-     *
-     * @param dsl pending statement containing the complete parent insert
-     * @param flow non-null deployed Flow whose immutable Task tree is read
-     * @param flowVersion positive Repository-assigned Flow version
+     * 向已有 Flow/事件 CTE 追加完整任务树并执行整条 SQL。
+     * @param dsl 包含 Flow 及可选事件插入的语句
+     * @param flow 非空正式 Flow，只读其任务树
+     * @param flowVersion Repository 分配的正版本号
      */
     private void writeTasks(
             org.jooq.WithStep dsl,

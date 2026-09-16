@@ -7,6 +7,7 @@ jsonschema-generator = "4.38.0"
 swagger-annotations = "2.2.43"
 
 [libraries]
+cron-utils = { module = "com.cronutils:cron-utils", version = "9.2.1" }
 micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" }
 micronaut-validation = { module = "io.micronaut.validation:micronaut-validation" }
 jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api" }

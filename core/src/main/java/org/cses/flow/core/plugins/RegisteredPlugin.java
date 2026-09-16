@@ -1,6 +1,7 @@
 package org.cses.flow.core.plugins;
 
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.triggers.Trigger;
 import org.cses.flow.core.domains.flows.Input;
 
 import java.util.Comparator;
@@ -13,14 +14,15 @@ import java.util.Objects;
 public record RegisteredPlugin(
     String packageName,
     List<PluginMetadata<Task>> tasks,
-    List<PluginMetadata<Input>> inputs
+    List<PluginMetadata<Input>> inputs,
+    List<PluginMetadata<Trigger>> triggers
 ) {
 
     public static RegisteredPlugin from(
         String packageName,
         List<PluginMetadata<Task>> tasks
     ) {
-        return new RegisteredPlugin(packageName, tasks, List.of());
+        return new RegisteredPlugin(packageName, tasks, List.of(), List.of());
     }
 
     /**
@@ -33,22 +35,33 @@ public record RegisteredPlugin(
      */
     public static RegisteredPlugin from(String packageName, List<PluginMetadata<Task>> tasks,
                                         List<PluginMetadata<Input>> inputs) {
-        return new RegisteredPlugin(packageName, tasks, inputs);
+        return new RegisteredPlugin(packageName, tasks, inputs, List.of());
     }
 
     /**
-     * 校验包归属并复制、排序两类元信息，返回后调用方不能修改目录列表。
-     * @param packageName 非空白真实包名
-     * @param tasks 非空且元素非空的 Task 元信息，必须属于该包
-     * @param inputs 非空且元素非空的 Input 元信息，必须属于该包
-     * @throws IllegalArgumentException 当包名或元信息归属非法时抛出
+     * 创建包含触发器能力的插件目录。
+     * @param packageName 包名
+     * @param tasks 任务元数据
+     * @param inputs 输入元数据
+     * @param triggers 触发器元数据
+     * @return 只读插件目录
      */
+    public static RegisteredPlugin from(String packageName, List<PluginMetadata<Task>> tasks,
+        List<PluginMetadata<Input>> inputs, List<PluginMetadata<Trigger>> triggers) {
+        return new RegisteredPlugin(packageName, tasks, inputs, triggers);
+    }
+
+    /** 校验全部能力的包归属并复制为排序后的只读列表。 */
     public RegisteredPlugin {
         if (packageName == null || packageName.isBlank()) {
             throw new IllegalArgumentException(
                 "Registered plugin package name must not be blank"
             );
         }
+        Objects.requireNonNull(triggers, "Registered plugin triggers");
+        if (triggers.stream().anyMatch(trigger -> !packageName.equals(trigger.packageName())))
+            throw new IllegalArgumentException("Trigger package mismatch");
+        triggers = triggers.stream().sorted(Comparator.comparing(PluginMetadata::typeName)).toList();
         Objects.requireNonNull(tasks, "Registered plugin tasks");
         if (tasks.stream().anyMatch(task ->
             !packageName.equals(task.packageName())

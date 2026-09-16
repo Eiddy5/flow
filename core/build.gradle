@@ -27,6 +27,7 @@ configurations.configureEach {
 dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-params")
     api(project(':gen'))
+    implementation(libs.cron.utils)
 
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)

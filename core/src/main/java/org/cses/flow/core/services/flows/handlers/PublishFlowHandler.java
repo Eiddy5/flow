@@ -130,6 +130,7 @@ public class PublishFlowHandler implements CommandHandler<
                     parsed.inputs(),
                     parsed.outputs(),
                     parsed.tasks(),
+                    parsed.triggers(),
                     source,
                     context.session(),
                     TimeUtil.now()

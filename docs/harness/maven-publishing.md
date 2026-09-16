@@ -8,25 +8,26 @@
 export JAVA_HOME=$(/usr/libexec/java_home -v 25)
 ```
 
-`gradle.properties` 的 `flowVersion=1.0.1` 统一三个模块版本，`repoUrl` 同时用于
+`gradle.properties` 的 `flowVersion=1.0.1` 统一四个模块版本，`repoUrl` 同时用于
 内部依赖下载和发布。可以用 `-PflowVersion=1.0.2` 覆盖本次发布版本。
 
 | 模块 | 发布坐标 |
 | --- | --- |
 | server | org.cses.flow:flow:1.0.1 |
+| scheduler | org.cses.flow:scheduler:1.0.1 |
 | core | org.cses.flow:core:1.0.1 |
 | gen | org.cses.flow:gen:1.0.1 |
 
 ## 发布
 
-发布读取 Gradle 属性 `repoUser`、`repoPassword`，沿用已有的 properties 配置。先完成测试，再发布三个模块：
+发布读取 Gradle 属性 `repoUser`、`repoPassword`，沿用已有的 properties 配置。先完成测试，再发布四个模块：
 
 ```bash
 ./gradlew test
 ./gradlew publish
 ```
 
-`publish` 不会自动运行测试。只执行 `:server:publish` 不会上传 Core 或 Gen；应从根目录执行 `publish`。产物包含普通 JAR、源码 JAR、POM 和
+`publish` 不会自动运行测试。只执行 `:server:publish` 不会上传 Scheduler、Core 或 Gen；应从根目录执行 `publish`。产物包含普通 JAR、源码 JAR、POM 和
 Gradle Module Metadata，不上传 Shadow JAR。
 
 ## 本地检查
@@ -42,7 +43,7 @@ import xml.etree.ElementTree as ET
 
 ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
 versions = set()
-for module, artifact in [('server', 'flow'), ('core', 'core'), ('gen', 'gen')]:
+for module, artifact in [('server', 'flow'), ('scheduler', 'scheduler'), ('core', 'core'), ('gen', 'gen')]:
     base = Path(module) / 'build/publications/mavenJava'
     pom = ET.parse(base / 'pom-default.xml').getroot()
     value = lambda name: pom.findtext('m:' + name, namespaces=ns)
@@ -58,10 +59,10 @@ for module, artifact in [('server', 'flow'), ('core', 'core'), ('gen', 'gen')]:
     dependencies = pom.findall('m:dependencies/m:dependency', ns)
     flow_dependencies = [(d.findtext('m:artifactId', namespaces=ns), d.findtext('m:version', namespaces=ns))
                          for d in dependencies if d.findtext('m:groupId', namespaces=ns) == 'org.cses.flow']
-    expected = {'server': [('core', version)], 'core': [('gen', version)]}.get(module, [])
+    expected = {'server': [('scheduler', version)], 'scheduler': [('core', version)], 'core': [('gen', version)]}.get(module, [])
     assert flow_dependencies == expected, (module, flow_dependencies)
 assert len(versions) == 1, versions
-print('三个模块坐标、统一版本、传递依赖和普通 JAR 变体验证通过')
+print('四个模块坐标、统一版本、传递依赖和普通 JAR 变体验证通过')
 PY
 ```
 
@@ -73,5 +74,5 @@ dependencies {
 }
 ```
 
-宿主配置同一 Maven 仓库并使用实际发布版本。Core 和 Gen 由 Flow 传递引入。
+宿主配置同一 Maven 仓库并使用实际发布版本。Scheduler、Core 和 Gen 由 Flow 传递引入。
 运行配置与数据库准备见 [CSES 嵌入手册](cses-embedding.md)。

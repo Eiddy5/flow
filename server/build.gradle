@@ -25,7 +25,7 @@ configurations.configureEach {
 }
 
 dependencies {
-    api(project(':core'))
+    api(project(':scheduler'))
     implementation(libs.pass.authx)
 
     compileOnly(libs.lombok)

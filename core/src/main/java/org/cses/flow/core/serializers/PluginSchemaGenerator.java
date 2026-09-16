@@ -18,6 +18,8 @@ import com.github.victools.jsonschema.module.swagger2.Swagger2Module;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.triggers.Trigger;
+import org.cses.flow.core.domains.triggers.AbstractTrigger;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.plugins.PluginRegistry;
 import org.cses.flow.core.plugins.Plugin;
@@ -134,13 +136,20 @@ public class PluginSchemaGenerator {
 
         ObjectNode schema = new SchemaGenerator(builder.build())
             .generateSchema(metadata.type());
-        normalizeDefinitionSchema(schema, metadata.typeName(), Task.class.isAssignableFrom(metadata.type()));
+        normalizeDefinitionSchema(schema, metadata.typeName(), Task.class.isAssignableFrom(metadata.type())
+            || Trigger.class.isAssignableFrom(metadata.type()));
         return immutableMap(jacksonMapper.toMap(schema));
     }
 
+    /**
+     * 判断字段是否为 Task 或 Trigger 的系统身份。
+     * @param field 当前 Schema 字段
+     * @return true 表示应从用户定义 Schema 隐藏
+     */
     private static boolean isSystemId(FieldScope field) {
         return SYSTEM_ID_PROPERTY.equals(field.getName())
-            && field.getRawMember().getDeclaringClass() == Task.class;
+            && (field.getRawMember().getDeclaringClass() == Task.class
+                || field.getRawMember().getDeclaringClass() == AbstractTrigger.class);
     }
 
     private static Object newDefaultInstance(

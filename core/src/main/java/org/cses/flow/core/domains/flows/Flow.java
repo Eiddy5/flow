@@ -1,5 +1,8 @@
 package org.cses.flow.core.domains.flows;
 
+import org.cses.flow.core.domains.triggers.Trigger;
+import org.cses.flow.core.domains.triggers.AbstractTrigger;
+
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -28,6 +31,7 @@ public class Flow extends AbstractFlow {
 
     List<Task> tasks = List.of();
     String source;
+    List<Trigger> triggers = List.of();
 
     private Flow(
             String id,
@@ -210,40 +214,27 @@ public class Flow extends AbstractFlow {
     }
 
     /**
-     * Restores one persisted Flow row and its optional Task snapshot.
-     *
-     * @param id non-blank database row identifier
-     * @param companyId non-blank tenant identifier
-     * @param key non-blank stable Flow key
-     * @param draft {@code true} for a draft row or {@code false} for a
-     *        deployed row
-     * @param version positive persisted version
-     * @param description description; {@code null} becomes empty text
-     * @param variables variables shallow-copied into an unmodifiable map;
-     *        {@code null} becomes empty and values remain shared
-     * @param inputs inputs shallow-copied into an unmodifiable list;
-     *        {@code null} becomes empty and elements remain shared
-     * @param outputs outputs shallow-copied into an unmodifiable list;
-     *        {@code null} becomes empty and elements remain shared
-     * @param tasks Task snapshot shallow-copied into an unmodifiable list;
-     *        {@code null} becomes empty and elements remain shared
-     * @param status non-null persisted audit status
-     * @param creator non-null original creator
-     * @param updater non-null latest updater
-     * @param deleter deleter, or {@code null} for an active Flow
-     * @param createdAt non-negative creation timestamp in milliseconds
-     * @param updatedAt latest update timestamp in milliseconds, not before
-     *        {@code createdAt}
-     * @param deletedAt deletion timestamp in milliseconds, or {@code null}
-     *        for an active Flow
-     * @param source non-blank raw source definition
-     * @return a detached Flow whose maps and lists do not share mutable
-     *         containers with the supplied values; contained objects remain
-     *         shared
-     * @throws IllegalArgumentException when the persisted version is absent or
-     *         not positive, or another persisted invariant is invalid
-     * @throws NullPointerException when a required object is null or a copied
-     *         collection contains a null element
+     * 从完整持久化快照恢复 Flow （没有触发定义）。
+     * @param id 原行身份
+     * @param companyId 租户身份
+     * @param key Flow 业务名称
+     * @param draft 是否草稿
+     * @param version 已保存的正版本号
+     * @param description 说明
+     * @param variables 变量配置
+     * @param inputs 输入声明
+     * @param outputs 输出声明
+     * @param tasks 已绑定任务树
+     * @param status 原记录状态
+     * @param creator 原创建人
+     * @param updater 原更新人
+     * @param deleter 可空删除人
+     * @param createdAt 创建毫秒时间
+     * @param updatedAt 更新毫秒时间
+     * @param deletedAt 可空删除毫秒时间
+     * @param source 原始源定义
+     * @return 保留完整身份与审计事实的快照
+     * @throws IllegalArgumentException 持久化版本、触发器或其他事实非法时抛出
      */
     public static Flow rehydrate(
             String id,
@@ -265,8 +256,58 @@ public class Flow extends AbstractFlow {
             Long deletedAt,
             String source
     ) {
+        return rehydrate(id, companyId, key, draft, version, description, variables, inputs,
+            outputs, tasks, List.of(), status, creator, updater, deleter, createdAt, updatedAt,
+            deletedAt, source);
+    }
+
+    /**
+     * 从完整持久化快照恢复 Flow 及触发定义。
+     * @param id 原行身份
+     * @param companyId 租户身份
+     * @param key Flow 业务名称
+     * @param draft 是否草稿
+     * @param version 已保存的正版本号
+     * @param description 说明
+     * @param variables 变量配置
+     * @param inputs 输入声明
+     * @param outputs 输出声明
+     * @param tasks 已绑定任务树
+     * @param triggers 非空且 key 唯一的触发定义，保留其原身份
+     * @param status 原记录状态
+     * @param creator 原创建人
+     * @param updater 原更新人
+     * @param deleter 可空删除人
+     * @param createdAt 创建毫秒时间
+     * @param updatedAt 更新毫秒时间
+     * @param deletedAt 可空删除毫秒时间
+     * @param source 原始源定义
+     * @return 保留完整身份与审计事实的快照
+     * @throws IllegalArgumentException 持久化版本、触发器或其他事实非法时抛出
+     */
+    public static Flow rehydrate(
+            String id,
+            String companyId,
+            String key,
+            boolean draft,
+            Long version,
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> tasks,
+            List<? extends Trigger> triggers,
+            RecordState status,
+            ActorRef creator,
+            ActorRef updater,
+            ActorRef deleter,
+            long createdAt,
+            long updatedAt,
+            Long deletedAt,
+            String source
+    ) {
         requirePersistedVersion(version);
-        return new Flow(
+        Flow flow = new Flow(
                 id,
                 key,
                 version,
@@ -286,25 +327,19 @@ public class Flow extends AbstractFlow {
                 deletedAt,
                 source
         );
+        flow.triggers = immutableTriggers(triggers);
+        return flow;
     }
 
     /**
-     * Completes a Flow created by Jackson's no-args binding path.
-     * YAML supplies the definition; this method supplies identity, tenant,
-     * audit, lifecycle and raw source facts.
-     *
-     * @param session non-null tenant and actor initializing the Flow
-     * @param draft {@code true} to initialize a draft or {@code false} to
-     *        validate and initialize a deployed definition
-     * @param latest latest deployed Flow used for compatibility validation,
-     *        or {@code null} when no deployed version exists
-     * @param rawSource non-blank raw source definition retained as supplied
-     * @throws IllegalStateException when this Flow was already initialized
-     * @throws IllegalArgumentException when the Session or definition fields
-     *         are invalid
-     * @throws NullPointerException when a copied Task list contains a null
-     *         element
-     * @throws WorkflowException when deployed validation fails
+     * 将已解析字段初始化为草稿或正式 Flow，正式版本校验任务及触发输入。
+     * @param session 非空可信会话
+     * @param draft true 保存草稿，false 校验正式版本
+     * @param latest 可空的上一正式版本，用于沿用同名定义身份
+     * @param rawSource 非空原始源定义
+     * @throws IllegalStateException 已初始化时抛出
+     * @throws IllegalArgumentException 会话、定义或触发配置非法时抛出
+     * @throws WorkflowException 正式版本任务或输入校验失败时抛出
      */
     public void initialize(
             Session<? extends SessionUser> session,
@@ -337,6 +372,9 @@ public class Flow extends AbstractFlow {
                 inputs,
                 outputs
         );
+        triggers = immutableTriggers(triggers);
+        if (!draft) triggers.forEach(trigger -> bindInputs(trigger.inputs()));
+        rebindTriggerIds(latest, triggers);
         tasks = boundTasks;
         source = RequiredUtil.required(rawSource, "Flow source");
         validateTasksForState();
@@ -373,6 +411,26 @@ public class Flow extends AbstractFlow {
         return tasks;
     }
 
+    /** @return 当前版本拥有的只读触发定义 */
+    public List<Trigger> triggers() { return triggers; }
+
+    /**
+     * 校验触发器集合并复制容器。
+     * @param values 非空配置集合
+     * @return key 唯一的只读集合
+     * @throws IllegalArgumentException 集合或 key 非法时抛出
+     */
+    private static List<Trigger> immutableTriggers(
+        List<? extends Trigger> values) {
+        if (values == null) throw new IllegalArgumentException("Flow.triggers must not be null");
+        Set<String> keys = new HashSet<>();
+        for (var trigger : values) {
+            Objects.requireNonNull(trigger, "Trigger").validate();
+            if (!keys.add(trigger.key())) throw new IllegalArgumentException("Duplicate trigger key: " + trigger.key());
+        }
+        return List.copyOf(values);
+    }
+
     public String source() {
         return source;
     }
@@ -398,6 +456,18 @@ public class Flow extends AbstractFlow {
         );
     }
 
+    /**
+     * 修订草稿内容并保留当前触发定义。
+     * @param description 新说明
+     * @param variables 新变量
+     * @param inputs 新输入声明
+     * @param outputs 新输出声明
+     * @param revisedTasks 新任务树
+     * @param revisedSource 新源定义
+     * @param session 当前会话
+     * @param revisedAt 修订毫秒时间
+     * @throws WorkflowException 当前状态不是草稿时抛出
+     */
     public void revise(
             String description,
             Map<String, ?> variables,
@@ -408,6 +478,36 @@ public class Flow extends AbstractFlow {
             Session<? extends SessionUser> session,
             long revisedAt
     ) {
+        revise(description, variables, inputs, outputs, revisedTasks, triggers,
+            revisedSource, session, revisedAt);
+    }
+
+    /**
+     * 修订草稿中的任务与触发定义；草稿本身不启动调度。
+     * @param description 新说明
+     * @param variables 新变量配置
+     * @param inputs 新输入声明
+     * @param outputs 新输出声明
+     * @param revisedTasks 新任务树
+     * @param revisedTriggers 非空且 key 唯一的新触发定义
+     * @param revisedSource 新源定义
+     * @param session 当前可信会话
+     * @param revisedAt 修订毫秒时间
+     * @throws IllegalArgumentException 触发定义非法时抛出
+     * @throws WorkflowException 当前 Flow 不是可修订草稿时抛出
+     */
+    public void revise(
+            String description,
+            Map<String, ?> variables,
+            List<? extends Input<?>> inputs,
+            List<? extends Output> outputs,
+            List<? extends Task> revisedTasks,
+            List<? extends Trigger> revisedTriggers,
+            String revisedSource,
+            Session<? extends SessionUser> session,
+            long revisedAt
+    ) {
+        List<Trigger> checkedTriggers = immutableTriggers(revisedTriggers);
         requireDraft();
         String checkedSource = RequiredUtil.required(
                 revisedSource,
@@ -425,10 +525,26 @@ public class Flow extends AbstractFlow {
         rebindTaskIds(this, boundTasks);
         tasks = boundTasks;
         source = checkedSource;
+        rebindTriggerIds(this, checkedTriggers);
+        triggers = checkedTriggers;
     }
 
     /**
-     * Returns a detached copy while preserving the complete Flow state.
+     * 同名触发器沿用上一快照身份，新配置保留绑定器首次分配的身份。
+     * @param previous 可空的上一快照
+     * @param definitions 已校验且 key 唯一的新定义
+     */
+    private static void rebindTriggerIds(Flow previous, List<Trigger> definitions) {
+        if (previous == null) return;
+        for (var trigger : definitions) {
+            previous.triggers().stream().filter(old -> old.key().equals(trigger.key()))
+                .findFirst().ifPresent(old -> ((AbstractTrigger) trigger).reidentify(old.id()));
+        }
+    }
+
+    /**
+     * 返回保留全部身份、定义和审计事实的快照副本。
+     * @return 容器独立但定义元素共享的完整快照
      */
     public Flow copy() {
         return rehydrate(
@@ -442,6 +558,7 @@ public class Flow extends AbstractFlow {
                 inputs(),
                 outputs(),
                 tasks,
+                triggers,
                 status(),
                 creator(),
                 updater(),

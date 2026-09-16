@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.triggers.Trigger;
 import org.paas.common.util.StringUtil;
 
 import java.io.IOException;
@@ -100,12 +101,19 @@ public class PluginDeserializer<T extends Plugin> extends JsonDeserializer<T> {
         return (T) context.readTreeAsValue(fields, concreteType);
     }
 
+    /**
+     * 仅为源定义中的 Task/Trigger 分配身份并拒绝外部提供系统字段。
+     * @param definition 原地更新的源对象
+     * @param concreteType 已注册的具体类型
+     * @throws IllegalArgumentException 源对象包含系统字段或非法 key 时抛出
+     */
     private void prepareSourceTask(
             ObjectNode definition,
             Class<? extends Plugin> concreteType
     ) {
         if (!sourceDefinition
-                || !Task.class.isAssignableFrom(concreteType)) {
+                || !(Task.class.isAssignableFrom(concreteType)
+                    || Trigger.class.isAssignableFrom(concreteType))) {
             return;
         }
 

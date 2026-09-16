@@ -7,6 +7,8 @@ import org.cses.flow.core.domains.tasks.OrchestrationTask;
 import org.cses.flow.core.domains.tasks.ExecutableTask;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
+import org.cses.flow.core.domains.triggers.Trigger;
+import org.cses.flow.core.domains.triggers.AbstractTrigger;
 import org.cses.flow.core.plugins.annotations.Example;
 
 import java.lang.reflect.Constructor;
@@ -25,8 +27,8 @@ public class DefaultPluginRegistry implements PluginRegistry {
             metadataByType;
 
     /**
-     * 从已发现的 Task Bean 和固定内置 Input 创建只读注册表，不实例化 Input。
-     * @param plugins 非空 Task Bean 集合，只读；不能包含 null
+     * 从已发现的 Task、Trigger Bean 和固定内置 Input 创建只读注册表，不实例化 Input。
+     * @param plugins 非空 Task/Trigger Bean 集合，只读；不能包含 null
      * @throws IllegalStateException 当 Task 注册类或能力非法时抛出
      */
     public DefaultPluginRegistry(Collection<Plugin> plugins) {
@@ -53,9 +55,11 @@ public class DefaultPluginRegistry implements PluginRegistry {
                 new LinkedHashMap<>();
         Map<String, List<PluginMetadata<Task>>> tasksByPackage =
                 new LinkedHashMap<>();
+        Map<String, List<PluginMetadata<Trigger>>> triggersByPackage = new LinkedHashMap<>();
         orderedPlugins.forEach(plugin -> register(
                 registrations,
                 tasksByPackage,
+                triggersByPackage,
                 plugin
         ));
 
@@ -66,10 +70,12 @@ public class DefaultPluginRegistry implements PluginRegistry {
         this.metadataByType = Map.copyOf(registrations);
         Set<String> packages = new TreeSet<>(tasksByPackage.keySet());
         packages.addAll(inputsByPackage.keySet());
+        packages.addAll(triggersByPackage.keySet());
         this.registeredPlugins = packages.stream()
             .map(packageName -> RegisteredPlugin.from(packageName,
                 tasksByPackage.getOrDefault(packageName, List.of()),
-                inputsByPackage.getOrDefault(packageName, List.of())))
+                inputsByPackage.getOrDefault(packageName, List.of()),
+                triggersByPackage.getOrDefault(packageName, List.of())))
             .toList();
     }
 
@@ -119,9 +125,18 @@ public class DefaultPluginRegistry implements PluginRegistry {
         return pluginClass.asSubclass(expectedBaseClass);
     }
 
+    /**
+     * 将已发现的具体插件校验后加入所属包目录。
+     * @param registrations 类型注册表，原地更新
+     * @param tasksByPackage Task 包目录，原地更新
+     * @param triggersByPackage Trigger 包目录，原地更新
+     * @param plugin 待校验的非空插件 Bean
+     * @throws IllegalStateException 类型、能力或包归属非法时抛出
+     */
     private static void register(
             Map<String, PluginMetadata<? extends Plugin>> registrations,
             Map<String, List<PluginMetadata<Task>>> tasksByPackage,
+            Map<String, List<PluginMetadata<Trigger>>> triggersByPackage,
             Plugin plugin
     ) {
         Class<? extends Plugin> pluginClass = plugin.getClass()
@@ -143,12 +158,15 @@ public class DefaultPluginRegistry implements PluginRegistry {
             );
         }
         requirePublicNoArgsConstructor(pluginClass);
-        if (!Task.class.isAssignableFrom(pluginClass)) {
+        if (!Task.class.isAssignableFrom(pluginClass) && !Trigger.class.isAssignableFrom(pluginClass)) {
             throw new IllegalStateException(
                     "Unsupported plugin capability: " + pluginClass.getName()
             );
         }
-        requireTaskCapability(pluginClass);
+        if (Task.class.isAssignableFrom(pluginClass)) requireTaskCapability(pluginClass);
+        if (Trigger.class.isAssignableFrom(pluginClass) && !AbstractTrigger.class.isAssignableFrom(pluginClass)) {
+            throw new IllegalStateException("Trigger plugins must extend AbstractTrigger: " + pluginClass.getName());
+        }
 
         String canonicalName = pluginClass.getCanonicalName();
         if (canonicalName == null || canonicalName.isBlank()) {
@@ -171,6 +189,15 @@ public class DefaultPluginRegistry implements PluginRegistry {
             );
         }
 
+        if (Trigger.class.isAssignableFrom(pluginClass)) {
+            PluginMetadata<Trigger> metadata = PluginMetadata.from(pluginClass.asSubclass(Trigger.class),
+                Trigger.class, annotation.title(), annotation.description(),
+                examples(annotation.examples()), List.of(annotation.capabilities()));
+            if (registrations.putIfAbsent(canonicalName, metadata) != null)
+                throw new IllegalStateException("Duplicate plugin type: " + canonicalName);
+            triggersByPackage.computeIfAbsent(packageName, ignored -> new ArrayList<>()).add(metadata);
+            return;
+        }
         Class<? extends Task> taskClass = pluginClass.asSubclass(Task.class);
         PluginMetadata<Task> metadata = PluginMetadata.from(
                 taskClass,

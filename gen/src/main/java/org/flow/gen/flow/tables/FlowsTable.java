@@ -90,6 +90,11 @@ public class FlowsTable extends TableImpl<FlowsRecord> {
     public final TableField<FlowsRecord, String> DESCRIPTION = createField(DSL.name("description"), SQLDataType.CLOB.nullable(false), this, "");
 
     /**
+     * The column <code>public.flows.triggers</code>.
+     */
+    public final TableField<FlowsRecord, JSONB> TRIGGERS = createField(DSL.name("triggers"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
      * The column <code>public.flows.variables</code>.
      */
     public final TableField<FlowsRecord, JSONB> VARIABLES = createField(DSL.name("variables"), SQLDataType.JSONB.nullable(false), this, "");
