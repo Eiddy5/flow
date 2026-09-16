@@ -133,6 +133,14 @@ public class WorkflowUcFixture implements AutoCloseable {
         return executionService;
     }
 
+    /**
+     * 返回真实上下文中的 Core 触发启动入口，供独立技术边界验证使用。
+     * @return 当前上下文管理的发布器；调用方不负责关闭
+     */
+    public org.cses.flow.scheduler.TriggerExecutionPublisher triggerExecutionPublisher() {
+        return context.getBean(org.cses.flow.scheduler.TriggerExecutionPublisher.class);
+    }
+
     public PluginRegistry pluginRegistry() {
         return context.getBean(PluginRegistry.class);
     }

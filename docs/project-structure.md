@@ -124,7 +124,9 @@ outbox 发布与触发事件消费；`src/upstream/java/` 保存固定版本 db-
 `sql/scheduled_tasks.sql` 保存上游表；`UPSTREAM.md` 与 `LICENSE-db-scheduler` 记录来源。
 测试在 `src/test/java/`。依赖 Core，Core 不依赖 Scheduler。
 Core 模块中的 `org.cses.flow.scheduler.events` 只保存共享事件协议，供 Core 发出配置
-变更；具体运行时在 scheduler 模块，Core 不反向引用该模块。
+变更。Core 模块中的 `org.cses.flow.scheduler.TriggerExecutionPublisher` 核验持久化
+命中快照并调用 ExecutionService 发布 Create；定时计划、触发事实保存与 outbox 运行时
+在 scheduler 模块，Core 不反向引用该模块。
 Trigger 契约在 `org.cses.flow.core.domains.triggers`，ScheduleTrigger 插件在
 `org.cses.flow.extensions.triggers`。应用表仍放 `gen/sql/flow/tables/`，见 ADR 0103。
 
@@ -172,6 +174,7 @@ core/src/main/java/org/cses/flow/
 ├── extensions/       # 可插拔的工作流能力扩展
 ├── infrastructure/   # Flow 数据库、Repository 与 DataPilot 适配
 ├── queues/           # 类型化发布接口、消息 key 与队列注解
+├── scheduler/        # 共享触发事件与执行启动发布器，不含定时运行时
 └── worker/           # RunnableTask 调用、Worker 投递与关联结果信封
 
 server/src/main/java/org/cses/flow/

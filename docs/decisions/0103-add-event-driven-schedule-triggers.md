@@ -31,6 +31,15 @@ Accepted：用户已确认 Flow 自有独立 Trigger、AbstractTrigger、首期�
 disabled、inputs；`extensions/triggers/ScheduleTrigger` 增加 cron、timezone。
 共享 SchedulerEvent 协议放在 Core 模块的 `org.cses.flow.scheduler.events`，
 不属于可变领域模型。Entry 调用同级 codec 处理 JSON。
+
+2026-09-16 按用户确认的 Kestra 职责划分收拢启动入口：scheduler 管理定时计划、
+配置同步、命中事实与 outbox 生命周期；Core 模块中的 TriggerExecutionPublisher
+统一核验命中快照、恢复操作者上下文、调用 ExecutionService.create 并记录受理。
+FlowScheduler 仅将命中事件交给该入口，不再直接依赖 ExecutionService 或 SessionFactory。
+发布器不启动定时器，不依赖 scheduler 模块或 db-scheduler；Executor 继续负责实例
+物化与运行推进。保留一个具体发布器，不增加单实现接口。
+调度器在 Micronaut ShutdownEvent 阶段停止并等待回调退出，早于 Bean 资源销毁，
+防止 outbox 在 Pulsar 客户端关闭后仍尝试发布；PreDestroy 保留幂等停止兜底。
 插件目录和 Schema 暴露 triggers，源定义不能指定系统 id，同 key 发布沿用 id。
 Flow.triggers 保存定义；保存草稿不启用调度。本期草稿和正式版本均校验触发器
 结构、Cron 与时区，正式发布时再校验启动输入与 Flow 声明的匹配。
@@ -80,7 +89,8 @@ accepted_at 仅表示 Executor 命令队列已受理，运行结果由 Execution
 5. 命中记录和 TRIGGER_FIRED outbox 以一条 CTE 原子写入，只有首次插入命中记录才
    写事件；随后推进调度游标。若在两步之间崩溃，重试同一坐标并受唯一约束保护。
    不增加事务 DataSource 包装器，也不要求业务事务跨越 Broker。
-6. 命中消费者校验事件与持久化记录，使用固定版本、输入和 executionId 调用现有
+6. scheduler 命中消费者调用 Core 的 TriggerExecutionPublisher；发布器校验事件
+   与持久化记录，使用固定版本、输入和 executionId 调用现有
    ExecutionService.create，再由原 Create → Executor → Worker 链路执行。
    受理后丢失 ACK 时重复 Create 仍沿用同一个实例 ID。
 

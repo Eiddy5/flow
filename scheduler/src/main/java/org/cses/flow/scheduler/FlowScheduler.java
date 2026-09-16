@@ -12,6 +12,7 @@ import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.context.event.StartupEvent;
+import io.micronaut.context.event.ShutdownEvent;
 import io.micronaut.runtime.event.annotation.EventListener;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Named;
@@ -19,8 +20,6 @@ import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.scheduler.events.SchedulerEvent;
 import org.cses.flow.core.repositories.flows.FlowRepository;
-import org.cses.flow.core.services.executions.ExecutionService;
-import org.cses.flow.core.utils.SessionUtil;
 import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.extensions.triggers.ScheduleTrigger;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
@@ -30,7 +29,6 @@ import org.cses.flow.queues.Queue;
 import org.cses.flow.queues.annotations.FlowQueueListener;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
-import org.paas.session.SessionFactory;
 import org.x9.jooq.JOOQ;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +44,7 @@ import java.util.Set;
 import static org.flow.gen.flow.Tables.SCHEDULER_EVENTS;
 import static org.flow.gen.flow.Tables.TRIGGER_RUNS;
 
-/** 持久化定时扫描、事件投递和 Flow 启动之间的应用边界。 */
+/** 管理定时计划、持久化触发事实和事件投递，执行启动交给 Core。 */
 @Context
 @Requires(condition = FlowJooqCondition.class)
 @Requires(property = "flow.scheduler.enabled", notEquals = "false", defaultValue = "true")
@@ -55,8 +53,7 @@ public class FlowScheduler {
     DSLContext dsl;
     FlowRepository flows;
     Queue<SchedulerEvent> queue;
-    ExecutionService executions;
-    SessionFactory sessionFactory;
+    TriggerExecutionPublisher executionPublisher;
     Scheduler scheduler;
     CustomTask<ScheduleData> triggerTask;
 
@@ -71,14 +68,12 @@ public class FlowScheduler {
      *
      * @param queue 内部事件队列
      *
-     * @param executions 现有启动入口
-     *
-     * @param sessionFactory 异步上下文恢复
+     * @param executionPublisher Core 提供的持久化触发启动入口
      *
      * @param pollInterval 调度与 outbox 轮询周期
      */
     public FlowScheduler(@Named("flow") DataSource dataSource, @Named("flow") JOOQ jooq, FlowRepository flows,
-            Queue<SchedulerEvent> queue, ExecutionService executions, SessionFactory sessionFactory,
+            Queue<SchedulerEvent> queue, TriggerExecutionPublisher executionPublisher,
             @Value("${flow.scheduler.poll-interval:1s}") Duration pollInterval) {
         if (pollInterval.isZero() || pollInterval.isNegative())
             throw new IllegalArgumentException("Scheduler poll interval must be positive");
@@ -90,8 +85,7 @@ public class FlowScheduler {
         this.dsl = jooq.createDSLContext();
         this.flows = flows;
         this.queue = queue;
-        this.executions = executions;
-        this.sessionFactory = sessionFactory;
+        this.executionPublisher = executionPublisher;
         triggerTask = Tasks.custom("flow-schedule-trigger", ScheduleData.class)
             .onFailure(new FailureHandler.OnFailureRetryLater<>(pollInterval))
             .execute((instance, context) -> (completion, operations) -> {
@@ -122,7 +116,15 @@ public class FlowScheduler {
     @EventListener
     public void start(StartupEvent event) { scheduler.start(); }
 
-    /** 停止接单并等待本机正在执行的调度回调结束。 */
+    /**
+     * 在容器销毁队列和数据库资源之前停止调度回调。
+     *
+     * @param event 应用关闭事件，不读取或修改其内容
+     */
+    @EventListener
+    public void shutdown(ShutdownEvent event) { stop(); }
+
+    /** 停止接单并等待本机回调结束；重复调用由调度器忽略。 */
     @PreDestroy
     public void stop() { scheduler.stop(); }
 
@@ -136,7 +138,7 @@ public class FlowScheduler {
         if ("FLOW_CHANGED".equals(event.kind())) {
             synchronize(event);
         } else {
-            accept(event);
+            executionPublisher.send(event);
         }
     }
 
@@ -234,25 +236,6 @@ public class FlowScheduler {
                     .where(SCHEDULER_EVENTS.COMPANY_ID.eq(entry.companyId)).and(SCHEDULER_EVENTS.ID.eq(entry.id)).execute();
             }
         }
-    }
-
-    /**
-     * 只使用持久化命中快照启动；ACK 丢失也沿用同一 Execution ID。
-     *
-     * @param event 队列命中事件
-     */
-    @SuppressWarnings("unchecked")
-    void accept(SchedulerEvent event) {
-        TriggerRunEntry run = dsl.selectFrom(TRIGGER_RUNS)
-            .where(TRIGGER_RUNS.COMPANY_ID.eq(event.companyId())).and(TRIGGER_RUNS.ID.eq(event.id()))
-            .fetchOneInto(TriggerRunEntry.class);
-        if (run == null || !run.to().equals(event))
-            throw new IllegalArgumentException("Trigger event does not match its durable occurrence");
-        if (run.acceptedAt != null) return;
-        var session = SessionUtil.restore(sessionFactory, run.companyId, run.actorId);
-        executions.create(session, run.executionId, run.flowKey, Optional.of(run.flowVersion), run.to().inputs());
-        dsl.update(TRIGGER_RUNS).set(TRIGGER_RUNS.ACCEPTED_AT, TimeUtil.now())
-            .where(TRIGGER_RUNS.COMPANY_ID.eq(run.companyId)).and(TRIGGER_RUNS.ID.eq(run.id)).execute();
     }
 
     /**
