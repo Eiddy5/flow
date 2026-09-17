@@ -12,8 +12,7 @@ flow:
     poll-interval: 1s
 ```
 
-应用正常启动后扫描；`enabled: false` 关闭本机调度和触发事件消费者，已保存的
-outbox 仍保留。此开关不是全局暂停，多实例中其他启用节点仍可工作。
+应用正常启动后扫描；`enabled: false` 关闭本机定时扫描和配置订阅；Core 的命中投递、流程终态触发和 Webhook 仍运行。此开关不是全局暂停，多实例中其他启用节点仍可工作。
 
 ## 数据库
 
@@ -53,6 +52,8 @@ tasks:
 未配置 triggers 的 Flow 保留手动启动行为。两个 trigger 设为同一时间会产生两个
 不同编号的 Execution。以公开 Execution 查询确认运行成功，outbox.published_at
 只证明事件投递，trigger_runs.accepted_at 只证明启动命令投递。
+
+其他触发器配置和 HTTP 接入见 [触发器类型手册](trigger-types.md)。
 
 ## 验证
 

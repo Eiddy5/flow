@@ -120,14 +120,16 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 ### `scheduler/`
 
 独立调度模块。`src/main/java/org/cses/flow/scheduler/` 保存自有接线、定时回调、
-outbox 发布与触发事件消费；`src/upstream/java/` 保存固定版本 db-scheduler 源码；
+时间计划注册与取消；`src/upstream/java/` 保存固定版本 db-scheduler 源码；
 `sql/scheduled_tasks.sql` 保存上游表；`UPSTREAM.md` 与 `LICENSE-db-scheduler` 记录来源。
 测试在 `src/test/java/`。依赖 Core，Core 不依赖 Scheduler。
 Core 模块中的 `org.cses.flow.scheduler.events` 只保存共享事件协议，供 Core 发出配置
 变更。Core 模块中的 `org.cses.flow.scheduler.TriggerExecutionPublisher` 核验持久化
-命中快照并调用 ExecutionService 发布 Create；定时计划、触发事实保存与 outbox 运行时
-在 scheduler 模块，Core 不反向引用该模块。
-Trigger 契约在 `org.cses.flow.core.domains.triggers`，ScheduleTrigger 插件在
+命中快照并调用 ExecutionService 发布 Create；Core 同包 TriggerRuntime 负责命中事实、独立 outbox 与上游终态匹配；
+定时计划运行时在 scheduler 模块，Core 不反向引用该模块。
+WebhookTriggerService 位于 `core/services/triggers`，HTTP 入口位于 Server 的
+`controller/triggers`。Trigger 和 ScheduledTrigger 契约在 `org.cses.flow.core.domains.triggers`，
+Cron、指定日期、流程与 Webhook 插件在
 `org.cses.flow.extensions.triggers`。应用表仍放 `gen/sql/flow/tables/`，见 ADR 0103。
 
 ### `server/`

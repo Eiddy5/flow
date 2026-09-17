@@ -179,6 +179,22 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
             org.jooq.CommonTableExpression<?> parent,
             List<org.jooq.CommonTableExpression<?>> statements) {
         statements.add(parent);
+        if (execution.isTerminal()) {
+            var event = org.cses.flow.scheduler.events.SchedulerEvent.from("FLOW_TERMINATED",
+                execution.companyId(), execution.id(), execution.flowKey(), execution.flowVersion(),
+                null, null, execution.id(), execution.creator().id(),
+                Map.of("state", execution.state().current().name()));
+            var outbox = org.cses.flow.infrastructure.repositories.triggers.entries.SchedulerEventEntry.from(
+                event, org.cses.flow.core.utils.TimeUtil.now());
+            var events = org.flow.gen.flow.Tables.SCHEDULER_EVENTS;
+            statements.add(name(parent.getName() + "_terminal_event").as(dsl.insertInto(events)
+                .columns(events.COMPANY_ID, events.ID, events.KIND, events.PAYLOAD,
+                    events.CREATED_AT, events.RETRY_AT, events.ATTEMPTS)
+                .select(select(val(outbox.companyId), val(outbox.id), val(outbox.kind), val(outbox.payload),
+                    val(outbox.createdAt), val(outbox.retryAt), val(0)).from(parent))
+                .onConflictDoNothing().returning(events.ID)));
+        }
+
         List<TaskRun> runs = execution.ownTaskRuns();
         List<String> ids = runs.stream().map(TaskRun::id).toList();
         statements.add(name(parent.getName() + "_removed_runs").as(dsl.deleteFrom(TASK_RUNS)

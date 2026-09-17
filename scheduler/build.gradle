@@ -33,6 +33,8 @@ sourceSets.test.java {
     include('org/cses/flow/infrastructure/queues/pulsar/PulsarTestEnvironment.java')
     include('org/cses/flow/infrastructure/websocket/NoopWebsocketRepository.java')
     include('org/cses/flow/core/services/executions/Uc14ScheduleTriggerTest.java')
+    include('org/cses/flow/core/services/executions/Uc15FlowTriggerTest.java')
+    include('org/cses/flow/core/services/executions/Uc17ScheduleOnDatesTriggerTest.java')
     include('org/cses/flow/scheduler/**')
 }
 dependencies {

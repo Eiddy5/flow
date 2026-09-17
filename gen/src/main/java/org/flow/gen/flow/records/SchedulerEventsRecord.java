@@ -104,45 +104,59 @@ public class SchedulerEventsRecord extends UpdatableRecordImpl<SchedulerEventsRe
     }
 
     /**
+     * Setter for <code>public.scheduler_events.processed_at</code>.
+     */
+    public void setProcessedAt(Long value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.scheduler_events.processed_at</code>.
+     */
+    public Long getProcessedAt() {
+        return (Long) get(6);
+    }
+
+    /**
      * Setter for <code>public.scheduler_events.retry_at</code>.
      */
     public void setRetryAt(Long value) {
-        set(6, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.scheduler_events.retry_at</code>.
      */
     public Long getRetryAt() {
-        return (Long) get(6);
+        return (Long) get(7);
     }
 
     /**
      * Setter for <code>public.scheduler_events.attempts</code>.
      */
     public void setAttempts(Integer value) {
-        set(7, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.scheduler_events.attempts</code>.
      */
     public Integer getAttempts() {
-        return (Integer) get(7);
+        return (Integer) get(8);
     }
 
     /**
      * Setter for <code>public.scheduler_events.last_error</code>.
      */
     public void setLastError(String value) {
-        set(8, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.scheduler_events.last_error</code>.
      */
     public String getLastError() {
-        return (String) get(8);
+        return (String) get(9);
     }
 
     // -------------------------------------------------------------------------
@@ -168,7 +182,7 @@ public class SchedulerEventsRecord extends UpdatableRecordImpl<SchedulerEventsRe
     /**
      * Create a detached, initialised SchedulerEventsRecord
      */
-    public SchedulerEventsRecord(String companyId, String id, String kind, JSONB payload, Long createdAt, Long publishedAt, Long retryAt, Integer attempts, String lastError) {
+    public SchedulerEventsRecord(String companyId, String id, String kind, JSONB payload, Long createdAt, Long publishedAt, Long processedAt, Long retryAt, Integer attempts, String lastError) {
         super(SchedulerEventsTable.SCHEDULER_EVENTS);
 
         setCompanyId(companyId);
@@ -177,6 +191,7 @@ public class SchedulerEventsRecord extends UpdatableRecordImpl<SchedulerEventsRe
         setPayload(payload);
         setCreatedAt(createdAt);
         setPublishedAt(publishedAt);
+        setProcessedAt(processedAt);
         setRetryAt(retryAt);
         setAttempts(attempts);
         setLastError(lastError);
@@ -197,6 +212,7 @@ public class SchedulerEventsRecord extends UpdatableRecordImpl<SchedulerEventsRe
             setPayload(value.payload);
             setCreatedAt(value.createdAt);
             setPublishedAt(value.publishedAt);
+            setProcessedAt(value.processedAt);
             setRetryAt(value.retryAt);
             setAttempts(value.attempts);
             setLastError(value.lastError);
@@ -211,6 +227,7 @@ public class SchedulerEventsRecord extends UpdatableRecordImpl<SchedulerEventsRe
         object.payload = getPayload();
         object.createdAt = getCreatedAt();
         object.publishedAt = getPublishedAt();
+        object.processedAt = getProcessedAt();
         object.retryAt = getRetryAt();
         object.attempts = getAttempts();
         object.lastError = getLastError();
@@ -230,6 +247,7 @@ public class SchedulerEventsRecord extends UpdatableRecordImpl<SchedulerEventsRe
         pojo.payload = getPayload();
         pojo.createdAt = getCreatedAt();
         pojo.publishedAt = getPublishedAt();
+        pojo.processedAt = getProcessedAt();
         pojo.retryAt = getRetryAt();
         pojo.attempts = getAttempts();
         pojo.lastError = getLastError();

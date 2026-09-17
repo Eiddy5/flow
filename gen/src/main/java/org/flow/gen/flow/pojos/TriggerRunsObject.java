@@ -30,6 +30,7 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
     public Long flowVersion;
     public String triggerKey;
     public Long scheduledAt;
+    public String sourceKey;
     public String executionId;
     public String actorId;
     public JSONB inputs;
@@ -44,6 +45,7 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
         this.flowVersion = value.flowVersion;
         this.triggerKey = value.triggerKey;
         this.scheduledAt = value.scheduledAt;
+        this.sourceKey = value.sourceKey;
         this.executionId = value.executionId;
         this.actorId = value.actorId;
         this.inputs = value.inputs;
@@ -57,6 +59,7 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
         Long flowVersion,
         String triggerKey,
         Long scheduledAt,
+        String sourceKey,
         String executionId,
         String actorId,
         JSONB inputs,
@@ -68,6 +71,7 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
         this.flowVersion = flowVersion;
         this.triggerKey = triggerKey;
         this.scheduledAt = scheduledAt;
+        this.sourceKey = sourceKey;
         this.executionId = executionId;
         this.actorId = actorId;
         this.inputs = inputs;
@@ -156,6 +160,20 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
      */
     public void setScheduledAt(Long scheduledAt) {
         this.scheduledAt = scheduledAt;
+    }
+
+    /**
+     * Getter for <code>public.trigger_runs.source_key</code>.
+     */
+    public String getSourceKey() {
+        return this.sourceKey;
+    }
+
+    /**
+     * Setter for <code>public.trigger_runs.source_key</code>.
+     */
+    public void setSourceKey(String sourceKey) {
+        this.sourceKey = sourceKey;
     }
 
     /**
@@ -259,6 +277,12 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
         }
         else if (!this.scheduledAt.equals(other.scheduledAt))
             return false;
+        if (this.sourceKey == null) {
+            if (other.sourceKey != null)
+                return false;
+        }
+        else if (!this.sourceKey.equals(other.sourceKey))
+            return false;
         if (this.executionId == null) {
             if (other.executionId != null)
                 return false;
@@ -296,6 +320,7 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.flowVersion == null) ? 0 : this.flowVersion.hashCode());
         result = prime * result + ((this.triggerKey == null) ? 0 : this.triggerKey.hashCode());
         result = prime * result + ((this.scheduledAt == null) ? 0 : this.scheduledAt.hashCode());
+        result = prime * result + ((this.sourceKey == null) ? 0 : this.sourceKey.hashCode());
         result = prime * result + ((this.executionId == null) ? 0 : this.executionId.hashCode());
         result = prime * result + ((this.actorId == null) ? 0 : this.actorId.hashCode());
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
@@ -330,6 +355,7 @@ public class TriggerRunsObject extends JooqPojo implements Serializable {
         map.put("flow_version", flowVersion);
         map.put("trigger_key", triggerKey);
         map.put("scheduled_at", scheduledAt);
+        map.put("source_key", sourceKey);
         map.put("execution_id", executionId);
         map.put("actor_id", actorId);
         map.put("inputs", inputs);

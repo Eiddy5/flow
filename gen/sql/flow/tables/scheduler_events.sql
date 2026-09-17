@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS scheduler_events (
     payload jsonb NOT NULL,
     created_at bigint NOT NULL,
     published_at bigint,
+    processed_at bigint,
     retry_at bigint NOT NULL,
     attempts integer NOT NULL,
     last_error text,

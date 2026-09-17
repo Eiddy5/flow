@@ -158,6 +158,7 @@ public class TaskPluginTestSupport {
                 flow.inputs(),
                 flow.outputs(),
                 flow.tasks(),
+                flow.triggers(),
                 flow.status(),
                 flow.creator(),
                 flow.updater(),

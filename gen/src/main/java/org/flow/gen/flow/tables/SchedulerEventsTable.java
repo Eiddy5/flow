@@ -85,6 +85,11 @@ public class SchedulerEventsTable extends TableImpl<SchedulerEventsRecord> {
     public final TableField<SchedulerEventsRecord, Long> PUBLISHED_AT = createField(DSL.name("published_at"), SQLDataType.BIGINT, this, "");
 
     /**
+     * The column <code>public.scheduler_events.processed_at</code>.
+     */
+    public final TableField<SchedulerEventsRecord, Long> PROCESSED_AT = createField(DSL.name("processed_at"), SQLDataType.BIGINT, this, "");
+
+    /**
      * The column <code>public.scheduler_events.retry_at</code>.
      */
     public final TableField<SchedulerEventsRecord, Long> RETRY_AT = createField(DSL.name("retry_at"), SQLDataType.BIGINT.nullable(false), this, "");

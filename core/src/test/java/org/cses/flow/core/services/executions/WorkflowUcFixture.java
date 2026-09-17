@@ -125,6 +125,14 @@ public class WorkflowUcFixture implements AutoCloseable {
         );
     }
 
+    /**
+     * 返回当前真实应用上下文中的组件，供 HTTP 和触发器边界测试调用。
+     * @param type 需要获取的生产或明确测试组件类型，不能为 null
+     * @param <T> 组件类型
+     * @return 由当前上下文管理的组件，调用方不单独销毁
+     */
+    public <T> T bean(Class<T> type) { return context.getBean(type); }
+
     public FlowService flowService() {
         return flowService;
     }
@@ -158,10 +166,14 @@ public class WorkflowUcFixture implements AutoCloseable {
         startServer();
     }
 
+    /**
+     * 使用具名 Flow 数据源查询本测试租户的运行实例数量。
+     * @return 当前已经持久化的实例总数
+     */
     public long executionCount() {
         ExecutionRepository repository =
             context.getBean(ExecutionRepository.class);
-        JOOQ jooq = context.getBean(JOOQ.class);
+        JOOQ jooq = context.getBean(JOOQ.class, Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME));
         return jooq.get(dsl -> repository.count(
             dsl,
             session.getCompanyId()
@@ -581,9 +593,11 @@ public class WorkflowUcFixture implements AutoCloseable {
         }
     }
 
+    /** 使用本夹具的真实组件和显式环境参数启动应用，HTTP专项避免依赖Jar默认配置冲突。 */
     private void startServer() {
         var builder = ApplicationContext.builder()
             .properties(properties);
+        if (Boolean.TRUE.equals(properties.get("flow.webhook.http-test"))) builder.enableDefaultPropertySources(false);
         if (singletons.length > 0) {
             builder.singletons(singletons);
         }

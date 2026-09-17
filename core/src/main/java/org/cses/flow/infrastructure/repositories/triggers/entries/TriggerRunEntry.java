@@ -16,13 +16,14 @@ public class TriggerRunEntry extends TriggerRunsObject {
         entry.companyId = event.companyId(); entry.id = event.id();
         entry.flowKey = event.flowKey(); entry.flowVersion = event.flowVersion();
         entry.triggerKey = event.triggerKey(); entry.scheduledAt = event.scheduledAt();
+        entry.sourceKey = event.sourceKey();
         entry.executionId = event.executionId(); entry.actorId = event.actorId();
         entry.inputs = SchedulerEventJsonCodec.encodeInputs(event.inputs());
         return entry;
     }
     /** @return 与持久化事实一致的命中事件 */
     public SchedulerEvent to() {
-        return SchedulerEvent.from("TRIGGER_FIRED", companyId, id, flowKey, flowVersion,
-            triggerKey, scheduledAt, executionId, actorId, SchedulerEventJsonCodec.decodeInputs(inputs));
+        return SchedulerEvent.occurrence(companyId, id, flowKey, flowVersion,
+            triggerKey, scheduledAt, executionId, actorId, SchedulerEventJsonCodec.decodeInputs(inputs), sourceKey);
     }
 }

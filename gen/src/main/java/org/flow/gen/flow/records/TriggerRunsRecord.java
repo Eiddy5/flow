@@ -104,59 +104,73 @@ public class TriggerRunsRecord extends UpdatableRecordImpl<TriggerRunsRecord> {
     }
 
     /**
+     * Setter for <code>public.trigger_runs.source_key</code>.
+     */
+    public void setSourceKey(String value) {
+        set(6, value);
+    }
+
+    /**
+     * Getter for <code>public.trigger_runs.source_key</code>.
+     */
+    public String getSourceKey() {
+        return (String) get(6);
+    }
+
+    /**
      * Setter for <code>public.trigger_runs.execution_id</code>.
      */
     public void setExecutionId(String value) {
-        set(6, value);
+        set(7, value);
     }
 
     /**
      * Getter for <code>public.trigger_runs.execution_id</code>.
      */
     public String getExecutionId() {
-        return (String) get(6);
+        return (String) get(7);
     }
 
     /**
      * Setter for <code>public.trigger_runs.actor_id</code>.
      */
     public void setActorId(String value) {
-        set(7, value);
+        set(8, value);
     }
 
     /**
      * Getter for <code>public.trigger_runs.actor_id</code>.
      */
     public String getActorId() {
-        return (String) get(7);
+        return (String) get(8);
     }
 
     /**
      * Setter for <code>public.trigger_runs.inputs</code>.
      */
     public void setInputs(JSONB value) {
-        set(8, value);
+        set(9, value);
     }
 
     /**
      * Getter for <code>public.trigger_runs.inputs</code>.
      */
     public JSONB getInputs() {
-        return (JSONB) get(8);
+        return (JSONB) get(9);
     }
 
     /**
      * Setter for <code>public.trigger_runs.accepted_at</code>.
      */
     public void setAcceptedAt(Long value) {
-        set(9, value);
+        set(10, value);
     }
 
     /**
      * Getter for <code>public.trigger_runs.accepted_at</code>.
      */
     public Long getAcceptedAt() {
-        return (Long) get(9);
+        return (Long) get(10);
     }
 
     // -------------------------------------------------------------------------
@@ -182,7 +196,7 @@ public class TriggerRunsRecord extends UpdatableRecordImpl<TriggerRunsRecord> {
     /**
      * Create a detached, initialised TriggerRunsRecord
      */
-    public TriggerRunsRecord(String companyId, String id, String flowKey, Long flowVersion, String triggerKey, Long scheduledAt, String executionId, String actorId, JSONB inputs, Long acceptedAt) {
+    public TriggerRunsRecord(String companyId, String id, String flowKey, Long flowVersion, String triggerKey, Long scheduledAt, String sourceKey, String executionId, String actorId, JSONB inputs, Long acceptedAt) {
         super(TriggerRunsTable.TRIGGER_RUNS);
 
         setCompanyId(companyId);
@@ -191,6 +205,7 @@ public class TriggerRunsRecord extends UpdatableRecordImpl<TriggerRunsRecord> {
         setFlowVersion(flowVersion);
         setTriggerKey(triggerKey);
         setScheduledAt(scheduledAt);
+        setSourceKey(sourceKey);
         setExecutionId(executionId);
         setActorId(actorId);
         setInputs(inputs);
@@ -212,6 +227,7 @@ public class TriggerRunsRecord extends UpdatableRecordImpl<TriggerRunsRecord> {
             setFlowVersion(value.flowVersion);
             setTriggerKey(value.triggerKey);
             setScheduledAt(value.scheduledAt);
+            setSourceKey(value.sourceKey);
             setExecutionId(value.executionId);
             setActorId(value.actorId);
             setInputs(value.inputs);
@@ -227,6 +243,7 @@ public class TriggerRunsRecord extends UpdatableRecordImpl<TriggerRunsRecord> {
         object.flowVersion = getFlowVersion();
         object.triggerKey = getTriggerKey();
         object.scheduledAt = getScheduledAt();
+        object.sourceKey = getSourceKey();
         object.executionId = getExecutionId();
         object.actorId = getActorId();
         object.inputs = getInputs();
@@ -247,6 +264,7 @@ public class TriggerRunsRecord extends UpdatableRecordImpl<TriggerRunsRecord> {
         pojo.flowVersion = getFlowVersion();
         pojo.triggerKey = getTriggerKey();
         pojo.scheduledAt = getScheduledAt();
+        pojo.sourceKey = getSourceKey();
         pojo.executionId = getExecutionId();
         pojo.actorId = getActorId();
         pojo.inputs = getInputs();

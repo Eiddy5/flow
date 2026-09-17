@@ -91,3 +91,23 @@ tasks.withType(Test).configureEach {
         showStandardStreams = true
     }
 }
+
+// HTTP UC 共用现有真实 PostgreSQL/Pulsar 服务夹具，不引入 Core 测试类。
+sourceSets.test.java {
+    srcDir('../core/src/test/java')
+    include('org/cses/flow/controller/**')
+    include('org/cses/flow/ServerModuleArchitectureTest.java')
+    include('org/cses/flow/core/services/executions/WorkflowUcFixture.java')
+    include('org/cses/flow/infrastructure/jooq/PostgresJooqTestAdapter.java')
+    include('org/cses/flow/infrastructure/jooq/FlowJooqTestConfiguration.java')
+    include('org/cses/flow/infrastructure/queues/pulsar/PulsarTestEnvironment.java')
+    include('org/cses/flow/infrastructure/websocket/NoopWebsocketRepository.java')
+}
+dependencies {
+    testImplementation(libs.paas.pulsar)
+    testImplementation(libs.org.x9.cloud.datapilot)
+}
+// Webhook HTTP 验收不装配宿主 Temporal/Redis 调度，沿用 Core 的测试环境边界。
+configurations.matching { it.name.startsWith('test') }.configureEach {
+    exclude group: 'org.paas', module: 'paas-temporal'
+}

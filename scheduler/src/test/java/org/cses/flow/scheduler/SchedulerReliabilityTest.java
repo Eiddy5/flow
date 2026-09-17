@@ -150,7 +150,7 @@ class SchedulerReliabilityTest {
     }
 
     /**
-     * 等待真实 Broker 确认调度事件订阅无积压且无未确认消息。
+     * 等待真实 Broker 确认配置与触发分发两个订阅均无积压和未确认消息。
      * @throws Exception Broker 查询失败、中断或超过等待上限时抛出
      */
     private static void awaitAcknowledged() throws Exception {
@@ -158,8 +158,10 @@ class SchedulerReliabilityTest {
         try (var admin = PulsarTestEnvironment.admin()) {
             do {
                 var stats = admin.topics().getStats("persistent://public/default/" + SchedulerEvent.QUEUE_NAME);
-                var subscription = stats.getSubscriptions().get(SchedulerEvent.QUEUE_NAME);
-                if (subscription != null && subscription.getMsgBacklog() == 0 && subscription.getUnackedMessages() == 0) return;
+                if (java.util.List.of("flow-schedule-config", "flow-trigger-dispatch").stream().allMatch(name -> {
+                    var subscription = stats.getSubscriptions().get(name);
+                    return subscription != null && subscription.getMsgBacklog() == 0 && subscription.getUnackedMessages() == 0;
+                })) return;
                 new CountDownLatch(1).await(25, TimeUnit.MILLISECONDS);
             } while (TimeUtil.now() < deadline);
         }

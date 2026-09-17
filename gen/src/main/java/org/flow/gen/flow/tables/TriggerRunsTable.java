@@ -80,7 +80,12 @@ public class TriggerRunsTable extends TableImpl<TriggerRunsRecord> {
     /**
      * The column <code>public.trigger_runs.scheduled_at</code>.
      */
-    public final TableField<TriggerRunsRecord, Long> SCHEDULED_AT = createField(DSL.name("scheduled_at"), SQLDataType.BIGINT.nullable(false), this, "");
+    public final TableField<TriggerRunsRecord, Long> SCHEDULED_AT = createField(DSL.name("scheduled_at"), SQLDataType.BIGINT, this, "");
+
+    /**
+     * The column <code>public.trigger_runs.source_key</code>.
+     */
+    public final TableField<TriggerRunsRecord, String> SOURCE_KEY = createField(DSL.name("source_key"), SQLDataType.VARCHAR(256).nullable(false), this, "");
 
     /**
      * The column <code>public.trigger_runs.execution_id</code>.

@@ -29,8 +29,37 @@ class TriggerDefinitionTest {
     /** 初始化真实插件注册和 YAML/JSON 绑定链路。 */
     @BeforeEach
     void initialize() {
-        registry = new DefaultPluginRegistry(List.of(new Log(), new ScheduleTrigger()));
+        registry = new DefaultPluginRegistry(List.of(new Log(), new ScheduleTrigger(), new org.cses.flow.extensions.triggers.FlowTrigger(),
+            new org.cses.flow.extensions.triggers.WebhookTrigger(), new org.cses.flow.extensions.triggers.ScheduleOnDatesTrigger()));
         mapper = new JacksonMapper(new PluginModule(registry));
+    }
+
+    /** 指定日期采用排他下界、排序去重校验和耗尽空值，拒绝无效列表。 */
+    @Test
+    void validatesExplicitDatesAndExhaustion() {
+        var builder = org.cses.flow.extensions.triggers.ScheduleOnDatesTrigger.builder()
+            .id(StringUtil.newId()).key("dates");
+        var trigger = builder.dates(List.of(300L, 100L, 200L)).build();
+        assertDoesNotThrow(trigger::validate);
+        assertEquals(200L, trigger.nextAt(100));
+        assertNull(trigger.nextAt(300));
+        assertEquals("[100, 200, 300]", trigger.scheduleKey());
+        assertThrows(IllegalArgumentException.class, () -> builder.dates(List.of()).build().validate());
+        assertThrows(IllegalArgumentException.class, () -> builder.dates(List.of(100L, 100L)).build().validate());
+        assertThrows(IllegalArgumentException.class, () -> builder.dates(List.of(-1L)).build().validate());
+    }
+
+    /** 上游默认监听成功，拒绝非终态和空状态配置。 */
+    @Test
+    void validatesUpstreamTerminalStates() {
+        var builder = org.cses.flow.extensions.triggers.FlowTrigger.builder()
+            .id(StringUtil.newId()).key("upstream").flowKey("source");
+        assertEquals(List.of(org.cses.flow.core.domains.flows.State.Type.SUCCESS), builder.build().states());
+        assertThrows(IllegalArgumentException.class, () -> builder.states(List.of()).build().validate());
+        assertThrows(IllegalArgumentException.class, () -> builder.states(
+            List.of(org.cses.flow.core.domains.flows.State.Type.RUNNING)).build().validate());
+        assertDoesNotThrow(() -> builder.states(List.of(org.cses.flow.core.domains.flows.State.Type.FAILED,
+            org.cses.flow.core.domains.flows.State.Type.KILLED)).build().validate());
     }
 
     /** YAML 首次生成两个不同身份，JSON 往返沿用身份与时间配置。 */

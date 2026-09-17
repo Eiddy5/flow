@@ -19,4 +19,6 @@ public interface Trigger extends Plugin {
     Map<String, Object> inputs();
     /** 校验公共配置与具体类型的条件，非法时抛出 IllegalArgumentException。 */
     void validate();
+    /** @return 是否由外部请求补齐运行输入；默认仅使用静态输入 */
+    default boolean acceptsRuntimeInputs() { return false; }
 }

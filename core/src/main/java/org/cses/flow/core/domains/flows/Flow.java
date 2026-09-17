@@ -373,7 +373,7 @@ public class Flow extends AbstractFlow {
                 outputs
         );
         triggers = immutableTriggers(triggers);
-        if (!draft) triggers.forEach(trigger -> bindInputs(trigger.inputs()));
+        if (!draft) triggers.forEach(this::validateTriggerInputs);
         rebindTriggerIds(latest, triggers);
         tasks = boundTasks;
         source = RequiredUtil.required(rawSource, "Flow source");
@@ -578,6 +578,18 @@ public class Flow extends AbstractFlow {
 
     public List<Task> allTasks() {
         return flatten(tasks);
+    }
+
+    /**
+     * 校验静态触发输入；外部请求型触发器允许运行时补齐必填项。
+     * @param trigger 已完成结构校验的触发定义
+     */
+    private void validateTriggerInputs(Trigger trigger) {
+        if (!trigger.acceptsRuntimeInputs()) { bindInputs(trigger.inputs()); return; }
+        var supplied = trigger.inputs();
+        var declared = inputs().stream().map(Input::getKey).collect(Collectors.toSet());
+        if (!declared.containsAll(supplied.keySet())) throw new WorkflowException("Trigger inputs were not declared");
+        inputs().stream().filter(input -> supplied.containsKey(input.getKey())).forEach(input -> input.bind(supplied));
     }
 
     /**

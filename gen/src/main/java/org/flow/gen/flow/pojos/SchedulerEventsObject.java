@@ -30,6 +30,7 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
     public JSONB payload;
     public Long createdAt;
     public Long publishedAt;
+    public Long processedAt;
     public Long retryAt;
     public Integer attempts;
     public String lastError;
@@ -43,6 +44,7 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
         this.payload = value.payload;
         this.createdAt = value.createdAt;
         this.publishedAt = value.publishedAt;
+        this.processedAt = value.processedAt;
         this.retryAt = value.retryAt;
         this.attempts = value.attempts;
         this.lastError = value.lastError;
@@ -55,6 +57,7 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
         JSONB payload,
         Long createdAt,
         Long publishedAt,
+        Long processedAt,
         Long retryAt,
         Integer attempts,
         String lastError
@@ -65,6 +68,7 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
         this.payload = payload;
         this.createdAt = createdAt;
         this.publishedAt = publishedAt;
+        this.processedAt = processedAt;
         this.retryAt = retryAt;
         this.attempts = attempts;
         this.lastError = lastError;
@@ -155,6 +159,20 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
     }
 
     /**
+     * Getter for <code>public.scheduler_events.processed_at</code>.
+     */
+    public Long getProcessedAt() {
+        return this.processedAt;
+    }
+
+    /**
+     * Setter for <code>public.scheduler_events.processed_at</code>.
+     */
+    public void setProcessedAt(Long processedAt) {
+        this.processedAt = processedAt;
+    }
+
+    /**
      * Getter for <code>public.scheduler_events.retry_at</code>.
      */
     public Long getRetryAt() {
@@ -241,6 +259,12 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
         }
         else if (!this.publishedAt.equals(other.publishedAt))
             return false;
+        if (this.processedAt == null) {
+            if (other.processedAt != null)
+                return false;
+        }
+        else if (!this.processedAt.equals(other.processedAt))
+            return false;
         if (this.retryAt == null) {
             if (other.retryAt != null)
                 return false;
@@ -272,6 +296,7 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.payload == null) ? 0 : this.payload.hashCode());
         result = prime * result + ((this.createdAt == null) ? 0 : this.createdAt.hashCode());
         result = prime * result + ((this.publishedAt == null) ? 0 : this.publishedAt.hashCode());
+        result = prime * result + ((this.processedAt == null) ? 0 : this.processedAt.hashCode());
         result = prime * result + ((this.retryAt == null) ? 0 : this.retryAt.hashCode());
         result = prime * result + ((this.attempts == null) ? 0 : this.attempts.hashCode());
         result = prime * result + ((this.lastError == null) ? 0 : this.lastError.hashCode());
@@ -305,6 +330,7 @@ public class SchedulerEventsObject extends JooqPojo implements Serializable {
         map.put("payload", payload);
         map.put("created_at", createdAt);
         map.put("published_at", publishedAt);
+        map.put("processed_at", processedAt);
         map.put("retry_at", retryAt);
         map.put("attempts", attempts);
         map.put("last_error", lastError);
