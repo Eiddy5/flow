@@ -71,12 +71,17 @@ class PulsarQueueTest {
         assertTrue(transport.consumers.stream().allMatch(consumer -> consumer.closed));
     }
 
-    /** Verifies one registration per group, configured concurrency, and ACK only after callback completion. */
+    /** 验证启动前未就绪、订阅全部建立后就绪、每组仅注册一次且回调结束才ACK。
+     * @throws Exception 回调等待或Broker替身操作失败
+     */
     @Test
     void acknowledgesOnlyAfterCallbackAndStartsEachGroupOnce() throws Exception {
         Transport transport = new Transport();
         try (ApplicationContext context = open("valid", transport)) {
             Handler handler = context.getBean(Handler.class);
+            assertEquals(Boolean.FALSE, context.getBean(ReadinessProbe.class).before);
+            assertTrue(context.getBean(PulsarQueueListeners.class).isReady("first-topic", "work"));
+            assertFalse(context.getBean(PulsarQueueListeners.class).isReady("first-topic", "missing"));
             assertEquals(4, transport.consumers.size());
             assertEquals(2, transport.consumers.stream().filter(value -> value.topic.equals("first-topic") && value.subscription.equals("work")).count());
             assertTrue(transport.consumers.stream().allMatch(value -> value.subscriptionType == SubscriptionType.Shared));
@@ -194,6 +199,23 @@ class PulsarQueueTest {
             assertNotNull(context.getBean(PulsarQueueListeners.class));
             assertTrue(transport.consumers.isEmpty());
             assertTrue(transport.sends.isEmpty());
+        }
+    }
+
+    /** 在生产监听启动回调之前观察真实注册表就绪状态。 */
+    @Singleton
+    @Requires(property = "flow.queue.test.case", value = "valid")
+    public static class ReadinessProbe {
+        @Inject PulsarQueueListeners listeners;
+        Boolean before;
+
+        /**
+         * @param event 真实上下文启动事件
+         */
+        @io.micronaut.runtime.event.annotation.EventListener
+        @io.micronaut.core.annotation.Order(-1000)
+        public void beforeListenersStart(StartupEvent event) {
+            before = listeners.isReady("first-topic", "work");
         }
     }
 

@@ -379,9 +379,9 @@ public class ExecutionCommandEventHandler implements
                 command.getTargetTaskRunId()
         );
         if (execution.activeTaskRuns().stream().anyMatch(run ->
-                run.state().is(State.Type.RUNNING)
+                (run.state().is(State.Type.RUNNING) || run.nextRetryAt() != null)
                         && flow.findTask(run.taskId()).orElseThrow() instanceof RunnableTask)) {
-            throw new WorkflowException("Replay waits for in-flight Worker results before taking its snapshot");
+            throw new WorkflowException("Replay waits for in-flight Worker results and pending retries before taking its snapshot");
         }
         Execution replayed = execution.replay(
                 command.getReplayExecutionId(),

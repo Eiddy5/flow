@@ -16,14 +16,26 @@ import java.util.Objects;
 public record WorkerTaskResult(
     String executionId,
     String taskRunId,
+    int attemptNumber,
     State.Type targetState,
     Map<String, Object> outputs,
     String error
 ) {
 
+    /**
+     * 创建关联到精确尝试的 Worker 结果。
+     * @param executionId 所属实例身份
+     * @param taskRunId 所属任务运行身份
+     * @param attemptNumber 从 1 开始的实际调用编号
+     * @param targetState Worker 终态
+     * @param outputs 可空业务结果，会复制
+     * @param error 仅失败时必填
+     * @return 不可变结果信封
+     */
     public static WorkerTaskResult from(
         String executionId,
         String taskRunId,
+        int attemptNumber,
         State.Type targetState,
         Map<String, ?> outputs,
         String error
@@ -31,13 +43,25 @@ public record WorkerTaskResult(
         return new WorkerTaskResult(
             executionId,
             taskRunId,
+            attemptNumber,
             targetState,
             copyOutputs(outputs),
             error
         );
     }
 
+    /**
+     * 校验实际调用编号和结果状态。
+     * @param executionId 实例身份
+     * @param taskRunId 节点身份
+     * @param attemptNumber 正数调用编号
+     * @param targetState 成功、警告、失败或取消
+     * @param outputs 可空结果，将复制
+     * @param error 仅失败时必填
+     * @throws IllegalArgumentException 编号或结果不合法时抛出
+     */
     public WorkerTaskResult {
+        if (attemptNumber < 1) throw new IllegalArgumentException("Attempt number must be positive");
         targetState = Objects.requireNonNull(
             targetState,
             "targetState"
@@ -129,6 +153,14 @@ public record WorkerTaskResult(
         );
     }
 
+    /**
+     * 沿用调用信封的身份和编号创建结果。
+     * @param task 实际调用信封，只读
+     * @param targetState Worker 终态
+     * @param outputs 可空业务结果，将复制
+     * @param error 仅失败时必填
+     * @return 关联原调用的结果
+     */
     private static WorkerTaskResult result(
         WorkerTask task,
         State.Type targetState,
@@ -142,6 +174,7 @@ public record WorkerTaskResult(
         return from(
             task.executionId(),
             task.taskRunId(),
+            task.attemptNumber(),
             targetState,
             copied,
             error

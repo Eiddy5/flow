@@ -10,6 +10,7 @@ BEGIN;
 \ir tables/flow_tasks.sql
 \ir tables/executions.sql
 \ir tables/task_runs.sql
+\ir tables/task_retry_messages.sql
 
 \ir tables/scheduler_events.sql
 \ir tables/trigger_runs.sql

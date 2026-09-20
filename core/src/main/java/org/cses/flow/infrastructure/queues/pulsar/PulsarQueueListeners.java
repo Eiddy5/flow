@@ -36,6 +36,7 @@ public class PulsarQueueListeners implements ExecutableMethodProcessor<FlowQueue
     private BeanProvider<PulsarFactory> paas;
     private Map<String, Map<String, Registration<?>>> registrations = new LinkedHashMap<>();
     private boolean started;
+    private boolean ready;
 
     /**
      * Retains context metadata and lazy PAAS access without connecting to a broker.
@@ -104,6 +105,17 @@ public class PulsarQueueListeners implements ExecutableMethodProcessor<FlowQueue
                 registration.listen();
             }
         }
+        ready = true;
+    }
+
+    /**
+     * 确认首次订阅已注册，避免在默认 Latest 游标创建前发布持久化消息。
+     * @param topic 逻辑 Topic
+     * @param subscription 逻辑订阅
+     * @return 全部监听完成注册且目标订阅存在时为 true
+     */
+    public synchronized boolean isReady(String topic, String subscription) {
+        return ready && registrations.containsKey(topic) && registrations.get(topic).containsKey(subscription);
     }
 
     /**

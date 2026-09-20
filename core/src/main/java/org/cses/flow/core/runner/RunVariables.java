@@ -76,6 +76,7 @@ public class RunVariables {
         ImmutableMap.Builder<String, Object> builder =
                 ImmutableMap.builder();
         builder.put("id", taskRun.id())
+            .put("attemptNumber", taskRun.attemptNumber())
                 .put("state", taskRun.state().current().name())
                 .put("inputs", taskRun.inputs())
                 .put("outputs", taskRun.outputs());

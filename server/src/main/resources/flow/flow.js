@@ -21,6 +21,7 @@
     const STATE_LABELS = {
         CREATED: "已创建",
         RUNNING: "运行中",
+        RETRY_WAIT: "等待重试",
         PAUSED: "已暂停",
         RESTARTED: "恢复中",
         SUCCESS: "已成功",
@@ -885,7 +886,7 @@
             !routeMissed
             && (
                 replaying
-                || ["CREATED", "RUNNING", "PAUSED"].includes(run?.state)
+                || ["CREATED", "RUNNING", "RETRY_WAIT", "PAUSED"].includes(run?.state)
             );
         const completed =
             !routeMissed
@@ -1100,7 +1101,14 @@
         const key = deployedTaskKey(run.taskId) || run.taskId;
         const inherited = execution.inheritedTaskRunIds.includes(run.id);
         const effective = execution.effectiveTaskRunIds.includes(run.id);
-        const detail = run.error
+        const attemptDetail = (run.attempts || []).map((attempt) =>
+            `第 ${attempt.number} 次：${stateLabel(attempt.state)}${attempt.error ? ` · ${attempt.error}` : ""}`,
+        ).join("；");
+        const detail = run.nextRetryAt != null
+            ? `已尝试 ${run.attemptNumber} 次，下次 ${formatTime(run.nextRetryAt)} · ${attemptDetail}`
+            : attemptDetail
+                ? `${attemptDetail}${Object.keys(run.outputs || {}).length ? ` · ${JSON.stringify(run.outputs)}` : ""}`
+            : run.error
             ? run.error
             : Object.keys(run.outputs || {}).length
                 ? JSON.stringify(run.outputs)

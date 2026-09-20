@@ -711,7 +711,8 @@ select:focus-visible,
     border-left: 4px solid var(--teal);
 }
 
-.flow-node.state-paused {
+.flow-node.state-paused,
+.flow-node.state-retry_wait {
     border-left: 4px solid var(--amber);
 }
 

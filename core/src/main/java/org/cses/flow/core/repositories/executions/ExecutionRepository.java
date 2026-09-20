@@ -11,6 +11,42 @@ import java.util.Optional;
  */
 public interface ExecutionRepository {
 
+    /**
+     * 查询尚未交给消息系统的计划，不按计划到期时间筛选。
+     * @param dsl 数据库上下文
+     * @param limit 最大批量
+     * @return 待发布的计划
+     */
+    default List<PendingRetry> pendingRetries(DSLContext dsl, int limit) {
+        throw new UnsupportedOperationException("Retry outbox requires durable storage");
+    }
+
+    /**
+     * Broker 确认后标记已发布；允许重复确认。
+     * @param dsl 数据库上下文
+     * @param retry 原待发布计划
+     * @param now 确认时间
+     */
+    default void retryPublished(DSLContext dsl, PendingRetry retry, long now) {
+        throw new UnsupportedOperationException("Retry outbox requires durable storage");
+    }
+
+    /** 持久化的消息发布事实，attemptNumber 为下一次调用编号。 */
+    record PendingRetry(String companyId, String executionId, String taskRunId, int attemptNumber, long deliverAt) {
+        /**
+         * 从可信仓储行恢复计划。
+         * @param companyId 租户
+         * @param executionId 运行
+         * @param taskRunId 任务运行
+         * @param attemptNumber 下一次编号
+         * @param deliverAt Broker 最早投递时间
+         * @return 发布计划
+         */
+        public static PendingRetry from(String companyId, String executionId, String taskRunId, int attemptNumber, long deliverAt) {
+            return new PendingRetry(companyId, executionId, taskRunId, attemptNumber, deliverAt);
+        }
+    }
+
     Optional<Execution> findById(
         DSLContext dsl,
         String companyId,

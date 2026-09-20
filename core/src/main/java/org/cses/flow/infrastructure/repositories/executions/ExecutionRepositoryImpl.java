@@ -3,6 +3,7 @@ package org.cses.flow.infrastructure.repositories.executions;
 import jakarta.inject.Singleton;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
+import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.infrastructure.repositories.CasRepository;
@@ -21,11 +22,46 @@ import java.util.Optional;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
+import static org.flow.gen.flow.Tables.TASK_RETRY_MESSAGES;
 import static org.jooq.impl.DSL.*;
 
 /** Loads and stores the complete Execution snapshot without locking reads. */
 @Singleton
 public class ExecutionRepositoryImpl extends CasRepository<Execution> implements ExecutionRepository {
+
+    /**
+     * 查询所有未发布计划，未来计划也立即交给 Broker 等待。
+     * @param dsl 数据库上下文
+     * @param limit 正数批量上限
+     * @return 尚未确认发布的消息
+     */
+    @Override
+    public List<PendingRetry> pendingRetries(DSLContext dsl, int limit) {
+        if (limit < 1) throw new IllegalArgumentException("Invalid retry outbox limit");
+        var messages = TASK_RETRY_MESSAGES;
+        return dsl.selectFrom(messages).where(messages.PUBLISHED_AT.isNull())
+            .orderBy(messages.DELIVER_AT, messages.EXECUTION_ID).limit(limit)
+            .fetch(row -> PendingRetry.from(row.getCompanyId(), row.getExecutionId(), row.getTaskRunId(),
+                row.getAttemptNumber(), row.getDeliverAt()));
+    }
+
+    /**
+     * 仅确认同一条不可变计划；发送后宕机允许再次发送。
+     * @param dsl 数据库上下文
+     * @param retry 已得到 Broker 确认的计划
+     * @param now 当前毫秒时间
+     */
+    @Override
+    public void retryPublished(DSLContext dsl, PendingRetry retry, long now) {
+        var messages = TASK_RETRY_MESSAGES;
+        dsl.update(messages).set(messages.PUBLISHED_AT, now)
+            .where(messages.COMPANY_ID.eq(retry.companyId()))
+            .and(messages.EXECUTION_ID.eq(retry.executionId()))
+            .and(messages.TASK_RUN_ID.eq(retry.taskRunId()))
+            .and(messages.ATTEMPT_NUMBER.eq(retry.attemptNumber()))
+            .and(messages.DELIVER_AT.eq(retry.deliverAt()))
+            .and(messages.PUBLISHED_AT.isNull()).execute();
+    }
 
     /** 绑定 Execution 根表及租户、身份、版本字段；不保存任何请求状态。 */
     public ExecutionRepositoryImpl() {
@@ -193,6 +229,17 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
                 .select(select(val(outbox.companyId), val(outbox.id), val(outbox.kind), val(outbox.payload),
                     val(outbox.createdAt), val(outbox.retryAt), val(0)).from(parent))
                 .onConflictDoNothing().returning(events.ID)));
+        }
+
+        var retryMessages = TASK_RETRY_MESSAGES;
+        for (TaskRun run : execution.ownTaskRuns()) {
+            if (!run.state().is(State.Type.RETRY_WAIT)) continue;
+            statements.add(name(parent.getName() + "_retry_" + statements.size()).as(dsl.insertInto(retryMessages)
+                .columns(retryMessages.COMPANY_ID, retryMessages.EXECUTION_ID, retryMessages.TASK_RUN_ID,
+                    retryMessages.ATTEMPT_NUMBER, retryMessages.DELIVER_AT)
+                .select(select(val(execution.companyId()), val(execution.id()), val(run.id()),
+                    val(run.attemptNumber() + 1), val(run.nextRetryAt())).from(parent))
+                .onConflictDoNothing().returning(retryMessages.TASK_RUN_ID)));
         }
 
         List<TaskRun> runs = execution.ownTaskRuns();

@@ -33,7 +33,8 @@ public class TaskRunSnapshotsJsonCodec {
                     .put("generation", JsonObject.Parse(entry.generation.data()))
                     .put("state", JsonObject.Parse(entry.state.data()))
                     .put("inputs", entry.inputs).put("outputs", entry.outputs)
-                    .put("error", entry.error));
+                    .put("error", entry.error).put("attempts", entry.attempts)
+                    .put("retryVariables", entry.retryVariables).put("nextRetryAt", entry.nextRetryAt));
         }
         return values;
     }
@@ -64,6 +65,9 @@ public class TaskRunSnapshotsJsonCodec {
                 entry.inputs = Objects.requireNonNull(value.getObject("inputs"), "Snapshot inputs");
                 entry.outputs = Objects.requireNonNull(value.getObject("outputs"), "Snapshot outputs");
                 entry.error = (String) fields.get("error");
+                entry.attempts = Objects.requireNonNull(value.getObjects("attempts"), "Snapshot attempts");
+                entry.retryVariables = Objects.requireNonNull(value.getObject("retryVariables"), "Snapshot retry variables");
+                entry.nextRetryAt = fields.get("nextRetryAt") == null ? null : value.getLong("nextRetryAt");
                 runs.add(entry.to());
             }
             return List.copyOf(runs);

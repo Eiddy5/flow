@@ -62,7 +62,8 @@ public class PulsarTestEnvironment {
      */
     public static void clearExecutorBacklogs() {
         try (PulsarAdmin admin = admin()) {
-            for (String name : List.of(ExecutionCommand.QUEUE_NAME, ExecutorEvent.QUEUE_NAME)) {
+            for (String name : List.of(ExecutionCommand.QUEUE_NAME, ExecutorEvent.QUEUE_NAME,
+                    org.cses.flow.executor.TaskRetryEvent.QUEUE_NAME)) {
                 try {
                     admin.topics().skipAllMessages("persistent://public/default/" + name, name);
                 } catch (PulsarAdminException.NotFoundException ignored) {

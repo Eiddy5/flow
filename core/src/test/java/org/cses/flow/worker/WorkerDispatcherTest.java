@@ -88,6 +88,7 @@ class WorkerDispatcherTest {
             () -> WorkerTaskResult.from(
                 "execution-1",
                 "task-run-1",
+                1,
                 State.Type.SKIPPED,
                 Map.of(),
                 null
@@ -411,6 +412,7 @@ class WorkerDispatcherTest {
             ),
             "taskRun", Map.of(
                 "id", taskRunId,
+                "attemptNumber", 1,
                 "inputs", taskInputs,
                 "outputs", Map.of()
             ),

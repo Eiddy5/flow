@@ -787,21 +787,25 @@ public class FlowModels {
 
     @Getter
     @Setter
-    public static final class TaskRunView extends SerializableObject {
+    @NoArgsConstructor
+    public static class TaskRunView extends SerializableObject {
 
-        private final String id;
-        private final String taskId;
-        private final String parentTaskRunId;
-        private final Integer iteration;
-        private final Integer executionGenerationVersion;
-        private final GenerationView generation;
-        private final String state;
-        private final Map<String, Object> inputs;
-        private final Map<String, Object> outputs;
-        private final String error;
-        private final long createdAt;
-        private final long updatedAt;
-        private final List<HistoryView> history;
+        List<Map<String, Object>> attempts;
+        Long nextRetryAt;
+        int attemptNumber;
+        String id;
+        String taskId;
+        String parentTaskRunId;
+        Integer iteration;
+        Integer executionGenerationVersion;
+        GenerationView generation;
+        String state;
+        Map<String, Object> inputs;
+        Map<String, Object> outputs;
+        String error;
+        long createdAt;
+        long updatedAt;
+        List<HistoryView> history;
 
         private TaskRunView(
             String id,
@@ -833,9 +837,14 @@ public class FlowModels {
             this.history = List.copyOf(history);
         }
 
+        /**
+         * 将任务当前状态及全部尝试历史转换为查询响应。
+         * @param taskRun 已加载的任务记录，只读
+         * @return 不暴露调用变量快照的响应
+         */
         private static TaskRunView from(TaskRun taskRun) {
             List<State.History> stateHistory = taskRun.state().history();
-            return new TaskRunView(
+            TaskRunView view = new TaskRunView(
                 taskRun.id(),
                 taskRun.taskId(),
                 taskRun.parentId().orElse(null),
@@ -854,6 +863,18 @@ public class FlowModels {
                 stateHistory.getLast().date(),
                 stateHistory.stream().map(HistoryView::from).toList()
             );
+            view.attemptNumber = taskRun.attemptNumber();
+            view.nextRetryAt = taskRun.nextRetryAt();
+            view.attempts = taskRun.attempts().stream().map(attempt -> {
+                Map<String, Object> value = new LinkedHashMap<>();
+                value.put("number", attempt.number());
+                value.put("startedAt", attempt.startedAt());
+                value.put("completedAt", attempt.completedAt());
+                value.put("state", attempt.state().name());
+                value.put("error", attempt.error());
+                return Collections.unmodifiableMap(value);
+            }).toList();
+            return view;
         }
 
         public String getId() {

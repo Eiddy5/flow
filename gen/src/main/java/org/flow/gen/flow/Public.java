@@ -11,6 +11,7 @@ import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
 import org.flow.gen.flow.tables.SchedulerEventsTable;
+import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
 import org.jooq.Catalog;
@@ -53,6 +54,11 @@ public class Public extends SchemaImpl {
     public final SchedulerEventsTable SCHEDULER_EVENTS = SchedulerEventsTable.SCHEDULER_EVENTS;
 
     /**
+     * The table <code>public.task_retry_messages</code>.
+     */
+    public final TaskRetryMessagesTable TASK_RETRY_MESSAGES = TaskRetryMessagesTable.TASK_RETRY_MESSAGES;
+
+    /**
      * The table <code>public.task_runs</code>.
      */
     public final TaskRunsTable TASK_RUNS = TaskRunsTable.TASK_RUNS;
@@ -82,6 +88,7 @@ public class Public extends SchemaImpl {
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,
             SchedulerEventsTable.SCHEDULER_EVENTS,
+            TaskRetryMessagesTable.TASK_RETRY_MESSAGES,
             TaskRunsTable.TASK_RUNS,
             TriggerRunsTable.TRIGGER_RUNS
         );
@@ -94,6 +101,6 @@ public class Public extends SchemaImpl {
 
     @Override
     public String getDbName() {
-        return "flow_trigger_test";
+        return "flow";
     }
 }

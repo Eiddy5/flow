@@ -755,3 +755,6 @@ AI Agent 接到开发、测试、审查或文档任务后：
 Task 输出契约见 [ADR 0095](decisions/0095-return-typed-task-outputs.md)：具体 Output 类型
 由 Task 代码声明，`core/plugins/TaskOutputs` 负责泛型字段元数据及 PAAS JSON 输出映射；
 Task 不接受 outputs 配置。Worker/Executor 保存结果到 TaskRun，后续 RunContext 按原作用域投影。
+
+Task 重试定义在 `core/domains/tasks/retries/`，调用历史为 `TaskRunAttempt`，由 Execution 拥有。
+`executor/TaskRetryOutboxPublisher` 将未发布计划提前交给 Pulsar；`TaskRetryEvent` 使用专用延迟队列，由 DefaultExecutor 接纳匹配的任务尝试。`task_retry_messages` 与 Execution 同 SQL 保存，时间调度归 Broker，不依赖 Trigger scheduler。见 ADR 0105、0106。

@@ -123,6 +123,7 @@ class TaskTest {
         );
     }
 
+    /** 通用定义包含可选重试策略，编排专有字段仍由子类型拥有。 */
     @Test
     void commonTaskDeclaresOnlyFieldsSharedByEveryTaskType() {
         List<String> fields = Arrays.stream(Task.class.getDeclaredFields())
@@ -131,7 +132,7 @@ class TaskTest {
             .toList();
 
         assertEquals(
-            List.of("id", "key", "displayName", "inputs"),
+            List.of("id", "key", "displayName", "retry", "inputs"),
             fields
         );
         assertFalse(fields.contains("route"));

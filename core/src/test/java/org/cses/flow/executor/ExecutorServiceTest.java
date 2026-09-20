@@ -464,7 +464,7 @@ final class ExecutorServiceTest {
         assertTrue(execution.pausedTaskRuns().isEmpty());
 
         WorkerTask action = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, action);
+        action = executorService.dispatch(context, action).orElseThrow();
         executorService.applyResult(
             context,
             WorkerTaskResult.success(action, Map.of())
@@ -502,7 +502,7 @@ final class ExecutorServiceTest {
 
         processUntilBoundary(context);
         WorkerTask action = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, action);
+        action = executorService.dispatch(context, action).orElseThrow();
         executorService.applyResult(
             context,
             WorkerTaskResult.success(action, Map.of())
@@ -582,7 +582,7 @@ final class ExecutorServiceTest {
             .allMatch(taskRun -> taskRun.state().is(State.Type.RUNNING)));
         assertEquals(2, context.workerTasks().size());
         for (WorkerTask action : context.takeWorkerTasks()) {
-            executorService.dispatch(context, action);
+            action = executorService.dispatch(context, action).orElseThrow();
             executorService.applyResult(
                 context,
                 WorkerTaskResult.success(action, Map.of())
@@ -633,19 +633,19 @@ final class ExecutorServiceTest {
         List<WorkerTask> branches = context.takeWorkerTasks();
         TaskRun parallel = run(execution, flow, "parallel");
 
-        executorService.dispatch(context, branches.getFirst());
+        WorkerTask first = executorService.dispatch(context, branches.getFirst()).orElseThrow();
         executorService.applyResult(
             context,
-            WorkerTaskResult.success(branches.getFirst(), Map.of())
+            WorkerTaskResult.success(first, Map.of())
         );
 
         assertTrue(parallel.state().is(State.Type.RUNNING));
         assertTrue(execution.state().is(State.Type.RUNNING));
 
-        executorService.dispatch(context, branches.getLast());
+        WorkerTask last = executorService.dispatch(context, branches.getLast()).orElseThrow();
         executorService.applyResult(
             context,
-            WorkerTaskResult.success(branches.getLast(), Map.of())
+            WorkerTaskResult.success(last, Map.of())
         );
 
         assertTrue(parallel.state().is(State.Type.RUNNING));
@@ -720,7 +720,7 @@ final class ExecutorServiceTest {
 
         processUntilBoundary(context);
         WorkerTask source = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, source);
+        source = executorService.dispatch(context, source).orElseThrow();
         executorService.applyResult(
             context,
             WorkerTaskResult.success(
@@ -740,7 +740,7 @@ final class ExecutorServiceTest {
 
         for (int index = 0; index < branches.size(); index++) {
             WorkerTask branch = branches.get(index);
-            executorService.dispatch(context, branch);
+            branch = executorService.dispatch(context, branch).orElseThrow();
             executorService.applyResult(
                 context,
                 WorkerTaskResult.success(
@@ -802,7 +802,7 @@ final class ExecutorServiceTest {
         assertTrue(inner.state().is(State.Type.RUNNING));
 
         WorkerTask sibling = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, sibling);
+        sibling = executorService.dispatch(context, sibling).orElseThrow();
         executorService.applyResult(
             context,
             WorkerTaskResult.success(sibling, Map.of())
@@ -812,7 +812,7 @@ final class ExecutorServiceTest {
         List<WorkerTask> innerBranches = context.takeWorkerTasks();
         assertEquals(2, innerBranches.size());
         for (WorkerTask branch : innerBranches) {
-            executorService.dispatch(context, branch);
+            branch = executorService.dispatch(context, branch).orElseThrow();
             executorService.applyResult(
                 context,
                 WorkerTaskResult.success(branch, Map.of())
@@ -853,7 +853,7 @@ final class ExecutorServiceTest {
 
         processUntilBoundary(context);
         WorkerTask workerTask = context.takeWorkerTasks().getFirst();
-        workerTask = executorService.dispatch(context, workerTask);
+        workerTask = executorService.dispatch(context, workerTask).orElseThrow();
         assertEquals(
             "RUNNING",
             ((Map<?, ?>) workerTask.variables().get("taskRun")).get("state")
@@ -943,7 +943,7 @@ final class ExecutorServiceTest {
         processUntilBoundary(context);
         List<WorkerTask> branches = context.takeWorkerTasks();
         WorkerTask failedBranch = branches.getFirst();
-        executorService.dispatch(context, failedBranch);
+        failedBranch = executorService.dispatch(context, failedBranch).orElseThrow();
         executorService.applyResult(
             context,
             WorkerTaskResult.failed(failedBranch, "branch failed")
@@ -993,7 +993,7 @@ final class ExecutorServiceTest {
                 Map.of("iteration", iteration),
                 workerTask.taskInputs().get("loop")
             );
-            executorService.dispatch(context, workerTask);
+            workerTask = executorService.dispatch(context, workerTask).orElseThrow();
             executorService.applyResult(
                 context,
                 WorkerTaskResult.success(workerTask, Map.of())
@@ -1082,7 +1082,7 @@ final class ExecutorServiceTest {
         for (int cycle = 0; cycle < 10 && workers.size() < 2; cycle++) {
             executorService.process(context);
             for (WorkerTask worker : context.takeWorkerTasks()) {
-                executorService.dispatch(context, worker);
+                worker = executorService.dispatch(context, worker).orElseThrow();
                 workers.add(worker);
             }
         }
@@ -1106,7 +1106,7 @@ final class ExecutorServiceTest {
     ) {
         processUntilBoundary(context);
         WorkerTask workerTask = context.takeWorkerTasks().getFirst();
-        executorService.dispatch(context, workerTask);
+        workerTask = executorService.dispatch(context, workerTask).orElseThrow();
         executorService.applyResult(
             context,
             WorkerTaskResult.success(workerTask, outputs)

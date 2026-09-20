@@ -57,6 +57,9 @@ public class ModelValidator {
         requireTrimmedText(task.key(), "Task key");
         boolean runnable = task instanceof RunnableTask;
         boolean orchestration = task instanceof OrchestrationTask;
+        if (task.retry() != null && !runnable) {
+            throw new IllegalArgumentException("Retry is supported only on RunnableTask");
+        }
         if ((runnable ? 1 : 0) + (orchestration ? 1 : 0) + (task instanceof ExecutableTask ? 1 : 0) != 1) {
             throw new IllegalArgumentException(
                 "Task must implement exactly one runtime capability: "

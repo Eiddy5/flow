@@ -14,6 +14,8 @@ import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorEvent;
 import org.cses.flow.executor.ExecutorEventHandler;
 import org.cses.flow.executor.ExecutorService;
+import org.cses.flow.executor.TaskRetryEvent;
+import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.Queue;
 import org.cses.flow.worker.WorkerDispatcher;
@@ -144,6 +146,17 @@ public class ExecutorEventMessageHandler implements
     }
 
     /**
+     * 接收 Pulsar 延迟消息；缺失实例、取消和旧计划直接确认，不再执行。
+     * @param event 重试身份及原计划
+     */
+    public void handleRetry(TaskRetryEvent event) {
+        requireProductionRuntime();
+        DSLContext dsl = jooq.createDSLContext();
+        if (executionRepository.findById(dsl, event.companyId(), event.executionId()).isEmpty()) return;
+        process(dsl, ExecutorEvent.from(event.executionId(), event.companyId(), ExecutorEvent.EventType.UPDATED), event);
+    }
+
+    /**
      * Runs an execution directly to a stable boundary. This is retained as a
      * local operation for the Core cancel command and state-machine tests;
      * durable Create/Resume delivery enters through {@link #handle}.
@@ -190,6 +203,11 @@ public class ExecutorEventMessageHandler implements
             DSLContext dsl,
             ExecutorEvent event
     ) {
+        return process(dsl, event, null);
+    }
+
+    /** 在原调度事务边界内接纳可选的专用重试事件。 */
+    private ExecutorContext process(DSLContext dsl, ExecutorEvent event, TaskRetryEvent retry) {
         Execution execution = executionRepository.findById(
                 dsl,
                 event.companyId(),
@@ -215,7 +233,7 @@ public class ExecutorEventMessageHandler implements
                 dsl,
                 session,
                 () -> processed.set(
-                        process(session, dsl, flow, execution, event)
+                        process(session, dsl, flow, execution, event, retry)
                 )
         );
         ExecutorContext result = processed.get();
@@ -238,9 +256,11 @@ public class ExecutorEventMessageHandler implements
             DSLContext dsl,
             Flow flow,
             Execution execution,
-            ExecutorEvent event
+            ExecutorEvent event,
+            TaskRetryEvent retry
     ) {
         ExecutorContext context = new ExecutorContext(flow, execution);
+        if (retry != null && !executorService.acceptRetry(context, retry, TimeUtil.now())) return context;
 
         if (!applyEvent(context, event)) {
             return context;
@@ -272,13 +292,15 @@ public class ExecutorEventMessageHandler implements
             if (!context.execution().requireTaskRun(workerTask.taskRunId()).state().is(State.Type.CREATED)) {
                 continue;
             }
-            workerTask = executorService.dispatch(context, workerTask);
+            var dispatched = executorService.dispatch(context, workerTask);
             persistIfUpdated(dsl, context);
+            if (dispatched.isEmpty()) return context;
+            workerTask = dispatched.get();
             WorkerTaskResult result = dispatchWorkerTask(
                     workerTask, event.eventType() != ExecutorEvent.EventType.TERMINATED);
             context = applyResult(dsl, flow, event, result);
             executionUpdated = true;
-            if (result.targetState() == State.Type.FAILED || result.targetState() == State.Type.KILLED) {
+            if (context.execution().isTerminal()) {
                 return context;
             }
         }
@@ -315,7 +337,8 @@ public class ExecutorEventMessageHandler implements
         while (true) {
             ExecutorContext current = reload(dsl, flow, event);
             if (current.execution().isTerminal() || current.execution().state().is(State.Type.KILLING)
-                    || !current.execution().requireTaskRun(result.taskRunId()).state().is(State.Type.RUNNING)) {
+                    || !current.execution().requireTaskRun(result.taskRunId()).state().is(State.Type.RUNNING)
+                    || current.execution().requireTaskRun(result.taskRunId()).attemptNumber() != result.attemptNumber()) {
                 return current;
             }
             executorService.applyResult(current, result);
@@ -403,18 +426,19 @@ public class ExecutorEventMessageHandler implements
             }
 
             for (WorkerTask workerTask : workerTasks) {
-                workerTask = executorService.dispatch(context, workerTask);
+                var dispatched = executorService.dispatch(context, workerTask);
                 if (context.takeExecutionUpdated()) {
                     persist(dsl, context);
                 }
+                if (dispatched.isEmpty()) return context.execution().copy();
+                workerTask = dispatched.get();
 
                 WorkerTaskResult result = dispatchWorkerTask(
                         workerTask,
                         captureUnexpectedTaskFailure
                 );
                 executorService.applyResult(context, result);
-                if (result.targetState() == State.Type.FAILED
-                        || result.targetState() == State.Type.KILLED) {
+                if (context.execution().isTerminal()) {
                     if (context.takeExecutionUpdated()) {
                         persist(dsl, context);
                     }

@@ -27,6 +27,118 @@ public class TaskRun implements Identified {
     private State state;
     private Map<String, Object> outputs;
     private String error;
+    private java.util.List<TaskRunAttempt> attempts = java.util.List.of();
+    private Map<String, Object> retryVariables = Map.of();
+    private Long nextRetryAt;
+
+    /** @return 不可变调用历史 */
+    public java.util.List<TaskRunAttempt> attempts() { return attempts; }
+    /** @return 已开始调用的次数，尚未调用为 0 */
+    public int attemptNumber() { return attempts.size(); }
+    /** @return 首次调用变量快照，未调用为空 */
+    public Map<String, Object> retryVariables() { return retryVariables; }
+    /** @return 待调度毫秒时间，没有计划为 null */
+    public Long nextRetryAt() { return nextRetryAt; }
+
+    /**
+     * 保存一次实际 Worker 调用及首次变量快照。
+     * @param variables 非空调用变量
+     * @param now 开始毫秒时间
+     */
+    void beginAttempt(Map<String, ?> variables, long now) {
+        requireState(State.Type.RUNNING);
+        if (!attempts.isEmpty() && attempts.getLast().completedAt() == null) throw new IllegalStateException("Attempt already running");
+        if (attempts.isEmpty()) retryVariables = immutableMap(variables);
+        var changed = new java.util.ArrayList<>(attempts);
+        changed.add(TaskRunAttempt.rehydrate(changed.size() + 1, now, null, State.Type.RUNNING, null));
+        attempts = java.util.List.copyOf(changed);
+        nextRetryAt = null;
+    }
+
+    /**
+     * 完成本次调用，保留所有较早结果。
+     * @param target Worker 终态
+     * @param failure 失败时必填的原因
+     * @param now 完成毫秒时间
+     */
+    void finishAttempt(State.Type target, String failure, long now) {
+        requireState(State.Type.RUNNING);
+        if (attempts.isEmpty() || attempts.getLast().completedAt() != null) throw new IllegalStateException("No running attempt");
+        var changed = new java.util.ArrayList<>(attempts);
+        var previous = changed.removeLast();
+        changed.add(TaskRunAttempt.rehydrate(previous.number(), previous.startedAt(), now, target, failure));
+        attempts = java.util.List.copyOf(changed);
+    }
+
+    /**
+     * 将本次失败保留为历史并进入等待，根继续运行。
+     * @param nextAt 非负计划毫秒时间
+     */
+    void waitForRetry(long nextAt) {
+        requireState(State.Type.RUNNING);
+        if (attempts.isEmpty() || attempts.getLast().state() != State.Type.FAILED
+            || nextAt < attempts.getLast().completedAt()) throw new IllegalArgumentException("Invalid retry plan");
+        outputs = Map.of();
+        error = null;
+        nextRetryAt = nextAt;
+        state = state.withState(State.Type.RETRY_WAIT);
+    }
+
+    /**
+     * 将到期等待重新放入普通调度入口，保留到期事实直到实际领取。
+     * @param now 当前毫秒时间
+     * @return 是否发生状态变化
+     */
+    boolean retry(long now) {
+        if (!state.is(State.Type.RETRY_WAIT) || nextRetryAt == null || nextRetryAt > now) return false;
+        state = state.withState(State.Type.CREATED);
+        return true;
+    }
+
+    /**
+     * 从数据库恢复调用历史和待调度事实。
+     * @param id 稳定身份
+     * @param taskId 定义身份
+     * @param parentId 可空父身份
+     * @param iteration 可空循环轮次
+     * @param version 可空执行片段版本
+     * @param inputs 已绑定输入
+     * @param generation 轮次历史
+     * @param state 完整状态
+     * @param outputs 当前输出
+     * @param error 仅最终失败时可用
+     * @param attempts 非空引用的尝试历史
+     * @param variables 首次调用快照
+     * @param nextRetryAt 可空待调度时间
+     * @return 恢复的独立任务记录
+     */
+    public static TaskRun rehydrate(String id, String taskId, String parentId, Integer iteration,
+            Integer version, Map<String, ?> inputs, Generation generation, State state,
+            Map<String, ?> outputs, String error, java.util.List<TaskRunAttempt> attempts,
+            Map<String, ?> variables, Long nextRetryAt) {
+        TaskRun run = rehydrate(id, taskId, parentId, iteration, version, inputs, generation, state, outputs, error);
+        run.attempts = java.util.List.copyOf(attempts);
+        run.retryVariables = immutableMap(variables);
+        run.nextRetryAt = nextRetryAt;
+        for (int index = 0; index < attempts.size(); index++) {
+            var attempt = attempts.get(index);
+            if (attempt.number() != index + 1 || index < attempts.size() - 1 && attempt.completedAt() == null) {
+                throw new IllegalArgumentException("Invalid attempt sequence");
+            }
+        }
+        if (nextRetryAt != null && (nextRetryAt < 0
+            || !(state.is(State.Type.RETRY_WAIT) || state.is(State.Type.CREATED))
+            || attempts.isEmpty() || attempts.getLast().state() != State.Type.FAILED
+            || nextRetryAt < attempts.getLast().completedAt())
+            || state.is(State.Type.RETRY_WAIT) && nextRetryAt == null) {
+            throw new IllegalArgumentException("Invalid persisted retry plan");
+        }
+        if (!attempts.isEmpty() && (run.retryVariables.isEmpty()
+            || attempts.getLast().completedAt() == null && !state.is(State.Type.RUNNING))) {
+            throw new IllegalArgumentException("Invalid persisted attempt context");
+        }
+        return run;
+    }
 
     private TaskRun(
         String id,
@@ -246,7 +358,8 @@ public class TaskRun implements Identified {
     public boolean isUnfinished() {
         return state.is(State.Type.CREATED)
             || state.is(State.Type.RUNNING)
-            || state.is(State.Type.PAUSED);
+            || state.is(State.Type.PAUSED)
+            || state.is(State.Type.RETRY_WAIT);
     }
 
     void start() {
@@ -313,23 +426,38 @@ public class TaskRun implements Identified {
         state = state.running();
     }
 
+    /**
+     * 保存最终失败原因并清除重试计划。
+     * @param failure 非空白错误原因
+     * @throws WorkflowException 当前不是运行或待重试状态时抛出
+     */
     void fail(String failure) {
-        requireState(State.Type.RUNNING);
+        if (!(state.is(State.Type.RUNNING) || nextRetryAt != null
+            && (state.is(State.Type.CREATED) || state.is(State.Type.RETRY_WAIT)))) {
+            throw new WorkflowException("TaskRun cannot fail from " + state);
+        }
         if (failure == null || failure.isBlank()) {
             throw new IllegalArgumentException("TaskRun error must not be blank");
         }
+        nextRetryAt = null;
         error = failure.trim();
         state = state.failed();
     }
 
+    /** 关闭未完成节点和当前调用，清除待重试计划；已结束节点拒绝再次关闭。 */
     void kill() {
         if (!isUnfinished()) {
             throw new WorkflowException(
                 "TaskRun cannot be killed from " + state + ": " + id
             );
         }
+        State killed = state.killed();
+        if (!attempts.isEmpty() && attempts.getLast().completedAt() == null) {
+            finishAttempt(State.Type.KILLED, null, killed.history().getLast().date());
+        }
+        nextRetryAt = null;
         error = null;
-        state = state.killed();
+        state = killed;
     }
 
     void startGeneration(String reason) {
@@ -350,6 +478,7 @@ public class TaskRun implements Identified {
         }
     }
 
+    /** @return 保留身份、完整尝试历史与重试计划的独立节点副本 */
     TaskRun copy() {
         return rehydrate(
             id,
@@ -361,7 +490,8 @@ public class TaskRun implements Identified {
             generation,
             state,
             outputs,
-            error
+            error,
+            attempts, retryVariables, nextRetryAt
         );
     }
 
@@ -387,14 +517,17 @@ public class TaskRun implements Identified {
             boolean valid = switch (source) {
                 case CREATED ->
                     target == State.Type.RUNNING
+                        || target == State.Type.FAILED
                         || target == State.Type.KILLED;
                 case RUNNING ->
-                    target == State.Type.PAUSED
+                    target == State.Type.RETRY_WAIT
+                        || target == State.Type.PAUSED
                         || target == State.Type.SUCCESS
                         || target == State.Type.SKIPPED
                         || target == State.Type.WARNING
                         || target == State.Type.FAILED
                         || target == State.Type.KILLED;
+                case RETRY_WAIT -> target == State.Type.CREATED || target == State.Type.FAILED || target == State.Type.KILLED;
                 case PAUSED ->
                     target == State.Type.RUNNING
                         || target == State.Type.KILLED;

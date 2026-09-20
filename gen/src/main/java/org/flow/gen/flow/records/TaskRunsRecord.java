@@ -10,6 +10,7 @@ import org.jooq.JSONB;
 import org.jooq.Record1;
 import org.jooq.impl.UpdatableRecordImpl;
 import org.paas.json.JsonObject;
+import org.paas.json.JsonObjects;
 
 
 /**
@@ -175,17 +176,59 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
     }
 
     /**
+     * Setter for <code>public.task_runs.attempts</code>.[[before= ][]]
+     */
+    public void setAttempts(JsonObjects value) {
+        set(11, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.attempts</code>.[[before= ][]]
+     */
+    public JsonObjects getAttempts() {
+        return (JsonObjects) get(11);
+    }
+
+    /**
+     * Setter for <code>public.task_runs.retry_variables</code>.[[before= ][]]
+     */
+    public void setRetryVariables(JsonObject value) {
+        set(12, value == null ? null : value.toString());
+    }
+
+    /**
+     * Getter for <code>public.task_runs.retry_variables</code>.[[before= ][]]
+     */
+    public JsonObject getRetryVariables() {
+        return JsonObject.Parse((String) get(12));
+    }
+
+    /**
+     * Setter for <code>public.task_runs.next_retry_at</code>.
+     */
+    public void setNextRetryAt(Long value) {
+        set(13, value);
+    }
+
+    /**
+     * Getter for <code>public.task_runs.next_retry_at</code>.
+     */
+    public Long getNextRetryAt() {
+        return (Long) get(13);
+    }
+
+    /**
      * Setter for <code>public.task_runs.order</code>.
      */
     public void setOrder(Integer value) {
-        set(11, value);
+        set(14, value);
     }
 
     /**
      * Getter for <code>public.task_runs.order</code>.
      */
     public Integer getOrder() {
-        return (Integer) get(11);
+        return (Integer) get(14);
     }
 
     // -------------------------------------------------------------------------
@@ -211,7 +254,7 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
     /**
      * Create a detached, initialised TaskRunsRecord
      */
-    public TaskRunsRecord(String id, String executionId, String taskId, String parentId, Integer iteration, Integer executionGenerationVersion, JSONB generation, JSONB state, JsonObject inputs, JsonObject outputs, String error, Integer order) {
+    public TaskRunsRecord(String id, String executionId, String taskId, String parentId, Integer iteration, Integer executionGenerationVersion, JSONB generation, JSONB state, JsonObject inputs, JsonObject outputs, String error, JsonObjects attempts, JsonObject retryVariables, Long nextRetryAt, Integer order) {
         super(TaskRunsTable.TASK_RUNS);
 
         setId(id);
@@ -225,6 +268,9 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         setInputs(inputs);
         setOutputs(outputs);
         setError(error);
+        setAttempts(attempts);
+        setRetryVariables(retryVariables);
+        setNextRetryAt(nextRetryAt);
         setOrder(order);
     }
 
@@ -248,6 +294,9 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
             setInputs(value.inputs);
             setOutputs(value.outputs);
             setError(value.error);
+            setAttempts(value.attempts);
+            setRetryVariables(value.retryVariables);
+            setNextRetryAt(value.nextRetryAt);
             setOrder(value.order);
         }
     }
@@ -265,6 +314,9 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         object.inputs = getInputs();
         object.outputs = getOutputs();
         object.error = getError();
+        object.attempts = getAttempts();
+        object.retryVariables = getRetryVariables();
+        object.nextRetryAt = getNextRetryAt();
         object.order = getOrder();
         return object;
     }
@@ -287,6 +339,9 @@ public class TaskRunsRecord extends UpdatableRecordImpl<TaskRunsRecord> {
         pojo.inputs = getInputs();
         pojo.outputs = getOutputs();
         pojo.error = getError();
+        pojo.attempts = getAttempts();
+        pojo.retryVariables = getRetryVariables();
+        pojo.nextRetryAt = getNextRetryAt();
         pojo.order = getOrder();
         return pojo;
     }

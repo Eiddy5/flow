@@ -16,6 +16,7 @@ public class State {
     public enum Type {
         CREATED,
         RUNNING,
+        RETRY_WAIT,
         PAUSED,
         RESTARTED,
         SUCCESS,
@@ -68,7 +69,8 @@ public class State {
     }
 
     public boolean isActive() {
-        return current == Type.CREATED
+        return current == Type.RETRY_WAIT
+            || current == Type.CREATED
             || current == Type.RUNNING
             || current == Type.RESTARTED
             || current == Type.KILLING;

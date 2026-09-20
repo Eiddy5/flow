@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS task_runs (
     inputs           jsonb NOT NULL DEFAULT '{}'::jsonb,
     outputs          jsonb NOT NULL DEFAULT '{}'::jsonb,
     error            text,
+    attempts         jsonb NOT NULL DEFAULT '[]'::jsonb,
+    retry_variables  jsonb NOT NULL DEFAULT '{}'::jsonb,
+    next_retry_at    bigint,
     "order"          integer NOT NULL,
 
     CONSTRAINT pk_task_runs

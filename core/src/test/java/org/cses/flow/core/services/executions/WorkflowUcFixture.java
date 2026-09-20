@@ -469,6 +469,20 @@ public class WorkflowUcFixture implements AutoCloseable {
         queue.emit(event);
     }
 
+    /**
+     * 通过真实 Pulsar 发布带最早投递时间的技术测试消息，不直接调用消费者。
+     * @param eventType 已声明队列的协议类型
+     * @param event 原消息身份，不允许为 null
+     * @param deliverAt 非负 Unix 毫秒时间
+     * @param <E> 队列协议类型
+     */
+    @SuppressWarnings("unchecked")
+    public <E extends org.cses.flow.queues.event.Event> void emitEventAt(Class<E> eventType, E event, long deliverAt) {
+        org.cses.flow.infrastructure.queues.pulsar.PulsarQueue<E> queue = context.getBean(
+            org.cses.flow.infrastructure.queues.pulsar.PulsarQueue.class, Qualifiers.byTypeArguments(eventType));
+        queue.emitAt(event, deliverAt);
+    }
+
     public Execution cancel(String executionId) {
         return cancel(session, executionId);
     }

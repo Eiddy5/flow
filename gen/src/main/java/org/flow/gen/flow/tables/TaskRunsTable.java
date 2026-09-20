@@ -110,6 +110,21 @@ public class TaskRunsTable extends TableImpl<TaskRunsRecord> {
     public final TableField<TaskRunsRecord, String> ERROR = createField(DSL.name("error"), SQLDataType.CLOB, this, "");
 
     /**
+     * The column <code>public.task_runs.attempts</code>.
+     */
+    public final TableField<TaskRunsRecord, JSONB> ATTEMPTS = createField(DSL.name("attempts"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'[]'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
+     * The column <code>public.task_runs.retry_variables</code>.
+     */
+    public final TableField<TaskRunsRecord, JSONB> RETRY_VARIABLES = createField(DSL.name("retry_variables"), SQLDataType.JSONB.nullable(false).defaultValue(DSL.field(DSL.raw("'{}'::jsonb"), SQLDataType.JSONB)), this, "");
+
+    /**
+     * The column <code>public.task_runs.next_retry_at</code>.
+     */
+    public final TableField<TaskRunsRecord, Long> NEXT_RETRY_AT = createField(DSL.name("next_retry_at"), SQLDataType.BIGINT, this, "");
+
+    /**
      * The column <code>public.task_runs.order</code>.
      */
     public final TableField<TaskRunsRecord, Integer> ORDER = createField(DSL.name("order"), SQLDataType.INTEGER.nullable(false), this, "");

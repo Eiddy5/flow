@@ -14,6 +14,7 @@ import org.flow.gen.flow.records.TaskRunsRecord;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.jooq.JSONB;
 import org.paas.json.JsonObject;
+import org.paas.json.JsonObjects;
 import org.x9.jooq.common.JooqPojo;
 
 
@@ -36,6 +37,9 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
     public JsonObject inputs;
     public JsonObject outputs;
     public String error;
+    public JsonObjects attempts;
+    public JsonObject retryVariables;
+    public Long nextRetryAt;
     public Integer order;
 
     public TaskRunsObject() {}
@@ -52,6 +56,9 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         this.inputs = value.inputs;
         this.outputs = value.outputs;
         this.error = value.error;
+        this.attempts = value.attempts;
+        this.retryVariables = value.retryVariables;
+        this.nextRetryAt = value.nextRetryAt;
         this.order = value.order;
     }
 
@@ -67,6 +74,9 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         JsonObject inputs,
         JsonObject outputs,
         String error,
+        JsonObjects attempts,
+        JsonObject retryVariables,
+        Long nextRetryAt,
         Integer order
     ) {
         this.id = id;
@@ -80,6 +90,9 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         this.inputs = inputs;
         this.outputs = outputs;
         this.error = error;
+        this.attempts = attempts;
+        this.retryVariables = retryVariables;
+        this.nextRetryAt = nextRetryAt;
         this.order = order;
     }
 
@@ -238,6 +251,48 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
     }
 
     /**
+     * Getter for <code>public.task_runs.attempts</code>.
+     */
+    public JsonObjects getAttempts() {
+        return this.attempts;
+    }
+
+    /**
+     * Setter for <code>public.task_runs.attempts</code>.
+     */
+    public void setAttempts(JsonObjects attempts) {
+        this.attempts = attempts;
+    }
+
+    /**
+     * Getter for <code>public.task_runs.retry_variables</code>.
+     */
+    public JsonObject getRetryVariables() {
+        return this.retryVariables;
+    }
+
+    /**
+     * Setter for <code>public.task_runs.retry_variables</code>.
+     */
+    public void setRetryVariables(JsonObject retryVariables) {
+        this.retryVariables = retryVariables;
+    }
+
+    /**
+     * Getter for <code>public.task_runs.next_retry_at</code>.
+     */
+    public Long getNextRetryAt() {
+        return this.nextRetryAt;
+    }
+
+    /**
+     * Setter for <code>public.task_runs.next_retry_at</code>.
+     */
+    public void setNextRetryAt(Long nextRetryAt) {
+        this.nextRetryAt = nextRetryAt;
+    }
+
+    /**
      * Getter for <code>public.task_runs.order</code>.
      */
     public Integer getOrder() {
@@ -326,6 +381,24 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         }
         else if (!this.error.equals(other.error))
             return false;
+        if (this.attempts == null) {
+            if (other.attempts != null)
+                return false;
+        }
+        else if (!this.attempts.equals(other.attempts))
+            return false;
+        if (this.retryVariables == null) {
+            if (other.retryVariables != null)
+                return false;
+        }
+        else if (!this.retryVariables.equals(other.retryVariables))
+            return false;
+        if (this.nextRetryAt == null) {
+            if (other.nextRetryAt != null)
+                return false;
+        }
+        else if (!this.nextRetryAt.equals(other.nextRetryAt))
+            return false;
         if (this.order == null) {
             if (other.order != null)
                 return false;
@@ -350,6 +423,9 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         result = prime * result + ((this.inputs == null) ? 0 : this.inputs.hashCode());
         result = prime * result + ((this.outputs == null) ? 0 : this.outputs.hashCode());
         result = prime * result + ((this.error == null) ? 0 : this.error.hashCode());
+        result = prime * result + ((this.attempts == null) ? 0 : this.attempts.hashCode());
+        result = prime * result + ((this.retryVariables == null) ? 0 : this.retryVariables.hashCode());
+        result = prime * result + ((this.nextRetryAt == null) ? 0 : this.nextRetryAt.hashCode());
         result = prime * result + ((this.order == null) ? 0 : this.order.hashCode());
         return result;
     }
@@ -386,6 +462,9 @@ public class TaskRunsObject extends JooqPojo implements Serializable {
         map.put("inputs", inputs == null ? null : inputs.toString());
         map.put("outputs", outputs == null ? null : outputs.toString());
         map.put("error", error);
+        map.put("attempts", attempts == null ? null : attempts.toString());
+        map.put("retry_variables", retryVariables == null ? null : retryVariables.toString());
+        map.put("next_retry_at", nextRetryAt);
         map.put("order", order);
         return map;
     }

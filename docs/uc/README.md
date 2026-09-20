@@ -44,6 +44,7 @@ docs/uc/
     UC-15 用户通过上游 Flow 完成启动流程.md
     UC-16 用户通过 Webhook 启动 Flow.md
     UC-17 用户在指定日期时间启动 Flow.md
+    UC-18 用户重试失败的流程步骤.md
 ```
 
 新领域由 UC Agent 创建，同时建立领域 `README.md` 并维护领域边界、UC 清单、

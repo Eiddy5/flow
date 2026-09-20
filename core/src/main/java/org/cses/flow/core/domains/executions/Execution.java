@@ -427,6 +427,50 @@ public class Execution extends BaseDomain {
         return accepted;
     }
 
+    /**
+     * 保存 Worker 的一次调用快照。
+     * @param taskRunId 当前 RUNNING 节点
+     * @param variables 本次规范变量，只读
+     * @param now 开始毫秒时间
+     */
+    public void beginTaskRunAttempt(String taskRunId, Map<String, ?> variables, long now) {
+        requireRunning();
+        requireTaskRun(taskRunId).beginAttempt(variables, now);
+    }
+
+    /**
+     * 记录调用结果，不传播失败；由调用方随后完成或安排重试。
+     * @param taskRunId 当前节点身份
+     * @param target 本次调用终态
+     * @param error 仅失败时必填
+     * @param now 完成毫秒时间
+     */
+    public void finishTaskRunAttempt(String taskRunId, State.Type target, String error, long now) {
+        requireRunning();
+        requireTaskRun(taskRunId).finishAttempt(target, error, now);
+    }
+
+    /**
+     * 安排已失败调用的下一次尝试，根继续运行。
+     * @param taskRunId 当前节点身份
+     * @param nextAt 下次毫秒时间
+     */
+    public void waitForTaskRunRetry(String taskRunId, long nextAt) {
+        requireRunning();
+        requireTaskRun(taskRunId).waitForRetry(nextAt);
+    }
+
+    /**
+     * 接纳已由 Executor 核验身份和编号的单个重试。
+     * @param taskRunId 本实例任务身份
+     * @param now 当前毫秒时间
+     * @return 是否从等待变为待领取
+     */
+    public boolean retryTaskRun(String taskRunId, long now) {
+        requireRunning();
+        return requireTaskRun(taskRunId).retry(now);
+    }
+
     public void startTaskRun(String taskRunId) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
@@ -704,10 +748,19 @@ public class Execution extends BaseDomain {
         return this;
     }
 
+    /**
+     * 使运行中或等待重试的节点最终失败，关闭其他未完成节点并结束实例。
+     * @param taskRunId 本实例节点身份
+     * @param error 非空白最终失败原因
+     * @throws WorkflowException 根或节点不允许失败时抛出
+     * @throws IllegalArgumentException 原因为空时抛出
+     */
     public void failTaskRun(String taskRunId, String error) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
-        requireTaskRunState(taskRun, State.Type.RUNNING);
+        if (!taskRun.state().is(State.Type.RUNNING) && taskRun.nextRetryAt() == null) {
+            throw new WorkflowException("TaskRun is neither running nor pending retry");
+        }
         if (error == null || error.isBlank()) {
             throw new IllegalArgumentException("TaskRun error must not be blank");
         }
@@ -973,7 +1026,7 @@ public class Execution extends BaseDomain {
                 case PAUSED -> target == State.Type.RESTARTED || target == State.Type.KILLING;
                 case RESTARTED -> target == State.Type.RUNNING || target == State.Type.KILLING;
                 case KILLING -> target == State.Type.KILLED;
-                case SUCCESS, SKIPPED, WARNING, FAILED, KILLED -> false;
+                case RETRY_WAIT, SUCCESS, SKIPPED, WARNING, FAILED, KILLED -> false;
             };
             if (!valid) {
                 throw new IllegalArgumentException("Invalid Execution state transition from " + source + " to " + target);

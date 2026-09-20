@@ -95,6 +95,13 @@ public record WorkerTask(
         validateParentIdentity(parentTaskRunId, variables);
     }
 
+    /** @return 当前已开始调用的正数编号，未开始的计划为 0 */
+    public int attemptNumber() {
+        Object value = VariablePath.parse("taskRun.attemptNumber").resolve(variables).orElse(0);
+        if (!(value instanceof Number number) || number.intValue() < 0) throw new IllegalArgumentException("Invalid attempt number");
+        return number.intValue();
+    }
+
     public Map<String, Object> taskInputs() {
         Object value = VariablePath.parse("taskRun.inputs")
             .resolve(variables)

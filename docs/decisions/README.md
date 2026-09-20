@@ -378,3 +378,7 @@
 和 [`domain-object-modeling.md`](../standards/domain-object-modeling.md) 为准。
 
 - [ADR 0085：跨嵌套编排作用域退回](0085-rewind-across-nested-orchestration-scopes.md)
+
+- [ADR 0105](0105-add-durable-task-retries.md)：可扩展 RunnableTask 重试、尝试历史和 Executor 持久化到期调度。
+
+- [ADR 0106：Pulsar 专用延迟队列驱动任务重试](0106-use-pulsar-delayed-task-retries.md)。替代 ADR0105 的到期扫描，保留可靠发布 Outbox。

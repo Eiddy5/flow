@@ -4,6 +4,10 @@ import jakarta.inject.Singleton;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.Objects;
+import java.util.Optional;
+import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
@@ -40,7 +44,7 @@ public class ExecutorService {
      * @throws IllegalStateException 仍有未消费 Worker 任务时抛出
      */
     public ExecutorContext process(ExecutorContext context) {
-        java.util.Objects.requireNonNull(context, "context");
+        Objects.requireNonNull(context, "context");
         if (!context.workerTasks().isEmpty()) {
             throw new IllegalStateException("Pending WorkerTasks must be consumed before processing");
         }
@@ -62,6 +66,27 @@ public class ExecutorService {
 
         handleEnd(context, progressed);
         return context;
+    }
+
+    /**
+     * 仅接纳与持久化计划匹配的延迟消息，旧消息不改变当前尝试。
+     * @param context 当前运行
+     * @param event 专用重试消息
+     * @param now 当前毫秒时间
+     * @return 消息是否仍对应待领取任务
+     */
+    public boolean acceptRetry(ExecutorContext context, TaskRetryEvent event, long now) {
+        Execution execution = context.execution();
+        if (!execution.companyId().equals(event.companyId()) || !execution.id().equals(event.executionId())
+                || !execution.state().is(State.Type.RUNNING)) return false;
+        TaskRun run = execution.effectiveTaskRuns().stream()
+            .filter(item -> item.id().equals(event.taskRunId())).findFirst().orElse(null);
+        if (run == null || run.nextRetryAt() == null || run.nextRetryAt() != event.deliverAt()
+                || run.attemptNumber() + 1 != event.attemptNumber()
+                || !(run.state().is(State.Type.RETRY_WAIT) || run.state().is(State.Type.CREATED))) return false;
+        if (now < event.deliverAt()) throw new IllegalStateException("Retry message arrived before its delivery time");
+        if (execution.retryTaskRun(run.id(), now)) context.captureState();
+        return true;
     }
 
     private ExecutorContext handleRestart(ExecutorContext executor) {
@@ -172,6 +197,13 @@ public class ExecutorService {
         context.stageWorkerTasks(workerTasks);
     }
 
+    /**
+     * 构造调用信封，重试沿用首次业务变量并更新尝试编号。
+     * @param context 当前运行上下文，只读
+     * @param taskRun 当前任务事实，只读
+     * @param task 精确版本的任务定义
+     * @return 不可变 Worker 信封
+     */
     private static WorkerTask workerTask(
         ExecutorContext context,
         TaskRun taskRun,
@@ -183,6 +215,11 @@ public class ExecutorService {
             .task(task)
             .taskRun(taskRun)
             .build();
+        if (!taskRun.retryVariables().isEmpty()) variables = taskRun.retryVariables();
+        variables = new LinkedHashMap<>(variables);
+        var taskRunVariables = new LinkedHashMap<>((Map<String, Object>) variables.get("taskRun"));
+        taskRunVariables.put("attemptNumber", taskRun.attemptNumber());
+        variables.put("taskRun", taskRunVariables);
         return WorkerTask.from(
             context.execution().id(),
             taskRun.id(),
@@ -209,18 +246,36 @@ public class ExecutorService {
         context.clearNexts();
     }
 
-    public WorkerTask dispatch(
+    /**
+     * 启动已创建的任务并记录一次调用，返回带正数尝试编号的信封；调用者须保存后再执行。
+     * @param context 将修改的运行上下文
+     * @param workerTask 待启动计划，不修改
+     * @return 使用 RUNNING 变量快照的实际调用；领取时预算耗尽则失败收敛并返回空
+     * @throws IllegalArgumentException 消息属于其他实例时抛出
+     * @throws WorkflowException 当前状态不能启动时抛出
+     */
+    public Optional<WorkerTask> dispatch(
         ExecutorContext context,
         WorkerTask workerTask
     ) {
         requireExecution(context, workerTask.executionId());
+        TaskRun pending = context.execution().requireTaskRun(workerTask.taskRunId());
+        Task definition = requireTask(context, pending);
+        if (pending.nextRetryAt() != null && (definition.retry() == null
+            || !definition.retry().permitsStart(pending.attempts().getFirst().startedAt(), TimeUtil.now()))) {
+            context.execution().failTaskRun(pending.id(), pending.attempts().getLast().error());
+            context.captureState();
+            return Optional.empty();
+        }
         context.execution().startTaskRun(workerTask.taskRunId());
-        context.captureState();
         TaskRun runningTaskRun = context.execution().requireTaskRun(
             workerTask.taskRunId()
         );
         Task task = requireTask(context, runningTaskRun);
-        return workerTask(context, runningTaskRun, task);
+        context.execution().beginTaskRunAttempt(workerTask.taskRunId(),
+            workerTask(context, runningTaskRun, task).variables(), TimeUtil.now());
+        context.captureState();
+        return Optional.of(workerTask(context, runningTaskRun, task));
     }
 
     /**
@@ -267,7 +322,7 @@ public class ExecutorService {
     }
 
     /**
-     * 将 Worker 终态及具体输出字段应用到当前 RUNNING 任务并捕获执行状态。
+     * 应用当前尝试结果并安排重试或最终收敛；重复、迟到和关闭后的结果直接忽略。
      * @param context 非 null 的当前执行上下文，会被修改
      * @param result 非 null 的 Worker 结果信封，只读
      * @throws IllegalStateException 结果身份或任务状态不匹配时抛出
@@ -277,11 +332,23 @@ public class ExecutorService {
         requireExecution(context, result.executionId());
         Execution execution = context.execution();
         TaskRun taskRun = execution.requireTaskRun(result.taskRunId());
-        if (!taskRun.state().is(State.Type.RUNNING)) {
-            throw new IllegalStateException("Worker result requires a RUNNING TaskRun");
-        }
+        if (execution.isTerminal() || execution.state().is(State.Type.KILLING)
+            || !taskRun.state().is(State.Type.RUNNING) || result.attemptNumber() != taskRun.attemptNumber()) return;
         Task task = context.flow().findTask(taskRun.taskId()).orElseThrow(() -> new WorkflowException("Task definition does not exist: " + taskRun.taskId()));
-        applyCompletion(context, task, taskRun, result.targetState(), result.outputs(), result.error());
+        long now = TimeUtil.now();
+        execution.finishTaskRunAttempt(taskRun.id(), result.targetState(), result.error(), now);
+        if (result.targetState() == State.Type.FAILED && task.retry() != null) {
+            var next = task.retry().nextRetryAt(taskRun.attemptNumber(), taskRun.attempts().getFirst().startedAt(), now);
+            if (next.isPresent()) {
+                execution.waitForTaskRunRetry(taskRun.id(), next.getAsLong());
+                context.captureState();
+                return;
+            }
+        }
+        State.Type target = result.targetState();
+        if (target == State.Type.SUCCESS && task.retry() != null && task.retry().warningOnRetry()
+            && taskRun.attemptNumber() > 1) target = State.Type.WARNING;
+        applyCompletion(context, task, taskRun, target, result.outputs(), result.error());
         context.captureState();
     }
 
@@ -352,7 +419,7 @@ public class ExecutorService {
                 execution.killUnfinishedTaskRuns();
                 execution.finishKilling();
             }
-            case CREATED, RUNNING, PAUSED, RESTARTED, SKIPPED, KILLING ->
+            case CREATED, RUNNING, RETRY_WAIT, PAUSED, RESTARTED, SKIPPED, KILLING ->
                     throw new IllegalStateException("Worker cannot return " + targetState);
         }
     }

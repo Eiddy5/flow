@@ -46,4 +46,13 @@ public class DefaultExecutor {
     public void onEvent(ExecutorEvent event) {
         eventHandler.handle(event);
     }
+    /**
+     * 重试队列使用独立 Shared 订阅；失败由 PAAS NACK 重投。
+     * @param event Broker 到期投递的重试身份
+     */
+    @FlowQueueListener(subscription = "flow-delay")
+    public void onRetry(TaskRetryEvent event) {
+        eventHandler.handleRetry(event);
+    }
+
 }

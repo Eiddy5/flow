@@ -9,6 +9,7 @@ import lombok.experimental.SuperBuilder;
 import org.cses.flow.core.domains.Identified;
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.flows.Output;
+import org.cses.flow.core.domains.tasks.retries.AbstractRetry;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.TaskOutputs;
 
@@ -32,6 +33,8 @@ public abstract class Task implements TaskInterface {
     String key;
 
     String displayName;
+
+    AbstractRetry retry;
 
     @NotNull
     @Builder.Default
@@ -66,6 +69,8 @@ public abstract class Task implements TaskInterface {
     public final List<Input<?>> inputs() {
         return inputs == null ? List.of() : List.copyOf(inputs);
     }
+
+    public AbstractRetry retry() { return retry; }
 
     /**
      * 按统一 Input 声明从调用方同名值绑定本任务参数。
@@ -193,6 +198,7 @@ public abstract class Task implements TaskInterface {
                 && Objects.equals(id, other.id)
                 && Objects.equals(key, other.key)
                 && Objects.equals(displayName(), other.displayName())
+                && Objects.equals(retry(), other.retry())
                 && Objects.equals(inputs(), other.inputs())
                 && Objects.equals(outputs(), other.outputs())
                 && Objects.equals(
@@ -212,6 +218,7 @@ public abstract class Task implements TaskInterface {
                 id,
                 key,
                 displayName(),
+                retry(),
                 inputs(),
                 outputs(),
                 definitionChildren(),

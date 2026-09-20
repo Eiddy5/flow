@@ -8,6 +8,7 @@ import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
 import org.flow.gen.flow.tables.SchedulerEventsTable;
+import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
 
@@ -37,6 +38,11 @@ public class Tables {
      * The table <code>public.scheduler_events</code>.
      */
     public static final SchedulerEventsTable SCHEDULER_EVENTS = SchedulerEventsTable.SCHEDULER_EVENTS;
+
+    /**
+     * The table <code>public.task_retry_messages</code>.
+     */
+    public static final TaskRetryMessagesTable TASK_RETRY_MESSAGES = TaskRetryMessagesTable.TASK_RETRY_MESSAGES;
 
     /**
      * The table <code>public.task_runs</code>.
