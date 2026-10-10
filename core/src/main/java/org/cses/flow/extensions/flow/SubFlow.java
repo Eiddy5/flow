@@ -1,5 +1,7 @@
 package org.cses.flow.extensions.flow;
 
+import org.cses.flow.common.Fields;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -61,7 +63,7 @@ public class SubFlow extends Task implements ExecutableTask<SubFlow.Output> {
     @SuppressWarnings("unchecked")
     public Output completeExecution(RunContext context) {
         Map<String, Object> execution = (Map<String, Object>) context.variables().get("execution");
-        return Output.from((String) execution.get("id"),
+        return Output.from((String) execution.get(Fields.ID),
                 (Map<String, Object>) context.variables().get("outputs"));
     }
 

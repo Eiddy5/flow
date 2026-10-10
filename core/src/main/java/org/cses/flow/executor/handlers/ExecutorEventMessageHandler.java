@@ -1,5 +1,7 @@
 package org.cses.flow.executor.handlers;
 
+import org.cses.flow.common.Fields;
+
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import jakarta.inject.Singleton;
@@ -525,7 +527,7 @@ public class ExecutorEventMessageHandler implements
             ExecutorContext context
     ) {
         Objects.requireNonNull(session, "session");
-        Objects.requireNonNull(dsl, "dsl");
+        Objects.requireNonNull(dsl, Fields.DSL);
         Objects.requireNonNull(context, "context");
     }
 }

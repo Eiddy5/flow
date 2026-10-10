@@ -1,5 +1,7 @@
 package org.cses.flow.core.services.flows.handlers;
 
+import org.cses.flow.common.Fields;
+
 import jakarta.inject.Singleton;
 import jakarta.validation.ConstraintViolationException;
 import org.cses.flow.core.domains.flows.Flow;
@@ -239,8 +241,8 @@ public class PublishFlowHandler implements CommandHandler<
                 YamlParser.parse(source)
         );
         fields.keySet().removeAll(Set.of(
-                "id",
-                "companyId",
+                Fields.ID,
+                Fields.COMPANY_ID,
                 "version",
                 "draft",
                 "source",

@@ -1,5 +1,7 @@
 package org.cses.flow.infrastructure.repositories.flows.codec;
 
+import org.cses.flow.common.Fields;
+
 import org.cses.flow.core.domains.flows.Input;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.serializers.JacksonMapper;
@@ -14,7 +16,7 @@ import java.util.Set;
 public class TaskPropertiesCodec {
 
     private static Set<String> CORE_FIELDS = Set.of(
-        "id",
+        Fields.ID,
         "type",
         "key",
         "displayName",
@@ -61,7 +63,7 @@ public class TaskPropertiesCodec {
         if (value != null) {
             definition.putAll(value.asMap());
         }
-        definition.put("id", id);
+        definition.put(Fields.ID, id);
         definition.put("type", type);
         definition.put("key", key);
         definition.put("inputs", List.copyOf(inputs));

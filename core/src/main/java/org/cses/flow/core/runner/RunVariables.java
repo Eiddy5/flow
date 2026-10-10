@@ -1,5 +1,7 @@
 package org.cses.flow.core.runner;
 
+import org.cses.flow.common.Fields;
+
 import com.google.common.collect.ImmutableMap;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
@@ -54,19 +56,19 @@ public class RunVariables {
     static Map<String, Object> of(final Flow flow) {
         ImmutableMap.Builder<String, Object> builder =
                 ImmutableMap.builder();
-        builder.put("id", flow.id())
+        builder.put(Fields.ID, flow.id())
                 .put("key", flow.key());
         Optional.ofNullable(flow.versionOrNull())
                 .ifPresent(version -> builder.put("version", version));
         Optional.ofNullable(flow.companyId())
-                .ifPresent(companyId -> builder.put("companyId", companyId));
+                .ifPresent(companyId -> builder.put(Fields.COMPANY_ID, companyId));
         return builder.build();
     }
 
     static Map<String, Object> of(final Task task) {
         ImmutableMap.Builder<String, Object> builder =
                 ImmutableMap.builder();
-        builder.put("id", task.id())
+        builder.put(Fields.ID, task.id())
                 .put("key", task.key())
                 .put("type", task.getType());
         return builder.build();
@@ -75,7 +77,7 @@ public class RunVariables {
     static Map<String, Object> of(final TaskRun taskRun) {
         ImmutableMap.Builder<String, Object> builder =
                 ImmutableMap.builder();
-        builder.put("id", taskRun.id())
+        builder.put(Fields.ID, taskRun.id())
             .put("attemptNumber", taskRun.attemptNumber())
                 .put("state", taskRun.state().current().name())
                 .put("inputs", taskRun.inputs())
@@ -99,7 +101,7 @@ public class RunVariables {
         origin.put("originId", execution.origin().originId());
         ImmutableMap.Builder<String, Object> builder =
                 ImmutableMap.builder();
-        builder.put("id", execution.id())
+        builder.put(Fields.ID, execution.id())
                 .put("origin", immutableCopy(origin))
                 .put("flowKey", execution.flowKey())
                 .put("flowVersion", execution.flowVersion())

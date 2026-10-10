@@ -1,5 +1,7 @@
 package org.cses.flow.infrastructure.repositories.executions.codec;
 
+import org.cses.flow.common.Fields;
+
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.infrastructure.repositories.executions.entries.TaskRunEntry;
 import org.jooq.JSONB;
@@ -27,7 +29,7 @@ public class TaskRunSnapshotsJsonCodec {
         for (TaskRun run : runs) {
             TaskRunEntry entry = TaskRunEntry.from(null, run, values.size());
             values.add(JsonObject.Create()
-                    .put("id", entry.id).put("taskId", entry.taskId)
+                    .put(Fields.ID, entry.id).put("taskId", entry.taskId)
                     .put("parentId", entry.parentId).put("iteration", entry.iteration)
                     .put("executionGenerationVersion", entry.executionGenerationVersion)
                     .put("generation", JsonObject.Parse(entry.generation.data()))
@@ -54,7 +56,7 @@ public class TaskRunSnapshotsJsonCodec {
                 JsonObject value = values.getObject(index);
                 var fields = value.asMap();
                 TaskRunEntry entry = new TaskRunEntry();
-                entry.id = (String) fields.get("id");
+                entry.id = (String) fields.get(Fields.ID);
                 entry.taskId = (String) fields.get("taskId");
                 entry.parentId = (String) fields.get("parentId");
                 entry.iteration = fields.get("iteration") == null ? null : value.getInt("iteration");

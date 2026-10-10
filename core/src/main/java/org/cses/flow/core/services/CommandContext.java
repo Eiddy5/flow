@@ -1,5 +1,7 @@
 package org.cses.flow.core.services;
 
+import org.cses.flow.common.Fields;
+
 import org.jooq.DSLContext;
 import org.paas.session.Session;
 import org.paas.session.SessionUser;
@@ -37,7 +39,7 @@ public record CommandContext<
     public CommandContext(C command, S session, DSLContext dsl) {
         this.command = Objects.requireNonNull(command, "command");
         this.session = Objects.requireNonNull(session, "session");
-        this.dsl = Objects.requireNonNull(dsl, "dsl");
+        this.dsl = Objects.requireNonNull(dsl, Fields.DSL);
     }
 
 }

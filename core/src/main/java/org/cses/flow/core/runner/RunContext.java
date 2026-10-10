@@ -1,5 +1,7 @@
 package org.cses.flow.core.runner;
 
+import org.cses.flow.common.Fields;
+
 import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.expressions.VariablePath;
 import org.cses.flow.core.domains.tasks.RunnableTask;
@@ -166,9 +168,9 @@ public class RunContext {
         public static FlowInfo from(Map<String, Object> flowInfoMap) {
             Objects.requireNonNull(flowInfoMap, "Flow info");
             return new FlowInfo(
-                    optionalString(flowInfoMap, "id"),
+                    optionalString(flowInfoMap, Fields.ID),
                     optionalString(flowInfoMap, "key"),
-                    optionalString(flowInfoMap, "companyId"),
+                    optionalString(flowInfoMap, Fields.COMPANY_ID),
                     optionalLong(flowInfoMap, "version")
             );
         }

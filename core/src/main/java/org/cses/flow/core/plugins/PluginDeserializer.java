@@ -1,5 +1,7 @@
 package org.cses.flow.core.plugins;
 
+import org.cses.flow.common.Fields;
+
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
@@ -117,7 +119,7 @@ public class PluginDeserializer<T extends Plugin> extends JsonDeserializer<T> {
             return;
         }
 
-        rejectSystemField(definition, "id");
+        rejectSystemField(definition, Fields.ID);
         rejectSystemField(definition, "parentId");
         rejectSystemField(definition, "taskId");
 
@@ -134,7 +136,7 @@ public class PluginDeserializer<T extends Plugin> extends JsonDeserializer<T> {
         }
 
         definition.put("key", key);
-        definition.put("id", StringUtil.newId());
+        definition.put(Fields.ID, StringUtil.newId());
     }
 
     private static void rejectSystemField(

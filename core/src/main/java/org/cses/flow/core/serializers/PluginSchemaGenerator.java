@@ -1,5 +1,7 @@
 package org.cses.flow.core.serializers;
 
+import org.cses.flow.common.Fields;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -45,7 +47,6 @@ public class PluginSchemaGenerator {
 
     private static String TYPE_PROPERTY = "type";
     private static String KEY_PROPERTY = "key";
-    private static String SYSTEM_ID_PROPERTY = "id";
     private static Set<String> DEFAULTED_TASK_PROPERTIES = Set.of(
         "inputs",
         "outputs",
@@ -147,7 +148,7 @@ public class PluginSchemaGenerator {
      * @return true 表示应从用户定义 Schema 隐藏
      */
     private static boolean isSystemId(FieldScope field) {
-        return SYSTEM_ID_PROPERTY.equals(field.getName())
+        return Fields.ID.equals(field.getName())
             && (field.getRawMember().getDeclaringClass() == Task.class
                 || field.getRawMember().getDeclaringClass() == AbstractTrigger.class);
     }
@@ -252,7 +253,7 @@ public class PluginSchemaGenerator {
         schema.put("additionalProperties", false);
         ObjectNode properties = schema.withObject("properties");
         if (task) {
-            properties.remove(SYSTEM_ID_PROPERTY);
+            properties.remove(Fields.ID);
         }
         ObjectNode type = properties.withObject(TYPE_PROPERTY);
         type.removeAll();
@@ -262,7 +263,7 @@ public class PluginSchemaGenerator {
         removeDefaultedRequirements(schema);
         ArrayNode required = schema.withArray("required");
         if (task) {
-            removeRequired(required, SYSTEM_ID_PROPERTY);
+            removeRequired(required, Fields.ID);
             DEFAULTED_TASK_PROPERTIES.forEach(property -> removeRequired(required, property));
         }
         addRequired(required, TYPE_PROPERTY);
