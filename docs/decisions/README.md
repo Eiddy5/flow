@@ -20,6 +20,9 @@
 
 ## Core 组件与依赖方向
 
+- [`ADR 0110`](0110-model-executor-state-machine-and-domain-links.md)：**Proposed**，Executor 四层状态、完整推进周期、Worker 结果回流及 Trigger、宿主、SubFlow、存储和消息域连接全景；尚未实施。
+- [`ADR 0109`](0109-route-worker-results-through-executor.md)：**Proposed**，Worker 结果经持久队列回到 Executor，由单一状态写入者决定入库、业务重试、同次投递恢复和后续编排；尚未实施。
+- [`ADR 0108`](0108-flow-runtime-high-availability.md)：**Proposed**，运行逻辑闭环与稳定性；梳理生命周期、能力组合、异常收尾和验证边界，尚未实施。
 - [`ADR 0104`](0104-add-flow-webhook-and-date-triggers.md)：流程、认证 Webhook 和指定日期触发，统一命中与独立投递。
 - [`ADR 0107`](0107-integrate-postgresql-trigger-scheduling.md)：提取 PostgreSQL 排他领取，Flow 自有计划表与短事务命中推进，移除整包 db-scheduler。
 - [`ADR 0103`](0103-add-event-driven-schedule-triggers.md)：Flow 自有 Trigger、源码纳入
