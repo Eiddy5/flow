@@ -288,6 +288,7 @@ class Uc10NestedApprovalFlowTest {
         }
     }
 
+    /** 取消并行审批后拒绝两个旧待办并重新查询历史不变、后续未运行。 */
     @Test
     void s4CancelingParallelNestedApprovalsPreventsRemainingAndFollowingSteps() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -363,11 +364,13 @@ class Uc10NestedApprovalFlowTest {
                     Map.of("decision", "APPROVED")
                 )
             );
+            ExecutionAssertions.unchanged(reloaded, query(fixture, executionId));
             assertTrue(reloaded.unfinishedTaskRuns().isEmpty());
             assertNoPendingWork(fixture, executionId);
         }
     }
 
+    /** 完整处理两轮材料补充和复核，核对顺序及最终审批唯一完成。 */
     @Test
     void s5ConditionalNestedReviewLoopReachesFinalApprovalAfterSupplement() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -452,6 +455,8 @@ class Uc10NestedApprovalFlowTest {
                 Map.of("decision", "APPROVED")
             );
             assertEquals(State.Type.SUCCESS, completed.state().current());
+            assertEquals(List.of("material-submission", "material-review", "material-submission", "material-review"),
+                taskKeys(completed, persisted).stream().filter(key -> key.equals("material-submission") || key.equals("material-review")).toList());
             assertEquals(2, countRuns(completed, persisted, "material-submission"));
             assertEquals(2, countRuns(completed, persisted, "material-review"));
             assertEquals(1, countRuns(completed, persisted, "final-approval"));
@@ -461,6 +466,7 @@ class Uc10NestedApprovalFlowTest {
         }
     }
 
+    /** 连续两轮复核不通过，核对轮内顺序、预算耗尽和无后续步骤。 */
     @Test
     void s6ConditionalNestedReviewLoopFailsAtMaximumWithoutFinalApproval() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -507,6 +513,8 @@ class Uc10NestedApprovalFlowTest {
             );
 
             assertEquals(State.Type.FAILED, failed.state().current());
+            assertEquals(List.of("material-submission", "material-review", "material-submission", "material-review"),
+                taskKeys(failed, persisted).stream().filter(key -> key.equals("material-submission") || key.equals("material-review")).toList());
             assertEquals(2, countRuns(failed, persisted, "material-submission"));
             assertEquals(2, countRuns(failed, persisted, "material-review"));
             assertEquals(
@@ -600,7 +608,7 @@ class Uc10NestedApprovalFlowTest {
         }
     }
 
-    /** Tests both amount paths independently when rewinding from after their merge. */
+    /** 分别退回两个金额分支并完成，核对各路径历史及另一实例的完整快照不变。 */
     @Test
     void s9AfterConditionalMergeRewindsOnlyTheActuallyExecutedBranch() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -613,6 +621,7 @@ class Uc10NestedApprovalFlowTest {
             List<Execution> started = List.of(startWithAmount(fixture, flow, 500),
                 startWithAmount(fixture, flow, 100));
             List<String> branches = List.of("high-review", "low-review");
+            List<Execution> finishedPaths = new java.util.ArrayList<>();
             for (int index = 0; index < started.size(); index++) {
                 String sourceId = started.get(index).id();
                 String branch = branches.get(index);
@@ -634,6 +643,7 @@ class Uc10NestedApprovalFlowTest {
                 assertEquals(1, countRuns(rewound, flow, "before"));
                 assertNoRun(rewound, flow, "record");
                 if (index == 0) {
+                    ExecutionAssertions.unchanged(started.get(1), query(fixture, started.get(1).id()));
                     assertEquals(started.get(1).pausedTaskRuns().stream().map(TaskRun::id).toList(),
                         query(fixture, started.get(1).id()).pausedTaskRuns().stream().map(TaskRun::id).toList());
                 }
@@ -649,6 +659,8 @@ class Uc10NestedApprovalFlowTest {
                 assertNoRun(completed, flow, unmatched);
                 assertObservedDecision(completed, flow, "record", branch, "NEW");
                 assertCompletedRewinds(fixture, flow, id, "actual-branch");
+                finishedPaths.add(completed);
+                finishedPaths.forEach(previous -> ExecutionAssertions.unchanged(previous, query(fixture, previous.id())));
             }
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
@@ -934,10 +946,10 @@ class Uc10NestedApprovalFlowTest {
     }
 
     /**
-     * Checks a rejected public request and re-queries its unchanged visible state.
-     * @param fixture real Flow test session
-     * @param executionId selected runtime instance
-     * @param request invalid public operation expected to fail
+     * 提交应被拒绝的公开请求，重新查询运行数量和完整快照，核对原事实不变。
+     * @param fixture 当前真实服务夹具
+     * @param executionId 用户选择的非空运行编号
+     * @param request 非法公开操作，预期抛出业务异常；只调用一次
      */
     private static void assertRejectedWithoutChange(
         WorkflowUcFixture fixture, String executionId, Runnable request
@@ -947,7 +959,7 @@ class Uc10NestedApprovalFlowTest {
         assertThrows(WorkflowException.class, request::run);
         Execution after = query(fixture, executionId);
         assertEquals(count, fixture.executionService().executions(fixture.session()).size());
-        assertEquals(before.state().current(), after.state().current());
+        ExecutionAssertions.unchanged(before, after);
         assertEquals(before.taskRuns().stream().map(TaskRun::id).toList(),
             after.taskRuns().stream().map(TaskRun::id).toList());
         assertEquals(before.pausedTaskRuns().stream().map(TaskRun::id).toList(),

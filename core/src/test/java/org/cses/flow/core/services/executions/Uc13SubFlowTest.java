@@ -217,6 +217,11 @@ class Uc13SubFlowTest {
      * @return 本场景唯一的步骤记录
      */
     private static TaskRun run(Execution execution, Flow flow, String key) {
+        if (key.equals("call")) {
+            TaskRun prepared = execution.taskRunsForTask(taskId(flow, "prepare")).getFirst();
+            assertEquals(State.Type.SUCCESS, prepared.state().current());
+            assertEquals(execution.inputs().get("request"), prepared.outputs().get("request"));
+        }
         return execution.taskRunsForTask(taskId(flow, key)).getFirst();
     }
 
@@ -287,6 +292,8 @@ class Uc13SubFlowTest {
               - key: request
                 type: STRING
             tasks:
+              - key: prepare
+                type: org.cses.flow.core.services.executions.Uc13SubFlowTest.PrepareInputTask
               - key: call
                 type: org.cses.flow.extensions.flow.SubFlow
                 flowKey: %s
@@ -338,6 +345,8 @@ class Uc13SubFlowTest {
                 type: STRING
                 defaultValue: %s
             tasks:
+              - key: prepare
+                type: org.cses.flow.core.services.executions.Uc13SubFlowTest.PrepareInputTask
               - key: call
                 type: org.cses.flow.extensions.flow.SubFlow
                 flowKey: %s
@@ -353,6 +362,25 @@ class Uc13SubFlowTest {
                 message: '{{ outputs.produce.result }}'
             """.formatted(key, level, child.key(), child.version(), ReturnValueTask.class.getCanonicalName());
     }
+
+    /** 在子调用之前记录本次确定的启动输入，不替换实际输入绑定。 */
+    @Plugin
+    @SuperBuilder
+    @NoArgsConstructor
+    public static class PrepareInputTask extends Task implements RunnableTask<PreparedInput> {
+        /**
+         * 读取当前启动输入中的请求，作为子调用前可查询的准备结果返回。
+         * @param context 当前真实 Worker 上下文
+         * @return 子调用前读取到的请求；缺失值保持缺失以验证子输入拒绝
+         */
+        @Override
+        public PreparedInput run(RunContext context) {
+            return new PreparedInput((String) ((Map<?, ?>) context.variables().get("inputs")).get("request"));
+        }
+    }
+
+    /** 前置步骤读取的请求字段。 */
+    public record PreparedInput(String request) implements org.cses.flow.core.domains.tasks.Output {}
 
     /** 通过真实 Worker 返回配置模板的结果，证明子输入与逐层结果均实际返回。 */
     @Plugin

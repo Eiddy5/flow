@@ -120,6 +120,7 @@ class Uc05ParallelPauseFlowTest {
         }
     }
 
+    /** 重复恢复一个并行 Pause，核对完整快照不变后完成剩余分支。 */
     @Test
     void s4RepeatedResumeOfOneParallelPauseIsRejected() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -128,12 +129,14 @@ class Uc05ParallelPauseFlowTest {
             fixture.restartServer();
             PausedTaskRunRef backend = fixture.waitingForOutput(
                 started.id(), "backendResult");
-            fixture.resume(backend, Map.of("backendResult", "PASS"));
+            Execution beforeRejected = fixture.resume(backend, Map.of("backendResult", "PASS"));
 
             assertThrows(WorkflowException.class, () -> fixture.resume(
                 backend, Map.of("backendResult", "PASS")));
             Execution afterRejected = fixture.executionService().execution(
                 fixture.session(), started.id()).orElseThrow();
+            ExecutionAssertions.unchanged(beforeRejected, afterRejected);
+            assertEquals(State.Type.PAUSED, run(afterRejected, flow, "frontend-check").state().current());
             assertEquals(State.Type.PAUSED, afterRejected.state().current());
             assertEquals(1, countRuns(afterRejected, flow, "backend-check"));
             assertNoRun(afterRejected, flow, "join-checks");

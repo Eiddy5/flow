@@ -214,6 +214,7 @@ class Uc06ConditionalRouteTest {
         }
     }
 
+    /** 向两个独立实例提交不同决定，核对选择路径及另一个实例的历史不变。 */
     @Test
     void s7SelectingOneInstanceDoesNotAffectTheOtherInstance() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -232,6 +233,9 @@ class Uc06ConditionalRouteTest {
             Execution firstWaiting = fixture.executionService().execution(
                 fixture.session(), first.id()).orElseThrow();
             assertEquals(State.Type.SUCCESS, secondCompleted.state().current());
+            ExecutionAssertions.unchanged(first, firstWaiting);
+            assertEquals(Map.of("decision", "APPROVED"),
+                run(secondCompleted, flow, "approval-decision").outputs());
             assertEquals(State.Type.PAUSED, firstWaiting.state().current());
             assertEquals(Map.of(), fixture.taskRun(firstPause).outputs());
             assertNoRun(secondCompleted, flow, "reject");
@@ -261,6 +265,8 @@ class Uc06ConditionalRouteTest {
             assertEquals(State.Type.SUCCESS,
                 run(secondCompleted, flow, "approve").state().current());
             assertNoRun(firstCompleted, flow, "approve");
+            ExecutionAssertions.unchanged(secondCompleted, fixture.executionService().execution(
+                fixture.session(), second.id()).orElseThrow());
             assertRouteState(
                 firstCompleted,
                 flow,

@@ -41,6 +41,7 @@ class Uc07NestedTaskFlowTest {
         "notify-result"
     );
 
+    /** 逐次恢复复核与安全审批，核对结果归属、执行顺序和每步唯一完成。 */
     @Test
     void s1CompletesTheMultiStagePauseFlow() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -96,6 +97,10 @@ class Uc07NestedTaskFlowTest {
                 Map.of("frontendResult", "PASS")
             );
             assertEquals(State.Type.PAUSED, afterFrontend.state().current());
+            assertEquals(Map.of("frontendResult", "PASS"),
+                run(afterFrontend, persisted, "frontend-review").outputs());
+            assertEquals(Map.of("backendResult", "PASS"),
+                run(afterFrontend, persisted, "backend-review").outputs());
             assertEquals(
                 State.Type.SUCCESS,
                 run(afterFrontend, persisted, "summarize-reviews")
@@ -294,6 +299,7 @@ class Uc07NestedTaskFlowTest {
         }
     }
 
+    /** 反向恢复两个实例的并行审批，核对双方层级、结果归属和唯一汇总。 */
     @Test
     void s5ReversedParallelResumeOrderKeepsResultsAndHierarchy() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -432,14 +438,31 @@ class Uc07NestedTaskFlowTest {
                 "frontend-review",
                 "review-stage"
             );
+            assertParentTask(firstCompleted, persisted, "frontend-review", "review-stage");
+            assertParentTask(secondCompleted, persisted, "backend-review", "review-stage");
+            assertEquals(Map.of("securityDecision", "FIRST-APPROVED"),
+                run(firstCompleted, persisted, "security-approve").outputs());
+            assertEquals(Map.of("securityDecision", "SECOND-APPROVED"),
+                run(secondCompleted, persisted, "security-approve").outputs());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
 
+    /** 先发布嵌套版本，再仅移动后端 Pause 后发布运行，核对新旧层级和完成结果。 */
     @Test
     void s6MovedBackendPauseUsesTheNewDirectHierarchy() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow flow = fixture.deploy(movedBackendYaml("uc07-s6-flow"));
+            String moved = movedBackendYaml("uc07-s6-flow");
+            String backendBlock = moved.substring(moved.indexOf("      - key: backend-review"),
+                moved.indexOf("      - key: frontend-build"));
+            String originalSource = moved.replace(backendBlock, backendBlock.indent(4));
+            Flow original = fixture.deploy(originalSource);
+            assertDefinitionParent(original, "backend-review", "backend-build");
+            assertDefinitionParent(original, "frontend-review", "frontend-build");
+            fixture.flowService().save(fixture.session(), PublishFlowCommand.from(original.key(), moved));
+            Flow flow = fixture.flowService().save(fixture.session(), PublishFlowCommand.from(original.key(), false));
+            assertTrue(flow.reversion() > original.reversion());
+            assertDefinitionParent(persistedFlow(fixture, original), "backend-review", "backend-build");
             Execution started = fixture.startAndAwait(flow);
             String executionId = started.id();
 
@@ -791,6 +814,11 @@ class Uc07NestedTaskFlowTest {
             """.formatted(key);
     }
 
+    /**
+     * 创建后端 Pause 已移至并行阶段直接下层、前端层级保持不变的定义。
+     * @param key 本场景独立的非空流程业务标识
+     * @return 待公开保存发布的 YAML 原文
+     */
     private static String movedBackendYaml(String key) {
         return """
             key: %s
@@ -803,8 +831,11 @@ class Uc07NestedTaskFlowTest {
                 type: org.cses.flow.extensions.flow.Parallel
                 tasks:
                   - key: backend-build
-                    type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    type: org.cses.flow.extensions.flow.Sequence
+                    tasks:
+                      - key: backend-prepare
+                        type: org.cses.flow.extensions.log.Log
+                        message: "test step"
                   - key: backend-review
                     type: org.cses.flow.extensions.flow.Pause
                     onPause:

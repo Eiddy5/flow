@@ -30,7 +30,7 @@ Task 结果并证明结果被后续步骤消费。Flow 运行到 Pause 时，用
 | --- | --- | --- | --- | --- |
 | [UC-01](UC-01%20Flow%20草稿生命周期与多租户管理.md) | Flow 草稿生命周期与多租户管理 | 流程编排 | ACCEPTED | 保存取得版本、连续保存形成新版本、查询并删除 |
 | [UC-02](UC-02%20用户启动、查询与取消%20Flow.md) | 用户启动、查询与取消 Flow | 流程运行 | ACCEPTED | 启动当前或指定历史正式版本、查询、恢复 Pause、完成或取消 |
-| [UC-04](UC-04%20用户恢复处于%20Pause%20的%20Flow.md) | 用户恢复处于 Pause 的 Flow | 任务类型：PAUSE | ACCEPTED | 定义标准 Flow、查询 Pause、正常恢复或退回产生新实例、核对受影响记录并完成新实例 |
+| [UC-04](UC-04%20用户恢复处于%20Pause%20的%20Flow.md) | 用户恢复处于 Pause 的 Flow | 任务类型：PAUSE | ACCEPTED | 定义标准 Flow、查询 Pause、正常恢复或退回产生新实例、核对受影响记录并完成新实例，恢复后下游异常则查询失败终态 |
 | [UC-05](UC-05%20用户处理包含并行%20Pause%20的%20Flow.md) | 用户处理包含并行 Pause 的 Flow | 流程编排 | ACCEPTED | 逐个恢复并行 Pause，并在全部完成后汇总 |
 | [UC-06](UC-06%20用户使用%20Pause%20结果选择%20Flow%20路径.md) | 用户使用 Pause 结果选择 Flow 路径 | 流程编排 | ACCEPTED | 提交 Pause 结果、查询命中与已跳过路径记录并完成 |
 | [UC-07](UC-07%20用户处理包含多阶段%20Pause%20的%20Flow.md) | 用户处理包含多阶段 Pause 的 Flow | 流程编排 | ACCEPTED | 每个 Pause 阶段重新查询 Flow，直至完成 |

@@ -225,59 +225,39 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /** 错误取消后完整历史不变；合法对照与另一租户实例由有权用户完成收尾。 */
     @Test
     void s5InvalidCancellationKeepsTerminalAndControlExecutionsUnchanged() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
-            Flow pauseFlow = fixture.deploy(WorkflowUcFixture.pauseYaml(
-                "uc02-s5-control", "合法对照", false
-            ));
+            Flow pauseFlow = fixture.deploy(WorkflowUcFixture.pauseYaml("uc02-s5-control", "合法对照", false));
             Execution control = fixture.startAndAwait(pauseFlow);
             Session<User> other = fixture.sessionFor("other");
-            Flow otherDraft = fixture.flowService().save(
-                other, PublishFlowCommand.from(WorkflowUcFixture.pauseYaml(
-                    "uc02-s5-other", "其他租户", false
-                ))
-            );
-            Flow otherFlow = fixture.flowService().save(
-                other, PublishFlowCommand.from(otherDraft.key(), false)
-            );
+            Flow otherDraft = fixture.flowService().save(other, PublishFlowCommand.from(
+                WorkflowUcFixture.pauseYaml("uc02-s5-other", "其他租户", false)));
+            Flow otherFlow = fixture.flowService().save(other, PublishFlowCommand.from(otherDraft.key(), false));
             Execution otherExecution = fixture.startAndAwait(other, otherFlow);
             Flow logFlow = fixture.deploy("""
                 key: uc02-s5-completed
-                description: completed target
                 tasks:
                   - key: complete
                     type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    message: done
                 """);
             Execution completed = fixture.startAndAwait(logFlow);
-
-            assertThrows(WorkflowException.class, () -> fixture.executionService()
-                .cancel(fixture.session(), "uc02-s5-missing"));
-            assertThrows(WorkflowException.class, () -> fixture.executionService()
-                .cancel(fixture.session(), otherExecution.id()));
-            Execution completedBefore = fixture.executionService().execution(
-                fixture.session(), completed.id()
-            ).orElseThrow();
-            assertThrows(WorkflowException.class, () -> fixture.executionService()
-                .cancel(fixture.session(), completed.id()));
-            assertEquals(completedBefore.state().current(),
-                fixture.executionService().execution(fixture.session(), completed.id())
-                    .orElseThrow().state().current());
-
-            fixture.cancel(control.id());
-            Execution canceledBefore = fixture.executionService().execution(
-                fixture.session(), control.id()
-            ).orElseThrow();
-            assertThrows(WorkflowException.class, () -> fixture.executionService()
-                .cancel(fixture.session(), control.id()));
-            assertEquals(canceledBefore.state().current(),
-                fixture.executionService().execution(fixture.session(), control.id())
-                    .orElseThrow().state().current());
-
-            assertEquals(State.Type.SUCCESS, completedBefore.state().current());
-            assertEquals(State.Type.KILLED, canceledBefore.state().current());
+            Execution canceled = fixture.cancel(fixture.startAndAwait(pauseFlow).id());
+            for (String target : java.util.List.of("uc02-s5-missing", otherExecution.id(), completed.id(), canceled.id())) {
+                assertThrows(WorkflowException.class, () -> fixture.executionService().cancel(fixture.session(), target));
+                for (Execution own : java.util.List.of(control, completed, canceled)) {
+                    ExecutionAssertions.unchanged(own, fixture.executionService().execution(fixture.session(), own.id()).orElseThrow());
+                }
+                ExecutionAssertions.unchanged(otherExecution, fixture.executionService().execution(other, otherExecution.id()).orElseThrow());
+            }
+            assertEquals(State.Type.SUCCESS, fixture.resume(fixture.waitingForExecution(control.id()), Map.of("decision", "CONTROL")).state().current());
+            assertEquals(State.Type.SUCCESS, fixture.resume(other, fixture.waitingForExecution(other, otherExecution.id()), Map.of("decision", "OTHER")).state().current());
             assertTrue(fixture.pausedTaskRuns().isEmpty());
+            assertTrue(fixture.pausedTaskRuns(other).isEmpty());
+            ExecutionAssertions.unchanged(completed, fixture.executionService().execution(fixture.session(), completed.id()).orElseThrow());
+            ExecutionAssertions.unchanged(canceled, fixture.executionService().execution(fixture.session(), canceled.id()).orElseThrow());
         }
     }
 
@@ -325,6 +305,9 @@ class Uc02ExecutionLifecycleTest {
         }
     }
 
+    /** 同时提交恢复和取消，检查根与Pause仅有一致的唯一终态及未重复应用的历史。
+     * @throws Exception 并发操作或线程同步失败
+     */
     @Test
     void s7ResumeAndCancelRaceProducesOneConsistentTerminalResult()
         throws Exception {
@@ -375,51 +358,67 @@ class Uc02ExecutionLifecycleTest {
             assertEquals(terminal.state().current() == State.Type.SUCCESS
                 ? State.Type.SUCCESS : State.Type.KILLED,
                 pauseReloaded.state().current());
+            assertEquals(1, terminal.state().history().stream().filter(h -> h.state() == State.Type.SUCCESS || h.state() == State.Type.KILLED).count());
+            assertEquals(1, pauseReloaded.state().history().stream().filter(h -> h.state() == State.Type.SUCCESS || h.state() == State.Type.KILLED).count());
+            if (terminal.state().is(State.Type.SUCCESS)) {
+                assertEquals(Map.of("decision", "APPROVED"), pauseReloaded.outputs());
+                assertTrue(terminal.state().history().stream().noneMatch(h -> h.state() == State.Type.KILLING || h.state() == State.Type.KILLED));
+            } else {
+                assertTrue(pauseReloaded.outputs().isEmpty());
+                assertTrue(pauseReloaded.state().history().stream().noneMatch(h -> h.state() == State.Type.SUCCESS));
+            }
+            ExecutionAssertions.unchanged(terminal, fixture.executionService().execution(fixture.session(), terminal.id()).orElseThrow());
             assertTrue(terminal.activeTaskRuns().isEmpty());
             assertTrue(fixture.pausedTaskRuns().stream()
                 .noneMatch(task -> task.executionId().equals(started.id())));
         }
     }
 
-    /**
-     * Verifies that two independent Executions both bind the current
-     * publication at version 2 while retaining disjoint histories.
-     */
+    /** 两名同租户用户使用不同输入运行同一Flow，逐步输出、身份和完整历史均相互隔离。 */
     @Test
     void s8TwoExecutionsOfOneFlowKeepIndependentCompleteHistories() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy("""
                 key: uc02-s8-flow
-                description: two independent executions
+                inputs:
+                  - key: token
+                    type: STRING
+                    required: true
                 tasks:
                   - key: first
-                    type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    type: org.cses.flow.core.services.flows.Uc12BuiltInInputsTest.Snapshot
+                    expression: '{{ inputs.token }}'
                   - key: second
-                    type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    type: org.cses.flow.core.services.flows.Uc12BuiltInInputsTest.Snapshot
+                    expression: '{{ outputs.first.value }}'
                   - key: third
-                    type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    type: org.cses.flow.core.services.flows.Uc12BuiltInInputsTest.Snapshot
+                    expression: '{{ outputs.second.value }}'
                 """);
-            Execution first = fixture.startAndAwait(flow);
-            Execution second = fixture.startAndAwait(flow);
-            Execution firstQueried = fixture.executionService().execution(
-                fixture.session(), first.id()).orElseThrow();
-            Execution secondQueried = fixture.executionService().execution(
-                fixture.session(), second.id()).orElseThrow();
-
-            assertEquals(2, flow.version());
-            assertNotEquals(firstQueried.id(), secondQueried.id());
-            assertEquals(State.Type.SUCCESS, firstQueried.state().current());
-            assertEquals(State.Type.SUCCESS, secondQueried.state().current());
-            assertEquals(2L, firstQueried.flowVersion());
-            assertEquals(2L, secondQueried.flowVersion());
-            assertEquals(3, firstQueried.taskRuns().size());
-            assertEquals(3, secondQueried.taskRuns().size());
-            assertTrue(disjointTaskRunIds(firstQueried, secondQueried));
-            assertTrue(firstQueried.activeTaskRuns().isEmpty());
-            assertTrue(secondQueried.activeTaskRuns().isEmpty());
+            Session<User> secondUser = fixture.sessionForExactCompany(fixture.session().getCompanyId());
+            secondUser.getUser().setId("uc02-second-user");
+            var firstAccepted = fixture.executionService().create(fixture.session(), flow.key(), Optional.empty(), Map.of("token", "FIRST"));
+            Execution first = fixture.awaitStable(firstAccepted.getExecutionId());
+            var secondAccepted = fixture.executionService().create(secondUser, flow.key(), Optional.empty(), Map.of("token", "SECOND"));
+            Execution second = fixture.awaitStable(secondUser, secondAccepted.getExecutionId());
+            ExecutionAssertions.unchanged(first, fixture.executionService().execution(fixture.session(), first.id()).orElseThrow());
+            assertNotEquals(first.id(), second.id());
+            assertTrue(disjointTaskRunIds(first, second));
+            for (var sample : Map.of("FIRST", first, "SECOND", second).entrySet()) {
+                Execution execution = sample.getValue();
+                assertEquals(Map.of("token", sample.getKey()), execution.inputs());
+                assertEquals(State.Type.SUCCESS, execution.state().current());
+                assertEquals(2L, execution.flowVersion());
+                assertEquals(flow.tasks().stream().map(t -> t.id()).toList(), execution.taskRuns().stream().map(TaskRun::taskId).toList());
+                for (TaskRun run : execution.taskRuns()) {
+                    assertEquals(Map.of("value", sample.getKey()), run.outputs());
+                    assertEquals(java.util.List.of(State.Type.CREATED, State.Type.RUNNING, State.Type.SUCCESS), run.state().history().stream().map(State.History::state).toList());
+                    assertEquals(1, run.attemptNumber());
+                }
+                assertTrue(execution.activeTaskRuns().isEmpty());
+            }
+            assertEquals(2, fixture.executionService().executions(fixture.session()).size());
+            ExecutionAssertions.unchanged(second, fixture.executionService().execution(secondUser, second.id()).orElseThrow());
         }
     }
 

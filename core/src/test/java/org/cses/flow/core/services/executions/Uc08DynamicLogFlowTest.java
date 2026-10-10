@@ -84,9 +84,13 @@ class Uc08DynamicLogFlowTest {
                 key: uc08-s2-flow
                 description: invalid log expression
                 tasks:
+                  - key: prepare
+                    type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
                   - key: write-log
                     type: org.cses.flow.extensions.log.Log
                     message: "结果：{{ outputs.result"
+                  - key: observe
+                    type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
                 """)
             );
             int executionsBefore = fixture.executionService().executions(fixture.session()).size();
@@ -119,6 +123,7 @@ class Uc08DynamicLogFlowTest {
         }
     }
 
+    /** 运行唯一目标日志引用缺失值的流程，核对明确失败、无日志及无后置运行。 */
     @Test
     void s3MissingRuntimePathFailsWithoutWritingAMisleadingLog() {
         LogCapture logs = LogCapture.start();
@@ -134,8 +139,7 @@ class Uc08DynamicLogFlowTest {
                     type: org.cses.flow.extensions.log.Log
                     message: "结果：{{ outputs.prepare.missing }}"
                   - key: never-run
-                    type: org.cses.flow.extensions.log.Log
-                    message: "test step"
+                    type: org.cses.flow.core.services.executions.Uc08DynamicLogFlowTest.LogInputTask
                 """);
 
             Execution failed = fixture.startAndAwait(flow);

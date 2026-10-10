@@ -7,6 +7,7 @@ import org.cses.flow.core.domains.executions.Generation;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.State;
+import org.cses.flow.core.domains.expressions.TemplateExpression;
 import org.cses.flow.core.domains.tasks.VoidOutput;
 import org.cses.flow.core.domains.tasks.RunnableTask;
 import org.cses.flow.core.domains.tasks.Task;
@@ -125,6 +126,7 @@ class Uc04PauseFlowTest {
         }
     }
 
+    /** 重复提交已完成的 Pause，核对错误及运行、步骤、尝试历史不变。 */
     @Test
     void s4RepeatedResumeOfFinishedPauseIsRejectedWithoutMutation() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -144,7 +146,7 @@ class Uc04PauseFlowTest {
             Execution after = query(fixture, started.id());
 
             assertEquals(State.Type.SUCCESS, completed.state().current());
-            assertEquals(before.state(), after.state());
+            ExecutionAssertions.unchanged(before, after);
             assertEquals(before.taskRuns().size(), after.taskRuns().size());
             assertEquals(before.taskRuns().stream().map(TaskRun::id).toList(),
                 after.taskRuns().stream().map(TaskRun::id).toList());
@@ -180,6 +182,7 @@ class Uc04PauseFlowTest {
         }
     }
 
+    /** 先恢复第二个实例再恢复第一个实例，核对各自结果、后置消费及隔离历史。 */
     @Test
     void s6SameUserResumesTheSelectedInstanceOnly() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
@@ -196,6 +199,11 @@ class Uc04PauseFlowTest {
             );
             Execution firstWaiting = query(fixture, first.id());
             assertEquals(State.Type.SUCCESS, secondCompleted.state().current());
+            ExecutionAssertions.unchanged(first, firstWaiting);
+            assertEquals(Map.of("decision", "SECOND"),
+                secondCompleted.requireTaskRun(secondPause.taskRunId()).outputs());
+            assertEquals("SECOND", inputOutput(run(secondCompleted, task(flow, "record-result")),
+                "wait-confirmation", "decision"));
             assertEquals(State.Type.PAUSED, firstWaiting.state().current());
             assertEquals(State.Type.PAUSED,
                 fixture.taskRun(firstPause).state().current());
@@ -210,6 +218,9 @@ class Uc04PauseFlowTest {
             assertEquals(State.Type.SUCCESS, firstCompleted.state().current());
             assertEquals(Map.of("decision", "FIRST"),
                 firstCompleted.requireTaskRun(firstPause.taskRunId()).outputs());
+            assertEquals("FIRST", inputOutput(run(firstCompleted, task(flow, "record-result")),
+                "wait-confirmation", "decision"));
+            ExecutionAssertions.unchanged(secondCompleted, query(fixture, second.id()));
             assertTrue(fixture.pausedTaskRuns().isEmpty());
         }
     }
@@ -238,13 +249,16 @@ class Uc04PauseFlowTest {
         }
     }
 
+    /** S8：后置步骤读取已接受的Pause结果后失败，提交保留且运行失败收尾。 */
     @Test
-    void s8DownstreamFailureMustLeavePauseWaitingAndNotPartiallyAdvance() {
+    void s8DownstreamFailureRetainsAcceptedPauseResultAndFailsExecution() {
         try (WorkflowUcFixture fixture = WorkflowUcFixture.open()) {
             Flow flow = fixture.deploy("""
                 key: uc04-s8-flow
                 description: downstream failure after pause
                 tasks:
+                  - key: prepare
+                    type: org.cses.flow.core.services.executions.Uc04PauseFlowTest.RewindProbeTask
                   - key: wait-confirmation
                     type: org.cses.flow.extensions.flow.Pause
                     onPause:
@@ -270,14 +284,24 @@ class Uc04PauseFlowTest {
             );
             Execution reloaded = query(fixture, started.id());
 
-            assertEquals(State.Type.PAUSED, afterResume.state().current());
-            assertEquals(State.Type.PAUSED, reloaded.state().current());
-            assertEquals(Map.of(), reloaded.requireTaskRun(pause.taskRunId())
-                .outputs());
-            assertTrue(reloaded.taskRuns().stream().noneMatch(taskRun ->
-                taskRun.taskId().equals(task(flow, "explode").id())));
+            assertEquals(started.id(), afterResume.id());
+            assertEquals(State.Type.FAILED, afterResume.state().current());
+            assertEquals(State.Type.FAILED, reloaded.state().current());
+            TaskRun acceptedPause = reloaded.requireTaskRun(pause.taskRunId());
+            assertEquals(State.Type.SUCCESS, acceptedPause.state().current());
+            assertEquals(Map.of("decision", "APPROVED"), acceptedPause.outputs());
+            TaskRun prepared = onlyRun(reloaded, task(flow, "prepare"));
+            assertEquals(State.Type.SUCCESS, prepared.state().current());
+            TaskRun failed = onlyRun(reloaded, task(flow, "explode"));
+            assertEquals(State.Type.FAILED, failed.state().current());
+            assertTrue(failed.error().orElseThrow().contains("uc04-downstream-failure:APPROVED:" + prepared.outputs().get("token")));
+            assertEquals(1, failed.attempts().size());
+            assertEquals(State.Type.FAILED, failed.attempts().getFirst().state());
             assertTrue(reloaded.taskRuns().stream().noneMatch(taskRun ->
                 taskRun.taskId().equals(task(flow, "never-run").id())));
+            assertTrue(reloaded.activeTaskRuns().isEmpty());
+            assertTrue(fixture.pausedTaskRuns().isEmpty());
+            assertTrue(fixture.executionService().executions(fixture.session()).stream().allMatch(Execution::isTerminal));
         }
     }
 
@@ -600,9 +624,17 @@ class Uc04PauseFlowTest {
     @NoArgsConstructor
     public static class ThrowingTask extends Task implements RunnableTask<VoidOutput> {
 
+        /**
+         * 读取前置输入和Pause已接受结果，再抛出包含所消费结果的可查询错误。
+         * @param context 当前真实Worker变量快照，不修改
+         * @return 不返回成功输出
+         * @throws IllegalStateException 读取结果后固定抛出，供失败收尾场景验证
+         */
         @Override
         public VoidOutput run(RunContext context) {
-            throw new IllegalStateException("uc04-downstream-failure");
+            String consumed = context.render(TemplateExpression.parse(
+                "{{ outputs.wait-confirmation.decision }}:{{ outputs.prepare.token }}"));
+            throw new IllegalStateException("uc04-downstream-failure:" + consumed);
         }
     }
 
