@@ -2,6 +2,8 @@
 
 ## 状态
 
+2026-09-20：源码集成、调度表及领取/恢复的实现选择由 [ADR 0107](0107-integrate-postgresql-trigger-scheduling.md) 取代；下文保留原决策记录。
+
 Accepted：用户已确认 Flow 自有独立 Trigger、AbstractTrigger、首期定时、源码集成
  db-scheduler 和事件驱动。以下运行默认值是本次实现选择。
 

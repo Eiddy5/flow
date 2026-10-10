@@ -14,6 +14,7 @@ import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
+import org.flow.gen.flow.tables.TriggerSchedulesTable;
 import org.jooq.Catalog;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
@@ -69,6 +70,11 @@ public class Public extends SchemaImpl {
     public final TriggerRunsTable TRIGGER_RUNS = TriggerRunsTable.TRIGGER_RUNS;
 
     /**
+     * The table <code>public.trigger_schedules</code>.
+     */
+    public final TriggerSchedulesTable TRIGGER_SCHEDULES = TriggerSchedulesTable.TRIGGER_SCHEDULES;
+
+    /**
      * No further instances allowed
      */
     private Public() {
@@ -90,7 +96,8 @@ public class Public extends SchemaImpl {
             SchedulerEventsTable.SCHEDULER_EVENTS,
             TaskRetryMessagesTable.TASK_RETRY_MESSAGES,
             TaskRunsTable.TASK_RUNS,
-            TriggerRunsTable.TRIGGER_RUNS
+            TriggerRunsTable.TRIGGER_RUNS,
+            TriggerSchedulesTable.TRIGGER_SCHEDULES
         );
     }
 

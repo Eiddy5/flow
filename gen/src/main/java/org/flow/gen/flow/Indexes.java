@@ -10,6 +10,7 @@ import org.flow.gen.flow.tables.FlowsTable;
 import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
+import org.flow.gen.flow.tables.TriggerSchedulesTable;
 import org.jooq.Index;
 import org.jooq.OrderField;
 import org.jooq.impl.DSL;
@@ -36,5 +37,6 @@ public class Indexes {
     public static final Index IDX_TASK_RETRY_MESSAGES_PENDING = Internal.createIndex(DSL.name("idx_task_retry_messages_pending"), TaskRetryMessagesTable.TASK_RETRY_MESSAGES, new OrderField[] { TaskRetryMessagesTable.TASK_RETRY_MESSAGES.DELIVER_AT }, false);
     public static final Index IDX_TASK_RUNS_PARENT = Internal.createIndex(DSL.name("idx_task_runs_parent"), TaskRunsTable.TASK_RUNS, new OrderField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.PARENT_ID, TaskRunsTable.TASK_RUNS.ITERATION, TaskRunsTable.TASK_RUNS.ORDER }, false);
     public static final Index IDX_TASK_RUNS_TASK = Internal.createIndex(DSL.name("idx_task_runs_task"), TaskRunsTable.TASK_RUNS, new OrderField[] { TaskRunsTable.TASK_RUNS.TASK_ID }, false);
+    public static final Index IDX_TRIGGER_SCHEDULES_AVAILABLE = Internal.createIndex(DSL.name("idx_trigger_schedules_available"), TriggerSchedulesTable.TRIGGER_SCHEDULES, new OrderField[] { TriggerSchedulesTable.TRIGGER_SCHEDULES.AVAILABLE_AT }, false);
     public static final Index UQ_FLOWS_KEY_VERSION = Internal.createIndex(DSL.name("uq_flows_key_version"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.KEY, FlowsTable.FLOWS.VERSION }, true);
 }

@@ -1,7 +1,7 @@
 # 流程、Webhook 和指定日期触发
 
 依赖、数据库准备见 [定时触发手册](schedule-triggers.md)。本次变更需重建隔离开发库的
-Flow 基线及 scheduled_tasks；IF NOT EXISTS 不会升级既有字段。未处理业务库升级。
+Flow 完整基线（包含 trigger_schedules）；IF NOT EXISTS 不会升级既有字段。未处理业务库升级。
 每种插件自身 @Plugin.examples 均包含可发布完整 Flow YAML。
 
 ## 上游流程触发

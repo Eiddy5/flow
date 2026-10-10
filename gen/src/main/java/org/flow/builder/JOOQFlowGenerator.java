@@ -10,7 +10,7 @@ import org.jooq.meta.jaxb.*;
 public class JOOQFlowGenerator {
 
     /**
-     * 从指定 PostgreSQL 基线生成应用表代码，排除上游调度表。
+     * 从指定 PostgreSQL 基线生成应用与调度表代码。
      * @param args 当前不使用的命令行参数
      * @throws Exception 连接数据库或生成代码失败时抛出
      */
@@ -31,7 +31,7 @@ public class JOOQFlowGenerator {
                         .withDatabase(new Database()
                                 .withName("org.jooq.meta.postgres.PostgresDatabase")
                                 .withInputSchema("public")
-                                .withExcludes("databasechangelog|pgp_armor_headers|auth_permission_definition_backup_20260629_contacts|scheduled_tasks")
+                                .withExcludes("databasechangelog|pgp_armor_headers|auth_permission_definition_backup_20260629_contacts")
                         )
                         .withTarget(new Target()
                                 .withPackageName("org.flow.gen.flow")

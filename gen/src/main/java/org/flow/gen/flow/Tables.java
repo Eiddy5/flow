@@ -11,6 +11,7 @@ import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
+import org.flow.gen.flow.tables.TriggerSchedulesTable;
 
 
 /**
@@ -53,4 +54,9 @@ public class Tables {
      * The table <code>public.trigger_runs</code>.
      */
     public static final TriggerRunsTable TRIGGER_RUNS = TriggerRunsTable.TRIGGER_RUNS;
+
+    /**
+     * The table <code>public.trigger_schedules</code>.
+     */
+    public static final TriggerSchedulesTable TRIGGER_SCHEDULES = TriggerSchedulesTable.TRIGGER_SCHEDULES;
 }

@@ -12,6 +12,7 @@ import org.apache.pulsar.client.admin.PulsarAdminException;
 import org.apache.pulsar.client.api.PulsarClient;
 import org.cses.flow.executor.ExecutorEvent;
 import org.cses.flow.executor.commands.ExecutionCommand;
+import org.cses.flow.scheduler.events.SchedulerEvent;
 import org.paas.pulsar.PulsarFactory;
 import org.paas.pulsar.PulsarLifecycleManager;
 
@@ -56,16 +57,27 @@ public class PulsarTestEnvironment {
     }
 
     /**
-     * Clears only the dedicated Executor subscriptions after their context is closed.
-     * Restart never calls this operation; physical cleanup is not business completion.
-     * @throws IllegalStateException when the dedicated broker cannot be cleaned
+     * 上下文关闭后清理专属测试订阅；同主题仍有消费者时保留消息，避免影响其他夹具。
+     * 重启不调用此操作，物理清理不代表业务完成。
+     * @throws IllegalStateException 专属测试 Broker 无法清理时抛出
      */
     public static void clearExecutorBacklogs() {
         try (PulsarAdmin admin = admin()) {
-            for (String name : List.of(ExecutionCommand.QUEUE_NAME, ExecutorEvent.QUEUE_NAME,
-                    org.cses.flow.executor.TaskRetryEvent.QUEUE_NAME)) {
+            Map<String, List<String>> subscriptions = Map.of(
+                ExecutionCommand.QUEUE_NAME, List.of(ExecutionCommand.QUEUE_NAME),
+                ExecutorEvent.QUEUE_NAME, List.of(ExecutorEvent.QUEUE_NAME),
+                org.cses.flow.executor.TaskRetryEvent.QUEUE_NAME, List.of(org.cses.flow.executor.TaskRetryEvent.QUEUE_NAME),
+                SchedulerEvent.QUEUE_NAME, List.of("flow-schedule-config", "flow-trigger-dispatch"));
+            for (var entry : subscriptions.entrySet()) {
                 try {
-                    admin.topics().skipAllMessages("persistent://public/default/" + name, name);
+                    String topic = "persistent://public/default/" + entry.getKey();
+                    var existing = admin.topics().getStats(topic).getSubscriptions();
+                    if (existing.values().stream().anyMatch(subscription -> !subscription.getConsumers().isEmpty())) {
+                        continue;
+                    }
+                    for (String name : entry.getValue()) {
+                        if (existing.containsKey(name)) admin.topics().skipAllMessages(topic, name);
+                    }
                 } catch (PulsarAdminException.NotFoundException ignored) {
                     // Definition-only tests may never have created a topic or subscription.
                 }

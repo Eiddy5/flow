@@ -1,215 +1,198 @@
 package org.cses.flow.scheduler;
 
-import com.github.kagkarlsson.scheduler.Scheduler;
-import com.github.kagkarlsson.scheduler.ScheduledExecutionsFilter;
-import com.github.kagkarlsson.scheduler.task.FailureHandler;
-import com.github.kagkarlsson.scheduler.task.helper.CustomTask;
-import com.github.kagkarlsson.scheduler.task.helper.Tasks;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.annotation.Value;
 import io.micronaut.context.event.StartupEvent;
 import io.micronaut.context.event.ShutdownEvent;
 import io.micronaut.runtime.event.annotation.EventListener;
+import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.annotation.PreDestroy;
 import jakarta.inject.Named;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.flows.FlowId;
-import org.cses.flow.scheduler.events.SchedulerEvent;
+import org.cses.flow.core.domains.triggers.ScheduledTrigger;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.utils.TimeUtil;
-import org.cses.flow.core.domains.triggers.ScheduledTrigger;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
 import org.cses.flow.queues.annotations.FlowQueueListener;
+import org.cses.flow.scheduler.events.SchedulerEvent;
+import org.cses.flow.scheduler.repositories.ScheduleRepository;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.x9.jooq.JOOQ;
 
-import javax.sql.DataSource;
 import java.time.Duration;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.Optional;
-import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
-
-/** 管理定时计划与到点评估，命中投递和执行启动交给 Core。 */
+/** 管理持久化计划；每次领取、命中与推进使用同一 PostgreSQL 短事务。 */
 @Context
 @Requires(condition = FlowJooqCondition.class)
 @Requires(property = "flow.scheduler.enabled", notEquals = "false", defaultValue = "true")
 public class FlowScheduler {
-    DSLContext dsl;
-    FlowRepository flows;
-    TriggerRuntime runtime;
-    Scheduler scheduler;
-    CustomTask<ScheduleData> triggerTask;
+    private static Logger log = LoggerFactory.getLogger(FlowScheduler.class);
+    private DSLContext dsl;
+    private FlowRepository flows;
+    private TriggerRuntime runtime;
+    private ScheduleRepository schedules;
+    private long retryDelayMillis;
+    private boolean running;
 
     /**
-     * 连接现有 Flow 数据源与消息队列，注册持久化定时任务。
-     *
-     * @param dataSource Flow 数据源
-     *
-     * @param jooq Flow 的统一映射配置
-     *
-     * @param flows Flow 版本读取
-     *
-     * @param runtime Core 通用命中持久化入口
-     *
-     * @param pollInterval 定时计划轮询周期
+     * 连接 Flow 计划仓储与命中持久化入口；不启动通用任务线程池。
+     * @param jooq 具名 Flow 数据库
+     * @param flows 正式定义查询
+     * @param runtime Core 命中和 outbox 持久化入口
+     * @param schedules 调度计划仓储
+     * @param pollInterval 正数轮询间隔，也用作失败后的重试间隔
+     * @throws IllegalArgumentException 间隔不足一毫秒时抛出
      */
-    public FlowScheduler(@Named("flow") DataSource dataSource, @Named("flow") JOOQ jooq, FlowRepository flows,
-            TriggerRuntime runtime,
+    public FlowScheduler(@Named("flow") JOOQ jooq, FlowRepository flows, TriggerRuntime runtime,
+            ScheduleRepository schedules,
             @Value("${flow.scheduler.poll-interval:1s}") Duration pollInterval) {
-        if (pollInterval.isZero() || pollInterval.isNegative())
-            throw new IllegalArgumentException("Scheduler poll interval must be positive");
-        try {
-            dataSource = dataSource.unwrap(io.micronaut.configuration.jdbc.hikari.HikariUrlDataSource.class);
-        } catch (java.sql.SQLException failure) {
-            throw new IllegalStateException("Cannot obtain Flow scheduler datasource", failure);
-        }
+        if (pollInterval.toMillis() <= 0) throw new IllegalArgumentException("Scheduler poll interval must be positive");
         this.dsl = jooq.createDSLContext();
         this.flows = flows;
         this.runtime = runtime;
-        triggerTask = Tasks.custom("flow-schedule-trigger", ScheduleData.class)
-            .onFailure(new FailureHandler.OnFailureRetryLater<>(pollInterval))
-            .execute((instance, context) -> (completion, operations) -> {
-                ScheduleData data = instance.getData();
-                Flow flow = latest(dsl, data.companyId(), data.flowKey()).orElse(null);
-                ScheduledTrigger trigger = findTrigger(flow, data.triggerKey());
-                if (trigger == null || !trigger.id().equals(instance.getId())) {
-                    operations.remove();
-                    return;
-                }
-                if (trigger.scheduleKey().equals(data.schedule())) {
-                    stage(flow, trigger, data);
-                }
-                Long next = nextTime(trigger);
-                if (next == null) { operations.remove(); return; }
-                operations.reschedule(completion, Instant.ofEpochMilli(next),
-                    ScheduleData.next(data.companyId(), data.flowKey(), trigger, next));
-            });
-        scheduler = Scheduler.create(dataSource, triggerTask)
-            .serializer(new SchedulerSerializer()).pollingInterval(pollInterval)
-            .threads(2).build();
+        this.schedules = schedules;
+        this.retryDelayMillis = pollInterval.toMillis();
     }
 
-    /**
-     * @param event 应用启动事件；队列 Bean 完成初始化后才开始扫描 */
+    /** @param event 容器已完成启动通知；允许定时扫描领取计划 */
     @EventListener
-    public void start(StartupEvent event) { scheduler.start(); }
+    public synchronized void start(StartupEvent event) { running = true; }
 
-    /**
-     * 在容器销毁队列和数据库资源之前停止调度回调。
-     *
-     * @param event 应用关闭事件，不读取或修改其内容
-     */
+    /** @param event 容器关闭通知；等待正在执行的扫描退出后停止领取 */
     @EventListener
     public void shutdown(ShutdownEvent event) { stop(); }
 
-    /** 停止接单并等待本机回调结束；重复调用由调度器忽略。 */
+    /** 等待本机当前扫描退出并停止领取；重复调用无副作用。 */
     @PreDestroy
-    public void stop() { scheduler.stop(); }
+    public synchronized void stop() { running = false; }
 
     /**
-     * 处理持久化配置变更，其他事件由独立订阅处理；失败由 Queue 重新投递。
-     *
-     * @param event 可信内部事件
+     * 每轮最多处理32条到期计划，每条单独提交；行锁跳过其他节点正在处理的计划。
+     * 数据库异常使当前事务回滚，原命中身份在下一轮继续使用。
      */
-    @FlowQueueListener(subscription = "flow-schedule-config")
-    public void onEvent(SchedulerEvent event) {
-        if ("FLOW_CHANGED".equals(event.kind())) {
-            synchronize(event);
+    @Scheduled(fixedDelay = "${flow.scheduler.poll-interval:1s}", initialDelay = "${flow.scheduler.poll-interval:1s}")
+    public synchronized void poll() {
+        if (!running) return;
+        for (int index = 0; index < 32; index++) {
+            var selected = new AtomicReference<ScheduleData>();
+            try {
+                boolean processed = dsl.transactionResult(configuration -> {
+                    var context = DSL.using(configuration);
+                    var next = schedules.lockNext(context, TimeUtil.now());
+                    if (next.isEmpty()) return false;
+                    ScheduleData data = next.orElseThrow();
+                    selected.set(data);
+                    process(context, data);
+                    return true;
+                });
+                if (!processed) return;
+            } catch (RuntimeException failure) {
+                ScheduleData data = selected.get();
+                log.warn("Scheduled occurrence failed; persisted identity retained", failure);
+                if (data == null) return;
+                long now = TimeUtil.now();
+                try {
+                    schedules.failed(dsl, data, now, now + retryDelayMillis, failure.getClass().getSimpleName());
+                } catch (RuntimeException unavailable) {
+                    log.warn("Cannot postpone schedule; next poll will retry original occurrence", unavailable);
+                    return;
+                }
+            }
         }
     }
 
     /**
-     * 在租户与 Flow 范围内串行刷新，重复及乱序事件均读取最新正式版本。
-     *
-     * @param event 配置变更通知
+     * 读取当前正式定义，在已领取事务中同时保存命中和下一次计划。
+     * @param context 持有该计划行锁的数据库事务
+     * @param data 已领取的稳定命中坐标
+     */
+    private void process(DSLContext context, ScheduleData data) {
+        Flow flow = latest(context, data.companyId(), data.flowKey()).orElse(null);
+        ScheduledTrigger trigger = findTrigger(flow, data.triggerKey());
+        if (trigger == null || !trigger.id().equals(data.triggerId())) {
+            schedules.advance(context, data, null);
+            return;
+        }
+        if (trigger.scheduleKey().equals(data.schedule())) {
+            SchedulerEvent event = SchedulerEvent.from("TRIGGER_FIRED", flow.companyId(), data.eventId(),
+                flow.key(), flow.version(), trigger.key(), data.scheduledAt(), data.executionId(),
+                flow.updater().id(), flow.bindInputs(trigger.inputs()));
+            runtime.stage(context, event);
+        }
+        Long next = trigger.nextAt(TimeUtil.now());
+        schedules.advance(context, data, next == null ? null
+            : ScheduleData.next(data.companyId(), data.flowKey(), trigger, next));
+    }
+
+    /**
+     * 配置通知只提示重新读取最新正式版本，重复及乱序消息不恢复历史配置。
+     * @param event 可信的内部持久化事件；其他事件由 Core 订阅处理
+     */
+    @FlowQueueListener(subscription = "flow-schedule-config")
+    public void onEvent(SchedulerEvent event) {
+        if ("FLOW_CHANGED".equals(event.kind())) synchronize(event);
+    }
+
+    /**
+     * 按租户和流程串行同步全部计划；行锁协调到期扫描，禁用或移除同时删除未来计划。
+     * @param event 非空配置变更通知，仅使用租户和流程键定位最新定义
      */
     void synchronize(SchedulerEvent event) {
         dsl.transaction(configuration -> {
-            DSLContext transaction = DSL.using(configuration);
-            transaction.select(DSL.field("pg_advisory_xact_lock(hashtextextended({0}, 0))",
+            DSLContext context = DSL.using(configuration);
+            context.select(DSL.field("pg_advisory_xact_lock(hashtextextended({0}, 0))",
                 Object.class, DSL.val(event.companyId() + ":" + event.flowKey()))).fetch();
-            Flow flow = latest(transaction, event.companyId(), event.flowKey()).orElse(null);
-            Set<String> active = new HashSet<>();
+            Flow flow = latest(context, event.companyId(), event.flowKey()).orElse(null);
+            var active = new HashSet<String>();
+            var triggers = new java.util.ArrayList<ScheduledTrigger>();
             if (flow != null && !flow.deleted()) {
                 for (var definition : flow.triggers()) {
                     if (!(definition instanceof ScheduledTrigger trigger) || trigger.disabled()) continue;
                     active.add(trigger.id());
-                    var instance = triggerTask.instance(trigger.id());
-                    var stored = scheduler.getScheduledExecution(instance);
-                    if (stored.isEmpty()) {
-                        Long next = nextTime(trigger);
-                        if (next == null) continue;
-                        scheduler.scheduleIfNotExists(triggerTask.instance(trigger.id(),
-                            ScheduleData.next(flow.companyId(), flow.key(), trigger, next)), Instant.ofEpochMilli(next));
-                    } else {
-                        ScheduleData data = (ScheduleData) stored.get().getData();
-                        if (!data.schedule().equals(trigger.scheduleKey())) {
-                            Long next = nextTime(trigger);
-                            if (next == null) { scheduler.cancel(instance); continue; }
-                            if (!scheduler.reschedule(instance, Instant.ofEpochMilli(next),
-                                ScheduleData.next(flow.companyId(), flow.key(), trigger, next)))
-                                throw new IllegalStateException("Schedule changed concurrently");
-                        }
-                    }
+                    triggers.add(trigger);
                 }
             }
-            // ponytail: 初期按任务类型扫描，触发器规模增大后为租户和 Flow 增加索引投影。
-            var obsolete = new java.util.ArrayList<com.github.kagkarlsson.scheduler.task.TaskInstanceId>();
-            scheduler.fetchScheduledExecutionsForTask("flow-schedule-trigger", ScheduleData.class,
-                ScheduledExecutionsFilter.all(), stored -> {
-                    ScheduleData data = stored.getData();
-                    if (data.companyId().equals(event.companyId()) && data.flowKey().equals(event.flowKey())
-                        && !active.contains(stored.getTaskInstance().getId())) {
-                        obsolete.add(stored.getTaskInstance());
-                    }
-                });
-            obsolete.forEach(scheduler::cancel);
+            schedules.removeObsolete(context, event.companyId(), event.flowKey(), active);
+            for (ScheduledTrigger trigger : triggers) {
+                var stored = schedules.find(context, flow.companyId(), trigger.id());
+                if (stored.isPresent() && stored.orElseThrow().schedule().equals(trigger.scheduleKey())) continue;
+                Long next = trigger.nextAt(TimeUtil.now());
+                ScheduleData data = next == null ? null
+                    : ScheduleData.next(flow.companyId(), flow.key(), trigger, next);
+                if (stored.isPresent()) schedules.advance(context, stored.orElseThrow(), data);
+                else if (data != null) schedules.insert(context, data);
+            }
         });
     }
 
     /**
-     * 原子保存命中事实与 outbox；回调重试通过稳定身份复用原始事实。
-     *
-     * @param flow 命中时选定的正式版本
-     *
-     * @param trigger 当前生效定义
-     *
-     * @param data 这次计划的稳定坐标
+     * 查询最新正式定义。
+     * @param context 当前事务上下文
+     * @param company 非空租户
+     * @param key 非空流程键
+     * @return 最新正式定义；不存在时为空
      */
-    void stage(Flow flow, ScheduledTrigger trigger, ScheduleData data) {
-        SchedulerEvent event = SchedulerEvent.from("TRIGGER_FIRED", flow.companyId(), data.eventId(),
-            flow.key(), flow.version(), trigger.key(), data.scheduledAt(), data.executionId(),
-            flow.updater().id(), flow.bindInputs(trigger.inputs()));
-        runtime.stage(dsl, event);
-    }
-
-    /**
-     * @param context 数据库上下文
-     * @param company 租户
-     * @param key Flow 名称
-     * @return 最新正式定义 */
-    Optional<Flow> latest(DSLContext context, String company, String key) {
+    private Optional<Flow> latest(DSLContext context, String company, String key) {
         return flows.findLatestByFlowId(context, FlowId.from(company, key));
     }
 
     /**
-     * @param flow 可空正式定义
-     * @param key 触发器名称
-     * @return 启用的定时定义，不存在则为空 */
-    ScheduledTrigger findTrigger(Flow flow, String key) {
+     * 查询当前有效的时间触发器。
+     * @param flow 可空正式定义，已删除或不存在时视为没有触发器
+     * @param key 原计划中的触发器键
+     * @return 启用的定时定义；不存在时为 null
+     */
+    private ScheduledTrigger findTrigger(Flow flow, String key) {
         if (flow == null || flow.deleted()) return null;
         return flow.triggers().stream().filter(trigger -> trigger.key().equals(key) && !trigger.disabled())
             .filter(ScheduledTrigger.class::isInstance).map(ScheduledTrigger.class::cast).findFirst().orElse(null);
-    }
-
-    /**
-     * @param trigger 已校验定义
-     * @return 当前时刻之后的首次计划时间，耗尽时为 null；不追补全部历史周期 */
-    Long nextTime(ScheduledTrigger trigger) {
-        return trigger.nextAt(TimeUtil.now());
     }
 }

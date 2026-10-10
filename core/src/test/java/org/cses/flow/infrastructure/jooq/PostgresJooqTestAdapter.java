@@ -111,11 +111,13 @@ public class PostgresJooqTestAdapter extends JOOQ {
     }
 
     /**
-     * 删除指定测试租户的流程定义与运行数据，不操作 Broker 消息。
+     * 删除指定测试租户的调度计划、流程定义与运行数据，不操作 Broker 消息。
      * @param companyId 本次测试创建的租户标识；不得传入其他租户
      */
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
+            dsl.deleteFrom(org.flow.gen.flow.Tables.TRIGGER_SCHEDULES)
+                .where(org.flow.gen.flow.Tables.TRIGGER_SCHEDULES.COMPANY_ID.eq(companyId)).execute();
             dsl.deleteFrom(org.flow.gen.flow.Tables.TASK_RETRY_MESSAGES)
                 .where(org.flow.gen.flow.Tables.TASK_RETRY_MESSAGES.COMPANY_ID.eq(companyId)).execute();
             dsl.deleteFrom(org.flow.gen.flow.Tables.SCHEDULER_EVENTS)

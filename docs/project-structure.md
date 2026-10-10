@@ -120,8 +120,9 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 ### `scheduler/`
 
 独立调度模块。`src/main/java/org/cses/flow/scheduler/` 保存自有接线、定时回调、
-时间计划注册与取消；`src/upstream/java/` 保存固定版本 db-scheduler 源码；
-`sql/scheduled_tasks.sql` 保存上游表；`UPSTREAM.md` 与 `LICENSE-db-scheduler` 记录来源。
+时间计划注册、到期事务与取消；同包 `repositories/` 及 `entries/` 保存计划的 JOOQ
+持久化适配。`UPSTREAM.md` 与 `LICENSE-db-scheduler` 保留领取机制的来源及许可，
+不再纳入整包上游源码。计划表位于 `gen/sql/flow/tables/trigger_schedules.sql`。
 测试在 `src/test/java/`。依赖 Core，Core 不依赖 Scheduler。
 Core 模块中的 `org.cses.flow.scheduler.events` 只保存共享事件协议，供 Core 发出配置
 变更。Core 模块中的 `org.cses.flow.scheduler.TriggerExecutionPublisher` 核验持久化

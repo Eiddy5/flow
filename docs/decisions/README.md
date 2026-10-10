@@ -21,6 +21,7 @@
 ## Core 组件与依赖方向
 
 - [`ADR 0104`](0104-add-flow-webhook-and-date-triggers.md)：流程、认证 Webhook 和指定日期触发，统一命中与独立投递。
+- [`ADR 0107`](0107-integrate-postgresql-trigger-scheduling.md)：提取 PostgreSQL 排他领取，Flow 自有计划表与短事务命中推进，移除整包 db-scheduler。
 - [`ADR 0103`](0103-add-event-driven-schedule-triggers.md)：Flow 自有 Trigger、源码纳入
   db-scheduler、独立 scheduler 模块、持久化命中与事件恢复。
 

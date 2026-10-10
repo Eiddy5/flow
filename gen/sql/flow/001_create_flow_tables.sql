@@ -14,5 +14,6 @@ BEGIN;
 
 \ir tables/scheduler_events.sql
 \ir tables/trigger_runs.sql
+\ir tables/trigger_schedules.sql
 
 COMMIT;

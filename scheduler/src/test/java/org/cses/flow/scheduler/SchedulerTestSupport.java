@@ -27,7 +27,8 @@ public class SchedulerTestSupport {
      * @return 由调用方关闭的独立租户夹具
      */
     public static WorkflowUcFixture open() {
-        return WorkflowUcFixture.openWithProperties(Map.of(
+        Map<String, Object> properties = new java.util.LinkedHashMap<>(Map.of(
+            "datasources.flow.enabled", true,
             "datasources.flow.url", System.getenv("FLOW_POSTGRES_TEST_URL"),
             "datasources.flow.username", System.getenv("FLOW_POSTGRES_TEST_USER"),
             "datasources.flow.password", System.getenv("FLOW_POSTGRES_TEST_PASSWORD"),
@@ -35,6 +36,13 @@ public class SchedulerTestSupport {
             "datasources.flow.maximum-pool-size", 4,
             "flow.scheduler.poll-interval", "100ms"
         ));
+        properties.put("datasources.default.enabled", true);
+        properties.put("datasources.default.url", System.getenv("FLOW_POSTGRES_DEFAULT_TEST_URL"));
+        properties.put("datasources.default.username", System.getenv("FLOW_POSTGRES_TEST_USER"));
+        properties.put("datasources.default.password", System.getenv("FLOW_POSTGRES_TEST_PASSWORD"));
+        properties.put("datasources.default.driver-class-name", "org.postgresql.Driver");
+        properties.put("datasources.default.maximum-pool-size", 2);
+        return WorkflowUcFixture.openWithProperties(properties);
     }
 
     /**
@@ -128,7 +136,7 @@ public class SchedulerTestSupport {
     }
 
     /**
-     * 通过公开删除入口停止调度，并等待该 Flow 的框架任务全部取消。
+     * 通过公开删除入口停止调度，并等待该 Flow 的持久化计划全部取消。
      * @param fixture 本场景夹具
      * @param flow 需要清理的正式版本
      */
@@ -138,7 +146,7 @@ public class SchedulerTestSupport {
     }
 
     /**
-     * 只读检查本 Flow 的任务注册数量；仅用于技术同步与测试资源清理。
+     * 只读检查本租户 Flow 的持久化计划数量；仅用于技术同步与测试资源清理。
      * @param flow 含本场景独有触发器身份的公开定义
      * @param expected 应存在的注册数，0 表示全部取消
      */
@@ -146,8 +154,9 @@ public class SchedulerTestSupport {
         long deadline = TimeUtil.now() + 10_000;
         try (var connection = DriverManager.getConnection(System.getenv("FLOW_POSTGRES_TEST_URL"),
             System.getenv("FLOW_POSTGRES_TEST_USER"), System.getenv("FLOW_POSTGRES_TEST_PASSWORD"));
-             var query = connection.prepareStatement("select count(*) from scheduled_tasks where task_instance = any (?)")) {
-            query.setArray(1, connection.createArrayOf("text", flow.triggers().stream().map(trigger -> trigger.id()).toArray()));
+             var query = connection.prepareStatement("select count(*) from trigger_schedules where company_id = ? and id = any (?)")) {
+            query.setString(1, flow.companyId());
+            query.setArray(2, connection.createArrayOf("text", flow.triggers().stream().map(trigger -> trigger.id()).toArray()));
             do {
                 try (var result = query.executeQuery()) {
                     result.next();

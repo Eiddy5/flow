@@ -3,13 +3,9 @@ plugins {
     alias(libs.plugins.micronaut.library)
     id 'java-library'
 }
-sourceSets.main.java.srcDir('src/upstream/java')
 dependencies {
     api(project(':core'))
     implementation('org.slf4j:slf4j-api:2.0.17')
-    implementation('org.jspecify:jspecify:1.0.0')
-    implementation(libs.cron.utils)
-    implementation(libs.micronaut.jdbc.hikari)
     implementation(libs.micronaut.jooq)
     compileOnly(libs.lombok)
     annotationProcessor(libs.lombok)

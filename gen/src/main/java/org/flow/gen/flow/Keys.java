@@ -11,6 +11,7 @@ import org.flow.gen.flow.records.SchedulerEventsRecord;
 import org.flow.gen.flow.records.TaskRetryMessagesRecord;
 import org.flow.gen.flow.records.TaskRunsRecord;
 import org.flow.gen.flow.records.TriggerRunsRecord;
+import org.flow.gen.flow.records.TriggerSchedulesRecord;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -18,6 +19,7 @@ import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
+import org.flow.gen.flow.tables.TriggerSchedulesTable;
 import org.jooq.TableField;
 import org.jooq.UniqueKey;
 import org.jooq.impl.DSL;
@@ -49,4 +51,6 @@ public class Keys {
     public static final UniqueKey<TriggerRunsRecord> PK_TRIGGER_RUNS = Internal.createUniqueKey(TriggerRunsTable.TRIGGER_RUNS, DSL.name("pk_trigger_runs"), new TableField[] { TriggerRunsTable.TRIGGER_RUNS.COMPANY_ID, TriggerRunsTable.TRIGGER_RUNS.ID }, true);
     public static final UniqueKey<TriggerRunsRecord> UQ_TRIGGER_RUNS_EXECUTION = Internal.createUniqueKey(TriggerRunsTable.TRIGGER_RUNS, DSL.name("uq_trigger_runs_execution"), new TableField[] { TriggerRunsTable.TRIGGER_RUNS.COMPANY_ID, TriggerRunsTable.TRIGGER_RUNS.EXECUTION_ID }, true);
     public static final UniqueKey<TriggerRunsRecord> UQ_TRIGGER_RUNS_OCCURRENCE = Internal.createUniqueKey(TriggerRunsTable.TRIGGER_RUNS, DSL.name("uq_trigger_runs_occurrence"), new TableField[] { TriggerRunsTable.TRIGGER_RUNS.COMPANY_ID, TriggerRunsTable.TRIGGER_RUNS.FLOW_KEY, TriggerRunsTable.TRIGGER_RUNS.TRIGGER_KEY, TriggerRunsTable.TRIGGER_RUNS.SOURCE_KEY }, true);
+    public static final UniqueKey<TriggerSchedulesRecord> PK_TRIGGER_SCHEDULES = Internal.createUniqueKey(TriggerSchedulesTable.TRIGGER_SCHEDULES, DSL.name("pk_trigger_schedules"), new TableField[] { TriggerSchedulesTable.TRIGGER_SCHEDULES.COMPANY_ID, TriggerSchedulesTable.TRIGGER_SCHEDULES.ID }, true);
+    public static final UniqueKey<TriggerSchedulesRecord> UQ_TRIGGER_SCHEDULES_TRIGGER = Internal.createUniqueKey(TriggerSchedulesTable.TRIGGER_SCHEDULES, DSL.name("uq_trigger_schedules_trigger"), new TableField[] { TriggerSchedulesTable.TRIGGER_SCHEDULES.COMPANY_ID, TriggerSchedulesTable.TRIGGER_SCHEDULES.FLOW_KEY, TriggerSchedulesTable.TRIGGER_SCHEDULES.TRIGGER_KEY }, true);
 }
