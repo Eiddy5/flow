@@ -17,37 +17,37 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class CoreArchitectureStandardTest {
 
-    private static final Path MAIN_JAVA = Path.of("src/main/java");
-    private static final Path TEST_JAVA = Path.of("src/test/java");
-    private static final Path FLOW = MAIN_JAVA.resolve("org/cses/flow");
-    private static final Path CORE = FLOW.resolve("core");
-    private static final Set<String> PARTITIONED_DIRECTORIES = Set.of(
+    private static Path MAIN_JAVA = Path.of("src/main/java");
+    private static Path TEST_JAVA = Path.of("src/test/java");
+    private static Path FLOW = MAIN_JAVA.resolve("org/cses/flow");
+    private static Path CORE = FLOW.resolve("core");
+    private static Set<String> PARTITIONED_DIRECTORIES = Set.of(
         "handlers",
         "queries",
         "repositories",
         "services"
     );
-    private static final Set<String> FORBIDDEN_CORE_RUNTIME_DIRECTORIES =
+    private static Set<String> FORBIDDEN_CORE_RUNTIME_DIRECTORIES =
         Set.of(
             "executor",
             "executors",
             "worker",
             "workers"
         );
-    private static final Pattern RECORD_DECLARATION = Pattern.compile(
+    private static Pattern RECORD_DECLARATION = Pattern.compile(
         "(?m)^\\s*(?:(?:public|protected|private|static|final)\\s+)*"
             + "record\\s+[A-Za-z_$][A-Za-z\\d_$]*"
     );
-    private static final Pattern RECORD_DECLARATION_NAME = Pattern.compile(
+    private static Pattern RECORD_DECLARATION_NAME = Pattern.compile(
         "(?m)^\\s*(?:(?:public|protected|private|static|final)\\s+)*"
             + "record\\s+([A-Za-z_$][A-Za-z\\d_$]*)"
     );
-    private static final Pattern NUMERIC_TECHNICAL_ID = Pattern.compile(
+    private static Pattern NUMERIC_TECHNICAL_ID = Pattern.compile(
         "\\b(?:long|Long|UUID)\\s+"
             + "(?:id|flowId|taskId|executionId|taskRunId|"
             + "parentId)\\b"
     );
-    private static final Pattern NONSTANDARD_ID_GENERATOR = Pattern.compile(
+    private static Pattern NONSTANDARD_ID_GENERATOR = Pattern.compile(
         "UUID\\s*\\.\\s*randomUUID\\s*\\(\\)"
             + "|new\\s+AtomicLong\\s*\\("
     );
@@ -529,9 +529,8 @@ class CoreArchitectureStandardTest {
     }
 
     /**
-     * Keeps generated Record conversion chains out of repositories and checks
-     * Flow definition Entry mapping. Real PostgreSQL round trips verify the
-     * complete Execution snapshot mapping without prescribing its query shape.
+     * 保留生成 Record 不进入领域的边界，读取经原生 Engine Handler 直接映射完整 Entry。
+     * 真实 PostgreSQL 往返另行验证过滤条件、字段形状和完整 Execution 快照。
      *
      * @throws IOException when a repository source cannot be read
      */
@@ -566,12 +565,19 @@ class CoreArchitectureStandardTest {
         String flows = Files.readString(FLOW.resolve(
             "infrastructure/repositories/flows/FlowRepositoryImpl.java"
         ));
+        String base = Files.readString(repositories.resolve("BaseRepository.java"));
+        String engine = Files.readString(FLOW.resolve("infrastructure/datapilot/FlowDataSourceEngine.java"));
         assertTrue(
             invalid.isEmpty()
-                && flows.contains("fetchOneInto(FlowEntry.class)")
-                && flows.contains("fetchInto(FlowEntry.class)")
-                && flows.contains("fetchInto(FlowTaskEntry.class)"),
-            () -> "PostgreSQL table reads must map directly into Entries: "
+                && flows.contains("readOne(query(")
+                && flows.contains("FlowEntry.class)")
+                && flows.contains(".list(FlowEntry.class)")
+                && flows.contains(".list(FlowTaskEntry.class)")
+                && base.contains("query.list(entryClass)")
+                && engine.contains("instanceof JooqDatabaseHandler<?>")
+                && engine.contains("database.query(engineContext, request, entryClass)")
+                && !flows.contains(".single("),
+            () -> "PostgreSQL reads must map through native Engine Handler into Entries: "
                 + invalid
         );
     }

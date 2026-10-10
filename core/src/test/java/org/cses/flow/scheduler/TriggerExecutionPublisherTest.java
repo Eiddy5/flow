@@ -2,7 +2,6 @@ package org.cses.flow.scheduler;
 
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.utils.TimeUtil;
-import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.repositories.triggers.entries.TriggerRunEntry;
 import org.cses.flow.scheduler.events.SchedulerEvent;
 import org.junit.jupiter.api.Test;
@@ -29,7 +28,7 @@ class TriggerExecutionPublisherTest {
             var event = SchedulerEvent.from("TRIGGER_FIRED", flow.companyId(), StringUtil.newId(),
                 flow.key(), flow.version(), "technical-occurrence", TimeUtil.now(), StringUtil.newId(),
                 flow.updater().id(), Map.of());
-            var dsl = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+            var dsl = fixture.bean(org.x9.jooq.JOOQ.class, "flow").createDSLContext();
             // 技术协议夹具：构造上游调度器交付的持久化命中事实，不直接改动 Execution 状态。
             dsl.insertInto(TRIGGER_RUNS).set(TriggerRunEntry.from(event).toMap()).execute();
             var publisher = fixture.triggerExecutionPublisher();

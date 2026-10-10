@@ -8,14 +8,15 @@ import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.scheduler.repositories.ScheduleRepository;
+import org.cses.flow.scheduler.repositories.ScheduleRepositoryImpl;
 import org.jooq.DSLContext;
 import org.jooq.SQLDialect;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
 import org.paas.common.util.StringUtil;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.Executors;
@@ -27,6 +28,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** 真实 PostgreSQL 事务、数据库故障和排他领取的技术验证，不替代 UC 公开路径。 */
 class ScheduleTransactionTest {
+    private PostgresJooqTestAdapter adapter = PostgresJooqTestAdapter.fromEnvironment();
+
+    /** 所有借用连接关闭后，释放此测试拥有的专用连接池。 */
+    @AfterEach
+    void closeDatabase() {
+        adapter.close();
+    }
+
     /** 推进失败时命中与 outbox 一起回滚，失败元数据保留原身份，恢复后只启动一次。
      * @throws Exception 数据库故障注入或清理失败时抛出
      */
@@ -95,7 +104,7 @@ class ScheduleTransactionTest {
      */
     @Test
     void lockedRowsAreSkippedAndRollbackMakesOriginalOccurrenceAvailable() throws Exception {
-        var repository = new ScheduleRepository();
+        var repository = new ScheduleRepositoryImpl(adapter.engine());
         String company = StringUtil.newId();
         ScheduleData first = data(company, StringUtil.newId());
         ScheduleData second = data(company, StringUtil.newId());
@@ -124,7 +133,7 @@ class ScheduleTransactionTest {
      */
     @Test
     void staleCompletionCannotReplaceOrReviveChangedAndDeletedPlans() throws Exception {
-        var repository = new ScheduleRepository();
+        var repository = new ScheduleRepositoryImpl(adapter.engine());
         String company = StringUtil.newId();
         ScheduleData original = data(company, StringUtil.newId());
         ScheduleData replacement = data(company, original.triggerId());
@@ -159,7 +168,7 @@ class ScheduleTransactionTest {
      */
     private static FlowScheduler manualScheduler(WorkflowUcFixture fixture) {
         fixture.bean(FlowScheduler.class).stop();
-        var scheduler = new FlowScheduler(PostgresJooqTestAdapter.fromEnvironment(), fixture.bean(FlowRepository.class),
+        var scheduler = new FlowScheduler(fixture.bean(org.x9.jooq.JOOQ.class, "flow"), fixture.bean(FlowRepository.class),
             fixture.bean(TriggerRuntime.class), fixture.bean(ScheduleRepository.class), Duration.ofMillis(100));
         scheduler.start(new StartupEvent(fixture.bean(ApplicationContext.class)));
         return scheduler;
@@ -214,7 +223,7 @@ class ScheduleTransactionTest {
      * @param flow 本场景正式定义
      * @param original 首次保存的计划，不修改
      */
-    private static void finishRetry(WorkflowUcFixture fixture, FlowScheduler scheduler, DSLContext context,
+    private void finishRetry(WorkflowUcFixture fixture, FlowScheduler scheduler, DSLContext context,
             Flow flow, ScheduleData original) {
         await(() -> context.select(TRIGGER_SCHEDULES.AVAILABLE_AT).from(TRIGGER_SCHEDULES)
             .where(TRIGGER_SCHEDULES.COMPANY_ID.eq(flow.companyId())).fetchOne(TRIGGER_SCHEDULES.AVAILABLE_AT) <= TimeUtil.now());
@@ -250,8 +259,8 @@ class ScheduleTransactionTest {
      * @param flow 当前正式定义
      * @return 当前完整计划身份
      */
-    private static ScheduleData plan(DSLContext context, Flow flow) {
-        return new ScheduleRepository().find(context, flow.companyId(), flow.triggers().getFirst().id()).orElseThrow();
+    private ScheduleData plan(DSLContext context, Flow flow) {
+        return new ScheduleRepositoryImpl(adapter.engine()).find(context, flow.companyId(), flow.triggers().getFirst().id()).orElseThrow();
     }
 
     /**
@@ -329,9 +338,8 @@ class ScheduleTransactionTest {
      * @return 调用方必须关闭的真实连接
      * @throws Exception 环境参数缺失或连接失败时抛出
      */
-    private static Connection connection() throws Exception {
-        return DriverManager.getConnection(System.getenv("FLOW_POSTGRES_TEST_URL"),
-            System.getenv("FLOW_POSTGRES_TEST_USER"), System.getenv("FLOW_POSTGRES_TEST_PASSWORD"));
+    private Connection connection() throws Exception {
+        return adapter.connection();
     }
 
     /**

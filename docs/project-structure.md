@@ -113,20 +113,23 @@ Flow 数据库以 `gen/sql/flow/001_create_flow_tables.sql` 为完整执行入�
 ### `core/`
 
 完整的非 HTTP Flow 模块。它保存领域、用例、Executor、Worker、Queue 契约、插件
-扩展、具名 Flow 数据源与 JOOQ 装配、PostgreSQL Repository 以及 DataPilot 兼容适配。Core
+扩展、具名 Flow 数据源与 JOOQ 装配、通过 DataSourceEngine 执行 CRUD 的 PostgreSQL Repository。Core
 不包含 `Application`、HTTP Controller、HTTP 参数绑定或静态资源，可以由 CSES 等
 宿主通过 Server 的传递依赖直接注入和调用公开 Service。
 
 ### `scheduler/`
 
 独立调度模块。`src/main/java/org/cses/flow/scheduler/` 保存自有接线、定时回调、
-时间计划注册、到期事务与取消；同包 `repositories/` 及 `entries/` 保存计划的 JOOQ
-持久化适配。`UPSTREAM.md` 与 `LICENSE-db-scheduler` 保留领取机制的来源及许可，
+时间计划注册、到期事务与取消；同包 `repositories/` 及 `entries/` 保存计划的 Engine / JOOQ
+持久化适配：`ScheduleRepository` 定义端口，`ScheduleRepositoryImpl` 继承 Core 的
+`BaseRepository`，保留短事务中的排他领取。`UPSTREAM.md` 与 `LICENSE-db-scheduler` 保留领取机制的来源及许可，
 不再纳入整包上游源码。计划表位于 `gen/sql/flow/tables/trigger_schedules.sql`。
 测试在 `src/test/java/`。依赖 Core，Core 不依赖 Scheduler。
 Core 模块中的 `org.cses.flow.scheduler.events` 只保存共享事件协议，供 Core 发出配置
 变更。Core 模块中的 `org.cses.flow.scheduler.TriggerExecutionPublisher` 核验持久化
-命中快照并调用 ExecutionService 发布 Create；Core 同包 TriggerRuntime 负责命中事实、独立 outbox 与上游终态匹配；
+命中快照并调用 ExecutionService 发布 Create；Core 同包 TriggerRuntime 负责命中编排、
+独立 outbox 投递与上游终态匹配，数据库操作统一通过
+`core/repositories/triggers/TriggerRepository` 与基础设施中的 `TriggerRepositoryImpl`；
 定时计划运行时在 scheduler 模块，Core 不反向引用该模块。
 WebhookTriggerService 位于 `core/services/triggers`，HTTP 入口位于 Server 的
 `controller/triggers`。Trigger 和 ScheduledTrigger 契约在 `org.cses.flow.core.domains.triggers`，
@@ -172,10 +175,11 @@ server/src/main/java/org/cses/flow/  # 启动与 HTTP 服务
 
 ```text
 core/src/main/java/org/cses/flow/
+├── common/           # 跨类共享的稳定字段、参数名称常量 Fields
 ├── core/             # 工作流领域、Task 能力、用例和持久化端口
 ├── executor/         # Executor Command、队列路由/处理、状态机与 Worker 投递协调
 ├── extensions/       # 可插拔的工作流能力扩展
-├── infrastructure/   # Flow 数据库、Repository 与 DataPilot 适配
+├── infrastructure/   # Flow 数据库、Engine CRUD、Repository 与增强器
 ├── queues/           # 类型化发布接口、消息 key 与队列注解
 ├── scheduler/        # 共享触发事件与执行启动发布器，不含定时运行时
 └── worker/           # RunnableTask 调用、Worker 投递与关联结果信封
@@ -184,6 +188,14 @@ server/src/main/java/org/cses/flow/
 ├── Application.java  # Micronaut 应用启动入口和组合根
 └── controller/       # HTTP/Web 入站接口
 ```
+
+### `common/`
+
+`core/src/main/java/org/cses/flow/common/Fields.java` 保存跨类共用的字段与参数名称，
+可由 Core 及依赖 Core 的模块引用。它不依赖业务、数据库或运行时组件；仅类内部
+使用的名称定义在使用类内部。此目录不是新的 Gradle 模块，也不作为通用工具的兜底目录。
+编译期常量与类型化数据库元数据的使用规则见
+[`开发规范`](standards/development.md#字段名称常量)。
 
 ### `Application.java`
 
@@ -311,6 +323,7 @@ core/
 ├── repositories/
 │   ├── flows/
 │   ├── executions/
+│   ├── triggers/      # 命中与内部事件持久化端口
 │   └── shared/
 └── services/
     ├── flows/
@@ -533,13 +546,15 @@ core/src/main/java/org/cses/flow/infrastructure/
 ├── queues/          # 消息传输基础设施
 │   └── pulsar/      # PAAS 薄适配：PulsarQueue、类型注入 Factory、注解消费者注册
 ├── repositories/    # Repository 的具体生产实现
-│   ├── CasRepository.java # 通用 CAS 仓储基类，校验对象版本并回填保存结果
+│   ├── BaseRepository.java # Engine CRUD、表元数据与专用 SQL 扩展，借用调用方事务
+│   ├── enhancers/
+│   │   └── CasEnhancer.java # 无状态 CAS 增强，通过组合使用
 │   └── <业务模块>/
 │       ├── XxxRepositoryImpl.java
 │       ├── entries/
 │       │   └── XxxEntry.java
 │       └── codec/   # 可选；与 entries 平级的序列化和专用字段转换
-└── datapilot/       # Flow DataPilot 兼容接线
+└── datapilot/       # Flow DataSourceEngine、表元数据注册与借用会话适配
 
 ```
 
@@ -557,6 +572,11 @@ core/src/main/java/org/cses/flow/infrastructure/
 
 基础设施实现 Core 定义的端口，可以依赖 Core；Core 领域对象和状态机不能反向依赖
 DataPilot、JOOQ Record 或具体数据库实现。
+
+各业务 `XxxRepositoryImpl` 继承公共基础，保持自己的保存协议；Execution 组合
+`CasEnhancer`，将根 CAS、子记录与所属 outbox 组装为同一条 SQL 后执行，成功后
+才回填版本。运行期数据库上下文来自 `datasources.flow`，工具与测试分别拥有并关闭
+自己的 DataSource。具体接入与协议见 [ADR 0111](decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)。
 
 JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中
 完成数据库字段与项目对象的转换；需要序列化或专用字段转换时，在同级 `codec`
@@ -715,10 +735,13 @@ infrastructure/queues/pulsar
 | PAAS Pulsar 类型发布、注入与方法消费者注册 | `core/src/main/java/org/cses/flow/infrastructure/queues/pulsar/` |
 | Executor Command/Event 的 Pulsar 声明与回调 | `core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`、`executor/ExecutorEvent.java`、`executor/DefaultExecutor.java` |
 | PostgreSQL Repository 实现 | `core/src/main/java/org/cses/flow/infrastructure/repositories/<业务模块>/XxxRepositoryImpl.java` |
+| 公共数据库能力与特定增强 | `core/src/main/java/org/cses/flow/infrastructure/repositories/BaseRepository.java` 与 `enhancers/` |
+| 触发命中与事件持久化 | `core/repositories/triggers/TriggerRepository.java` 与 `infrastructure/repositories/triggers/TriggerRepositoryImpl.java`（均位于 Core Java 包） |
+| 调度计划持久化 | `scheduler/src/main/java/org/cses/flow/scheduler/repositories/` 中的接口、实现及 Entry |
 | JOOQ Entry 与领域转换 | 具体 Repository 实现下的 `entries/` 子包 |
 | Entry 序列化和专用字段转换 | 与具体 Repository 的 `entries/` 平级的 `codec/` 子包 |
 | Flow YAML 数据源配置、JOOQ 与数据库接线 | `core/src/main/java/org/cses/flow/infrastructure/jooq/` |
-| Flow 的 DataPilot 接线 | `core/src/main/java/org/cses/flow/infrastructure/datapilot/` |
+| Flow 的 DataSourceEngine CRUD 接入 | `core/src/main/java/org/cses/flow/infrastructure/datapilot/` |
 | Flow 自有 OrchestrationTask | `core/src/main/java/org/cses/flow/extensions/flow/<TypeName>.java` |
 | 标注 `@Plugin` 的独立项目内 Task 扩展 | `core/src/main/java/org/cses/flow/extensions/<extension-name>/<ExtensionName>.java` |
 | RunnableTask 具体执行逻辑 | 对应扩展目录中的具体类 |

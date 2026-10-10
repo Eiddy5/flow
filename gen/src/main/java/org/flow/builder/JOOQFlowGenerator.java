@@ -2,6 +2,8 @@ package org.flow.builder;
 
 import lombok.Getter;
 import lombok.Setter;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.jooq.codegen.GenerationTool;
 import org.jooq.meta.jaxb.*;
 
@@ -16,15 +18,6 @@ public class JOOQFlowGenerator {
      */
     public static void main(String[] args) throws Exception {
         Configuration configuration = new Configuration()
-                .withJdbc(new Jdbc()
-                        .withDriver("org.postgresql.Driver")
-                        .withUrl(environment(
-                                "FLOW_JOOQ_JDBC_URL",
-                                "jdbc:postgresql://localhost:5432/flow"
-                        ))
-                        .withUser(environment("FLOW_JOOQ_JDBC_USER", "flow"))
-                        .withPassword(environment("FLOW_JOOQ_JDBC_PASSWORD", "flow"))
-                )
                 .withGenerator(new Generator()
                         .withName("org.jooq.codegen.ext.generator.ExtJavaGenerator")
                         .withStrategy(new Strategy().withName("org.jooq.codegen.ext.generator.ExtJavaGeneratorStrategy"))
@@ -42,10 +35,27 @@ public class JOOQFlowGenerator {
                         )
                 );
 
-        GenerationTool.generate(configuration);
-
+        HikariConfig pool = new HikariConfig();
+        pool.setDriverClassName("org.postgresql.Driver");
+        pool.setJdbcUrl(environment("FLOW_JOOQ_JDBC_URL", "jdbc:postgresql://localhost:5432/flow"));
+        pool.setUsername(environment("FLOW_JOOQ_JDBC_USER", "flow"));
+        pool.setPassword(environment("FLOW_JOOQ_JDBC_PASSWORD", "flow"));
+        pool.setMaximumPoolSize(1);
+        pool.setMinimumIdle(0);
+        pool.setPoolName("flow-codegen");
+        try (HikariDataSource source = new HikariDataSource(pool)) {
+            GenerationTool generator = new GenerationTool();
+            generator.setDataSource(source);
+            generator.run(configuration);
+        }
     }
 
+    /**
+     * 读取生成器的独立环境配置，空值使用既有本地开发默认值。
+     * @param name 非空环境变量名称
+     * @param defaultValue 未提供配置时的开发默认值
+     * @return 环境值或开发默认值，不输出配置内容
+     */
     private static String environment(String name, String defaultValue) {
         String value = System.getenv(name);
         return value == null || value.isBlank() ? defaultValue : value;

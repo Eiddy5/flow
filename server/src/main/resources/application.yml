@@ -124,8 +124,8 @@ datasources:
     username: "postgres"
   flow:
     url: ${FLOW_DATASOURCE_URL:`jdbc:postgresql://127.0.0.1:5432/flow`}
-    username: ${FLOW_DATASOURCE_USERNAME:flow}
-    password: ${FLOW_DATASOURCE_PASSWORD:flow}
+    username: ${FLOW_DATASOURCE_USERNAME}
+    password: ${FLOW_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
     maximum-pool-size: ${FLOW_DATASOURCE_MAXIMUM_POOL_SIZE:10}
     minimum-idle: ${FLOW_DATASOURCE_MINIMUM_IDLE:2}

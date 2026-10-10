@@ -62,7 +62,7 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 
 - CommandExecutor 使用具名 `@Named("flow")` JOOQ 创建普通 DSLContext，不开启业务事务。
 - Handler、Domain、Repository 不打开跨调用事务；按加载、领域行为、完整保存的顺序处理。
-- Repository 使用传入的 DSLContext，不能回退到宿主数据源，不能用 SQL 业务条件替代领域行为。
+- Repository 通过 DataSourceEngine 使用传入的 DSLContext，不能回退到宿主数据源，不能用 SQL 业务条件替代领域行为。
 - 完整聚合的父子保存由仓储以单个 SQL 保证；并发旧快照冲突必须显式反馈，不能静默覆盖。
 - `execute(..., completion)` 在 Handler 返回后调用传输动作，不再承诺与领域写入原子提交。
   回调不能嵌套命令或再次修改领域。
@@ -70,7 +70,8 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 - Execution 快照、Worker 回调与 Queue 传输边界见
   [ADR 0084](../decisions/0084-save-domain-snapshots-without-business-transactions.md)。
   业务使用普通 `find/save`，版本随对象携带，执行入口不管理 CAS 作用域，也不启动
-  数据库事务；具体协议见 [ADR 0097](../decisions/0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)。
+  数据库事务；对象版本协议见 [ADR 0097](../decisions/0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)，
+  当前公共基础与组合增强的实现边界见 [ADR 0111](../decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)。
 
 ## Command 规则
 
@@ -99,7 +100,7 @@ Execution 反查精确 Flow Reversion。可信调用方继续既有 `CREATED` Ex
 ## Query 规则
 
 - QueryHandler 只处理复杂查询、树形组装、统计和查询后二次处理。
-- QueryHandler 可以使用 Repository 或直接使用 JOOQ。
+- QueryHandler 的持久化查询通过 Repository 进入 DataSourceEngine；复杂查询由数据库适配层扩展。
 - QueryHandler 不修改领域状态，不调用 CommandExecutor。
 - 当前 QueryHandler 直接返回 Repository 提供的领域对象隔离副本，不建立与
   领域对象字段重复的 Snapshot/View。未来只有查询结构与领域结构实质不同时，

@@ -7,11 +7,12 @@ import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.core.domains.triggers.Trigger;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.core.repositories.triggers.TriggerRepository;
 import org.cses.flow.core.utils.SessionUtil;
 import org.cses.flow.core.utils.RequiredUtil;
 import org.cses.flow.extensions.triggers.WebhookTrigger;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
-import org.cses.flow.infrastructure.repositories.triggers.entries.TriggerRunEntry;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.scheduler.TriggerRuntime;
 import org.cses.flow.scheduler.events.SchedulerEvent;
 import org.jooq.DSLContext;
@@ -21,7 +22,6 @@ import org.paas.session.Session;
 import org.paas.session.SessionUser;
 import org.x9.jooq.JOOQ;
 import java.util.Map;
-import static org.flow.gen.flow.Tables.TRIGGER_RUNS;
 
 /** 以可信会话接受 Webhook 请求并持久化启动事实。 */
 @Singleton
@@ -30,13 +30,20 @@ public class WebhookTriggerService {
     private DSLContext dsl;
     private FlowRepository flows;
     private TriggerRuntime runtime;
+    private TriggerRepository triggers;
     /**
+     * 装配 Webhook 业务入口，持久化查询与幂等锁由触发仓储完成。
      * @param jooq Flow 数据源
      * @param flows Flow 定义仓储
      * @param runtime 通用命中持久化入口
+     * @param triggers 触发命中持久化端口
      */
-    public WebhookTriggerService(@Named("flow") JOOQ jooq, FlowRepository flows, TriggerRuntime runtime) {
-        this.dsl = jooq.createDSLContext(); this.flows = flows; this.runtime = runtime;
+    public WebhookTriggerService(@Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq,
+            FlowRepository flows, TriggerRuntime runtime, TriggerRepository triggers) {
+        this.dsl = jooq.createDSLContext();
+        this.flows = flows;
+        this.runtime = runtime;
+        this.triggers = triggers;
     }
     /**
      * 接收当前租户的 Webhook，返回已持久化的 Execution ID；运行由队列异步完成。
@@ -61,19 +68,16 @@ public class WebhookTriggerService {
         String source = "webhook:" + actor.length() + ":" + actor + ":" + requestId;
         return dsl.transactionResult(config -> {
             var context = DSL.using(config);
-            context.select(DSL.field("pg_advisory_xact_lock(hashtextextended({0}, 0))", Object.class,
-                DSL.val(company + ":" + flowKey + ":" + triggerKey + ":" + source))).fetch();
-            var previous = context.selectFrom(TRIGGER_RUNS).where(TRIGGER_RUNS.COMPANY_ID.eq(company))
-                .and(TRIGGER_RUNS.FLOW_KEY.eq(flowKey)).and(TRIGGER_RUNS.TRIGGER_KEY.eq(triggerKey))
-                .and(TRIGGER_RUNS.SOURCE_KEY.eq(source)).fetchOneInto(TriggerRunEntry.class);
+            triggers.lockSource(context, company, flowKey, triggerKey, source);
+            var previous = triggers.findBySource(context, company, flowKey, triggerKey, source).orElse(null);
             if (previous != null) {
-                var originalFlow = flows.findByFlowId(context, FlowId.from(company, flowKey, previous.flowVersion))
+                var originalFlow = flows.findByFlowId(context, FlowId.from(company, flowKey, previous.flowVersion()))
                     .orElseThrow(() -> new IllegalArgumentException("Original Flow is unavailable"));
                 var originalTrigger = originalFlow.triggers().stream().filter(value -> value.key().equals(triggerKey))
                     .findFirst().orElseThrow();
-                if (!previous.to().inputs().equals(bind(originalFlow, originalTrigger, supplied)))
+                if (!previous.inputs().equals(bind(originalFlow, originalTrigger, supplied)))
                     throw new IllegalArgumentException("Idempotency-Key already used with different inputs");
-                return previous.executionId;
+                return previous.executionId();
             }
             var flow = flows.findLatestByFlowId(context, FlowId.from(company, flowKey))
                 .filter(value -> !value.deleted()).orElseThrow(() -> new IllegalArgumentException("Flow is unavailable"));

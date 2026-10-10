@@ -13,6 +13,9 @@ import org.cses.flow.queues.QueueException;
 import org.cses.flow.queues.annotations.FlowQueue;
 import org.cses.flow.queues.annotations.FlowQueueListener;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine;
+import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngineTestSupport;
 import org.paas.pulsar.PulsarFactory;
 import org.paas.pulsar.PulsarLifecycleManager;
 import org.paas.pulsar.JacksonSchema;
@@ -34,6 +37,11 @@ import static org.junit.jupiter.api.Assertions.*;
  * a controlled client boundary. These tests prove callback/ACK wiring, not broker durability.
  */
 class PulsarQueueTest {
+    private List<FlowDataSourceEngineTestSupport> engines = new ArrayList<>();
+
+    /** 在各测试拥有的上下文关闭后释放未启动外部插件的 Engine 资源。 */
+    @AfterEach
+    void closeEngines() { engines.forEach(FlowDataSourceEngineTestSupport::close); }
 
     /** Verifies field/constructor injection, distinct topics, publishing modes and asynchronous errors. */
     @Test
@@ -225,9 +233,11 @@ class PulsarQueueTest {
      * @param transport controlled producer and consumer endpoints
      * @return running context; caller closes it
      */
-    private static ApplicationContext open(String scenario, Transport transport) {
+    private ApplicationContext open(String scenario, Transport transport) {
         ApplicationContext context = ApplicationContext.builder().deduceEnvironment(false)
             .properties(properties(scenario)).build();
+        var engine = new FlowDataSourceEngineTestSupport();
+        context.registerSingleton(FlowDataSourceEngine.class, engine, null, false);
         context.registerSingleton(PulsarClient.class, transport.client());
         context.registerSingleton(PulsarClientConfiguration.class, proxy(PulsarClientConfiguration.class,
             (ignored, method, args) -> switch (method.getName()) {
@@ -236,9 +246,15 @@ class PulsarQueueTest {
                 default -> Optional.empty();
             }));
         try {
-            return context.start();
+            context.start();
+            engines.add(engine);
+            return context;
         } catch (RuntimeException failure) {
-            context.close();
+            try {
+                context.close();
+            } finally {
+                engine.close();
+            }
             throw failure;
         }
     }

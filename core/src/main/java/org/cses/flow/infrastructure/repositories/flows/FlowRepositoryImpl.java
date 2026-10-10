@@ -1,20 +1,23 @@
 package org.cses.flow.infrastructure.repositories.flows;
 
 import jakarta.inject.Singleton;
+import org.cses.flow.common.Fields;
+import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine;
 import org.cses.flow.core.domains.flows.Flow;
 import org.cses.flow.scheduler.events.SchedulerEvent;
 import org.cses.flow.infrastructure.repositories.triggers.entries.SchedulerEventEntry;
-import java.util.Map;
 import org.cses.flow.core.domains.flows.FlowId;
 import org.cses.flow.core.domains.tasks.Task;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.flows.FlowRepository;
+import org.cses.flow.infrastructure.repositories.BaseRepository;
 import org.cses.flow.extensions.flow.Branch;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowEntry;
 import org.cses.flow.infrastructure.repositories.flows.entries.FlowTaskEntry;
 import org.flow.gen.flow.records.FlowTasksRecord;
 import org.flow.gen.flow.tables.FlowsTable;
 import org.jooq.DSLContext;
+import org.jooq.Condition;
 import org.jooq.InsertValuesStepN;
 import org.jooq.exception.DataAccessException;
 import org.paas.common.util.StringUtil;
@@ -23,6 +26,7 @@ import org.paas.session.RecordState;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
@@ -32,62 +36,78 @@ import static org.flow.gen.flow.Tables.SCHEDULER_EVENTS;
 import static org.flow.gen.flow.Tables.FLOW_TASKS;
 
 @Singleton
-public class FlowRepositoryImpl implements FlowRepository {
+public class FlowRepositoryImpl extends BaseRepository implements FlowRepository {
 
+    /**
+     * 绑定 Flow 根表与租户身份字段，不创建连接或保存请求状态。
+     * @param dataSourceEngine 非空 Flow Engine，由公共基础执行真实 CRUD
+     */
+    public FlowRepositoryImpl(FlowDataSourceEngine dataSourceEngine) {
+        super(dataSourceEngine, FLOWS);
+    }
+
+    /**
+     * 按完整租户与行身份恢复 Flow 快照及正式任务定义。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param companyId 非空白租户身份
+     * @param id 非空白行身份
+     * @return 独立 Flow 快照；不存在时为空
+     * @throws IllegalArgumentException 任一身份为空或空白时抛出
+     */
     @Override
     public Optional<Flow> findById(
             DSLContext dsl,
             String companyId,
             String id
     ) {
-        FlowEntry entry = dsl.select()
-                .from(FLOWS)
-                .where(FLOWS.COMPANY_ID.eq(companyId))
-                .and(FLOWS.ID.eq(id))
-                .fetchOneInto(FlowEntry.class);
+        FlowEntry entry = readOne(query(dsl, identity(companyId, id)), FlowEntry.class);
         return restore(dsl, entry);
     }
 
+    /**
+     * 按租户、流程键和指定正式版本恢复完整快照。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param flowId 非空且含版本的流程选择器
+     * @return 独立的正式快照；不存在时为空
+     * @throws IllegalArgumentException 缺少版本或租户为空白时抛出
+     */
     @Override
     public Optional<Flow> findByFlowId(
             DSLContext dsl,
             FlowId flowId
     ) {
         long flowVersion = requireVersion(flowId);
-        FlowEntry entry = dsl.select()
-                .from(FLOWS)
-                .where(FLOWS.COMPANY_ID.eq(flowId.companyId()))
-                .and(FLOWS.KEY.eq(flowId.key()))
-                .and(FLOWS.DRAFT.eq(false))
-                .and(FLOWS.VERSION.eq(flowVersion))
-                .fetchOneInto(FlowEntry.class);
+        FlowEntry entry = readOne(query(dsl, company(flowId.companyId())
+                .and(FLOWS.KEY.eq(flowId.key())).and(FLOWS.DRAFT.eq(false))
+                .and(FLOWS.VERSION.eq(flowVersion))), FlowEntry.class);
         return restore(dsl, entry);
     }
 
+    /**
+     * 按租户和逻辑流程键恢复最新正式版本。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param flowId 非空且不含版本的流程选择器
+     * @return 独立的最新正式快照；不存在时为空
+     * @throws IllegalArgumentException 含版本或租户为空白时抛出
+     */
     @Override
     public Optional<Flow> findLatestByFlowId(
             DSLContext dsl,
             FlowId flowId
     ) {
         requireLogicalFlow(flowId);
-        FlowEntry entry = dsl.select()
-                .from(FLOWS)
-                .where(FLOWS.COMPANY_ID.eq(flowId.companyId()))
-                .and(FLOWS.KEY.eq(flowId.key()))
-                .and(FLOWS.DRAFT.eq(false))
-                .orderBy(FLOWS.VERSION.desc())
-                .limit(1)
-                .fetchOneInto(FlowEntry.class);
+        FlowEntry entry = readOne(query(dsl, company(flowId.companyId())
+                .and(FLOWS.KEY.eq(flowId.key())).and(FLOWS.DRAFT.eq(false)))
+                .desc(FLOWS.VERSION).pageSize(1), FlowEntry.class);
         return restore(dsl, entry);
     }
 
     /**
-     * Lists only the latest active draft row for each tenant-scoped Flow key.
-     *
-     * @param dsl non-null caller-owned database context used only for reads
-     * @param companyId non-blank tenant whose drafts are listed
-     * @return an unmodifiable list of detached latest active drafts ordered by
-     *         update time, or an empty list when none exist
+     * 列出同租户各流程键的最新有效草稿，不恢复已经删除的最新行。
+     * @param dsl 调用方拥有的非空只读数据库上下文
+     * @param companyId 非空白租户身份
+     * @return 按更新时间排列的独立草稿只读列表；没有时为空
+     * @throws IllegalArgumentException 租户为空白时抛出
      */
     @Override
     public List<Flow> findDrafts(
@@ -95,31 +115,25 @@ public class FlowRepositoryImpl implements FlowRepository {
             String companyId
     ) {
         FlowsTable newer = FLOWS.as("newer_draft");
-        return dsl.select()
-                .from(FLOWS)
-                .where(FLOWS.COMPANY_ID.eq(companyId))
-                .and(FLOWS.DRAFT.eq(true))
-                .andNotExists(dsl.selectOne()
+        return query(dsl, company(companyId).and(FLOWS.DRAFT.eq(true))
+                .and(org.jooq.impl.DSL.notExists(dsl.selectOne()
                         .from(newer)
                         .where(newer.COMPANY_ID.eq(FLOWS.COMPANY_ID))
                         .and(newer.KEY.eq(FLOWS.KEY))
                         .and(newer.DRAFT.eq(true))
-                        .and(newer.VERSION.gt(FLOWS.VERSION)))
-                .and(FLOWS.STATUS.ne(RecordState.Delete.getName()))
-                .orderBy(FLOWS.UPDATED_AT.desc(), FLOWS.ID.asc())
-                .fetchInto(FlowEntry.class)
-                .stream()
+                        .and(newer.VERSION.gt(FLOWS.VERSION))))
+                .and(FLOWS.STATUS.ne(RecordState.Delete.getName())))
+                .desc(FLOWS.UPDATED_AT).asc(FLOWS.ID).list(FlowEntry.class).items.stream()
                 .map(FlowEntry::to)
                 .toList();
     }
 
     /**
-     * Loads the latest draft row and suppresses it when that row is deleted.
-     *
-     * @param dsl non-null caller-owned database context used only for reads
-     * @param flowId non-null tenant and Flow key selector without a version
-     * @return the latest active draft, or empty when absent or deleted
-     * @throws IllegalArgumentException when the selector contains a version
+     * 读取同租户最新草稿，最新行已删除时返回空。
+     * @param dsl 调用方拥有的非空只读数据库上下文
+     * @param flowId 非空且不含版本的租户和流程键选择器
+     * @return 独立的最新有效草稿；不存在或已删除时为空
+     * @throws IllegalArgumentException 选择器含版本或租户为空白时抛出
      */
     @Override
     public Optional<Flow> findDraftByFlowId(
@@ -127,14 +141,9 @@ public class FlowRepositoryImpl implements FlowRepository {
             FlowId flowId
     ) {
         requireLogicalFlow(flowId);
-        FlowEntry entry = dsl.select()
-                .from(FLOWS)
-                .where(FLOWS.COMPANY_ID.eq(flowId.companyId()))
-                .and(FLOWS.KEY.eq(flowId.key()))
-                .and(FLOWS.DRAFT.eq(true))
-                .orderBy(FLOWS.VERSION.desc())
-                .limit(1)
-                .fetchOneInto(FlowEntry.class);
+        FlowEntry entry = readOne(query(dsl, company(flowId.companyId())
+                .and(FLOWS.KEY.eq(flowId.key())).and(FLOWS.DRAFT.eq(true)))
+                .desc(FLOWS.VERSION).pageSize(1), FlowEntry.class);
         return Optional.ofNullable(entry)
                 .map(FlowEntry::to)
                 .filter(flow -> !flow.deleted());
@@ -151,13 +160,9 @@ public class FlowRepositoryImpl implements FlowRepository {
     @Override
     public Flow save(DSLContext dsl, Flow flow) {
         try {
-            Long latest = dsl.select(FLOWS.VERSION)
-                    .from(FLOWS)
-                    .where(FLOWS.COMPANY_ID.eq(flow.companyId()))
-                    .and(FLOWS.KEY.eq(flow.key()))
-                    .orderBy(FLOWS.VERSION.desc())
-                    .limit(1)
-                    .fetchOne(FLOWS.VERSION);
+            FlowEntry latestEntry = readOne(query(dsl, company(flow.companyId()).and(FLOWS.KEY.eq(flow.key())))
+                .desc(FLOWS.VERSION).pageSize(1), FlowEntry.class);
+            Long latest = latestEntry == null ? null : latestEntry.version;
             long version = latest == null
                     ? 1
                     : Math.addExact(latest, 1);
@@ -166,29 +171,57 @@ public class FlowRepositoryImpl implements FlowRepository {
                     StringUtil.newId(),
                     version
             );
-            var parent = org.jooq.impl.DSL.name("stored_flow").as(
-                    dsl.insertInto(FLOWS).set(entry.toMap()).returning(FLOWS.ID));
-            var statement = dsl.with(parent);
-            if (flow.deployed()) {
-                var event = SchedulerEvent.from("FLOW_CHANGED",
-                    entry.companyId, entry.id, entry.key, entry.version, null, null, null,
-                    flow.updater().id(), Map.of());
-                var outbox = SchedulerEventEntry.from(
-                    event, flow.updatedAt());
-                var savedEvent = org.jooq.impl.DSL.name("stored_scheduler_event").as(
-                    dsl.insertInto(SCHEDULER_EVENTS)
-                        .set(outbox.toMap()).returning(SCHEDULER_EVENTS.ID));
-                statement = statement.with(savedEvent);
-            }
-            if (flow.deployed() && !flow.tasks().isEmpty()) {
-                writeTasks(statement, flow, version);
-            } else {
-                statement.selectFrom(parent).fetch();
-            }
+            execute(dsl, context -> {
+                var parent = org.jooq.impl.DSL.name("stored_flow").as(
+                        insertStatement(context, entry.toMap()).returning(FLOWS.ID));
+                var statement = context.with(parent);
+                if (flow.deployed()) {
+                    var event = SchedulerEvent.from("FLOW_CHANGED",
+                        entry.companyId, entry.id, entry.key, entry.version, null, null, null,
+                        flow.updater().id(), Map.of());
+                    var outbox = SchedulerEventEntry.from(
+                        event, flow.updatedAt());
+                    var savedEvent = org.jooq.impl.DSL.name("stored_scheduler_event").as(
+                        context.insertInto(SCHEDULER_EVENTS)
+                            .set(outbox.toMap()).returning(SCHEDULER_EVENTS.ID));
+                    statement = statement.with(savedEvent);
+                }
+                if (flow.deployed() && !flow.tasks().isEmpty()) {
+                    writeTasks(statement, flow, version);
+                } else {
+                    statement.selectFrom(parent).fetch();
+                }
+                return null;
+            });
             return entry.to(flow.tasks());
         } catch (DataAccessException exception) {
             throw persistenceConflict(flow, exception);
         }
+    }
+
+    /**
+     * 校验 Flow 的租户并构造查询条件。
+     * @param companyId 非空白租户身份
+     * @return 当前租户的 Flow 条件
+     */
+    private Condition company(String companyId) {
+        if (companyId == null || companyId.isBlank()) {
+            throw new IllegalArgumentException(Fields.COMPANY_ID + " must not be blank");
+        }
+        return FLOWS.COMPANY_ID.eq(companyId);
+    }
+
+    /**
+     * 校验 Flow 行身份并构造完整查询条件。
+     * @param companyId 非空白租户身份
+     * @param id 非空白 Flow 行身份
+     * @return 当前租户内指定 Flow 的条件
+     */
+    private Condition identity(String companyId, String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException(Fields.ID + " must not be blank");
+        }
+        return company(companyId).and(FLOWS.ID.eq(id));
     }
 
     private long requireVersion(FlowId flowId) {
@@ -232,13 +265,10 @@ public class FlowRepositoryImpl implements FlowRepository {
             String flowKey,
             long flowVersion
     ) {
-        List<FlowTaskEntry> entries = dsl.select()
-                .from(FLOW_TASKS)
-                .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
-                .and(FLOW_TASKS.FLOW_KEY.eq(flowKey))
-                .and(FLOW_TASKS.FLOW_VERSION.eq(flowVersion))
-                .orderBy(FLOW_TASKS.POSITION.asc())
-                .fetchInto(FlowTaskEntry.class);
+        List<FlowTaskEntry> entries = query(dsl, FLOW_TASKS,
+                FLOW_TASKS.COMPANY_ID.eq(companyId).and(FLOW_TASKS.FLOW_KEY.eq(flowKey))
+                    .and(FLOW_TASKS.FLOW_VERSION.eq(flowVersion)))
+                .asc(FLOW_TASKS.POSITION).list(FlowTaskEntry.class).items;
         Set<String> restored = new HashSet<>();
         List<Task> tasks = readTasks(entries, null, restored);
         if (restored.size() != entries.size()) {

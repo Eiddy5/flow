@@ -29,12 +29,15 @@ public class PulsarTestEnvironment {
      * 仅序列化测试使用，不启用消费者或连接测试 Broker。
      */
     public static void initializeJson() {
-        try (ApplicationContext context = ApplicationContext.builder().deduceEnvironment(false)
+        try (var engine = new org.cses.flow.infrastructure.datapilot.FlowDataSourceEngineTestSupport();
+             ApplicationContext context = ApplicationContext.builder().deduceEnvironment(false)
             .properties(Map.of("pulsar.consumer.enabled", false,
                 "datasources.default.enabled", false, "micronaut.config-client.enabled", false,
                 "consul.client.registration.enabled", false, "consul.client.watch.service.enabled", false,
                 "grpc.server.enabled", false, "thrift.server.enabled", false, "jooq.send-event", false))
-            .start()) {
+            .build()) {
+            context.registerSingleton(org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine.class, engine, null, false);
+            context.start();
             context.getBean(org.paas.json.Jackson.class);
             context.getBean(org.paas.json.JsonFactory.class);
         }

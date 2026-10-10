@@ -46,7 +46,7 @@ dependencies {
     implementation(libs.swagger.annotations)
     implementation(libs.micronaut.jooq)
     implementation(libs.micronaut.jdbc.hikari)
-    implementation(libs.org.x9.cloud.datapilot)
+    api(libs.org.x9.cloud.datapilot)
 
     api(libs.jooq.paas)
     api(libs.jakarta.validation.api)

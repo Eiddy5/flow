@@ -1,18 +1,23 @@
 package org.cses.flow.infrastructure.repositories.executions;
 
 import jakarta.inject.Singleton;
+import org.cses.flow.common.Fields;
+import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine;
+import org.cses.flow.infrastructure.repositories.executions.entries.TaskRetryMessageEntry;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.repositories.executions.ExecutionRepository;
-import org.cses.flow.infrastructure.repositories.CasRepository;
+import org.cses.flow.infrastructure.repositories.BaseRepository;
+import org.cses.flow.infrastructure.repositories.enhancers.CasEnhancer;
 import org.cses.flow.infrastructure.repositories.executions.entries.ExecutionEntry;
 import org.cses.flow.infrastructure.repositories.executions.entries.TaskRunEntry;
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
 import org.jooq.Record1;
+import org.jooq.Record2;
 import org.jooq.ResultQuery;
 
 import java.util.LinkedHashMap;
@@ -27,7 +32,10 @@ import static org.jooq.impl.DSL.*;
 
 /** Loads and stores the complete Execution snapshot without locking reads. */
 @Singleton
-public class ExecutionRepositoryImpl extends CasRepository<Execution> implements ExecutionRepository {
+public class ExecutionRepositoryImpl extends BaseRepository implements ExecutionRepository {
+    /** 当前实现注入增强器的构造参数名称。 */
+    private static final String CAS_ENHANCER = "casEnhancer";
+    private CasEnhancer casEnhancer;
 
     /**
      * 查询所有未发布计划，未来计划也立即交给 Broker 等待。
@@ -39,10 +47,9 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
     public List<PendingRetry> pendingRetries(DSLContext dsl, int limit) {
         if (limit < 1) throw new IllegalArgumentException("Invalid retry outbox limit");
         var messages = TASK_RETRY_MESSAGES;
-        return dsl.selectFrom(messages).where(messages.PUBLISHED_AT.isNull())
-            .orderBy(messages.DELIVER_AT, messages.EXECUTION_ID).limit(limit)
-            .fetch(row -> PendingRetry.from(row.getCompanyId(), row.getExecutionId(), row.getTaskRunId(),
-                row.getAttemptNumber(), row.getDeliverAt()));
+        return query(dsl, messages, messages.PUBLISHED_AT.isNull())
+            .asc(messages.DELIVER_AT, messages.EXECUTION_ID).pageSize(limit)
+            .list(TaskRetryMessageEntry.class).items.stream().map(TaskRetryMessageEntry::to).toList();
     }
 
     /**
@@ -54,72 +61,76 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
     @Override
     public void retryPublished(DSLContext dsl, PendingRetry retry, long now) {
         var messages = TASK_RETRY_MESSAGES;
-        dsl.update(messages).set(messages.PUBLISHED_AT, now)
-            .where(messages.COMPANY_ID.eq(retry.companyId()))
-            .and(messages.EXECUTION_ID.eq(retry.executionId()))
-            .and(messages.TASK_RUN_ID.eq(retry.taskRunId()))
-            .and(messages.ATTEMPT_NUMBER.eq(retry.attemptNumber()))
-            .and(messages.DELIVER_AT.eq(retry.deliverAt()))
-            .and(messages.PUBLISHED_AT.isNull()).execute();
-    }
-
-    /** 绑定 Execution 根表及租户、身份、版本字段；不保存任何请求状态。 */
-    public ExecutionRepositoryImpl() {
-        super(EXECUTIONS, EXECUTIONS.COMPANY_ID, EXECUTIONS.ID, EXECUTIONS.LOCK);
+        execute(dsl, context -> {
+            context.update(messages).set(messages.PUBLISHED_AT, now)
+                .where(messages.COMPANY_ID.eq(retry.companyId()))
+                .and(messages.EXECUTION_ID.eq(retry.executionId()))
+                .and(messages.TASK_RUN_ID.eq(retry.taskRunId()))
+                .and(messages.ATTEMPT_NUMBER.eq(retry.attemptNumber()))
+                .and(messages.DELIVER_AT.eq(retry.deliverAt()))
+                .and(messages.PUBLISHED_AT.isNull()).execute();
+            return null;
+        });
     }
 
     /**
-     * @param execution 完整聚合
-     * @return 对象自带版本，新建时为 null
+     * 绑定 Execution 根表并组合 CAS 增强器，不取得连接或保存请求状态。
+     * @param dataSourceEngine 非空 Flow Engine，提供普通 CRUD 与原子 SQL 执行入口
+     * @param casEnhancer 非空、无状态的 CAS 增强器
+     */
+    public ExecutionRepositoryImpl(FlowDataSourceEngine dataSourceEngine, CasEnhancer casEnhancer) {
+        super(dataSourceEngine, EXECUTIONS);
+        this.casEnhancer = java.util.Objects.requireNonNull(casEnhancer, CAS_ENHANCER);
+    }
+
+    /**
+     * 以对象携带版本原子保存完整聚合，整条 SQL 成功后才回填输入对象版本。
+     * @param dsl 调用方拥有的非空 Flow 数据库上下文
+     * @param execution 非空完整聚合，新建 lock 为 null；保存成功后修改其版本
+     * @throws org.jooq.exception.DataChangedException 快照陈旧、根已删除或新建身份重复时抛出
+     * @throws WorkflowException 根、子记录或 outbox 写入失败时抛出，版本保持不变
      */
     @Override
-    protected Long lock(Execution execution) {
-        return execution.lock();
+    public void save(DSLContext dsl, Execution execution) {
+        execution.lock(execute(dsl, context -> casEnhancer.save(save(context, execution, execution.lock()))));
     }
 
     /**
-     * @param execution 已保存聚合
-     * @param version SQL 返回的非负版本
-     */
-    @Override
-    protected void lock(Execution execution, long version) {
-        execution.lock(version);
-    }
-
-    /**
-     * Loads one aggregate and its ordered children from one database snapshot.
-     * @param dsl database context
-     * @param companyId tenant identity
-     * @param executionId exact execution identity
-     * @return the complete execution when present
+     * 在单次数据库快照内恢复指定租户和身份的完整聚合。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param companyId 非空白租户身份
+     * @param executionId 非空白运行身份
+     * @return 携带版本的独立聚合；不存在时为空
+     * @throws IllegalArgumentException 任一身份为空或空白时抛出
      */
     @Override
     public Optional<Execution> findById(DSLContext dsl, String companyId, String executionId) {
-        return find(dsl, EXECUTIONS.COMPANY_ID.eq(companyId)
-                .and(EXECUTIONS.ID.eq(executionId))).stream().findFirst();
+        return find(dsl, identity(companyId, executionId)).stream().findFirst();
     }
 
     /**
-     * Loads the tenant's executions with their ordered children.
-     * @param dsl database context
-     * @param companyId tenant identity
-     * @return complete aggregates in creation order
+     * 按创建顺序恢复该租户的全部聚合及有序子集合。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param companyId 非空白租户身份
+     * @return 独立聚合集合，不存在时为空
+     * @throws IllegalArgumentException 租户为空或空白时抛出
      */
     @Override
     public List<Execution> findAll(DSLContext dsl, String companyId) {
-        return find(dsl, EXECUTIONS.COMPANY_ID.eq(companyId));
+        return find(dsl, company(companyId));
     }
 
     /**
-     * Loads the tenant's complete derivation tree without traversing other tenants.
-     * @param dsl read context
-     * @param companyId owning tenant
-     * @param originId first Execution ID
-     * @return independently restored snapshots in creation order
+     * 在指定租户内恢复同一来源的运行快照，按创建顺序返回。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param companyId 非空白租户身份
+     * @param originId 非空的最初运行身份
+     * @return 独立恢复的快照集合，不存在时为空
+     * @throws IllegalArgumentException 租户为空或空白时抛出
      */
     @Override
     public List<Execution> findByOriginId(DSLContext dsl, String companyId, String originId) {
-        return find(dsl, EXECUTIONS.COMPANY_ID.eq(companyId).and(EXECUTIONS.ORIGIN_ID.eq(originId)));
+        return find(dsl, company(companyId).and(EXECUTIONS.ORIGIN_ID.eq(originId)));
     }
 
     /**
@@ -129,46 +140,93 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
      * @return 携带加载版本的独立聚合快照
      */
     private List<Execution> find(DSLContext dsl, Condition condition) {
-        dsl = dsl.configuration().derive(new org.jooq.impl.DefaultRecordUnmapperProvider()).dsl();
-        var children = multiset(select(TASK_RUNS.fields()).from(TASK_RUNS)
-                .where(TASK_RUNS.EXECUTION_ID.eq(EXECUTIONS.ID))
-                .orderBy(TASK_RUNS.ORDER.asc()))
-                .convertFrom(rows -> rows.into(TaskRunEntry.class));
-        return dsl.select(EXECUTIONS.fields()).select(children)
-                .from(EXECUTIONS).where(condition)
-                .orderBy(EXECUTIONS.CREATED_AT.asc(), EXECUTIONS.ID.asc())
-                .fetch(row -> {
-                    ExecutionEntry entry = row.into(ExecutionEntry.class);
-                    return entry.to(row.get(children).stream().map(TaskRunEntry::to).toList());
-                });
+        return execute(dsl, context -> {
+            DSLContext snapshot = context.configuration().derive(new org.jooq.impl.DefaultRecordUnmapperProvider()).dsl();
+            var children = multiset(select(TASK_RUNS.fields()).from(TASK_RUNS)
+                    .where(TASK_RUNS.EXECUTION_ID.eq(EXECUTIONS.ID))
+                    .orderBy(TASK_RUNS.ORDER.asc()))
+                    .convertFrom(rows -> rows.into(TaskRunEntry.class));
+            return snapshot.select(EXECUTIONS.fields()).select(children)
+                    .from(EXECUTIONS).where(condition)
+                    .orderBy(EXECUTIONS.CREATED_AT.asc(), EXECUTIONS.ID.asc())
+                    .fetch(row -> {
+                        ExecutionEntry entry = row.into(ExecutionEntry.class);
+                        return entry.to(row.get(children).stream().map(TaskRunEntry::to).toList());
+                    });
+        });
     }
 
     /**
-     * Counts executions within one tenant.
-     * @param dsl database context
-     * @param companyId tenant identity
-     * @return number of stored executions
+     * 统计指定租户的持久化运行数量。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param companyId 非空白租户身份
+     * @return 非负运行数量
+     * @throws IllegalArgumentException 租户为空或空白时抛出
      */
     @Override
     public long count(DSLContext dsl, String companyId) {
-        return dsl.fetchCount(EXECUTIONS, EXECUTIONS.COMPANY_ID.eq(companyId));
+        return query(dsl, company(companyId)).count();
     }
 
     /**
-     * 将根保存语句与自有 TaskRun 增删改组合为单 SQL，由基类执行并回填版本。
+     * 将未执行的 CAS 根语句与自有子集合和 outbox 组装为单条 SQL。
      * @param dsl 调用方数据库上下文
      * @param execution 待保存的完整聚合
      * @param expected 对象查询时版本，null 仅尝试新建
      * @return 成功时返回根版本、CAS 冲突时返回零行的原子 SQL
      */
-    @Override
-    protected ResultQuery<Record1<Long>> save(DSLContext dsl, Execution execution, Long expected) {
+    private ResultQuery<Record1<Long>> save(DSLContext dsl, Execution execution, Long expected) {
         ExecutionEntry entry = ExecutionEntry.from(execution);
         var root = save(dsl, entry.toMap(), expected);
         var parent = name("stored_execution").as(root);
         var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
         save(dsl, execution, parent, statements);
         return dsl.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent);
+    }
+
+    /**
+     * 复用公共完整字段写入，再由组合增强器加入只插入或 CAS 更新协议。
+     * @param dsl 调用方数据库上下文
+     * @param fields 包含完整身份的 Entry 字段 Map；不修改输入，保留显式 NULL
+     * @param expected 加载版本；null 表示仅新建
+     * @return 尚未执行的根保存语句，成功返回身份与版本
+     * @throws IllegalArgumentException 身份无效或版本为负数时抛出
+     * @throws org.jooq.exception.DataChangedException 版本已达上限时抛出
+     */
+    private ResultQuery<Record2<String, Long>> save(DSLContext dsl, Map<String, Object> fields, Long expected) {
+        Condition identity = identity((String) fields.get(EXECUTIONS.COMPANY_ID.getName()),
+                (String) fields.get(EXECUTIONS.ID.getName()));
+        Map<String, Object> values = casEnhancer.fields(fields, EXECUTIONS.LOCK);
+        if (expected == null) {
+            return casEnhancer.save(insertStatement(dsl, values), EXECUTIONS.COMPANY_ID, EXECUTIONS.ID, EXECUTIONS.LOCK);
+        }
+        return casEnhancer.save(updateStatement(dsl, values), EXECUTIONS.ID, EXECUTIONS.LOCK,
+                identity, expected);
+    }
+
+    /**
+     * 校验 Execution 的租户并构造查询条件。
+     * @param companyId 非空白租户身份
+     * @return 当前租户的 Execution 条件
+     */
+    private Condition company(String companyId) {
+        if (companyId == null || companyId.isBlank()) {
+            throw new IllegalArgumentException(Fields.COMPANY_ID + " must not be blank");
+        }
+        return EXECUTIONS.COMPANY_ID.eq(companyId);
+    }
+
+    /**
+     * 校验运行身份并构造完整条件。
+     * @param companyId 非空白租户身份
+     * @param id 非空白运行身份
+     * @return 当前租户内指定运行的条件
+     */
+    private Condition identity(String companyId, String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException(Fields.ID + " must not be blank");
+        }
+        return company(companyId).and(EXECUTIONS.ID.eq(id));
     }
     /**
      * 单 SQL 保存源与派生聚合；源 CAS 成功才允许插入新根，成功后回填两个对象版本。
@@ -182,25 +240,28 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
     public void save(DSLContext dsl, Execution source, Execution derived) {
         Long expected = source.lock();
         if (expected == null || derived.lock() != null) {
-            throw conflict();
+            throw casEnhancer.conflict();
         }
-        ExecutionEntry sourceEntry = ExecutionEntry.from(source);
-        var parent = name("stored_execution").as(save(dsl, sourceEntry.toMap(), expected));
-        ExecutionEntry derivedEntry = ExecutionEntry.from(derived);
-        derivedEntry.lock = 0L;
-        var fields = derivedEntry.toMap();
-        var created = name("created_execution").as(dsl.insertInto(EXECUTIONS)
-                .columns(EXECUTIONS.fields())
-                .select(select(java.util.Arrays.stream(EXECUTIONS.fields())
-                        .map(field -> val(fields.get(field.getName()), field)).toArray(Field<?>[]::new))
-                        .where(exists(selectOne().from(parent))))
-                .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK));
-        var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
-        save(dsl, source, parent, statements);
-        save(dsl, derived, created, statements);
-        save(source, dsl.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent)
-                .where(exists(selectOne().from(created))));
-        lock(derived, 0L);
+        long version = execute(dsl, context -> {
+            ExecutionEntry sourceEntry = ExecutionEntry.from(source);
+            var parent = name("stored_execution").as(save(context, sourceEntry.toMap(), expected));
+            ExecutionEntry derivedEntry = ExecutionEntry.from(derived);
+            derivedEntry.lock = 0L;
+            var fields = derivedEntry.toMap();
+            var created = name("created_execution").as(context.insertInto(EXECUTIONS)
+                    .columns(EXECUTIONS.fields())
+                    .select(select(java.util.Arrays.stream(EXECUTIONS.fields())
+                            .map(field -> val(fields.get(field.getName()), field)).toArray(Field<?>[]::new))
+                            .where(exists(selectOne().from(parent))))
+                    .returningResult(EXECUTIONS.ID, EXECUTIONS.LOCK));
+            var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
+            save(context, source, parent, statements);
+            save(context, derived, created, statements);
+            return casEnhancer.save(context.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent)
+                    .where(exists(selectOne().from(created))));
+        });
+        source.lock(version);
+        derived.lock(0L);
     }
 
     /**
@@ -234,11 +295,13 @@ public class ExecutionRepositoryImpl extends CasRepository<Execution> implements
         var retryMessages = TASK_RETRY_MESSAGES;
         for (TaskRun run : execution.ownTaskRuns()) {
             if (!run.state().is(State.Type.RETRY_WAIT)) continue;
+            var retry = TaskRetryMessageEntry.from(PendingRetry.from(execution.companyId(), execution.id(),
+                run.id(), run.attemptNumber() + 1, run.nextRetryAt()));
             statements.add(name(parent.getName() + "_retry_" + statements.size()).as(dsl.insertInto(retryMessages)
                 .columns(retryMessages.COMPANY_ID, retryMessages.EXECUTION_ID, retryMessages.TASK_RUN_ID,
                     retryMessages.ATTEMPT_NUMBER, retryMessages.DELIVER_AT)
-                .select(select(val(execution.companyId()), val(execution.id()), val(run.id()),
-                    val(run.attemptNumber() + 1), val(run.nextRetryAt())).from(parent))
+                .select(select(val(retry.companyId), val(retry.executionId), val(retry.taskRunId),
+                    val(retry.attemptNumber), val(retry.deliverAt)).from(parent))
                 .onConflictDoNothing().returning(retryMessages.TASK_RUN_ID)));
         }
 

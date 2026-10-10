@@ -12,6 +12,7 @@ import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.core.plugins.TaskPluginTestSupport.Context;
 import org.cses.flow.core.plugins.TestNotificationTask;
 import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
+import org.cses.flow.infrastructure.repositories.enhancers.CasEnhancer;
 import org.cses.flow.infrastructure.repositories.flows.FlowRepositoryImpl;
 import org.cses.flow.infrastructure.jooq.FlowJooqTestConfiguration;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
@@ -34,7 +35,6 @@ import org.paas.session.RecordState;
 import io.micronaut.json.JsonMapper;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -60,11 +60,13 @@ class PostgresRepositoryIntegrationTest {
     private Context plugins = builtInContext(
             new TestNotificationTask()
     );
+    private PostgresJooqTestAdapter adapter = PostgresJooqTestAdapter.fromEnvironment();
+
     private FlowRepositoryImpl flowRepository =
-            new FlowRepositoryImpl();
+            new FlowRepositoryImpl(adapter.engine());
     private FlowRepositoryImpl draftRepository = flowRepository;
     private ExecutionRepositoryImpl executionRepository =
-            new ExecutionRepositoryImpl();
+            new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer());
     private String companyId = "repository-test-" + StringUtil.newId();
 
     @BeforeAll
@@ -72,33 +74,37 @@ class PostgresRepositoryIntegrationTest {
         JsonFactory.instance = JsonMapper.createDefault();
     }
 
+    /** 清理当前测试租户后关闭本测试拥有的连接池，清理失败时也释放池。 */
     @AfterEach
     void removeTestTenant() {
-        write(dsl -> {
-            dsl.deleteFrom(TASK_RUNS)
-                    .where(TASK_RUNS.EXECUTION_ID.in(
-                            dsl.select(EXECUTIONS.ID)
-                                    .from(EXECUTIONS)
-                                    .where(EXECUTIONS.COMPANY_ID.eq(companyId))
-                    ))
-                    .execute();
-            dsl.deleteFrom(EXECUTIONS)
-                    .where(EXECUTIONS.COMPANY_ID.eq(companyId))
-                    .execute();
-            dsl.deleteFrom(FLOW_TASKS)
-                    .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
-                    .execute();
-            dsl.deleteFrom(FLOWS)
-                    .where(FLOWS.COMPANY_ID.eq(companyId))
-                    .execute();
-            return null;
-        });
+        try {
+            write(dsl -> {
+                dsl.deleteFrom(TASK_RUNS)
+                        .where(TASK_RUNS.EXECUTION_ID.in(
+                                dsl.select(EXECUTIONS.ID)
+                                        .from(EXECUTIONS)
+                                        .where(EXECUTIONS.COMPANY_ID.eq(companyId))
+                        ))
+                        .execute();
+                dsl.deleteFrom(EXECUTIONS)
+                        .where(EXECUTIONS.COMPANY_ID.eq(companyId))
+                        .execute();
+                dsl.deleteFrom(FLOW_TASKS)
+                        .where(FLOW_TASKS.COMPANY_ID.eq(companyId))
+                        .execute();
+                dsl.deleteFrom(FLOWS)
+                        .where(FLOWS.COMPANY_ID.eq(companyId))
+                        .execute();
+                return null;
+            });
+        } finally {
+            adapter.close();
+        }
     }
 
     /**
-     * Verifies Flow and Execution aggregate round trips across versioned Flow
-     * rows and deployed Task snapshots. Two independent repositories then reject
-     * a stale write and permit a complete domain update after reloading.
+     * 核对 Flow 版本行、发布 Task 快照及 Execution 的完整往返。
+     * 两个独立仓储拒绝陈旧写入，重载后允许完整领域更新。
      */
     @Test
     void persistsAndRehydratesCurrentCoreAggregates() {
@@ -338,11 +344,11 @@ class PostgresRepositoryIntegrationTest {
         );
         assertEquals(1L, executionCount);
 
-        DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+        DSLContext direct = adapter.createDSLContext();
         direct.configuration().data(Session.class, actorSession);
         DSLContext scoped = direct;
-        ExecutionRepositoryImpl firstWriter = new ExecutionRepositoryImpl();
-        ExecutionRepositoryImpl secondWriter = new ExecutionRepositoryImpl();
+        ExecutionRepositoryImpl firstWriter = new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer());
+        ExecutionRepositoryImpl secondWriter = new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer());
         Execution staleFirst = firstWriter.findById(scoped, companyId, execution.id()).orElseThrow();
         Execution staleSecond = secondWriter.findById(scoped, companyId, execution.id()).orElseThrow();
         staleFirst.beginKilling();
@@ -374,13 +380,12 @@ class PostgresRepositoryIntegrationTest {
     }
 
     /**
-     * Saves Flow and Execution aggregates through an auto-commit DSL and forces
-     * a child storage failure. A failed creation must leave no rows; a failed update must retain
-     * the prior parent state and child identity, state and input.
+     * 通过自动提交上下文保存完整聚合并注入子写入失败。
+     * 新建失败不留记录，更新失败保留原根状态和子记录的身份、状态、输入。
      */
     @Test
     void childSaveFailureDoesNotPersistHalfAnAggregateWithoutCallerTransaction() {
-        DSLContext direct = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+        DSLContext direct = adapter.createDSLContext();
         DSLContext dsl = direct;
         dsl.configuration().data(Session.class, session());
         Flow rejectedFlow = plugins.deploy(
@@ -993,20 +998,7 @@ class PostgresRepositoryIntegrationTest {
             boolean write,
             Function<DSLContext, T> operation
     ) {
-        String url = System.getenv("FLOW_POSTGRES_TEST_URL");
-        String user = System.getenv().getOrDefault(
-                "FLOW_POSTGRES_TEST_USER",
-                "flow"
-        );
-        String password = System.getenv().getOrDefault(
-                "FLOW_POSTGRES_TEST_PASSWORD",
-                "flow"
-        );
-        try (Connection connection = DriverManager.getConnection(
-                url,
-                user,
-                password
-        )) {
+        try (Connection connection = adapter.connection()) {
             connection.setAutoCommit(false);
             DSLContext dsl = FlowJooqTestConfiguration.configure(
                     DSL.using(connection, SQLDialect.POSTGRES)

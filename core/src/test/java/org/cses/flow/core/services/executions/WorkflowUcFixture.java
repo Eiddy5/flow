@@ -53,12 +53,12 @@ public class WorkflowUcFixture implements AutoCloseable {
     private Set<String> companyIds = new LinkedHashSet<>();
 
     /**
-     * Starts real database and Pulsar-backed public services for one isolated user scope.
-     * @param jooq adapter to the dedicated PostgreSQL database
-     * @param companyId optional stable tenant identifier for restart scenarios
-     * @param cleanupOnClose whether final close removes this fixture's owned resources
-     * @param additionalProperties existing scenario-specific Micronaut properties
-     * @param singletons explicit non-queue collaborators required by a technical scenario
+     * 为一个测试用户范围启动真实数据库与 Pulsar 公开服务，启动失败时关闭已创建的上下文。
+     * @param jooq 本夹具拥有的专属 PostgreSQL 适配器
+     * @param companyId 重启场景的稳定租户编号；空时创建新测试租户
+     * @param cleanupOnClose 是否允许最终清理自己的测试数据
+     * @param additionalProperties 场景所需的额外 Micronaut 属性；空时使用默认属性
+     * @param singletons 技术测试明确提供的非队列协作者；空时不注册
      */
     private WorkflowUcFixture(
         PostgresJooqTestAdapter jooq,
@@ -83,7 +83,12 @@ public class WorkflowUcFixture implements AutoCloseable {
             ? "uc-" + StringUtil.newId()
             : companyId);
         this.companyIds.add(session.getCompanyId());
-        startServer();
+        try {
+            startServer();
+        } catch (RuntimeException | Error failure) {
+            closeServer();
+            throw failure;
+        }
     }
 
     public static WorkflowUcFixture open() {
@@ -119,6 +124,15 @@ public class WorkflowUcFixture implements AutoCloseable {
         return open(true, null, runtime);
     }
 
+    /**
+     * 创建测试拥有的连接池和公开服务夹具，初始化失败时也释放连接池。
+     * @param cleanupOnClose 是否允许最终清理本次业务数据
+     * @param companyId 稳定测试租户；空时创建独立租户
+     * @param properties 场景额外配置，不修改输入
+     * @param singletons 显式非队列协作者，不修改输入数组
+     * @return 调用方必须关闭的独立夹具
+     * @throws RuntimeException 真实环境或上下文无法初始化时抛出
+     */
     private static WorkflowUcFixture open(
         boolean cleanupOnClose,
         String companyId,
@@ -127,13 +141,12 @@ public class WorkflowUcFixture implements AutoCloseable {
     ) {
         PostgresJooqTestAdapter jooq =
             PostgresJooqTestAdapter.fromEnvironment();
-        return new WorkflowUcFixture(
-            jooq,
-            companyId,
-            cleanupOnClose,
-            properties,
-            singletons
-        );
+        try {
+            return new WorkflowUcFixture(jooq, companyId, cleanupOnClose, properties, singletons);
+        } catch (RuntimeException | Error failure) {
+            jooq.close();
+            throw failure;
+        }
     }
 
     /**
@@ -609,20 +622,24 @@ public class WorkflowUcFixture implements AutoCloseable {
     }
 
     /**
-     * Closes the server before clearing dedicated Broker backlog and owned database rows.
-     * Physical cleanup never substitutes for the scenario's user-visible final state.
+     * 先关闭真实应用，再按显式开关清理专属 Broker 和本租户数据，最后释放测试连接池。
+     * 即使业务清理失败也关闭连接池，物理资源清理不代替场景终态断言。
      */
     @Override
     public void close() {
         try {
             closeServer();
         } finally {
-            if (cleanupOnClose && jooq.cleanupEnabled()) {
-                try {
-                    PulsarTestEnvironment.clearExecutorBacklogs();
-                } finally {
-                    companyIds.forEach(jooq::removeTenant);
+            try {
+                if (cleanupOnClose && jooq.cleanupEnabled()) {
+                    try {
+                        PulsarTestEnvironment.clearExecutorBacklogs();
+                    } finally {
+                        companyIds.forEach(jooq::removeTenant);
+                    }
                 }
+            } finally {
+                jooq.close();
             }
         }
     }
@@ -643,6 +660,10 @@ public class WorkflowUcFixture implements AutoCloseable {
                 Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME)
             );
         }
+        context.registerSingleton(
+            org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine.class,
+            jooq.engine(), null, false
+        );
         context.start();
         flowService = context.getBean(FlowService.class);
         executionService = context.getBean(ExecutionService.class);

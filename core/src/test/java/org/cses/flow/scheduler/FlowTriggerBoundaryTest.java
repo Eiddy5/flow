@@ -4,7 +4,6 @@ import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.services.flows.commands.PublishFlowCommand;
 import org.cses.flow.core.domains.flows.State;
 import org.cses.flow.core.utils.TimeUtil;
-import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.repositories.triggers.entries.SchedulerEventEntry;
 import org.junit.jupiter.api.Test;
 import java.util.Map;
@@ -37,7 +36,7 @@ class FlowTriggerBoundaryTest {
                 .filter(e -> e.flowKey().equals(target.key())).findFirst().orElseThrow();
             assertEquals(State.Type.SUCCESS, fixture.awaitStable(targetRun.id()).state().current());
             assertTrue(fixture.executionService().executions(foreign).isEmpty());
-            var dsl = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+            var dsl = fixture.bean(org.x9.jooq.JOOQ.class, "flow").createDSLContext();
             var stored = dsl.selectFrom(SCHEDULER_EVENTS).where(SCHEDULER_EVENTS.COMPANY_ID.eq(upstream.companyId()))
                 .and(SCHEDULER_EVENTS.KIND.eq("FLOW_TERMINATED"))
                 .fetchInto(SchedulerEventEntry.class).stream().filter(entry -> entry.to().executionId().equals(source.id()))

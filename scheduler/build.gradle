@@ -25,6 +25,7 @@ sourceSets.test.java {
     srcDir('../core/src/test/java')
     include('org/cses/flow/core/services/executions/WorkflowUcFixture.java')
     include('org/cses/flow/infrastructure/jooq/PostgresJooqTestAdapter.java')
+    include('org/cses/flow/infrastructure/datapilot/FlowDataSourceEngineTestSupport.java')
     include('org/cses/flow/infrastructure/jooq/FlowJooqTestConfiguration.java')
     include('org/cses/flow/infrastructure/queues/pulsar/PulsarTestEnvironment.java')
     include('org/cses/flow/infrastructure/websocket/NoopWebsocketRepository.java')

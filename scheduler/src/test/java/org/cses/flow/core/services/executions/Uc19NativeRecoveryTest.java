@@ -332,6 +332,7 @@ class Uc19NativeRecoveryTest {
     /** 专属崩溃测试子进程，只通过公开服务准备、查询和恢复用户运行。 */
     public static class ScenarioProcess {
         private ApplicationContext context;
+        private org.cses.flow.infrastructure.datapilot.FlowDataSourceEngineTestSupport engine;
         private Session<User> session;
         private ExecutionService executions;
         private FlowService flows;
@@ -373,7 +374,11 @@ class Uc19NativeRecoveryTest {
                 runner.snapshot("failed");
                 System.exit(2);
             } finally {
-                runner.context.close();
+                try {
+                    runner.context.close();
+                } finally {
+                    runner.engine.close();
+                }
             }
         }
 
@@ -418,7 +423,21 @@ class Uc19NativeRecoveryTest {
                 throw new IllegalArgumentException("Only loopback Broker allowed");
             if (!System.getenv("FLOW_PULSAR_TEST_ADMIN_URL").startsWith("http://127.0.0.1:"))
                 throw new IllegalArgumentException("Only loopback Admin allowed");
-            context = ApplicationContext.builder().properties(p).start();
+            // 与普通真实 PG 夹具一致：保留原生 CRUD Handler，不启动范围外索引或外部插件。
+            engine = new org.cses.flow.infrastructure.datapilot.FlowDataSourceEngineTestSupport();
+            context = ApplicationContext.builder().properties(p).build();
+            context.registerSingleton(org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine.class,
+                    engine, null, false);
+            try {
+                context.start();
+            } catch (RuntimeException failure) {
+                try {
+                    context.close();
+                } finally {
+                    engine.close();
+                }
+                throw failure;
+            }
             var flowPool =
                     context.getBean(
                                     javax.sql.DataSource.class,

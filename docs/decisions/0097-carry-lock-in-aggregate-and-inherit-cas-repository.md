@@ -6,6 +6,11 @@ Accepted（2026-09-10）。用户明确放宽“lock 不进入领域对象”的
 直接调整，不保留兼容代码。本决策替代 ADR 0091 的元数据缓存与执行作用域，并修订
 ADR 0071、0086 的技术版本归属；保留 ADR 0084、0087 的原子保存和无业务长事务边界。
 
+后续实现组织由 [ADR 0111](0111-unify-flow-datasource-and-compose-repository-enhancers.md)
+修订为已实施的 `BaseRepository` 公共基础与组合式 `CasEnhancer`。
+本 ADR 的对象携带版本、CAS 条件、原子保存和回滚后重载协议继续有效；下述
+CasRepository 继承结构保留为原始决策记录，当前结构按 ADR 0111 查阅。
+
 ## 背景与选项
 
 隐藏版本需要额外保存对象身份、弱引用和生命周期。用户接受对象携带不参与业务规则的

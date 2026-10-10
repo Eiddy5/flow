@@ -14,6 +14,9 @@ import org.cses.flow.executor.commands.Rewind;
 import org.cses.flow.queues.Queue;
 import org.cses.flow.queues.annotations.FlowQueueListener;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine;
+import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngineTestSupport;
 import org.paas.pulsar.JacksonSchema;
 import org.paas.session.Session;
 import org.paas.session.User;
@@ -34,6 +37,11 @@ import static org.junit.jupiter.api.Assertions.*;
 class ExecutorPulsarIntegrationTest {
     private static final String COMMAND_SUBSCRIPTION = "executor-command-integration";
     private static final String EVENT_SUBSCRIPTION = "executor-event-integration";
+    private FlowDataSourceEngineTestSupport engine;
+
+    /** 消息上下文先关闭，再释放本测试拥有的未启动外部插件的 Engine。 */
+    @AfterEach
+    void closeEngine() { if (engine != null) engine.close(); }
 
     /** Verifies every concrete durable command and the scheduling event with PAAS's real schema. */
     @Test
@@ -105,14 +113,22 @@ class ExecutorPulsarIntegrationTest {
      * @param callbacks whether to register the controlled callback behavior
      * @return context owned by the caller
      */
-    private static ApplicationContext open(boolean callbacks) {
+    private ApplicationContext open(boolean callbacks) {
         Map<String, Object> properties = new LinkedHashMap<>(PulsarTestEnvironment.properties());
         properties.putAll(Map.of("datasources.default.enabled", false,
             "micronaut.config-client.enabled", false, "consul.client.registration.enabled", false,
             "consul.client.watch.service.enabled", false, "grpc.server.enabled", false,
             "thrift.server.enabled", false, "jooq.send-event", false,
             "flow.executor.pulsar.callback-test", callbacks));
-        return ApplicationContext.builder().deduceEnvironment(false).properties(properties).start();
+        var context = ApplicationContext.builder().deduceEnvironment(false).properties(properties).build();
+        engine = new FlowDataSourceEngineTestSupport();
+        context.registerSingleton(FlowDataSourceEngine.class, engine, null, false);
+        try {
+            return context.start();
+        } catch (RuntimeException failure) {
+            context.close();
+            throw failure;
+        }
     }
 
     /**

@@ -64,7 +64,10 @@ flowchart LR
         end
 
         subgraph infrastructure ["基础设施适配"]
-            postgresRepositories["PostgreSQL Repositories + Entries"]
+            postgresRepositories["XxxRepositoryImpl + Entries / Codecs"]
+            baseRepository["BaseRepository：通用数据库 CRUD"]
+            casEnhancer["CasEnhancer：组合式 CAS"]
+            dataSourceEngine["FlowDataSourceEngine：原生 Builder / 执行器"]
             defaultQueue["PulsarQueue + PAAS Factory / Runner"]
             jooqBoundary["具名 flow JOOQ"]
         end
@@ -124,11 +127,15 @@ flowchart LR
     commandExecutor -->|"开启写事务"| jooqBoundary
     queryHandlers -->|"开启读事务"| jooqBoundary
     postgresRepositories --> generatedJooq
+    postgresRepositories --> baseRepository
+    casEnhancer -.->|"组合增强"| postgresRepositories
+    baseRepository --> dataSourceEngine
+    jooqBoundary -->|"调用方拥有的 DSLContext"| dataSourceEngine
     queueContracts --> defaultQueue
     defaultQueue -->|"发布 / 消费 / ACK / NACK"| pulsar
     defaultQueue -->|"注解回调"| executor
     executor -->|"发布 ExecutorEvent"| queueContracts
-    jooqBoundary -->|"DSLContext / SQL"| postgres
+    dataSourceEngine -->|"原生 Handler / 借用会话"| postgres
     migrations -.->|"启动前由部署人员手工执行"| postgres
     postgres -.->|"构建期读取 schema 并生成"| generatedJooq
     consul -.->|"生产环境启动配置"| micronautApp
@@ -144,7 +151,7 @@ flowchart LR
     class micronautApp,pluginController,flowController inboundNode
     class flowService,executionService,pluginService,commandExecutor,commandHandlers,queryHandlers,yamlParser,domains,repositoryPorts,queueContracts,executor,worker,pluginRuntime,pluginSchema coreNode
     class logTask,pauseTask,parallelTask,inProjectPlugins extensionNode
-    class postgresRepositories,defaultQueue,jooqBoundary,migrations,generatedJooq adapterNode
+    class postgresRepositories,baseRepository,casEnhancer,dataSourceEngine,defaultQueue,jooqBoundary,migrations,generatedJooq adapterNode
     class postgres,consul storeNode
 ```
 
@@ -153,6 +160,10 @@ flowchart LR
 Worker、扩展与 Infrastructure；`server` 是只保留 HTTP 与启动职责的薄模块，并通过
 `api` 传递暴露 Core。Server 既可独立启动，也可完整嵌入 CSES，两者不是独立微服务。
 Flow 基线只由部署人员对 Flow 数据库手工执行，运行时 JOOQ 只使用具名 `flow` 数据源。
+所有业务数据库操作进入 `FlowDataSourceEngine`：普通 CRUD 使用原生 Builder /
+Handler，聚合原子保存和事务锁使用原生执行器。`BaseRepository` 只处理通用数据库
+操作及表元数据；租户和业务身份条件由各业务实现构造。Execution 组合
+`CasEnhancer`，具体协议见 [ADR 0111](decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)。
 开发期基线变化后需要重建该数据库，不提供旧 Schema 或旧数据的升级路径。
 Core 通过公共 `Queue<T>` 发布 `ExecutionCommand` 与 `ExecutorEvent`，对应 Pulsar
 Topic 为 `flow-executor-command` 与 `flow-executor-event`。消息类型用 `@FlowQueue`
@@ -382,7 +393,7 @@ flowchart TD
 - [`server/src/main/java/org/cses/flow/controller/execution/ExecutionController.java`](../server/src/main/java/org/cses/flow/controller/execution/ExecutionController.java)
 - [`server/src/main/java/org/cses/flow/controller/session/SessionController.java`](../server/src/main/java/org/cses/flow/controller/session/SessionController.java)
 - [`server/src/main/resources/flow/index.html`](../server/src/main/resources/flow/index.html)
-- [`../core/src/main/java/org/cses/flow/core/services/commands/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/services/commands/CommandExecutor.java)
+- [`../core/src/main/java/org/cses/flow/core/services/CommandExecutor.java`](../core/src/main/java/org/cses/flow/core/services/CommandExecutor.java)
 - [`core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java`](../core/src/main/java/org/cses/flow/core/services/executions/ExecutionService.java)
 - [`core/src/main/java/org/cses/flow/core/services/executions/RewindResult.java`](../core/src/main/java/org/cses/flow/core/services/executions/RewindResult.java)
 - [`core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java`](../core/src/main/java/org/cses/flow/executor/commands/ExecutionCommand.java)
@@ -391,7 +402,7 @@ flowchart TD
 - [`core/src/main/java/org/cses/flow/executor/commands/Rewind.java`](../core/src/main/java/org/cses/flow/executor/commands/Rewind.java)
 - [`core/src/main/java/org/cses/flow/executor/DefaultExecutor.java`](../core/src/main/java/org/cses/flow/executor/DefaultExecutor.java)
 - [`core/src/main/java/org/cses/flow/executor/handlers/ExecutionCommandEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutionCommandEventHandler.java)
-- [`core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java`](../core/src/main/java/org/cses/flow/executor/handlers/ExecutorEventHandler.java)
+- [`core/src/main/java/org/cses/flow/executor/ExecutorEventHandler.java`](../core/src/main/java/org/cses/flow/executor/ExecutorEventHandler.java)
 - [`core/src/main/java/org/cses/flow/executor/ExecutorEvent.java`](../core/src/main/java/org/cses/flow/executor/ExecutorEvent.java)
 - [`core/src/main/java/org/cses/flow/executor/ExecutorService.java`](../core/src/main/java/org/cses/flow/executor/ExecutorService.java)
 - [`core/src/main/java/org/cses/flow/core/runner/RunVariables.java`](../core/src/main/java/org/cses/flow/core/runner/RunVariables.java)

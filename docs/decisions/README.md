@@ -3,8 +3,11 @@
 当前运行时持久化边界以 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md) 为准：
 普通读取领域、调用领域方法、完整快照保存；不使用业务事务或锁定读取。
 下列早期 ADR 的业务事务表述按该决策修订；当前 Executor 的 Pulsar 传输见 ADR 0094。
-显式 `lock` 随对象携带，普通 `save` 由实现层 `CasRepository` 统一执行 CAS，
-不再维护元数据缓存或作用域，见 [ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)。
+显式 `lock` 随对象携带，不再维护元数据缓存或作用域，版本协议见
+[ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)。
+当前实现组织见 [ADR 0111](0111-unify-flow-datasource-and-compose-repository-enhancers.md)：
+通过 DataSourceEngine 统一 CRUD、`BaseRepository` 公共能力、业务 `XxxRepositoryImpl` 与组合式
+`CasEnhancer`，保留根、子集合和所属 outbox 的原子保存。
 
 ## 文档定位
 
@@ -20,6 +23,7 @@
 
 ## Core 组件与依赖方向
 
+- [`ADR 0111`](0111-unify-flow-datasource-and-compose-repository-enhancers.md)：**Accepted**，通过 DataSourceEngine 完成 CRUD，统一宿主配置与 Repository 公共基础，各业务组合 CasEnhancer；包含实施范围和验证边界。
 - [`ADR 0110`](0110-model-executor-state-machine-and-domain-links.md)：**Proposed**，Executor 四层状态、完整推进周期、Worker 结果回流及 Trigger、宿主、SubFlow、存储和消息域连接全景；尚未实施。
 - [`ADR 0109`](0109-route-worker-results-through-executor.md)：**Proposed**，Worker 结果经持久队列回到 Executor，由单一状态写入者决定入库、业务重试、同次投递恢复和后续编排；尚未实施。
 - [`ADR 0108`](0108-flow-runtime-high-availability.md)：**Proposed**，运行逻辑闭环与稳定性；梳理生命周期、能力组合、异常收尾和验证边界，尚未实施。
@@ -307,8 +311,10 @@
 
 ## 持久化、时间与并发
 
+- [`ADR 0111`](0111-unify-flow-datasource-and-compose-repository-enhancers.md)：DataSourceEngine CRUD、BaseRepository 与 CasEnhancer 组合；修订 ADR 0097 的继承组织，保留 lock 和聚合原子保存协议。
 - [`ADR 0097`](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)：需要 CAS 的根
-  携带 lock，由实现层 CasRepository 统一 save、版本比较与回填；删除隐式缓存和作用域。
+  携带 lock，统一 save、版本比较与回填，删除隐式缓存和作用域；原 CasRepository
+  继承组织已由 ADR 0111 的公共基础与组合增强替代。
 - [`ADR 0083`](0083-allocate-flow-version-in-repository.md)：`FlowRepository.save`
   查询同租户同 key 的全部版本（包括草稿和删除），分配下一版本、生成新行 ID 并只
   执行 INSERT；数据库以 `(company_id, key, version)` 统一保证业务唯一性。

@@ -240,6 +240,6 @@ UC 创建或覆盖审计由 UC Agent 负责，测试与报告由 Test Agent 负�
 
 ## 相关资料
 
-- [最新既有回归报告](../test-reports/flow/BATCH-2026-09-20-1821.md)。
+- [最新回归报告与保留的既有反例](../test-reports/flow/BATCH-2026-10-10-1823.md)。
 - [重复/迟到 Worker 结果的既有验证缺口](../test-reports/flow/UC-18-2026-09-20-1725.md)。
 - [先前整理的消息与数据库资料](../harness/flow-runtime-ha-reference.md)：保留为可参考的技术资料，其跨 AZ 建议不构成本次需求。

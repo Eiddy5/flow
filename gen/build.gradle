@@ -12,6 +12,7 @@ dependencies {
     compileOnly libs.lombok
     annotationProcessor libs.lombok
     runtimeOnly(libs.logback.classic)
+    runtimeOnly(libs.postgresql)
 
     // Trino JDBC Driver
     runtimeOnly 'io.trino:trino-jdbc:477'

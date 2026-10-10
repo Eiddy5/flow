@@ -6,6 +6,7 @@ import org.cses.flow.core.domains.executions.TaskRun;
 import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
+import org.cses.flow.infrastructure.repositories.enhancers.CasEnhancer;
 import org.jooq.DSLContext;
 import org.jooq.exception.DataChangedException;
 import org.junit.jupiter.api.AfterEach;
@@ -31,8 +32,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @EnabledIfEnvironmentVariable(named = "FLOW_POSTGRES_TEST_URL", matches = ".+")
 class ExecutionCasIntegrationTest {
 
-    private ExecutionRepositoryImpl repository = new ExecutionRepositoryImpl();
-    private DSLContext database = PostgresJooqTestAdapter.fromEnvironment().createDSLContext();
+    private PostgresJooqTestAdapter adapter = PostgresJooqTestAdapter.fromEnvironment();
+
+    private ExecutionRepositoryImpl repository = new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer());
+    private DSLContext database = adapter.createDSLContext();
     private String companyId = "cas-test-" + StringUtil.newId();
 
     /** 初始化已有 JSON 映射边界。 */
@@ -44,10 +47,14 @@ class ExecutionCasIntegrationTest {
     /** 只清理当前测试租户，保留其他测试和开发数据。 */
     @AfterEach
     void cleanup() {
-        database.deleteFrom(TASK_RUNS).where(TASK_RUNS.EXECUTION_ID.in(
-                database.select(EXECUTIONS.ID).from(EXECUTIONS)
-                        .where(EXECUTIONS.COMPANY_ID.eq(companyId)))).execute();
-        database.deleteFrom(EXECUTIONS).where(EXECUTIONS.COMPANY_ID.eq(companyId)).execute();
+        try {
+            database.deleteFrom(TASK_RUNS).where(TASK_RUNS.EXECUTION_ID.in(
+                    database.select(EXECUTIONS.ID).from(EXECUTIONS)
+                            .where(EXECUTIONS.COMPANY_ID.eq(companyId)))).execute();
+            database.deleteFrom(EXECUTIONS).where(EXECUTIONS.COMPANY_ID.eq(companyId)).execute();
+        } finally {
+            adapter.close();
+        }
     }
 
     /** 两个线程、连接和仓储实例加载相同版本后竞争，只有一个完整聚合可以提交。
@@ -59,7 +66,7 @@ class ExecutionCasIntegrationTest {
         CyclicBarrier loaded = new CyclicBarrier(2);
         try (var threads = Executors.newFixedThreadPool(2)) {
             var futures = List.of(0, 1).stream().map(writer -> threads.submit(() -> {
-                ExecutionRepositoryImpl contender = new ExecutionRepositoryImpl();
+                ExecutionRepositoryImpl contender = new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer());
                 DSLContext dsl = database.configuration().derive().dsl();
                 Execution execution = contender.findById(dsl, companyId, original.id()).orElseThrow();
                 assertEquals(0L, lock(dsl, execution.id()));
@@ -124,7 +131,7 @@ class ExecutionCasIntegrationTest {
             dsl.transaction(nested -> repository.save(nested.dsl(), original));
             assertEquals(2L, original.lock());
         });
-        new ExecutionRepositoryImpl().save(database, original);
+        new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer()).save(database, original);
         assertEquals(3L, original.lock());
         assertEquals(3L, lock(database, original.id()));
     }
@@ -156,7 +163,7 @@ class ExecutionCasIntegrationTest {
         Execution original = create();
         Execution detached = repository.findById(database, companyId, original.id()).orElseThrow().copy();
         assertEquals(0L, detached.lock());
-        new ExecutionRepositoryImpl().save(database.configuration().derive().dsl(), detached);
+        new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer()).save(database.configuration().derive().dsl(), detached);
         assertEquals(1L, detached.lock());
         assertEquals(0L, original.lock());
         assertThrows(DataChangedException.class, () -> repository.save(database, original));
@@ -258,7 +265,7 @@ class ExecutionCasIntegrationTest {
         CyclicBarrier loaded = new CyclicBarrier(2);
         try (var threads = Executors.newFixedThreadPool(2)) {
             var futures = List.of(0, 1).stream().map(writer -> threads.submit(() -> {
-                ExecutionRepositoryImpl contender = new ExecutionRepositoryImpl();
+                ExecutionRepositoryImpl contender = new ExecutionRepositoryImpl(adapter.engine(), new CasEnhancer());
                 DSLContext dsl = database.configuration().derive().dsl();
                 Execution source = contender.findById(dsl, companyId, original.id()).orElseThrow();
                 Execution derived = source.replay(StringUtil.newId(), session(), pauseId, targetId,

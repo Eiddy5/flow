@@ -8,7 +8,7 @@ import org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment;
 import org.junit.jupiter.api.Test;
 import org.paas.json.JsonObject;
 
-import java.sql.DriverManager;
+import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -135,8 +135,8 @@ class SchedulerReliabilityTest {
      * @throws Exception 数据库读取或反序列化失败时抛出
      */
     private static SchedulerEvent persistedEvent(WorkflowUcFixture fixture) throws Exception {
-        try (var connection = DriverManager.getConnection(System.getenv("FLOW_POSTGRES_TEST_URL"),
-            System.getenv("FLOW_POSTGRES_TEST_USER"), System.getenv("FLOW_POSTGRES_TEST_PASSWORD"));
+        try (var adapter = PostgresJooqTestAdapter.fromEnvironment();
+             var connection = adapter.connection();
              var query = connection.prepareStatement(
                  "select payload::text from scheduler_events where company_id = ? and kind = 'TRIGGER_FIRED'")) {
             query.setString(1, fixture.session().getCompanyId());

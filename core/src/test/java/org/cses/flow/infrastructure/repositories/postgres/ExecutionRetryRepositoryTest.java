@@ -7,7 +7,6 @@ import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.executor.ExecutorContext;
 import org.cses.flow.executor.ExecutorService;
 import org.cses.flow.executor.TaskRetryEvent;
-import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.worker.WorkerTaskResult;
 import org.jooq.exception.DataChangedException;
 import org.junit.jupiter.api.Test;
@@ -32,7 +31,7 @@ class ExecutionRetryRepositoryTest {
             var waiting = fixture.awaitExecution(fixture.session(), id,
                 e -> e.taskRuns().stream().anyMatch(t -> t.state().is(State.Type.RETRY_WAIT)));
             var repository = fixture.bean(ExecutionRepository.class);
-            var database = PostgresJooqTestAdapter.fromEnvironment();
+            var database = fixture.bean(org.x9.jooq.JOOQ.class, "flow");
             var pending = database.get(dsl -> repository.pendingRetries(dsl, 100)).stream()
                 .filter(e -> e.executionId().equals(id)).findFirst().orElseThrow();
             assertEquals(fixture.session().getCompanyId(), pending.companyId());

@@ -8,7 +8,6 @@ import org.cses.flow.core.repositories.executions.ExecutionRepository;
 import org.cses.flow.core.services.executions.RetryBusinessTask;
 import org.cses.flow.core.services.executions.WorkflowUcFixture;
 import org.cses.flow.core.utils.TimeUtil;
-import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment;
 import org.junit.jupiter.api.Test;
 import java.net.InetSocketAddress;
@@ -70,7 +69,7 @@ class TaskRetryPulsarIntegrationTest {
             TaskRetryEvent event = start(fixture, business);
             fixture.bean(TaskRetryOutboxPublisher.class).poll();
             var repository = fixture.bean(ExecutionRepository.class);
-            var database = PostgresJooqTestAdapter.fromEnvironment();
+            var database = fixture.bean(org.x9.jooq.JOOQ.class, "flow");
             assertTrue(database.get(dsl -> repository.pendingRetries(dsl, 100)).stream()
                 .noneMatch(p -> p.executionId().equals(event.executionId())));
             assertTrue(TimeUtil.now() < event.deliverAt());

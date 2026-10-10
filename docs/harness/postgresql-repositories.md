@@ -153,12 +153,22 @@ FLOW_POSTGRES_TEST_PASSWORD=flow \
 已修改对象并重新加载。完整并发回归还应运行：
 
 ```bash
-./gradlew :core:test --tests '*CasRepositoryTest' --tests '*ExecutionCasIntegrationTest'
+./gradlew :core:test --tests '*BaseRepositoryTest' --tests '*CasEnhancerTest' \
+  --tests '*ExecutionCasIntegrationTest'
 ```
 
 此命令使用上文相同的 Java 与 PostgreSQL 环境变量。字段更名后，已有开发库必须
 显式重建；基线的 `IF NOT EXISTS` 不会把旧列自动改名。验证优先使用独立临时数据库，
 不要为了运行测试清空现有开发数据。
+
+当前技术组织按 [ADR 0111](../decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)
+使用 `BaseRepository` 通过 `FlowDataSourceEngine` 执行 CRUD，并组合 `CasEnhancer`。
+测试夹具注入只初始化 CRUD 元数据的轻量 Engine，保留真实 Builder、Handler 与
+借用会话；外部插件、消费者和通知生命周期不计为此类技术测试验收。测试适配器从测试配置创建自己拥有的
+DataSource，测试结束关闭池；`WorkflowUcFixture` 同时关闭容器上下文与自身数据库
+适配器。Repository 和增强器复用调用方 DSLContext，不创建或关闭连接池。
+运行应用、嵌入宿主与 Generator 的配置方式见
+[Flow 数据源接入](flow-datasource.md)。下方历史结果保留当时的类名和执行环境。
 
 ### 2026-09-10 对象版本与 CAS 仓储基类验证
 
@@ -171,9 +181,9 @@ CommandExecutorTest 5、ExecutorEventMessageHandlerTest 5。证据目录为
 SQL 失败不回填，以及显式事务/savepoint 回滚后重载。此结果不代替 UC 或全量验收；
 使用 JDK 25 执行，不构成 Java 21 兼容性验证。
 最终全项目回归为 447 通过、8 失败、1 跳过，其中 CAS 专项仍为 49/49；
-正常 SQL 探针已执行，根子保存保持单 SQL，不作为数据库性能证据。场景覆盖、失败
-详情、环境复核及临时资源清理见
-[本轮批次报告](../test-reports/flow/BATCH-2026-09-10-1311.md)。
+正常 SQL 探针已执行，根子保存保持单 SQL，不作为数据库性能证据。原批次报告
+`BATCH-2026-09-10-1311.md` 已不在当前滚动保留集合中；当前执行证据按
+[测试报告索引](../test-reports/README.md) 查阅。
 
 ### 2026-09-09 通用 CAS 最小重构验证（历史实现）
 

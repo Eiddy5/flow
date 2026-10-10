@@ -15,6 +15,7 @@ import org.cses.flow.core.domains.triggers.ScheduledTrigger;
 import org.cses.flow.core.repositories.flows.FlowRepository;
 import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.infrastructure.jooq.FlowJooqCondition;
+import org.cses.flow.infrastructure.jooq.FlowDatabase;
 import org.cses.flow.queues.annotations.FlowQueueListener;
 import org.cses.flow.scheduler.events.SchedulerEvent;
 import org.cses.flow.scheduler.repositories.ScheduleRepository;
@@ -51,7 +52,7 @@ public class FlowScheduler {
      * @param pollInterval 正数轮询间隔，也用作失败后的重试间隔
      * @throws IllegalArgumentException 间隔不足一毫秒时抛出
      */
-    public FlowScheduler(@Named("flow") JOOQ jooq, FlowRepository flows, TriggerRuntime runtime,
+    public FlowScheduler(@Named(FlowDatabase.DATA_SOURCE_NAME) JOOQ jooq, FlowRepository flows, TriggerRuntime runtime,
             ScheduleRepository schedules,
             @Value("${flow.scheduler.poll-interval:1s}") Duration pollInterval) {
         if (pollInterval.toMillis() <= 0) throw new IllegalArgumentException("Scheduler poll interval must be positive");
@@ -148,8 +149,7 @@ public class FlowScheduler {
     void synchronize(SchedulerEvent event) {
         dsl.transaction(configuration -> {
             DSLContext context = DSL.using(configuration);
-            context.select(DSL.field("pg_advisory_xact_lock(hashtextextended({0}, 0))",
-                Object.class, DSL.val(event.companyId() + ":" + event.flowKey()))).fetch();
+            schedules.lockFlow(context, event.companyId(), event.flowKey());
             Flow flow = latest(context, event.companyId(), event.flowKey()).orElse(null);
             var active = new HashSet<String>();
             var triggers = new java.util.ArrayList<ScheduledTrigger>();

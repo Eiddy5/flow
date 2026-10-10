@@ -9,7 +9,7 @@ import org.cses.flow.core.utils.TimeUtil;
 
 import java.time.Instant;
 import java.time.ZoneId;
-import java.sql.DriverManager;
+import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -152,8 +152,8 @@ public class SchedulerTestSupport {
      */
     public static void awaitScheduleCount(Flow flow, int expected) {
         long deadline = TimeUtil.now() + 10_000;
-        try (var connection = DriverManager.getConnection(System.getenv("FLOW_POSTGRES_TEST_URL"),
-            System.getenv("FLOW_POSTGRES_TEST_USER"), System.getenv("FLOW_POSTGRES_TEST_PASSWORD"));
+        try (var adapter = PostgresJooqTestAdapter.fromEnvironment();
+             var connection = adapter.connection();
              var query = connection.prepareStatement("select count(*) from trigger_schedules where company_id = ? and id = any (?)")) {
             query.setString(1, flow.companyId());
             query.setArray(2, connection.createArrayOf("text", flow.triggers().stream().map(trigger -> trigger.id()).toArray()));

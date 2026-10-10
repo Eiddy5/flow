@@ -2,7 +2,7 @@ package org.cses.flow.infrastructure.datapilot;
 
 import org.dataPilot.datasource.DataSourceKeyProvider;
 
-public final class DataSourceKey implements DataSourceKeyProvider {
+public class DataSourceKey implements DataSourceKeyProvider {
 
     public static final String POSTGRESQL = "postgresql.flow";
     public static final String DEFAULT = POSTGRESQL;

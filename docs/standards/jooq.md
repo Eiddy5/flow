@@ -14,7 +14,12 @@
 - `fetch`、`fetchInto`、`fetchOne` 和 `fetchOneInto` 的选择与映射条件。
 - `buildInsertMap()`、字段级 `set(...)` 和 `buildUpdateMap()` 的使用场景。
 
-本次确认的硬性规则可以先归纳为：
+Flow 的运行期普通 CRUD 通过 DataSourceEngine 原生 Builder 完成，完整表行仍
+映射为 XxxEntry；单行读取通过 BaseRepository.readOne 校验基数。下表适用于
+Engine 原生执行器中的专用 SQL、聚合组装及数据库测试，不能用直接 JOOQ 执行
+替代运行期的 Engine 入口。具体边界见 ADR 0111。
+
+专用 JOOQ 操作的规则归纳为：
 
 | 场景 | 统一写法 | 禁止写法 |
 | --- | --- | --- |
@@ -80,6 +85,11 @@ DataSource 自动创建同名 Bean；由于 PAAS 默认 Factory 对 Configuratio
 注入，Flow 通过 `NamedJooqFactory` 按 DataSource 名称选择同名 Configuration，避免
 嵌入宿主提供额外无限定名 Configuration 时产生候选冲突。
 `jooq.datasources.flow` 只用于显式覆盖方言或 JOOQ Settings，不是必填配置。
+
+当前数据源所有权、公共 Repository 基础和组合增强的具体决策见
+[`ADR 0111`](../decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)，
+运行、宿主及生成器配置示例见
+[`Flow 数据源接入`](../harness/flow-datasource.md)。
 
 ## 2. 生成类提供的快捷能力
 
@@ -549,17 +559,15 @@ values.execute();
 
 ### 字段级更新
 
-只修改一个或少量明确字段时，直接使用 JOOQ 的字段级
-`set(TABLE.FIELD, value)`：
+只修改一个或少量明确字段时，普通更新通过 `BaseRepository.updateFields(...)`
+进入 DataSourceEngine 原生 Updater，字段 Map 的列名来自生成元数据：
 
 ```java
-dsl.update(FLOWS)
-    .set(FLOWS.SOURCE, source)
-    .set(FLOWS.UPDATED_AT, updatedAt)
-    .where(FLOWS.COMPANY_ID.eq(companyId))
-    .and(FLOWS.ID.eq(flowId))
-    .and(FLOWS.DRAFT.isTrue())
-    .execute();
+Map<String, Object> fields = new LinkedHashMap<>();
+fields.put(FLOWS.SOURCE.getName(), source);
+fields.put(FLOWS.UPDATED_AT.getName(), updatedAt);
+updateFields(dsl, FLOWS, FLOWS.COMPANY_ID.eq(companyId)
+    .and(FLOWS.ID.eq(flowId)).and(FLOWS.DRAFT.isTrue()), fields);
 ```
 
 字段级更新必须：
@@ -568,15 +576,18 @@ dsl.update(FLOWS)
 - 使用生成的 Table Field，不手写数据库字段名。
 - 带上完整业务身份和租户条件；持久化协议明确要求行锁或 CAS 时，同时带上对应的
   技术并发条件。
-- 需要清空字段时显式调用 `.set(TABLE.FIELD, null)`。
+- 需要清空字段时在 Map 中显式保留 `null`，由基类转换为原生 `SetNullOperator`。
+- 竞争条件更新、CAS 或事务行锁由 Engine 原生执行器承接；在该执行器内部可以
+  使用 JOOQ 的 `.set(TABLE.FIELD, value)` / `.set(TABLE.FIELD, null)`。
 
 调用 `entry.setState(...)` 只会修改内存中的 Entry，并不会执行数据库更新；真正的
-字段级更新必须通过 JOOQ Update 的 `.set(TABLE.FIELD, value)` 完成。
+字段级更新必须进入 Engine Updater，或在上述专用执行器协议内执行 SQL。
 
 ### 完整对象更新
 
 需要将一个完整领域对象当前状态写回数据库时，先转换为 Entry，再使用
-`buildUpdateMap()`：
+`buildUpdateMap()`。下例只展示 Engine 原生执行器内的 Entry 字段写入语法；具体
+聚合的 CAS、子记录和 outbox 必须按其原子保存协议一并组装：
 
 ```java
 ExecutionEntry entry = ExecutionEntry.from(execution);
