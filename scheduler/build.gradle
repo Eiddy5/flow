@@ -31,13 +31,20 @@ sourceSets.test.java {
     include('org/cses/flow/core/services/executions/Uc14ScheduleTriggerTest.java')
     include('org/cses/flow/core/services/executions/Uc15FlowTriggerTest.java')
     include('org/cses/flow/core/services/executions/Uc17ScheduleOnDatesTriggerTest.java')
+    include('org/cses/flow/core/services/executions/Uc19NativeRecoveryTest.java')
     include('org/cses/flow/scheduler/**')
 }
 dependencies {
     testImplementation(libs.paas.pulsar)
     testImplementation(libs.org.x9.cloud.datapilot)
 }
-tasks.withType(Test).configureEach { useJUnitPlatform() }
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    // 独立 JVM 崩溃恢复测试使用与当前测试进程相同的真实运行依赖。
+    doFirst {
+        systemProperty 'flow.test.runtime-classpath', classpath.asPath
+    }
+}
 configurations.matching { it.name.startsWith('test') }.configureEach {
     exclude group: 'org.paas', module: 'paas-temporal'
     exclude group: 'org.paas', module: 'paas-diagnostic'
