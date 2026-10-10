@@ -108,6 +108,17 @@ public class WorkflowUcFixture implements AutoCloseable {
         return open(true, null, properties);
     }
 
+    /**
+     * 以标准具名数据源装配生产 JOOQ，供长时压力使用连接池；普通 UC 保持原直连适配器。
+     * @param properties 明确指向专属环境的数据源和 Broker 属性
+     * @return 调用方负责关闭的真实服务夹具
+     */
+    public static WorkflowUcFixture openWithRuntimeDataSource(Map<String, Object> properties) {
+        Map<String, Object> runtime = new java.util.LinkedHashMap<>(properties);
+        runtime.put("flow.test.runtime-datasource", true);
+        return open(true, null, runtime);
+    }
+
     private static WorkflowUcFixture open(
         boolean cleanupOnClose,
         String companyId,
@@ -132,6 +143,15 @@ public class WorkflowUcFixture implements AutoCloseable {
      * @return 由当前上下文管理的组件，调用方不单独销毁
      */
     public <T> T bean(Class<T> type) { return context.getBean(type); }
+
+    /**
+     * 查询具有明确名称的真实组件，用于核对压力运行链路的数据源归属。
+     * @param type 组件接口
+     * @param name Micronaut Bean 限定名
+     * @param <T> 组件类型
+     * @return 当前上下文管理的具名组件
+     */
+    public <T> T bean(Class<T> type, String name) { return context.getBean(type, Qualifiers.byName(name)); }
 
     public FlowService flowService() {
         return flowService;
@@ -616,11 +636,13 @@ public class WorkflowUcFixture implements AutoCloseable {
             builder.singletons(singletons);
         }
         context = builder.build();
-        context.registerSingleton(
-            JOOQ.class,
-            jooq,
-            Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME)
-        );
+        if (!Boolean.TRUE.equals(properties.get("flow.test.runtime-datasource"))) {
+            context.registerSingleton(
+                JOOQ.class,
+                jooq,
+                Qualifiers.byName(FlowDatabase.DATA_SOURCE_NAME)
+            );
+        }
         context.start();
         flowService = context.getBean(FlowService.class);
         executionService = context.getBean(ExecutionService.class);
