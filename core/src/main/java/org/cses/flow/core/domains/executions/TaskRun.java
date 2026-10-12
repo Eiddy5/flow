@@ -444,7 +444,10 @@ public class TaskRun implements Identified {
         state = state.failed();
     }
 
-    /** 关闭未完成节点和当前调用，清除待重试计划；已结束节点拒绝再次关闭。 */
+    /**
+     * 关闭未完成节点和当前调用，清除尚未确认完成的输出及待重试计划。
+     * @throws WorkflowException 当前节点已经结束时抛出
+     */
     void kill() {
         if (!isUnfinished()) {
             throw new WorkflowException(
@@ -456,6 +459,7 @@ public class TaskRun implements Identified {
             finishAttempt(State.Type.KILLED, null, killed.history().getLast().date());
         }
         nextRetryAt = null;
+        outputs = Map.of();
         error = null;
         state = killed;
     }

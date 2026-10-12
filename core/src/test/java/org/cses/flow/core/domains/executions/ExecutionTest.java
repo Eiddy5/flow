@@ -18,6 +18,35 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExecutionTest {
 
+    /** 恢复输出尚未确认时取消必须清空该输出，已成功节点的输出和完整历史保持不变。 */
+    @Test
+    void canceledResumedTaskDiscardsUnconfirmedOutputsAndPreservesCompletedHistory() {
+        Execution execution = Execution.create(null, session("cancel-resume-company"), "cancel-resume-flow", 1, Map.of());
+        execution.start();
+        TaskRun completed = execution.createTaskRun("confirmed", null, Map.of());
+        execution.startTaskRun(completed.id());
+        execution.succeedTaskRun(completed.id(), Map.of("value", "confirmed"));
+        State confirmedState = completed.state();
+        TaskRun pause = execution.createTaskRun("pause", null, Map.of());
+        execution.startTaskRun(pause.id());
+        execution.pauseTaskRun(pause.id());
+        execution.pause();
+        execution.resumeTaskRun(pause.id(), Map.of("decision", "unconfirmed"));
+        assertEquals(State.Type.RUNNING, pause.state().current());
+        assertEquals(Map.of("decision", "unconfirmed"), pause.outputs());
+        execution.beginKilling();
+        execution.killUnfinishedTaskRuns();
+        execution.finishKilling();
+        assertEquals(State.Type.KILLED, execution.state().current());
+        assertEquals(State.Type.KILLED, pause.state().current());
+        assertTrue(pause.outputs().isEmpty());
+        assertEquals(confirmedState, completed.state());
+        assertEquals(Map.of("value", "confirmed"), completed.outputs());
+        assertEquals(2, execution.taskRuns().size());
+        assertTrue(execution.activeTaskRuns().isEmpty());
+        assertTrue(execution.pausedTaskRuns().isEmpty());
+    }
+
     @Test
     void createsAnExecutionWithACallerProvidedStableId() {
         Execution execution = Execution.create(
