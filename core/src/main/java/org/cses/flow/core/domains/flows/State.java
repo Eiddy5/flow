@@ -44,7 +44,13 @@ public class State {
     }
 
     /**
-     * Rehydrates an exact state trajectory from a trusted persistence adapter.
+     * 根据持久化的当前类型和完整历史重建 State，校验首尾及相邻迁移，不追加新记录。
+     *
+     * @param current 当前类型，不能为 {@code null}，必须与历史末项一致
+     * @param history 待复制的非空历史，列表及元素不能为 {@code null}；不修改输入
+     * @return 保存精确轨迹的不可变状态，不共享可变历史列表
+     * @throws NullPointerException 当当前类型、历史列表或历史元素为 {@code null} 时抛出
+     * @throws IllegalArgumentException 当历史首尾或相邻迁移非法时抛出，应核对持久化数据
      */
     public static State rehydrate(
         Type current,
@@ -88,8 +94,21 @@ public class State {
             || current == Type.KILLED;
     }
 
+    /**
+     * 校验目标类型并追加当前时间的状态历史，返回独立的新 State；原对象保持不变。
+     *
+     * @param target 待迁移的状态类型，不能为 {@code null} 或与当前状态相同
+     * @return 包含原历史及一条新记录的不可变状态，不共享可变历史列表
+     * @throws NullPointerException 当目标为 {@code null} 时抛出
+     * @throws WorkflowException 当迁移不属于通用合法超集时抛出，调用方应核对领域动作
+     */
     public State withState(Type target) {
         Objects.requireNonNull(target, "Target state type");
+        if (!isAllowedTransition(current, target)) {
+            throw new WorkflowException(
+                "Invalid state transition: " + current + " -> " + target
+            );
+        }
         List<History> changed = new ArrayList<>(history);
         changed.add(History.now(target));
         return new State(target, changed);
@@ -131,6 +150,15 @@ public class State {
         return withState(Type.KILLED);
     }
 
+    /**
+     * 复制并检查持久化历史的首尾及相邻迁移；列表顺序决定轨迹，不要求时间递增。
+     *
+     * @param current 期望的当前状态，不能为 {@code null}，必须等于最后一条历史状态
+     * @param source 待读取的非空历史列表，列表和元素不能为 {@code null}；不会修改输入
+     * @return 包含原记录的不可变列表，记录本身不可变
+     * @throws NullPointerException 当列表或其中元素为 {@code null} 时抛出
+     * @throws IllegalArgumentException 当首尾或相邻迁移不合法时抛出，调用方应检查持久化数据
+     */
     private static List<History> validateAndCopyHistory(
         Type current,
         List<History> source
@@ -152,7 +180,52 @@ public class State {
                 "Current state must match the last history entry"
             );
         }
+        for (int index = 1; index < copied.size(); index++) {
+            Type previous = copied.get(index - 1).state();
+            Type next = copied.get(index).state();
+            if (!isAllowedTransition(previous, next)) {
+                throw new IllegalArgumentException(
+                    "Invalid state history transition: " + previous + " -> " + next
+                );
+            }
+        }
         return copied;
+    }
+
+    /**
+     * 判断两个状态是否属于 Execution 与 TaskRun 路线的合法超集，包括受控祖先重开；
+     * 不修改状态，各状态拥有者仍需执行自己的更窄校验。
+     *
+     * @param source 当前状态，不能为 {@code null}
+     * @param target 目标状态，不能为 {@code null}
+     * @return 至少一个运行对象支持该迁移时返回 {@code true}，其余返回 {@code false}
+     */
+    private static boolean isAllowedTransition(Type source, Type target) {
+        return switch (source) {
+            case CREATED -> target == Type.RUNNING
+                || target == Type.FAILED
+                || target == Type.KILLING
+                || target == Type.KILLED;
+            case RUNNING -> target == Type.RETRY_WAIT
+                || target == Type.PAUSED
+                || target == Type.SUCCESS
+                || target == Type.SKIPPED
+                || target == Type.WARNING
+                || target == Type.FAILED
+                || target == Type.KILLING
+                || target == Type.KILLED;
+            case RETRY_WAIT -> target == Type.CREATED
+                || target == Type.FAILED
+                || target == Type.KILLED;
+            case PAUSED -> target == Type.RUNNING
+                || target == Type.RESTARTED
+                || target == Type.KILLING
+                || target == Type.KILLED;
+            case RESTARTED -> target == Type.RUNNING || target == Type.KILLING;
+            case SUCCESS, WARNING -> target == Type.RUNNING;
+            case KILLING -> target == Type.KILLED;
+            case SKIPPED, FAILED, KILLED -> false;
+        };
     }
 
     @Override

@@ -518,6 +518,19 @@ class ExecutionTest {
         );
     }
 
+    /** State 的通用超集允许祖先重开，Execution 的终态仍不可重开。 */
+    @Test
+    void rehydrateRejectsReopenedTerminalExecution() {
+        Execution execution = Execution.create("reopened-root", session("reopened-company"),
+            "reopened-flow", 1, Map.of());
+        State reopened = State.created().running().success().running();
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+            () -> Execution.rehydrate(execution.id(), execution.companyId(), execution.creator(),
+                execution.createdAt(), execution.flowKey(), execution.flowVersion(), execution.inputs(),
+                execution.generation(), reopened, List.of(), execution.origin(), List.of(), null, 0L));
+        assertTrue(error.getMessage().contains("Invalid Execution state transition"));
+    }
+
     /** 重建只能接受一致的来源身份，继承列表与本次列表也不能重复同一个 TaskRun。 */
     @Test
     void rehydrateRejectsInvalidOriginsAndDuplicateInheritedIdentity() {

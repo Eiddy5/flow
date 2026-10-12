@@ -3,7 +3,8 @@
 ## 状态
 
 Accepted（首次启动与单轮 transition 增量记录边界由 ADR 0020 补充；持久化列结构
-由 ADR 0034 修订）
+由 ADR 0034 修订；当前状态词汇及路线随 ADR 0079、0085、0105 修订，
+2026-10-12 补齐通用迁移及重建校验）
 
 ## 背景
 
@@ -47,17 +48,17 @@ Execution、TaskRun 和 Worker 各自维护枚举，通过名称约定保持一�
 ### 统一状态词汇
 
 `org.cses.flow.core.domains.flows.State` 是工作流运行状态的唯一领域模型。
-`State.Type` 包含五个具体状态，归入四个运行大类：
+`State.Type` 使用下列当前词汇，替代本 ADR 最初的 WAITING、COMPLETED、TERMINATED：
 
 | 运行大类 | `State.Type` | 语义 |
 | --- | --- | --- |
 | 创建和运行 | `CREATED`、`RUNNING` | 已创建但尚未启动；正在推进 |
-| 等待 | `WAITING` | 必须等待外部结果，当前不能自行继续 |
-| 正常终止 | `COMPLETED` | 工作正常收敛 |
-| 异常终止 | `TERMINATED` | 失败、取消或连带终止 |
+| 等待和恢复 | `RETRY_WAIT`、`PAUSED`、`RESTARTED` | 等待业务重试到期；暂停；恢复后等待推进 |
+| 正常终止 | `SUCCESS`、`SKIPPED`、`WARNING` | 成功；未匹配路由；带警告收敛 |
+| 失败和取消 | `FAILED`、`KILLING`、`KILLED` | 失败；取消收尾中；取消已收敛 |
 
-失败与取消共用异常终止类型，具体原因由领域动作和 TaskRun `error` 区分，不增加
-同义运行状态。不得重新引入 `ExecutionStatus`、`TaskRunStatus`、
+失败与取消使用独立类型，具体错误由 TaskRun `error` 等领域事实表达。不得重新引入
+`ExecutionStatus`、`TaskRunStatus`、
 `WorkerTaskOutcome` 或其他兼容枚举。
 
 ### State 对象与 History
@@ -93,7 +94,8 @@ date  : long
   `current = CREATED`，history 只含同一时刻的 CREATED 记录。
 - `withState(target)` 是通用迁移入口；它校验迁移、在内部捕获当前时间、追加一条
   History，并返回新的 State。
-- `running()`、`waiting()`、`complete()`、`fail()` 和 `terminate()` 是
+- `running()`、`paused()`、`restarted()`、`success()`、`skipped()`、`warning()`、
+  `failed()`、`killing()` 和 `killed()` 是
   `withState(...)` 的快捷方法，不接收时间参数。
 - `rehydrate(current, history)` 只用于可信持久化适配器恢复完整轨迹；它不生成
   新历史，但必须重新校验 State 不变量。
@@ -102,10 +104,14 @@ date  : long
 State 的通用超集迁移为：
 
 ```text
-CREATED -> RUNNING | TERMINATED
-RUNNING -> WAITING | COMPLETED | TERMINATED
-WAITING -> RUNNING | COMPLETED | TERMINATED
-COMPLETED | TERMINATED -> no transition
+CREATED -> RUNNING | FAILED | KILLING | KILLED
+RUNNING -> RETRY_WAIT | PAUSED | SUCCESS | SKIPPED | WARNING | FAILED | KILLING | KILLED
+RETRY_WAIT -> CREATED | FAILED | KILLED
+PAUSED -> RUNNING | RESTARTED | KILLING | KILLED
+RESTARTED -> RUNNING | KILLING
+SUCCESS | WARNING -> RUNNING
+KILLING -> KILLED
+SKIPPED | FAILED | KILLED -> no transition
 ```
 
 通用 State 只定义所有运行对象可能使用的合法超集。每个状态拥有者仍须限制自己
@@ -113,12 +119,16 @@ COMPLETED | TERMINATED -> no transition
 
 | 状态拥有者 | 合法路线 |
 | --- | --- |
-| Execution | `CREATED -> RUNNING`；`RUNNING -> WAITING/COMPLETED/TERMINATED`；`WAITING -> RUNNING/TERMINATED` |
-| 普通 TaskRun | `CREATED -> RUNNING -> COMPLETED/TERMINATED` |
-| PAUSE TaskRun | `CREATED -> RUNNING -> WAITING -> COMPLETED/TERMINATED` |
+| Execution | `CREATED -> RUNNING/KILLING`；`RUNNING -> PAUSED/SUCCESS/WARNING/FAILED/KILLING`；`PAUSED -> RESTARTED/KILLING`；`RESTARTED -> RUNNING/KILLING`；`KILLING -> KILLED`；终态不重开 |
+| TaskRun | `CREATED -> RUNNING/FAILED/KILLED`；`RUNNING -> RETRY_WAIT/PAUSED/SUCCESS/SKIPPED/WARNING/FAILED/KILLED`；`RETRY_WAIT -> CREATED/FAILED/KILLED`；`PAUSED -> RUNNING/KILLED` |
+| 部分受影响的编排祖先 TaskRun | 按 ADR 0085 的受控退回入口允许 `SUCCESS/WARNING -> RUNNING`，沿用原 ID、清空旧 outputs；普通 Task 和 Pause 不使用该入口 |
 
 因此，词汇和历史结构全局统一，不代表 Execution 与 TaskRun 可以走完全相同的
 路线。聚合还要继续校验完成前已收敛、失败必须携带 error 等业务不变量。
+`withState` 对非法迁移抛出 `WorkflowException`；持久化 `rehydrate` 对任意相邻
+非法迁移抛出 `IllegalArgumentException`，不能只检查首尾状态。相同状态迁移属于
+非法迁移，不新增 History；消息重投、租约续期和同次 Attempt 重新交付不属于领域
+状态迁移。
 
 ### Worker 边界
 
@@ -126,7 +136,7 @@ Execution 和 TaskRun 持有完整 `State`。Worker 并不拥有聚合状态历�
 `WorkerTaskResult` 只携带目标 `State.Type targetState`：
 
 ```text
-WAITING | COMPLETED | TERMINATED
+SUCCESS | WARNING | FAILED | KILLED
 ```
 
 Executor 把结果交给 Execution 聚合，由聚合调用领域动作并生成带真实时间的
@@ -141,11 +151,11 @@ History。Worker 不得创建完整 State、伪造 History、指定 CREATED/RUNN
 
 ### PAUSE、Resume 与外部业务
 
-PAUSE Worker 报告 `WAITING`。当 Executor 已无其他活动工作时，稳定组合为：
+Pause 由编排规则形成暂停门。当 Executor 已无其他活动工作时，稳定组合为：
 
 ```text
-Execution.current = WAITING
-TaskRun.current   = WAITING
+Execution.current = PAUSED
+TaskRun.current   = PAUSED
 Task type         = PAUSE
 ```
 
@@ -153,12 +163,12 @@ Task type         = PAUSE
 `PENDING/APPROVED/REJECTED` 等值加入 `State.Type`。外部能力完成后只调用
 `ExecutionService.resume(...)`：
 
-1. PAUSE TaskRun 从 `WAITING` 进入 `COMPLETED`。
-2. Execution 从 `WAITING` 回到 `RUNNING`。
+1. PAUSE TaskRun 从 `PAUSED` 回到 `RUNNING`，由编排完成并进入 `SUCCESS`。
+2. Execution 从 `PAUSED` 进入 `RESTARTED`，下一轮推进进入 `RUNNING`。
 3. Executor 在同一生命周期内继续安排后续工作。
 
-并行运行中可以暂时存在 `RUNNING Execution + WAITING TaskRun`；只有没有
-CREATED/RUNNING TaskRun 或下一候选工作时，Execution 才进入稳定 WAITING。
+并行运行中可以暂时存在 `RUNNING Execution + PAUSED TaskRun`；只有没有其他
+活动工作或下一候选工作且只剩暂停门时，Execution 才进入稳定 PAUSED。
 
 ### 时间规则
 
@@ -201,11 +211,10 @@ date 严格递增。
   完成；TaskRun 计划被聚合接受和 Worker 派发分别对应 CREATED 和 RUNNING。
 - ExecutorContext.states 只记录本轮观察到的 Execution Type 增量；
   本 ADR 定义的 `Execution.state.history` 仍是唯一权威完整历史。
-- Resume 的“重启”是动作语义，不新增 RESTARTED 类型；它把 Execution 恢复为
-  RUNNING。
+- Resume 使用 `PAUSED -> RESTARTED -> RUNNING`，终态 Execution 不通过此路线重开。
 - 新增运行状态时，必须同时核对 State 通用规则、各聚合路线、Worker 协议、
   Repository、数据库迁移、文档和测试。
-- 失败或取消把 Execution 及其全部未完成 TaskRun 收敛到 TERMINATED；只有明确
+- 失败或取消按各自传播规则收敛到 FAILED 或 KILLED；只有明确
   Worker 失败的目标 TaskRun 保存 error。
 - PAUSE 和审批对接继续遵循 ADR 0016 的统一 Resume 边界。
 - 本决策修订 ADR 0002 中的状态枚举、ADR 0012 中 Worker 持有完整 State 的

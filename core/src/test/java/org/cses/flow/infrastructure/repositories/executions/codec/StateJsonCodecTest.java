@@ -62,4 +62,19 @@ class StateJsonCodecTest {
                 """))
         );
     }
+
+    /** 验证 Codec 在 current 与历史末项相符时仍拒绝非法相邻迁移。 */
+    @Test
+    void rejectsPersistedIllegalTransitionsEvenWhenCurrentMatchesHistory() {
+        JSONB stored = JSONB.valueOf("""
+            {
+              "current": "PAUSED",
+              "history": [
+                {"state": "CREATED", "date": 1},
+                {"state": "PAUSED", "date": 2}
+              ]
+            }
+            """);
+        assertThrows(IllegalArgumentException.class, () -> StateJsonCodec.decode(stored));
+    }
 }
