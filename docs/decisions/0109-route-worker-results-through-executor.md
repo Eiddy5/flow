@@ -1,5 +1,9 @@
 # ADR 0109：Worker 结果经队列回到 Executor 决定状态
 
+Worker 任务提交、结果回流及 outbox 生命周期的已确认方案见
+[ADR 0113](0113-submit-worker-tasks-and-clean-consumed-outbox.md)。下文提案中的投递前 RUNNING、
+长期消息保留及待定队列条款已由该记录修订；Kestra 研究和其余未确认范围保留原状态。
+
 ## 状态与范围
 
 Proposed（2026-09-23）。本文是对异步 RunnableTask 状态机的设计，尚未修改运行实现、
@@ -188,4 +192,4 @@ Broker 暂停后恢复；串行、分支、并行、循环、子流程和触发�
 
 相关现状与证据：[ADR 0105](0105-add-durable-task-retries.md)、
 [ADR 0106](0106-use-pulsar-delayed-task-retries.md)、
-[UC-19 报告](../test-reports/flow/UC-19-2026-09-22-2035.md)。
+[恢复验证报告索引](../test-reports/README.md)。

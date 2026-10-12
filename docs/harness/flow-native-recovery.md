@@ -79,9 +79,20 @@ export FLOW_NATIVE_CONTROL=false
 控制端释放外部调用等待后，原 JVM 继续运行并检查相同最终结果，不启动第二个引擎。
 对照单独归档为 `control-*`，不得计入崩溃恢复 PASS；恢复测试必须显式改回 `false`。
 
-## 2026-09-22 验证结论
+## 本轮已确认交接窗口
 
-完整逐场景证据见 [UC-19 测试报告](../test-reports/flow/UC-19-2026-09-22-2035.md)。
+当前协议见 [ADR 0113](../decisions/0113-submit-worker-tasks-and-clean-consumed-outbox.md)。
+新增 S13 在关闭 Worker 后观察原节点 SUBMITTED、无已开始 Attempt，并强杀后重启领取；
+新增 S14 在关闭结果接纳后观察原结果已保存、同一次尝试仍等待接纳，并强杀后恢复结果。
+既有 RUNNING 窗口需保留原 Attempt 编号和 startedAt，禁止创建业务重试掩盖恢复。
+外部样本以 Execution + TaskRun 保证成功结果幂等，同时分别归档物理请求与业务生效次数。
+
+闭合后保存 execution_messages / task_retry_messages 零残留证据及当前许可；不能删除
+未消费消息制造通过。实际本轮结果由 Test Agent 生成报告，本手册不预先宣布通过。
+
+## 2026-09-22 验证结论（历史）
+
+完整逐场景证据见 [恢复验证报告索引](../test-reports/README.md)。
 12 个场景为 4 PASS、8 FAIL；参数展开的 14 项为 5 通过、9 失败。同定义的
 9 项无崩溃对照全部通过，不能据此提高崩溃恢复的通过数。
 

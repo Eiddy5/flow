@@ -20,6 +20,7 @@
     ]);
     const STATE_LABELS = {
         CREATED: "已创建",
+        SUBMITTED: "已提交，等待领取",
         RUNNING: "运行中",
         RETRY_WAIT: "等待重试",
         PAUSED: "已暂停",
@@ -886,7 +887,7 @@
             !routeMissed
             && (
                 replaying
-                || ["CREATED", "RUNNING", "RETRY_WAIT", "PAUSED"].includes(run?.state)
+                || ["CREATED", "SUBMITTED", "RUNNING", "RETRY_WAIT", "PAUSED"].includes(run?.state)
             );
         const completed =
             !routeMissed

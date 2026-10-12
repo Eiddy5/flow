@@ -26,10 +26,12 @@ class Uc18TaskRetryTest {
     /** 固定间隔的三次实际 HTTP 调用保留身份和失败历史，前后步骤各执行一次。 */
     @Test
     void s1ConstantRetrySucceeds() throws Exception {
-        try (Business business = new Business(2); WorkflowUcFixture fixture = open()) {
+        try (Business business = new Business(2); WorkflowUcFixture fixture = WorkflowUcFixture.openWithProperties(Map.of(
+                "flow.test.retry-task", true, "flow.test.retry-claim-gate", true, "flow.worker.enabled", false))) {
             Flow flow = fixture.deploy(yaml(business, constant(3, 1000), false));
             String id = fixture.startCreated(flow).id();
-            List<Long> plans = observeWaits(fixture, flow, id, business, 2, new long[]{1000, 1000});
+            List<Long> plans = observeWaits(fixture, flow, id, business, 2, new long[]{1000, 1000},
+                fixture.bean(org.cses.flow.worker.SubmittedRetryClaimGate.class));
             assertSuccess(fixture, flow, id, business, 3, plans, State.Type.SUCCESS);
         }
     }
@@ -135,14 +137,54 @@ class Uc18TaskRetryTest {
         }
     }
 
-    /** 真实重试闭环；重复结果传输缺少公开注入入口，报告必须保持 S9 NOT_COVERED。 */
+    /**
+     * 经真实结果队列重发原失败引用，先重复再迟到，核对原两次实际调用和成功结果保持。
+     * @throws Exception 真实 Broker 管理查询失败时抛出
+     */
     @Test
     void s9RetryHistoryRemainsQueryable() throws Exception {
         try (Business business = new Business(1); WorkflowUcFixture fixture = open()) {
             Flow flow = fixture.deploy(yaml(business, constant(2, 1000), false));
             String id = fixture.startCreated(flow).id();
-            List<Long> plans = observeWaits(fixture, flow, id, business, 1, new long[]{1000});
-            assertSuccess(fixture, flow, id, business, 2, plans, State.Type.SUCCESS);
+            TaskRun waiting = waitForAttempt(fixture, flow, id, 1);
+            long plan = waiting.nextRetryAt();
+            var delivery = fixture.bean(org.x9.jooq.JOOQ.class, "flow").get(dsl -> dsl
+                .selectFrom(org.flow.gen.flow.Tables.WORKER_DELIVERIES)
+                .where(org.flow.gen.flow.Tables.WORKER_DELIVERIES.EXECUTION_ID.eq(id))
+                .and(org.flow.gen.flow.Tables.WORKER_DELIVERIES.TASK_RUN_ID.eq(waiting.id())).fetchSingle());
+            var original = org.cses.flow.worker.WorkerResultEvent.from(delivery.getResultId(), delivery.getCompanyId(), id,
+                waiting.id(), delivery.getAttemptNumber(), delivery.getDeliveryGeneration());
+            try (var admin = org.cses.flow.infrastructure.queues.pulsar.PulsarTestEnvironment.admin()) {
+                var topic = "persistent://public/default/" + org.cses.flow.worker.WorkerResultEvent.QUEUE_NAME;
+                var subscription = org.cses.flow.worker.WorkerResultEvent.QUEUE_NAME;
+                long before = admin.topics().getStats(topic).getSubscriptions().get(subscription).getMsgOutCounter();
+                fixture.emitEvent(org.cses.flow.worker.WorkerResultEvent.class, original);
+                long deadline = TimeUtil.now() + 4000;
+                while (admin.topics().getStats(topic).getSubscriptions().get(subscription).getMsgOutCounter() <= before
+                        && TimeUtil.now() < deadline) LockSupport.parkNanos(10_000_000);
+                assertTrue(admin.topics().getStats(topic).getSubscriptions().get(subscription).getMsgOutCounter() > before);
+                assertSuccess(fixture, flow, id, business, 2, List.of(plan), State.Type.SUCCESS);
+                var completed = query(fixture, id);
+                before = admin.topics().getStats(topic).getSubscriptions().get(subscription).getMsgOutCounter();
+                fixture.emitEvent(org.cses.flow.worker.WorkerResultEvent.class, original);
+                deadline = TimeUtil.now() + 4000;
+                while (TimeUtil.now() < deadline) {
+                    var stats = admin.topics().getStats(topic).getSubscriptions().get(subscription);
+                    if (stats.getMsgOutCounter() > before && stats.getMsgBacklog() == 0 && stats.getUnackedMessages() == 0) break;
+                    LockSupport.parkNanos(10_000_000);
+                }
+                var stats = admin.topics().getStats(topic).getSubscriptions().get(subscription);
+                assertTrue(stats.getMsgOutCounter() > before);
+                assertEquals(0, stats.getMsgBacklog());
+                assertEquals(0, stats.getUnackedMessages());
+                var afterLate = query(fixture, id);
+                assertEquals(State.Type.SUCCESS, afterLate.state().current());
+                assertEquals(completed.requireTaskRun(waiting.id()).outputs(), afterLate.requireTaskRun(waiting.id()).outputs());
+                assertEquals(2, afterLate.requireTaskRun(waiting.id()).attempts().size());
+                assertEquals(2, business.calls("business").size());
+                assertEquals(1, business.calls("after").size());
+                assertClosed(fixture, afterLate);
+            }
         }
     }
 
@@ -259,6 +301,22 @@ class Uc18TaskRetryTest {
      * @return 查询到的计划时间
      */
     private List<Long> observeWaits(WorkflowUcFixture fixture, Flow flow, String id, Business business, int count, long[] delays) {
+        return observeWaits(fixture, flow, id, business, count, delays, null);
+    }
+
+    /**
+     * 查询每次实际失败和计划，并可在真实重试命令到达后暂停领取确认以观察 SUBMITTED。
+     * @param fixture 当前真实公开服务
+     * @param flow 本场景已发布流程
+     * @param id 原运行编号
+     * @param business 记录实际请求的范围外业务样本
+     * @param count 预期失败及等待次数
+     * @param delays 精确间隔数组；null 表示随机区间
+     * @param gate 可空的真实命令领取控制点，null 时按默认消费速度推进
+     * @return 每次查询到的原计划时间
+     */
+    private List<Long> observeWaits(WorkflowUcFixture fixture, Flow flow, String id, Business business, int count, long[] delays,
+            org.cses.flow.worker.SubmittedRetryClaimGate gate) {
         List<Long> plans = new ArrayList<>();
         String runId = null;
         for (int i = 1; i <= count; i++) {
@@ -278,6 +336,26 @@ class Uc18TaskRetryTest {
                 assertEquals(i, business.calls("business").size());
                 assertTrue(business.calls("after").isEmpty());
                 LockSupport.parkNanos(10_000_000);
+            }
+            if (gate != null) {
+                try {
+                    assertTrue(gate.awaitSubmitted(i + 1), "真实到期命令必须已投递");
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                TaskRun submitted = run(query(fixture, id), flow, "business");
+                assertEquals(State.Type.SUBMITTED, submitted.state().current());
+                assertEquals(runId, submitted.id());
+                assertEquals(i, submitted.attempts().size(), "等待领取不增加已开始尝试");
+                assertEquals(i, business.calls("business").size());
+                assertTrue(business.calls("after").isEmpty());
+                long allowedAt = TimeUtil.now();
+                gate.release(i + 1);
+                Execution next = fixture.awaitExecution(fixture.session(), id,
+                    value -> run(value, flow, "business").attempts().size() >= submitted.attempts().size() + 1);
+                assertTrue(run(next, flow, "business").attempts().getLast().startedAt() >= allowedAt,
+                    "下一次实际尝试只在领取放行后记录开始时间");
             }
         }
         return plans;

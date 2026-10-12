@@ -27,11 +27,11 @@ Broker 需开启 `delayedDeliveryEnabled`，建议设置 `isDelayedDeliveryDeliv
 `flow.executor.retry.outbox.poll-interval` 默认 1s，只负责补发未确认的消息，未来计划也立即发布。实际到期等待完全由 Pulsar 承担。
 `flow.executor.retry.outbox.enabled=false` 仅停用 Outbox 发布；已经进入 Broker 的消息仍会执行，不能用它取消任务。
 TaskRun 的 `attempts`、`retry_variables`、`next_retry_at` 与 `task_retry_messages` 使用同一根 CAS/SQL 提交。
-Outbox 发送失败保留未确认行；Broker 接受后标记 `published_at`，已发送行保留用于防止重复登记，可随所属 Execution 清理。
+Outbox 发送失败保留未确认行；Broker 接受后只标记 `published_at`，消费计划或取消失效后物理删除。已接纳尝试与聚合状态继续拒绝重复消息，见 [ADR 0113](../decisions/0113-submit-worker-tasks-and-clean-consumed-outbox.md)。
 消费者核对租户、运行、TaskRun、下一次 Attempt 编号和计划时间，取消、结束或旧消息直接忽略。普通 UPDATED 不触发等待中的重试。
 重启可恢复未发送计划与 Broker 中的等待消息；已领取 RUNNING 后失联属于 Worker 恢复，不在本能力内。
 查询返回 attemptNumber、attempts、nextRetryAt；业务变量快照不进入 HTTP 响应。
 
 ## 数据库
 修改基线需在空库执行 `gen/sql/flow/001_create_flow_tables.sql`，重新生成 JOOQ；不对已有数据库自动升级或清理。
-验证使用独立临时 PostgreSQL 和 Pulsar，命令见 postgresql-repositories.md 与 pulsar-queues.md；Pulsar 延迟队列验证见 [UC-18 测试报告](../test-reports/flow/UC-18-2026-09-20-1547.md)。
+验证使用独立临时 PostgreSQL 和 Pulsar，命令见 postgresql-repositories.md 与 pulsar-queues.md；Pulsar 延迟队列验证见 [重试验证报告索引](../test-reports/README.md)。

@@ -1,6 +1,8 @@
 package org.cses.flow.executor.handlers;
 
 import org.cses.flow.common.Fields;
+import org.cses.flow.core.repositories.worker.ExecutionMessage;
+import org.cses.flow.core.repositories.worker.WorkerRuntimeRepository;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -56,6 +58,7 @@ public class ExecutorEventMessageHandler implements
     private WorkerDispatcher workerDispatcher;
     private Queue<ExecutorEvent> eventQueue;
     private SubFlowExecutionHandler subFlows;
+    private WorkerRuntimeRepository runtime;
 
     /**
      * 注入单次调度、子调用及保存后发布事件的运行设施。
@@ -67,6 +70,7 @@ public class ExecutorEventMessageHandler implements
      * @param workerDispatcher 可执行任务调用器
      * @param eventQueue 内部调度事件发布器
      * @param subFlows 子调用创建与完成协调器
+     * @param runtime 可靠消息仓储，消费闭合后清理原事件
      */
     @Inject
     public ExecutorEventMessageHandler(
@@ -77,7 +81,8 @@ public class ExecutorEventMessageHandler implements
             ExecutorService executorService,
             WorkerDispatcher workerDispatcher,
             Queue<ExecutorEvent> eventQueue,
-            SubFlowExecutionHandler subFlows
+            SubFlowExecutionHandler subFlows,
+            WorkerRuntimeRepository runtime
     ) {
         this.jooq = Objects.requireNonNull(jooq, "jooq");
         this.sessionFactory = Objects.requireNonNull(
@@ -102,6 +107,7 @@ public class ExecutorEventMessageHandler implements
         );
         this.eventQueue = Objects.requireNonNull(eventQueue, "eventQueue");
         this.subFlows = Objects.requireNonNull(subFlows, "subFlows");
+        this.runtime = runtime;
     }
 
     /**
@@ -144,7 +150,14 @@ public class ExecutorEventMessageHandler implements
                 "event"
         );
         requireProductionRuntime();
-        return Optional.ofNullable(process(jooq.createDSLContext(), accepted));
+        var dsl = jooq.createDSLContext();
+        if (executionRepository.findById(dsl, accepted.companyId(), accepted.executionId()).isEmpty()) {
+            runtime.consumed(dsl, accepted.companyId(), accepted.id());
+            return Optional.empty();
+        }
+        var processed = process(dsl, accepted);
+        runtime.consumed(dsl, accepted.companyId(), accepted.id());
+        return Optional.ofNullable(processed);
     }
 
     /**
@@ -154,8 +167,10 @@ public class ExecutorEventMessageHandler implements
     public void handleRetry(TaskRetryEvent event) {
         requireProductionRuntime();
         DSLContext dsl = jooq.createDSLContext();
-        if (executionRepository.findById(dsl, event.companyId(), event.executionId()).isEmpty()) return;
-        process(dsl, ExecutorEvent.from(event.executionId(), event.companyId(), ExecutorEvent.EventType.UPDATED), event);
+        if (executionRepository.findById(dsl, event.companyId(), event.executionId()).isPresent()) {
+            process(dsl, ExecutorEvent.from(event.executionId(), event.companyId(), ExecutorEvent.EventType.UPDATED), event);
+        }
+        executionRepository.retryConsumed(dsl, event.companyId(), event.executionId(), event.taskRunId(), event.attemptNumber());
     }
 
     /**
@@ -208,7 +223,13 @@ public class ExecutorEventMessageHandler implements
         return process(dsl, event, null);
     }
 
-    /** 在原调度事务边界内接纳可选的专用重试事件。 */
+    /**
+     * 在单次调度边界内接纳可选重试事件并完成子运行回传，不跨 Runner 事务。
+     * @param dsl 调用方数据库上下文
+     * @param event 非空原推进事件，沿用其租户和运行身份
+     * @param retry 可空专用延迟计划，null 表示普通推进
+     * @return 加载精确定义并完成本周期保存的独立上下文
+     */
     private ExecutorContext process(DSLContext dsl, ExecutorEvent event, TaskRetryEvent retry) {
         Execution execution = executionRepository.findById(
                 dsl,
@@ -244,12 +265,13 @@ public class ExecutorEventMessageHandler implements
     }
 
     /**
-     * 保存调度计划，再重读快照启动子调用或 Worker 并合并结果。
+     * 保存调度计划，再重读快照提交子调用或可靠 Worker 命令。
      * @param session 已恢复的可信执行会话
      * @param dsl 当前数据库上下文
      * @param flow 绑定的不可变流程定义
      * @param execution 已加载的完整运行
      * @param event 当前调度事件
+     * @param retry 可空延迟计划，仅匹配的到期尝试可接纳
      * @return 最新处理上下文
      * @throws RuntimeException 调度、任务分派或持久化失败时抛出
      */
@@ -268,47 +290,22 @@ public class ExecutorEventMessageHandler implements
             return context;
         }
 
-        boolean executionUpdated = false;
         executorService.process(context);
-        executionUpdated |= persistIfUpdated(dsl, context);
-
+        persistIfUpdated(dsl, context);
         List<WorkerTask> workerTasks = context.takeWorkerTasks();
         for (String taskRunId : context.takeSubFlows()) {
             context = subFlows.start(dsl, session, context, taskRunId);
-            executionUpdated = true;
             if (context.execution().isTerminal()) return context;
         }
-
-        if (workerTasks.isEmpty()) {
-            if (executionUpdated && context.canBeProcessed()) {
-                emitNext(event);
-            }
-            return context;
-        }
-
         for (WorkerTask workerTask : workerTasks) {
             context = reload(dsl, flow, event);
-            if (context.execution().isTerminal() || context.execution().state().is(State.Type.KILLING)) {
-                return context;
-            }
-            if (!context.execution().requireTaskRun(workerTask.taskRunId()).state().is(State.Type.CREATED)) {
-                continue;
-            }
-            var dispatched = executorService.dispatch(context, workerTask);
-            persistIfUpdated(dsl, context);
-            if (dispatched.isEmpty()) return context;
-            workerTask = dispatched.get();
-            WorkerTaskResult result = dispatchWorkerTask(
-                    workerTask, event.eventType() != ExecutorEvent.EventType.TERMINATED);
-            context = applyResult(dsl, flow, event, result);
-            executionUpdated = true;
-            if (context.execution().isTerminal()) {
-                return context;
-            }
-        }
-
-        if (executionUpdated && context.canBeProcessed()) {
-            emitNext(event);
+            if (context.execution().isTerminal() || context.execution().state().is(State.Type.KILLING)) return context;
+            var run = context.execution().requireTaskRun(workerTask.taskRunId());
+            if (!run.state().is(State.Type.CREATED)) continue;
+            context.execution().submitTaskRun(run.id());
+            var command = ExecutionMessage.command(context.execution().companyId(), context.execution().id(),
+                run.id(), run.attemptNumber() + 1);
+            executionRepository.save(dsl, context.execution(), List.of(command));
         }
         return context;
     }
@@ -324,33 +321,6 @@ public class ExecutorEventMessageHandler implements
         Execution execution = executionRepository.findById(dsl, event.companyId(), event.executionId())
                 .orElseThrow(() -> new WorkflowException("Execution does not exist: " + event.executionId()));
         return new ExecutorContext(flow, execution);
-    }
-
-    /**
-     * Merges one completed worker result into the latest aggregate without rerunning the worker.
-     * @param dsl database context
-     * @param flow bound immutable definition
-     * @param event scheduling identity
-     * @param result completed worker output
-     * @return updated or already terminated execution context
-     * @throws RuntimeException when persistence fails for a reason other than a stale snapshot
-     */
-    private ExecutorContext applyResult(DSLContext dsl, Flow flow, ExecutorEvent event, WorkerTaskResult result) {
-        while (true) {
-            ExecutorContext current = reload(dsl, flow, event);
-            if (current.execution().isTerminal() || current.execution().state().is(State.Type.KILLING)
-                    || !current.execution().requireTaskRun(result.taskRunId()).state().is(State.Type.RUNNING)
-                    || current.execution().requireTaskRun(result.taskRunId()).attemptNumber() != result.attemptNumber()) {
-                return current;
-            }
-            executorService.applyResult(current, result);
-            try {
-                persistIfUpdated(dsl, current);
-                return current;
-            } catch (org.jooq.exception.DataChangedException conflict) {
-                // Preserve this completed output; retry its domain application without rerunning the Worker.
-            }
-        }
     }
 
     private boolean applyEvent(
@@ -372,13 +342,12 @@ public class ExecutorEventMessageHandler implements
     }
 
     /**
-     * Publishes the next scheduling cycle after domain persistence has completed.
-     * @param event current durable scheduling identity
+     * 消费本轮更新标记并原子保存聚合及可靠推进事件。
+     * @param dsl 当前数据库上下文
+     * @param context 当前可修改上下文，会消费其更新标记
+     * @return true 已保存本轮变化，false 没有变化
+     * @throws org.jooq.exception.DataChangedException 聚合快照过期时抛出并由队列重投
      */
-    private void emitNext(ExecutorEvent event) {
-        eventQueue.emit(event.nextUpdate());
-    }
-
     private boolean persistIfUpdated(
             DSLContext dsl,
             ExecutorContext context

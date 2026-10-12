@@ -169,6 +169,10 @@ public class PostgresJooqTestAdapter extends JOOQ implements AutoCloseable {
      */
     public void removeTenant(String companyId) {
         transaction(true, dsl -> {
+            dsl.deleteFrom(org.flow.gen.flow.Tables.EXECUTION_MESSAGES)
+                .where(org.flow.gen.flow.Tables.EXECUTION_MESSAGES.COMPANY_ID.eq(companyId)).execute();
+            dsl.deleteFrom(org.flow.gen.flow.Tables.WORKER_DELIVERIES)
+                .where(org.flow.gen.flow.Tables.WORKER_DELIVERIES.COMPANY_ID.eq(companyId)).execute();
             dsl.deleteFrom(org.flow.gen.flow.Tables.TRIGGER_SCHEDULES)
                 .where(org.flow.gen.flow.Tables.TRIGGER_SCHEDULES.COMPANY_ID.eq(companyId)).execute();
             dsl.deleteFrom(org.flow.gen.flow.Tables.TASK_RETRY_MESSAGES)

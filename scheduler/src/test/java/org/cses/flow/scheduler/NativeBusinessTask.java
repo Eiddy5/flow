@@ -26,6 +26,15 @@ public class NativeBusinessTask extends Task implements RunnableTask<NativeBusin
     private String message;
 
     /**
+     * 声明本样本按 Execution 与 TaskRun 的稳定业务键复用已成功结果，允许失联后重放请求。
+     * @return true，调用端点必须使用原生恢复夹具中真实实现的幂等结果缓存
+     */
+    @Override
+    public boolean canReplay() {
+        return true;
+    }
+
+    /**
      * 使用当前真实调用身份访问本机外部业务样本。
      *
      * @param context 真实 Worker 提供的只读运行变量

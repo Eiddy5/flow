@@ -307,7 +307,8 @@ select:focus-visible,
     background: var(--teal-soft);
 }
 
-.badge-running {
+.badge-running,
+.badge-submitted {
     color: #2e64ae;
     background: var(--blue-soft);
 }
@@ -717,6 +718,7 @@ select:focus-visible,
 }
 
 .flow-node.state-running,
+.flow-node.state-submitted,
 .flow-node.state-restarted,
 .flow-node.state-created {
     border-left: 4px solid var(--blue);
@@ -810,6 +812,7 @@ select:focus-visible,
 }
 
 .status-dot.running,
+.status-dot.submitted,
 .status-dot.created {
     background: var(--blue);
 }

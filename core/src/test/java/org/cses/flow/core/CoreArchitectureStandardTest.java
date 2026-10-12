@@ -178,10 +178,9 @@ class CoreArchitectureStandardTest {
     }
 
     /**
-     * Verifies that runtime ownership, command publication, and Execution
-     * creation entry points remain at their documented module boundaries.
+     * 验证运行职责、公开创建入口、可靠 outbox 以及独立 Worker/结果消费的模块边界。
      *
-     * @throws IOException when an inspected source file cannot be read
+     * @throws IOException 被检查的源码无法读取时抛出
      */
     @Test
     void executorAndWorkerAreTopLevelPeersOfCore() throws IOException {
@@ -310,6 +309,13 @@ class CoreArchitectureStandardTest {
         String eventHandler = Files.readString(FLOW.resolve(
             "executor/handlers/ExecutorEventMessageHandler.java"
         ));
+        String executionRepository = Files.readString(FLOW.resolve(
+            "infrastructure/repositories/executions/ExecutionRepositoryImpl.java"
+        ));
+        String outboxPublisher = Files.readString(FLOW.resolve("executor/ExecutionOutboxPublisher.java"));
+        String workerConsumer = Files.readString(FLOW.resolve("worker/WorkerCommandConsumer.java"));
+        String resultConsumer = Files.readString(FLOW.resolve("executor/WorkerResultConsumer.java"));
+        String executorStateMachine = Files.readString(FLOW.resolve("executor/ExecutorService.java"));
         long publicCreateMethods = Pattern.compile(
             "(?m)^\\s*public\\s+.*\\sCreate\\s+create\\("
         ).matcher(executionService).results().count();
@@ -354,12 +360,24 @@ class CoreArchitectureStandardTest {
                 && commandHandler.contains("validateRepeatedCreate(")
                 && commandHandler.contains("eventQueue.emit(")
                 && eventHandler.contains("executorService.process(context)")
-                && eventHandler.contains("eventQueue.emit(")
+                && eventHandler.contains("executionRepository.save(dsl, context.execution(), List.of(command))")
+                && eventHandler.contains("runtime.consumed(")
+                && executionRepository.contains("ExecutionMessage.advance(")
+                && outboxPublisher.contains("case WORKER -> commands.emit(")
+                && outboxPublisher.contains("case RESULT -> results.emit(")
+                && outboxPublisher.contains("case ADVANCE -> events.emit(")
+                && workerConsumer.contains("subscription = WorkerCommand.QUEUE_NAME")
+                && workerConsumer.contains("dispatcher.dispatch(")
+                && resultConsumer.contains("subscription = WorkerResultEvent.QUEUE_NAME")
+                && resultConsumer.contains("coordinator.accept(")
+                && !executorStateMachine.contains("WorkerDispatcher")
+                && !executorStateMachine.contains(".run(")
                 && eventHandler.contains("new ExecutorContext(flow, execution)"),
             "ExecutionService must support generated and preallocated "
                 + "Execution IDs while publishing Create, Resume and Cancel commands, "
                 + "the command handler must only publish ExecutorEvents, "
-                + "and the internal event handler must drive ExecutorContext"
+                + "and the internal event handler must save Worker commands and ADVANCE atomically, "
+                + "with independent Worker and result consumers and no Runner call in the state machine"
         );
     }
 
@@ -713,6 +731,10 @@ class CoreArchitectureStandardTest {
         );
     }
 
+    /**
+     * Worker 仅执行 RunnableTask，状态机负责编排，生产调度通过原子 outbox 提交效果。
+     * @throws IOException 被检查的源码无法读取时抛出
+     */
     @Test
     void taskCapabilitiesKeepOrchestrationOutOfWorkers() throws IOException {
         Path taskDomain = CORE.resolve("domains/tasks");
@@ -899,12 +921,11 @@ class CoreArchitectureStandardTest {
                 && executorEventHandler.contains(
                     "executorService.process(context)"
                 )
-                && executorEventHandler.contains(
-                    "eventQueue.emit("
-                )
+                && executorEventHandler.contains("ExecutionMessage.command(")
+                && executorEventHandler.contains("executionRepository.save(dsl, context.execution(), List.of(command))")
                 && !executorEventHandler.contains("dispatchBranch("),
             "DefaultExecutor must only route Queue events while "
-                + "ExecutorEventHandler submits Worker effects and "
+                + "ExecutorEventHandler persists Worker effects atomically and "
                 + "ExecutorService owns OrchestrationTask state progression"
         );
     }

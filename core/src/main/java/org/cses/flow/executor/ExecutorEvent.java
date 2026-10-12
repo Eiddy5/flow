@@ -18,14 +18,33 @@ import java.util.Objects;
 public record ExecutorEvent(
     String executionId,
     String companyId,
-    EventType eventType
+    EventType eventType,
+    String id
 ) implements Event {
 
     public static final String QUEUE_NAME = "flow-executor-event";
 
+    /**
+     * 首次构建推进消息，生成稳定身份供保存、发布与消费清理使用。
+     * @param executionId 非空白原实例身份
+     * @param companyId 非空白原租户身份
+     * @param eventType 非空推进类型
+     * @throws IllegalArgumentException 运行或租户身份为 null 或空白时抛出
+     * @throws NullPointerException 推进类型为 null 时抛出
+     */
+    public ExecutorEvent(String executionId, String companyId, EventType eventType) {
+        this(executionId, companyId, eventType, org.paas.common.util.StringUtil.newId());
+    }
+
+    /**
+     * 校验持久化事件的原身份。
+     * @throws IllegalArgumentException 任一身份为 null 或空白时抛出
+     * @throws NullPointerException 推进类型为 null 时抛出
+     */
     public ExecutorEvent {
-        executionId = requireText(executionId, "Execution id");
-        companyId = requireText(companyId, "Company id");
+        id = requireText(id, org.cses.flow.common.Fields.ID);
+        executionId = requireText(executionId, org.cses.flow.common.Fields.EXECUTION_ID);
+        companyId = requireText(companyId, org.cses.flow.common.Fields.COMPANY_ID);
         eventType = Objects.requireNonNull(
             eventType,
             "Executor event type"

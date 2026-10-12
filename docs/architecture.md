@@ -208,9 +208,9 @@ flowchart TD
     pauseAction["Pause TaskRun 保持 RUNNING；无条件执行 onPause Task 完整子树"]
     pausePersist["onPause 子树收敛后，持久化 Pause TaskRun 与 Execution 的稳定暂停点"]
 
-    runnableDispatch["TaskRun 进入 RUNNING 并先持久化"]
-    workerRun["WorkerDispatcher 同步调用 RunnableTask.run"]
-    workerResult{"Output 目标状态？"}
+    runnableDispatch["TaskRun 进入 SUBMITTED，与 WORKER outbox 原子保存"]
+    workerRun["Worker 命令独立消费；Executor 领取确认 RUNNING 并开始 Attempt；Runner 调用"]
+    workerResult{"持久结果经独立结果队列回到 Executor，目标状态？"}
     applyOutputs["校验 outputs 并完成 TaskRun"]
     terminate["终止 TaskRun 与 Execution 并持久化"]
 
@@ -274,9 +274,9 @@ flowchart TD
     capability -->|"RunnableTask"| runnableDispatch
     runnableDispatch --> workerRun
     workerRun --> workerResult
-    workerResult -->|"COMPLETED"| applyOutputs
+    workerResult -->|"SUCCESS / WARNING"| applyOutputs
     applyOutputs --> handle
-    workerResult -->|"TERMINATED"| terminate
+    workerResult -->|"FAILED / KILLED"| terminate
     terminate --> terminatedEnd
 
     hasNext -->|"否"| settled
@@ -361,7 +361,7 @@ flowchart TD
    `RunnableTask` 只由 Worker 调用；`OrchestrationTask.resolveNexts/resolveState` 通过只读上下文
    分别返回 `List<ResolvedNextTask>` 和 `Optional<State.Type>`，由 Executor 接纳任务并应用状态；`ExecutableTask` 生成独立子运行请求与完成结果。
    SubFlow 直接保存 flowKey/flowVersion，调用协调器负责查询、父子保存和消息。当前 Worker
-   同步执行，并遵循“持久化 TaskRun 后再调用”的顺序。RunContext 通过 Builder 创建且
+   通过独立命令队列异步执行；先 SUBMITTED，领取确认才 RUNNING，结果经独立结果队列接纳。RunContext 通过 Builder 创建且
    只保存规范 variables，不保存 Session 或重复运行身份；常用身份通过
    `taskRunInfo()`、`flowInfo()` 等只读视图从变量路径派生。
 7. Pause 先执行其必填 `onPause` Task 子树，子树收敛后持久化稳定暂停点；该 Pause
@@ -383,8 +383,10 @@ flowchart TD
    当轮 version，但不再作为推导循环游标的唯一来源。搜索只返回新轮次请求，Executor 应用后，
    下一周期才创建该轮子节点；搜索不能修改 Generation。
 10. `ExecutorEventMessageHandler` 每次只处理一个可恢复周期：它创建 Context、推进非 Runnable
-   的 OrchestrationTask、同步调用 Worker、持久化本轮变化，并将仍可推进的下一周期
-   重新投回 Event Queue。`DefaultExecutor` 不拥有状态机，只负责两条 Queue 路由。
+   的 OrchestrationTask、保存 SUBMITTED 与任务命令 outbox，并可靠保存后续推进。
+   `WorkerCommandConsumer` 调用 Runner，`WorkerResultConsumer` 经 Executor 协调器接纳结果。
+   `DefaultExecutor` 不拥有状态机，只负责命令、推进和延迟重试路由。消费完成删除消息，
+   当前许可继续去重，见 [ADR 0113](decisions/0113-submit-worker-tasks-and-clean-consumed-outbox.md)。
 
 ## 主要源码依据
 

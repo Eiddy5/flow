@@ -70,6 +70,8 @@ public class PulsarTestEnvironment {
                 ExecutionCommand.QUEUE_NAME, List.of(ExecutionCommand.QUEUE_NAME),
                 ExecutorEvent.QUEUE_NAME, List.of(ExecutorEvent.QUEUE_NAME),
                 org.cses.flow.executor.TaskRetryEvent.QUEUE_NAME, List.of(org.cses.flow.executor.TaskRetryEvent.QUEUE_NAME),
+                org.cses.flow.worker.WorkerCommand.QUEUE_NAME, List.of(org.cses.flow.worker.WorkerCommand.QUEUE_NAME),
+                org.cses.flow.worker.WorkerResultEvent.QUEUE_NAME, List.of(org.cses.flow.worker.WorkerResultEvent.QUEUE_NAME),
                 SchedulerEvent.QUEUE_NAME, List.of("flow-schedule-config", "flow-trigger-dispatch"));
             for (var entry : subscriptions.entrySet()) {
                 try {

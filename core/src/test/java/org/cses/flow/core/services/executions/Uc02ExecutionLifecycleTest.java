@@ -29,6 +29,64 @@ import static org.cses.flow.core.services.executions.WorkflowUcFixture.PausedTas
 class Uc02ExecutionLifecycleTest {
 
     /**
+     * 暂停 Worker 领取后查询已提交步骤，重建执行服务后核对开始时间与后续唯一消费。
+     * @throws Exception 本机外部样本无法创建时抛出
+     */
+    @Test
+    void s11SubmittedTaskStartsOnlyAfterWorkerClaimsIt() throws Exception {
+        try (SubmittedBusiness business = new SubmittedBusiness();
+             WorkflowUcFixture fixture = WorkflowUcFixture.openWithProperties(Map.of(
+                 "flow.test.retry-task", true, "flow.worker.enabled", false))) {
+            Flow flow = fixture.deploy("""
+                key: uc02-s11-submitted
+                tasks:
+                  - key: a
+                    type: %s
+                    endpoint: '%s'
+                    message: seed
+                  - key: b
+                    type: %s
+                    endpoint: '%s'
+                    message: '{{ outputs.a.value }}-b'
+                """.formatted(RetryBusinessTask.class.getName(), business.endpoint("a"),
+                    RetryBusinessTask.class.getName(), business.endpoint("b")));
+            String id = fixture.startCreated(flow).id();
+            Execution submitted = fixture.awaitExecution(fixture.session(), id,
+                execution -> execution.taskRuns().stream().anyMatch(run -> run.state().is(State.Type.SUBMITTED)));
+            TaskRun a = submitted.taskRuns().getFirst();
+            assertEquals(State.Type.RUNNING, submitted.state().current());
+            assertEquals(State.Type.SUBMITTED, a.state().current());
+            assertTrue(a.attempts().isEmpty(), "尚未领取时没有实际尝试及开始时间");
+            assertEquals(1, submitted.taskRuns().size());
+            assertTrue(business.calls("a").isEmpty());
+            assertTrue(business.calls("b").isEmpty());
+            long resumedAt = org.cses.flow.core.utils.TimeUtil.now();
+            fixture.restartServerWithProperties(Map.of("flow.worker.enabled", true));
+            Execution running = fixture.awaitExecution(fixture.session(), id,
+                execution -> execution.requireTaskRun(a.id()).state().is(State.Type.RUNNING));
+            TaskRun claimed = running.requireTaskRun(a.id());
+            assertEquals(a.id(), claimed.id());
+            assertEquals(1, claimed.attempts().size());
+            assertTrue(claimed.attempts().getFirst().startedAt() >= resumedAt);
+            assertEquals(State.Type.RUNNING, claimed.attempts().getFirst().state());
+            assertTrue(business.calls("b").isEmpty());
+            business.release();
+            Execution completed = fixture.awaitExecution(fixture.session(), id, Execution::isTerminal);
+            assertEquals(State.Type.SUCCESS, completed.state().current());
+            assertEquals(flow.version(), completed.flowVersion());
+            assertEquals(a.id(), completed.taskRuns().getFirst().id());
+            assertEquals(1, completed.taskRuns().getFirst().attempts().size());
+            assertEquals(java.util.List.of("seed-b"), business.calls("b").stream().map(SubmittedBusiness.Call::body).toList());
+            assertEquals(1, business.calls("a").size());
+            assertEquals(id, business.calls("a").getFirst().executionId());
+            assertEquals(a.id(), business.calls("a").getFirst().taskRunId());
+            assertEquals(1, fixture.executionService().executions(fixture.session()).size());
+            assertTrue(completed.activeTaskRuns().isEmpty());
+            assertTrue(completed.pausedTaskRuns().isEmpty());
+        }
+    }
+
+    /**
      * Verifies that the initial draft is published as version 2 and that its
      * Execution remains bound to that version through Pause completion.
      */
@@ -412,7 +470,7 @@ class Uc02ExecutionLifecycleTest {
                 assertEquals(flow.tasks().stream().map(t -> t.id()).toList(), execution.taskRuns().stream().map(TaskRun::taskId).toList());
                 for (TaskRun run : execution.taskRuns()) {
                     assertEquals(Map.of("value", sample.getKey()), run.outputs());
-                    assertEquals(java.util.List.of(State.Type.CREATED, State.Type.RUNNING, State.Type.SUCCESS), run.state().history().stream().map(State.History::state).toList());
+                    assertEquals(java.util.List.of(State.Type.CREATED, State.Type.SUBMITTED, State.Type.RUNNING, State.Type.SUCCESS), run.state().history().stream().map(State.History::state).toList());
                     assertEquals(1, run.attemptNumber());
                 }
                 assertTrue(execution.activeTaskRuns().isEmpty());

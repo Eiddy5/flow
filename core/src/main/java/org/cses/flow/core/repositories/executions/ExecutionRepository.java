@@ -2,6 +2,7 @@ package org.cses.flow.core.repositories.executions;
 
 import org.cses.flow.core.domains.executions.Execution;
 import org.jooq.DSLContext;
+import org.cses.flow.core.repositories.worker.ExecutionMessage;
 
 import java.util.List;
 import java.util.Optional;
@@ -65,6 +66,30 @@ public interface ExecutionRepository {
      * @throws org.jooq.exception.DataChangedException 加载快照已过期或缺少已有行的加载版本
      */
     void save(DSLContext dsl, Execution execution);
+
+    /**
+     * 原子保存聚合及本轮任务消息；普通仓储不支持可靠投递时明确拒绝。
+     * @param dsl 调用方数据库上下文
+     * @param execution 非空完整聚合，成功后回填版本，失败后应丢弃重读
+     * @param messages 非空的同租户同运行消息集合，只读
+     * @throws UnsupportedOperationException 实现未提供可靠 Worker outbox 时抛出
+     */
+    default void save(DSLContext dsl, Execution execution, List<ExecutionMessage> messages) {
+        throw new UnsupportedOperationException("Worker outbox requires durable storage");
+    }
+
+    /**
+     * 消费或取消后删除原重试计划，允许重复清理。
+     * @param dsl 调用方数据库上下文
+     * @param companyId 原租户身份
+     * @param executionId 原运行身份
+     * @param taskRunId 原节点身份
+     * @param attemptNumber 计划的正数目标尝试编号
+     * @throws UnsupportedOperationException 实现未提供可靠重试 outbox 时抛出
+     */
+    default void retryConsumed(DSLContext dsl, String companyId, String executionId, String taskRunId, int attemptNumber) {
+        throw new UnsupportedOperationException("Retry outbox requires durable storage");
+    }
     /**
      * 原子保存变更后的源与新派生 Execution，成功后回填双方版本。
      * @param dsl 调用方数据库上下文

@@ -471,6 +471,21 @@ public class Execution extends BaseDomain {
         return requireTaskRun(taskRunId).retry(now);
     }
 
+    /**
+     * 将待执行节点可靠提交给 Worker，不创建已开始的 Attempt。
+     * @param taskRunId 已接纳的非空节点身份，不生成新身份
+     * @throws WorkflowException 根未运行、节点不存在或节点非 CREATED 时抛出
+     */
+    public void submitTaskRun(String taskRunId) {
+        requireRunning();
+        requireTaskRun(taskRunId).submit();
+    }
+
+    /**
+     * Worker 领取或编排开始后启动节点。
+     * @param taskRunId 当前非空节点身份，不生成新身份
+     * @throws WorkflowException 根未运行、节点不存在或节点不能开始时抛出
+     */
     public void startTaskRun(String taskRunId) {
         requireRunning();
         TaskRun taskRun = requireTaskRun(taskRunId);
@@ -1014,6 +1029,10 @@ public class Execution extends BaseDomain {
         taskRuns.forEach(TaskRun::completeGenerationIfActive);
     }
 
+    /**
+     * 核验根实例的持久化路线，根不允许进入任务 SUBMITTED 或 RETRY_WAIT。
+     * @throws IllegalArgumentException 持久历史包含非法根状态迁移时抛出
+     */
     private void validateStateRoute() {
         List<State.History> stateHistory = state.history();
         for (int index = 1; index < stateHistory.size(); index++) {
@@ -1026,7 +1045,7 @@ public class Execution extends BaseDomain {
                 case PAUSED -> target == State.Type.RESTARTED || target == State.Type.KILLING;
                 case RESTARTED -> target == State.Type.RUNNING || target == State.Type.KILLING;
                 case KILLING -> target == State.Type.KILLED;
-                case RETRY_WAIT, SUCCESS, SKIPPED, WARNING, FAILED, KILLED -> false;
+                case SUBMITTED, RETRY_WAIT, SUCCESS, SKIPPED, WARNING, FAILED, KILLED -> false;
             };
             if (!valid) {
                 throw new IllegalArgumentException("Invalid Execution state transition from " + source + " to " + target);

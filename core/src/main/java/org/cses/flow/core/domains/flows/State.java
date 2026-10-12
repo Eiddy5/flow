@@ -15,6 +15,7 @@ public class State {
 
     public enum Type {
         CREATED,
+        SUBMITTED,
         RUNNING,
         RETRY_WAIT,
         PAUSED,
@@ -74,8 +75,13 @@ public class State {
         );
     }
 
+    /**
+     * 判断是否仍处于创建、提交、运行、重试、暂停或受控关闭阶段，不修改状态。
+     * @return 尚未收敛到终态时为 true
+     */
     public boolean isActive() {
         return current == Type.RETRY_WAIT
+            || current == Type.SUBMITTED
             || current == Type.CREATED
             || current == Type.RUNNING
             || current == Type.RESTARTED
@@ -202,10 +208,11 @@ public class State {
      */
     private static boolean isAllowedTransition(Type source, Type target) {
         return switch (source) {
-            case CREATED -> target == Type.RUNNING
+            case CREATED -> target == Type.SUBMITTED || target == Type.RUNNING
                 || target == Type.FAILED
                 || target == Type.KILLING
                 || target == Type.KILLED;
+            case SUBMITTED -> target == Type.RUNNING || target == Type.FAILED || target == Type.KILLING || target == Type.KILLED;
             case RUNNING -> target == Type.RETRY_WAIT
                 || target == Type.PAUSED
                 || target == Type.SUCCESS

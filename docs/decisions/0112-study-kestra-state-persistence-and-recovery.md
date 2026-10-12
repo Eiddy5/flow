@@ -1,5 +1,9 @@
 # ADR 0112：研究 Kestra 状态持久化与失联恢复，补充 Flow 运行交接方案
 
+Worker 任务提交、结果回流及 outbox 生命周期的已确认方案见
+[ADR 0113](0113-submit-worker-tasks-and-clean-consumed-outbox.md)。下文提案中的投递前 RUNNING、
+长期消息保留及待定队列条款已由该记录修订；Kestra 研究和其余未确认范围保留原状态。
+
 ## 状态与范围
 
 Proposed（2026-10-12）。本轮完成源码研究和方案细化，**没有实现 UC19 的运行恢复、

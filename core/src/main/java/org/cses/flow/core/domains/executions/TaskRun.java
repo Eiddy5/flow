@@ -127,7 +127,7 @@ public class TaskRun implements Identified {
             }
         }
         if (nextRetryAt != null && (nextRetryAt < 0
-            || !(state.is(State.Type.RETRY_WAIT) || state.is(State.Type.CREATED))
+            || !(state.is(State.Type.RETRY_WAIT) || state.is(State.Type.CREATED) || state.is(State.Type.SUBMITTED))
             || attempts.isEmpty() || attempts.getLast().state() != State.Type.FAILED
             || nextRetryAt < attempts.getLast().completedAt())
             || state.is(State.Type.RETRY_WAIT) && nextRetryAt == null) {
@@ -355,15 +355,35 @@ public class TaskRun implements Identified {
         return state.isPaused();
     }
 
+    /**
+     * 判断节点是否仍等待提交、领取、执行、恢复或业务重试，不修改节点。
+     * @return 尚未完成的节点为 true
+     */
     public boolean isUnfinished() {
         return state.is(State.Type.CREATED)
+            || state.is(State.Type.SUBMITTED)
             || state.is(State.Type.RUNNING)
             || state.is(State.Type.PAUSED)
             || state.is(State.Type.RETRY_WAIT);
     }
 
-    void start() {
+    /**
+     * 将已创建任务标记为已可靠提交，不创建或开始业务尝试。
+     * @throws WorkflowException 当前节点不是 CREATED 时抛出
+     */
+    void submit() {
         requireState(State.Type.CREATED);
+        state = state.withState(State.Type.SUBMITTED);
+    }
+
+    /**
+     * Worker 领取或本地编排开始后记录运行状态，保留既有历史。
+     * @throws WorkflowException 当前节点既非 CREATED 也非 SUBMITTED 时抛出
+     */
+    void start() {
+        if (!state.is(State.Type.CREATED) && !state.is(State.Type.SUBMITTED)) {
+            throw new org.cses.flow.core.exceptions.WorkflowException("TaskRun cannot start: " + state.current());
+        }
         state = state.running();
     }
 
@@ -433,7 +453,7 @@ public class TaskRun implements Identified {
      */
     void fail(String failure) {
         if (!(state.is(State.Type.RUNNING) || nextRetryAt != null
-            && (state.is(State.Type.CREATED) || state.is(State.Type.RETRY_WAIT)))) {
+            && (state.is(State.Type.CREATED) || state.is(State.Type.SUBMITTED) || state.is(State.Type.RETRY_WAIT)))) {
             throw new WorkflowException("TaskRun cannot fail from " + state);
         }
         if (failure == null || failure.isBlank()) {
@@ -508,10 +528,10 @@ public class TaskRun implements Identified {
     }
 
     /**
-     * Checks persisted TaskRun transitions, including successful ancestors reopened by rewind.
+     * 核验持久化任务路线，包含提交等待以及退回重开祖先，不修改输入。
      *
-     * @param state complete persisted state history to read
-     * @throws IllegalArgumentException when a recorded transition is invalid
+     * @param state 非空完整持久状态历史，只读
+     * @throws IllegalArgumentException 历史迁移不符合 TaskRun 路线时抛出
      */
     private static void validateStateRoute(State state) {
         java.util.List<State.History> history = state.history();
@@ -520,9 +540,11 @@ public class TaskRun implements Identified {
             State.Type target = history.get(index).state();
             boolean valid = switch (source) {
                 case CREATED ->
-                    target == State.Type.RUNNING
+                    target == State.Type.SUBMITTED
+                        || target == State.Type.RUNNING
                         || target == State.Type.FAILED
                         || target == State.Type.KILLED;
+                case SUBMITTED -> target == State.Type.RUNNING || target == State.Type.FAILED || target == State.Type.KILLED;
                 case RUNNING ->
                     target == State.Type.RETRY_WAIT
                         || target == State.Type.PAUSED

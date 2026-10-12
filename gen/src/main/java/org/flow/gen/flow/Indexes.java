@@ -4,6 +4,7 @@
 package org.flow.gen.flow;
 
 
+import org.flow.gen.flow.tables.ExecutionMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -11,6 +12,7 @@ import org.flow.gen.flow.tables.SchedulerEventsTable;
 import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerSchedulesTable;
+import org.flow.gen.flow.tables.WorkerDeliveriesTable;
 import org.jooq.Index;
 import org.jooq.OrderField;
 import org.jooq.impl.DSL;
@@ -27,6 +29,8 @@ public class Indexes {
     // INDEX definitions
     // -------------------------------------------------------------------------
 
+    public static final Index IDX_EXECUTION_MESSAGES_PENDING = Internal.createIndex(DSL.name("idx_execution_messages_pending"), ExecutionMessagesTable.EXECUTION_MESSAGES, new OrderField[] { ExecutionMessagesTable.EXECUTION_MESSAGES.CREATED_AT, ExecutionMessagesTable.EXECUTION_MESSAGES.ID }, false);
+    public static final Index IDX_EXECUTION_MESSAGES_TASK = Internal.createIndex(DSL.name("idx_execution_messages_task"), ExecutionMessagesTable.EXECUTION_MESSAGES, new OrderField[] { ExecutionMessagesTable.EXECUTION_MESSAGES.COMPANY_ID, ExecutionMessagesTable.EXECUTION_MESSAGES.EXECUTION_ID, ExecutionMessagesTable.EXECUTION_MESSAGES.TASK_RUN_ID, ExecutionMessagesTable.EXECUTION_MESSAGES.ATTEMPT_NUMBER }, false);
     public static final Index IDX_EXECUTIONS_FLOW = Internal.createIndex(DSL.name("idx_executions_flow"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.FLOW_KEY, ExecutionsTable.EXECUTIONS.FLOW_VERSION }, false);
     public static final Index IDX_EXECUTIONS_ORIGIN = Internal.createIndex(DSL.name("idx_executions_origin"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.ORIGIN_ID, ExecutionsTable.EXECUTIONS.CREATED_AT, ExecutionsTable.EXECUTIONS.ID }, false);
     public static final Index IDX_EXECUTIONS_PARENT = Internal.createIndex(DSL.name("idx_executions_parent"), ExecutionsTable.EXECUTIONS, new OrderField[] { ExecutionsTable.EXECUTIONS.COMPANY_ID, ExecutionsTable.EXECUTIONS.PARENT_ID }, false);
@@ -38,5 +42,6 @@ public class Indexes {
     public static final Index IDX_TASK_RUNS_PARENT = Internal.createIndex(DSL.name("idx_task_runs_parent"), TaskRunsTable.TASK_RUNS, new OrderField[] { TaskRunsTable.TASK_RUNS.EXECUTION_ID, TaskRunsTable.TASK_RUNS.PARENT_ID, TaskRunsTable.TASK_RUNS.ITERATION, TaskRunsTable.TASK_RUNS.ORDER }, false);
     public static final Index IDX_TASK_RUNS_TASK = Internal.createIndex(DSL.name("idx_task_runs_task"), TaskRunsTable.TASK_RUNS, new OrderField[] { TaskRunsTable.TASK_RUNS.TASK_ID }, false);
     public static final Index IDX_TRIGGER_SCHEDULES_AVAILABLE = Internal.createIndex(DSL.name("idx_trigger_schedules_available"), TriggerSchedulesTable.TRIGGER_SCHEDULES, new OrderField[] { TriggerSchedulesTable.TRIGGER_SCHEDULES.AVAILABLE_AT }, false);
+    public static final Index IDX_WORKER_DELIVERIES_LEASES = Internal.createIndex(DSL.name("idx_worker_deliveries_leases"), WorkerDeliveriesTable.WORKER_DELIVERIES, new OrderField[] { WorkerDeliveriesTable.WORKER_DELIVERIES.LEASE_UNTIL_AT }, false);
     public static final Index UQ_FLOWS_KEY_VERSION = Internal.createIndex(DSL.name("uq_flows_key_version"), FlowsTable.FLOWS, new OrderField[] { FlowsTable.FLOWS.COMPANY_ID, FlowsTable.FLOWS.KEY, FlowsTable.FLOWS.VERSION }, true);
 }

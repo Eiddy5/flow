@@ -71,4 +71,10 @@ public class Log extends Task implements RunnableTask<VoidOutput> {
     protected Object typeSpecificEqualityState() {
         return message;
     }
+    /**
+     * 允许日志输出按原尝试重投，可能重复输出日志，不改变外部业务状态。
+     * @return true 表示可恢复原尝试调用
+     */
+    @Override
+    public boolean canReplay() { return true; }
 }

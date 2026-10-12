@@ -136,8 +136,19 @@ public abstract class BaseRepository {
      * @param condition 调用方提供的完整筛选条件
      */
     protected void deleteRows(DSLContext dsl, Condition condition) {
+        deleteRows(dsl, table, condition);
+    }
+
+    /**
+     * 使用原生删除能力清理明确指定的目标表和完整条件。
+     * @param dsl 调用方拥有的非空数据库上下文
+     * @param target 非空生成表元数据
+     * @param condition 调用方提供的明确完整筛选条件
+     * @throws NullPointerException target 或 dsl 为 null 时抛出
+     */
+    protected void deleteRows(DSLContext dsl, Table<?> target, Condition condition) {
         engineCall(() -> {
-            dataSourceEngine.buildDeleter(Session.Robot, DataSourceKey.POSTGRESQL, table.getName())
+            dataSourceEngine.buildDeleter(Session.Robot, DataSourceKey.POSTGRESQL, target.getName())
                 .dsl(Objects.requireNonNull(dsl, Fields.DSL))
                 .filter(QueryCondition.empty().andJooq(condition)).confirmDelete(true).delete();
             return null;

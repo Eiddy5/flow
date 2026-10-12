@@ -72,8 +72,8 @@ class ExecutorPulsarIntegrationTest {
     }
 
     /**
-     * Verifies real subscription delivery, callback-before-ACK, cross-queue publish and NACK redelivery.
-     * @throws Exception when broker access or bounded callback waits fail
+     * 验证真实订阅、回调完成前未 ACK、跨队列发布及 NACK 后原消息完整重投，包含稳定事件编号。
+     * @throws Exception 真实 Broker 不可用或有界回调等待失败时抛出
      */
     @Test
     void consumesBothProductionQueuesAndAcknowledgesAfterCallbacks() throws Exception {
@@ -93,10 +93,17 @@ class ExecutorPulsarIntegrationTest {
                     .getSubscriptions().get(COMMAND_SUBSCRIPTION);
                 assertTrue(before.getMsgBacklog() > 0, "Running callback remains unacknowledged on the broker");
                 handler.release.countDown();
-                ExecutorEvent expected = ExecutorEvent.from("broker-execution", "broker-test", ExecutorEvent.EventType.CREATED);
-                assertEquals(expected, handler.completed.poll(15, TimeUnit.SECONDS));
+                ExecutorEvent completed = handler.completed.poll(15, TimeUnit.SECONDS);
+                ExecutorEvent original = handler.emitted;
+                assertNotNull(original, "命令回调必须记录实际生成并发布的原事件");
+                assertNotNull(original.id());
+                assertFalse(original.id().isBlank());
+                assertEquals(command.executionId(), original.executionId());
+                assertEquals(command.companyId(), original.companyId());
+                assertEquals(ExecutorEvent.EventType.CREATED, original.eventType());
+                assertEquals(original, completed, "结果队列必须完整保留原事件，包含事件 id");
                 assertEquals(2, handler.attempts.get(), "Exactly one callback failure followed by broker redelivery");
-                assertEquals(List.of(expected, expected), handler.deliveries);
+                assertEquals(List.of(original, original), handler.deliveries);
                 awaitAcknowledged(admin, ExecutionCommand.QUEUE_NAME, COMMAND_SUBSCRIPTION);
                 awaitAcknowledged(admin, ExecutorEvent.QUEUE_NAME, EVENT_SUBSCRIPTION);
             } finally {
@@ -183,14 +190,15 @@ class ExecutorPulsarIntegrationTest {
         private List<ExecutorEvent> deliveries = new CopyOnWriteArrayList<>();
         private BlockingQueue<ExecutorEvent> completed = new LinkedBlockingQueue<>();
         private volatile ExecutionCommand received;
+        private volatile ExecutorEvent emitted;
 
         /** @param events actual production event queue publisher */
         public Handler(Queue<ExecutorEvent> events) { this.events = events; }
 
         /**
-         * Holds one command open, then publishes its scheduling signal before permitting ACK.
-         * @param command message received from the actual broker
-         * @throws InterruptedException when the controlled wait is interrupted
+         * 保持命令未完成，记录并发布唯一原事件，随后允许命令 ACK。
+         * @param command 从真实 Broker 收到的原命令
+         * @throws InterruptedException 受控等待被打断时抛出
          */
         @FlowQueueListener(subscription = COMMAND_SUBSCRIPTION)
         public void command(ExecutionCommand command) throws InterruptedException {
@@ -198,7 +206,8 @@ class ExecutorPulsarIntegrationTest {
             entered.countDown();
             if (!release.await(15, TimeUnit.SECONDS)) throw new IllegalStateException("callback not released");
             Create create = (Create) command;
-            events.emit(ExecutorEvent.from(create.executionId(), create.companyId(), ExecutorEvent.EventType.CREATED));
+            emitted = ExecutorEvent.from(create.executionId(), create.companyId(), ExecutorEvent.EventType.CREATED);
+            events.emit(emitted);
         }
 
         /** @param event message retried by the real broker after the first callback throws */

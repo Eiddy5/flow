@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Optional;
+import org.cses.flow.common.Fields;
 import org.cses.flow.core.utils.TimeUtil;
 import org.cses.flow.core.domains.executions.Execution;
 import org.cses.flow.core.domains.executions.TaskRun;
@@ -204,7 +205,7 @@ public class ExecutorService {
      * @param task 精确版本的任务定义
      * @return 不可变 Worker 信封
      */
-    private static WorkerTask workerTask(
+    public static WorkerTask workerTask(
         ExecutorContext context,
         TaskRun taskRun,
         Task task
@@ -217,9 +218,9 @@ public class ExecutorService {
             .build();
         if (!taskRun.retryVariables().isEmpty()) variables = taskRun.retryVariables();
         variables = new LinkedHashMap<>(variables);
-        var taskRunVariables = new LinkedHashMap<>((Map<String, Object>) variables.get("taskRun"));
-        taskRunVariables.put("attemptNumber", taskRun.attemptNumber());
-        variables.put("taskRun", taskRunVariables);
+        var taskRunVariables = new LinkedHashMap<>((Map<String, Object>) variables.get(Fields.TASK_RUN));
+        taskRunVariables.put(Fields.ATTEMPT_NUMBER, taskRun.attemptNumber());
+        variables.put(Fields.TASK_RUN, taskRunVariables);
         return WorkerTask.from(
             context.execution().id(),
             taskRun.id(),
@@ -419,7 +420,7 @@ public class ExecutorService {
                 execution.killUnfinishedTaskRuns();
                 execution.finishKilling();
             }
-            case CREATED, RUNNING, RETRY_WAIT, PAUSED, RESTARTED, SKIPPED, KILLING ->
+            case CREATED, SUBMITTED, RUNNING, RETRY_WAIT, PAUSED, RESTARTED, SKIPPED, KILLING ->
                     throw new IllegalStateException("Worker cannot return " + targetState);
         }
     }

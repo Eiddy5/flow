@@ -324,6 +324,7 @@ core/
 │   ├── flows/
 │   ├── executions/
 │   ├── triggers/      # 命中与内部事件持久化端口
+│   ├── worker/        # 当前执行许可与待消费消息端口
 │   └── shared/
 └── services/
     ├── flows/
@@ -387,17 +388,20 @@ Execution 编排推进组件。它与 `core` 平级，负责：
   原子保存父调用与子运行，子终态回传精确父 TaskRun；具体插件与结果定义位于
   `extensions/flow/SubFlow`。参见 ADR 0098、0099。
 - 通过 `WorkerTaskResult` 合并 Worker 返回的运行事实。
-- 内部 `ExecutorEventMessageHandler` 统一保存已更新聚合、同步投递 WorkerTask、应用结果；
-  Worker 结果应用后通过新的 `ExecutorEvent` 再次进入下一周期。`ExecutorContext` 不
-  跨 Queue、不进入持久化载荷。
+- 内部 `ExecutorEventMessageHandler` 将可执行 TaskRun 置 `SUBMITTED`，与任务命令 outbox
+  原子保存；`WorkerExecutionCoordinator` 在领取短事务中将其置 `RUNNING` 并开始原 Attempt。
+  `WorkerResultConsumer` 经协调器接纳已保存结果，业务状态与下一轮推进 outbox 一并提交。
+  `ExecutionOutboxPublisher` 负责三类消息补发，消费完成才物理删除 outbox。`ExecutorContext`
+  不跨 Queue、不进入持久化载荷。许可、租约、ACK 和删除顺序见 ADR 0113。
 
 `ExecutorService` 可以依赖 Core 领域对象与 Worker 稳定结果协议，但不定义第二
 套状态类型、不直接修改 State、不访问 Repository/JOOQ，也不执行 RunnableTask。
 `ExecutionCommandEventHandler` 依赖 Repository 端口和内部 Event Queue，负责 Command
 分派、输入规范化、创建或锁定 Execution 以及加载精确 Flow Reversion；内部
-`ExecutorEventMessageHandler` 依赖当前 DSLContext、ExecutorService、WorkerDispatcher 和
-Event Queue，形成一个 Event 周期的运行提交边界。`DefaultExecutor` 只负责两条 Queue
-的注解回调路由；PAAS 拥有消费生命周期。Context 自身仍不保存任何可持久化状态；恢复时由内部 Handler
+`ExecutorEventMessageHandler` 依赖当前 DSLContext、ExecutorService 与 Repository 端口，
+形成一个 Event 周期的运行提交边界；仅本地状态机测试保留同步 WorkerDispatcher 路径。
+`DefaultExecutor` 路由外部命令、推进事件和延迟重试；`WorkerResultConsumer` 独立接纳结果。
+PAAS 拥有消费生命周期。Context 自身仍不保存任何可持久化状态；恢复时由内部 Handler
 重新从 Execution.inputs 读取 Flow inputs。
 
 ### `queues/`
@@ -429,9 +433,12 @@ Task Worker 调度边界。它与 `core` 平级，保存：
 
 ```text
 worker/
-├── WorkerDispatcher.java
-├── WorkerTask.java
-└── WorkerTaskResult.java
+├── WorkerCommand.java         # 持久命令，携带原任务及尝试编号
+├── WorkerCommandConsumer.java # 领取确认、调用 Runner、结果交接后允许 ACK
+├── WorkerDispatcher.java      # 单次 RunnableTask 调用
+├── WorkerResultEvent.java     # 持久结果引用
+├── WorkerTask.java            # 从精确定义和原尝试变量恢复的调用快照
+└── WorkerTaskResult.java      # 结果正文，接纳后转入聚合
 ```
 
 `RunnableTask<T>`、`OrchestrationTask<T>`、`ExecutableTask<T>`、`Output` 和 `VoidOutput` 归属于 `core/domains/tasks`；
@@ -445,7 +452,7 @@ RunVariables 统一提供 `flow`、`inputs`、按 Task 业务 key 分组的 `out
 而是通过 `taskRunInfo()`、`flowInfo()`、`parentTaskRunId()`、`inputs()`、
 `taskInputs()` 和 `flowVariables()` 从变量树派生只读视图与便捷值，再直接调用具体
 Task 的 `run(RunContext)`，返回使用统一 `State.Type targetState` 的
-`WorkerTaskResult`。结果只允许 COMPLETED 或 TERMINATED；PAUSED 只由 Executor
+`WorkerTaskResult`。结果只允许 SUCCESS、WARNING、FAILED 或 KILLED；PAUSED 只由 Executor
 处理明确的 Pause OrchestrationTask 时产生。Worker 不发现或选择
 WorkerTaskHandler，也不能推进或修改 Execution、TaskRun 状态、决定下一项 Task 或
 伪造 State History；上述身份不作为新状态写入 Flow、Execution 或 TaskRun。
@@ -576,7 +583,9 @@ DataPilot、JOOQ Record 或具体数据库实现。
 各业务 `XxxRepositoryImpl` 继承公共基础，保持自己的保存协议；Execution 组合
 `CasEnhancer`，将根 CAS、子记录与所属 outbox 组装为同一条 SQL 后执行，成功后
 才回填版本。运行期数据库上下文来自 `datasources.flow`，工具与测试分别拥有并关闭
-自己的 DataSource。具体接入与协议见 [ADR 0111](decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)。
+自己的 DataSource。`WorkerRuntimeRepositoryImpl` 同样继承 BaseRepository，负责短技术事务、
+`execution_messages` 和 `worker_deliveries`；消息正文消费后删除，当前许可用于清理后的去重。
+具体接入与协议见 [ADR 0113](decisions/0113-submit-worker-tasks-and-clean-consumed-outbox.md) 和 [ADR 0111](decisions/0111-unify-flow-datasource-and-compose-repository-enhancers.md)。
 
 JOOQ 生成的 `XxxObject` 不能直接作为领域对象使用。具体 Repository Adapter 必须在自己的 `entries` 子包建立继承生成对象的 `XxxEntry`，由 Entry 集中
 完成数据库字段与项目对象的转换；需要序列化或专用字段转换时，在同级 `codec`

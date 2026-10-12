@@ -16,8 +16,8 @@ Worker 结果回流和其他域的连接放在同一张模型中。RunnableTask 
 当前入口包括公开 Execution Command、内部 Executor Event、延迟重试事件、
 子运行完成回传；触发器先产生稳定命中，再借公开 Create 命令启动运行。
 `ExecutorService` 按精确 Flow 版本和已保存的 Execution/TaskRun 事实规划，
-Worker 只执行 RunnableTask。现有 Handler 在同一事件处理中同步调用 Worker；
-这造成 [UC-19](../test-reports/flow/UC-19-2026-09-22-2035.md) 中 RUNNING 失联
+Worker 只执行 RunnableTask。方案提出时 Handler 在同一事件处理中同步调用 Worker；
+这造成 [恢复验证报告索引](../test-reports/README.md) 中 RUNNING 失联
 无法继续的缺口。仅画一张 `TaskRun` 状态图会遗漏命令、子流程与消息交接。
 
 备选为：把每种 Task 自行实现调度与恢复；或将所有入口和状态变化塞入一个

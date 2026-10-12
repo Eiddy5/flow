@@ -4,6 +4,7 @@
 package org.flow.gen.flow;
 
 
+import org.flow.gen.flow.tables.ExecutionMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -12,6 +13,7 @@ import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
 import org.flow.gen.flow.tables.TriggerSchedulesTable;
+import org.flow.gen.flow.tables.WorkerDeliveriesTable;
 
 
 /**
@@ -19,6 +21,11 @@ import org.flow.gen.flow.tables.TriggerSchedulesTable;
  */
 @SuppressWarnings({ "all", "unchecked", "rawtypes", "this-escape" })
 public class Tables {
+
+    /**
+     * The table <code>public.execution_messages</code>.
+     */
+    public static final ExecutionMessagesTable EXECUTION_MESSAGES = ExecutionMessagesTable.EXECUTION_MESSAGES;
 
     /**
      * The table <code>public.executions</code>.
@@ -59,4 +66,9 @@ public class Tables {
      * The table <code>public.trigger_schedules</code>.
      */
     public static final TriggerSchedulesTable TRIGGER_SCHEDULES = TriggerSchedulesTable.TRIGGER_SCHEDULES;
+
+    /**
+     * The table <code>public.worker_deliveries</code>.
+     */
+    public static final WorkerDeliveriesTable WORKER_DELIVERIES = WorkerDeliveriesTable.WORKER_DELIVERIES;
 }

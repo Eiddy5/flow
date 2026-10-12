@@ -21,7 +21,13 @@
 历史测试报告可能保留已经移除的具体模型规范文件名，以忠实记录当次执行环境；
 读取这些历史引用时，使用本索引定位当前 ADR，不回写历史报告。
 
+当前 Worker 交接以 [ADR 0113](0113-submit-worker-tasks-and-clean-consumed-outbox.md) 为准：
+任务提交为 SUBMITTED，领取确认后 RUNNING，独立结果队列返回 Executor；许可、聚合 CAS 和
+消息保存使用短技术事务，调用 Runner 与 Broker 发送不进入事务。消费完成物理清理 outbox。
+
 ## Core 组件与依赖方向
+
+- [`ADR 0113`](0113-submit-worker-tasks-and-clean-consumed-outbox.md)：**Accepted**，任务与结果双队列、SUBMITTED、原 Attempt 接管及消费后清理；修订 ADR 0109/0112 的相关条款。
 
 - [`ADR 0112`](0112-study-kestra-state-persistence-and-recovery.md)：**Proposed**，Kestra 2.x 状态保存、Worker 交付、心跳失联与结果回流研究；细化 Flow 的投递许可、结果记录、原子 outbox 和 UC19 恢复验证矩阵，尚未实施。
 - [`ADR 0111`](0111-unify-flow-datasource-and-compose-repository-enhancers.md)：**Accepted**，通过 DataSourceEngine 完成 CRUD，统一宿主配置与 Repository 公共基础，各业务组合 CasEnhancer；包含实施范围和验证边界。

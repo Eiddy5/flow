@@ -32,6 +32,12 @@ import java.util.function.Predicate;
 
 /** UC: docs/uc/flow/UC-19 原生流程运行崩溃恢复.md */
 class Uc19NativeRecoveryTest {
+    private static final String EXECUTION_HEADER = "X-Execution-Id";
+    private static final String TASK_RUN_HEADER = "X-TaskRun-Id";
+    private static final String RESULT_KIND = "RESULT";
+    private static final String ATTEMPT_NUMBER_FIELD = "number";
+    private static final String ATTEMPT_STARTED_AT_FIELD = "startedAt";
+    private static final String TOPIC_PREFIX = "persistent://public/default/";
     /**
      * S1 在真实 B 调用窗口强杀进程，验证原串行运行自动接续。
      *
@@ -157,6 +163,24 @@ class Uc19NativeRecoveryTest {
     }
 
     /**
+     * S13 在已提交尚未领取的窗口强杀，恢复后继续原运行且不增加业务尝试。
+     * @throws Exception 子进程或证据操作失败时抛出
+     */
+    @Test
+    void s13SubmittedTaskRecovery() throws Exception {
+        runScenario("s13");
+    }
+
+    /**
+     * S14 在成功结果已持久化而尚未被流程接纳的窗口强杀，恢复接纳原结果。
+     * @throws Exception 子进程或证据操作失败时抛出
+     */
+    @Test
+    void s14SavedWorkerResultRecovery() throws Exception {
+        runScenario("s14");
+    }
+
+    /**
      * 仅以独立子进程运行引擎，控制端只提供范围外的 HTTP 业务样本。 显式设置 FLOW_NATIVE_CONTROL=true 时只释放外部操作，保留同一 JVM 验证正常对照。
      *
      * @param scenario 已定义场景标识，不得为空
@@ -184,6 +208,8 @@ class Uc19NativeRecoveryTest {
                         + "\n");
         var calls = new CopyOnWriteArrayList<String>();
         var detail = new CopyOnWriteArrayList<String>();
+        var successes = new ConcurrentHashMap<String, String>();
+        var effects = new CopyOnWriteArrayList<String>();
         var release = new CountDownLatch(1);
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         var pool = Executors.newVirtualThreadPerTaskExecutor();
@@ -191,6 +217,17 @@ class Uc19NativeRecoveryTest {
         server.createContext(
                 "/",
                 exchange -> {
+                    if (exchange.getRequestMethod().equals("GET")) {
+                        String runId = exchange.getRequestURI().getPath().substring(1);
+                        String result = successes.entrySet().stream()
+                            .filter(entry -> entry.getKey().endsWith("/" + runId))
+                            .map(Map.Entry::getValue).findFirst().orElse(null);
+                        byte[] content = Objects.toString(result, "missing").getBytes(StandardCharsets.UTF_8);
+                        exchange.sendResponseHeaders(result == null ? 404 : 200, content.length);
+                        exchange.getResponseBody().write(content);
+                        exchange.close();
+                        return;
+                    }
                     String key = exchange.getRequestURI().getPath().substring(1);
                     String body =
                             new String(
@@ -202,21 +239,24 @@ class Uc19NativeRecoveryTest {
                                     + "\t"
                                     + key
                                     + "\t"
-                                    + exchange.getRequestHeaders().getFirst("X-Execution-Id")
+                                    + exchange.getRequestHeaders().getFirst(EXECUTION_HEADER)
                                     + "\t"
-                                    + exchange.getRequestHeaders().getFirst("X-TaskRun-Id")
+                                    + exchange.getRequestHeaders().getFirst(TASK_RUN_HEADER)
                                     + "\t"
                                     + body);
                     long attempt = calls.stream().filter(c -> c.startsWith(key + ":")).count();
+                    boolean failed = key.equals("fail") || (scenario.equals("s8") && key.equals("a") && attempt == 1);
+                    String businessKey = exchange.getRequestHeaders().getFirst(EXECUTION_HEADER)
+                        + "/" + exchange.getRequestHeaders().getFirst(TASK_RUN_HEADER);
+                    if (!failed) {
+                        String previous = successes.putIfAbsent(businessKey, body);
+                        if (previous == null) effects.add(key + ":" + body + ":" + businessKey);
+                        else assertEquals(previous, body, "同一业务键重投必须保留原输入");
+                    }
                     try {
                         if (key.equals("b")
                                 && (!(scenario.equals("s4") || scenario.equals("s5"))
                                         || body.equals("round-2-b"))) release.await();
-                        boolean failed =
-                                key.equals("fail")
-                                        || (scenario.equals("s8")
-                                                && key.equals("a")
-                                                && attempt == 1);
                         byte[] result =
                                 (failed ? "native-business-failure" : body)
                                         .getBytes(StandardCharsets.UTF_8);
@@ -278,6 +318,14 @@ class Uc19NativeRecoveryTest {
             if (!scenario.equals("s12") && !scenario.equals("s7-failure"))
                 assertEquals(1, calls.stream().filter(c -> c.startsWith("c:")).count());
             assertEquals(0, calls.stream().filter(c -> c.startsWith("wrong:")).count());
+            if (scenario.equals("s13") || scenario.equals("s14")) {
+                assertEquals(1, calls.stream().filter(c -> c.startsWith("a:")).count());
+                assertEquals(1, effects.stream().filter(c -> c.startsWith("a:")).count());
+                assertEquals(1, effects.stream().filter(c -> c.startsWith("c:")).count());
+            } else if (List.of("s1", "s2", "s3", "s4", "s5", "s9-cron", "s9-date", "s10", "s11").contains(scenario)) {
+                assertEquals(scenario.equals("s4") ? 3 : scenario.equals("s5") ? 2 : 1,
+                    effects.stream().filter(c -> c.startsWith("b:")).count(), "每个原步骤的业务效果只生效一次");
+            }
             if (scenario.equals("s6") || scenario.equals("s7-success"))
                 assertEquals(1, calls.stream().filter(c -> c.startsWith("child-result:")).count());
             if (scenario.equals("s7-failure") || scenario.equals("s12"))
@@ -294,6 +342,7 @@ class Uc19NativeRecoveryTest {
             pool.shutdownNow();
             Files.write(dir.resolve("calls.txt"), calls);
             Files.write(dir.resolve("calls-detail.tsv"), detail);
+            Files.write(dir.resolve("business-effects.txt"), effects);
         }
     }
 
@@ -399,6 +448,9 @@ class Uc19NativeRecoveryTest {
             p.put("jooq.send-event", false);
             p.put("flow.test.native-subflow-gate", scenario.startsWith("s7"));
             p.put("flow.test.native-task", true);
+            p.put("flow.worker.enabled", !(scenario.equals("s13") && !System.getProperty("flow.native.mode").equals("recover")));
+            p.put("flow.executor.worker-result.enabled", !(scenario.equals("s14") && !System.getProperty("flow.native.mode").equals("recover")));
+            p.put("flow.worker.lease-millis", 3000L);
             p.put("flow.scheduler.poll-interval", "100ms");
             for (String name : List.of("flow", "default")) {
                 String url =
@@ -488,6 +540,8 @@ class Uc19NativeRecoveryTest {
                     step("a", "{{ inputs.seed }}")
                             + step("b", "{{ outputs.a.value }}-b")
                             + step("c", "{{ outputs.b.value }}-c");
+            if (scenario.equals("s13") || scenario.equals("s14"))
+                tasks = step("a", "{{ inputs.seed }}") + step("c", "{{ outputs.a.value }}-c");
             String trigger = "";
             if (scenario.equals("s2"))
                 tasks =
@@ -670,6 +724,21 @@ class Uc19NativeRecoveryTest {
                 assertEquals(1, a.attempts().size());
                 assertTrue(a.nextRetryAt() > org.cses.flow.core.utils.TimeUtil.now());
                 Files.writeString(directory.resolve("retry-at"), a.nextRetryAt().toString());
+            } else if (scenario.equals("s13")) {
+                before = await(id, value -> has(value, flow, "a", State.Type.SUBMITTED));
+                var a = runs(before, flow, "a").getFirst();
+                assertTrue(a.attempts().isEmpty());
+                assertTrue(runs(before, flow, "c").isEmpty());
+            } else if (scenario.equals("s14")) {
+                before = await(id, value -> has(value, flow, "a", State.Type.RUNNING)
+                    && savedWorkerResult(value, runs(value, flow, "a").getFirst()));
+                var a = runs(before, flow, "a").getFirst();
+                assertEquals(1, a.attempts().size());
+                assertNull(a.attempts().getFirst().completedAt());
+                try (var stream = java.net.URI.create(endpoint + "/" + a.id()).toURL().openStream()) {
+                    assertEquals("seed", new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+                }
+                assertTrue(runs(before, flow, "c").isEmpty());
             } else {
                 int round = scenario.equals("s4") || scenario.equals("s5") ? 2 : 1;
                 before =
@@ -767,6 +836,7 @@ class Uc19NativeRecoveryTest {
                             case "s6" -> "seed-done-c";
                             case "s7-success" -> "seed-child-c";
                             case "s8" -> "seed-c";
+                            case "s13", "s14" -> "seed-c";
                             default -> "seed-b-c";
                         };
                 assertEquals(
@@ -816,6 +886,7 @@ class Uc19NativeRecoveryTest {
                                 >= Long.parseLong(Files.readString(directory.resolve("retry-at"))));
                 assertNull(a.nextRetryAt());
             }
+            if (scenario.equals("s14")) verifyDuplicateResult(completed, runs(completed, flow, "a").getFirst());
             int count =
                     scenario.equals("s6") || scenario.startsWith("s7") || scenario.equals("s11")
                             ? 2
@@ -838,7 +909,82 @@ class Uc19NativeRecoveryTest {
                     LockSupport.parkNanos(25_000_000);
                 }
             }
+            awaitConsumedMessages();
             snapshot("after");
+        }
+
+        /**
+         * 查询当前步骤是否已有等待 Executor 接纳的结果正文，只用于确认故障注入窗口。
+         * @param execution 公开查询得到的原运行
+         * @param taskRun 公开查询得到的原步骤
+         * @return 消费前的结果正文已可靠保存时为 true
+         */
+        private boolean savedWorkerResult(Execution execution, TaskRun taskRun) {
+            var messages = org.flow.gen.flow.Tables.EXECUTION_MESSAGES;
+            return context.getBean(org.x9.jooq.JOOQ.class,
+                    io.micronaut.inject.qualifiers.Qualifiers.byName("flow"))
+                .get(dsl -> dsl.fetchExists(messages, messages.COMPANY_ID.eq(execution.companyId())
+                    .and(messages.EXECUTION_ID.eq(execution.id())).and(messages.TASK_RUN_ID.eq(taskRun.id()))
+                    .and(messages.KIND.eq(RESULT_KIND))));
+        }
+
+        /**
+         * 通过真实结果队列重复返回已接纳的同一结果，公开终态、步骤和原尝试保持完整不变。
+         * @param completed 公开查询得到的完整终态
+         * @param taskRun 原 A 步骤及尝试身份
+         * @throws Exception Broker 查询或投递证明失败时抛出
+         */
+        @SuppressWarnings("unchecked")
+        private void verifyDuplicateResult(Execution completed, TaskRun taskRun) throws Exception {
+            var deliveries = org.flow.gen.flow.Tables.WORKER_DELIVERIES;
+            var database = context.getBean(org.x9.jooq.JOOQ.class,
+                io.micronaut.inject.qualifiers.Qualifiers.byName("flow"));
+            var delivery = database.get(dsl -> dsl.selectFrom(deliveries)
+                .where(deliveries.COMPANY_ID.eq(completed.companyId()))
+                .and(deliveries.EXECUTION_ID.eq(completed.id()))
+                .and(deliveries.TASK_RUN_ID.eq(taskRun.id())).fetchSingle());
+            var original = org.cses.flow.worker.WorkerResultEvent.from(delivery.getResultId(),
+                completed.companyId(), completed.id(), taskRun.id(), delivery.getAttemptNumber(),
+                delivery.getDeliveryGeneration());
+            org.cses.flow.queues.Queue<org.cses.flow.worker.WorkerResultEvent> queue = context.getBean(
+                org.cses.flow.queues.Queue.class, io.micronaut.inject.qualifiers.Qualifiers.byTypeArguments(
+                    org.cses.flow.worker.WorkerResultEvent.class));
+            String name = org.cses.flow.worker.WorkerResultEvent.QUEUE_NAME;
+            try (var admin = PulsarTestEnvironment.admin()) {
+                long before = admin.topics().getStats(TOPIC_PREFIX + name).getSubscriptions().get(name).getMsgOutCounter();
+                queue.emit(original);
+                queue.emit(original);
+                long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+                boolean consumed = false;
+                do {
+                    var subscription = admin.topics().getStats(TOPIC_PREFIX + name).getSubscriptions().get(name);
+                    consumed = subscription.getMsgOutCounter() >= before + 2
+                        && subscription.getMsgBacklog() == 0 && subscription.getUnackedMessages() == 0;
+                    if (consumed) break;
+                    LockSupport.parkNanos(25_000_000);
+                } while (System.nanoTime() < end);
+                assertTrue(consumed, "两个重复结果必须真实投递并确认");
+            }
+            assertEquals(org.cses.flow.core.serializers.JacksonMapper.toPersistenceMap(completed),
+                org.cses.flow.core.serializers.JacksonMapper.toPersistenceMap(
+                    executions.execution(session, completed.id()).orElseThrow()));
+        }
+
+        /** 等待本场景成功消费全部消息后再保存清理证据，不删除或跳过 Broker 消息。 */
+        private void awaitConsumedMessages() {
+            var messages = org.flow.gen.flow.Tables.EXECUTION_MESSAGES;
+            var database = context.getBean(org.x9.jooq.JOOQ.class,
+                io.micronaut.inject.qualifiers.Qualifiers.byName("flow"));
+            long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+            do {
+                int remaining = database.get(dsl -> dsl.fetchCount(messages,
+                    messages.COMPANY_ID.eq(session.getCompanyId())));
+                if (remaining == 0) return;
+                LockSupport.parkNanos(25_000_000);
+            } while (System.nanoTime() < end);
+            int remaining = database.get(dsl -> dsl.fetchCount(messages,
+                messages.COMPANY_ID.eq(session.getCompanyId())));
+            assertEquals(0, remaining, "完成后消费消息仍残留");
         }
 
         /**
@@ -898,6 +1044,7 @@ class Uc19NativeRecoveryTest {
                 assertTrue(e.activeTaskRuns().isEmpty());
                 assertTrue(e.pausedTaskRuns().isEmpty());
             }
+            awaitConsumedMessages();
             snapshot("after");
         }
 
@@ -946,6 +1093,13 @@ class Uc19NativeRecoveryTest {
                             assertEquals(oldAttempts.get(i), newAttempts.get(i));
                     String state =
                             (String) ((Map<String, Object>) task.get("state")).get("current");
+                    if (state.equals("RUNNING") && !oldAttempts.isEmpty()) {
+                        assertEquals(oldAttempts.size(), newAttempts.size(), "失联接续不得增加业务尝试");
+                        for (int i = 0; i < oldAttempts.size(); i++) {
+                            assertEquals(oldAttempts.get(i).get(ATTEMPT_NUMBER_FIELD), newAttempts.get(i).get(ATTEMPT_NUMBER_FIELD));
+                            assertEquals(oldAttempts.get(i).get(ATTEMPT_STARTED_AT_FIELD), newAttempts.get(i).get(ATTEMPT_STARTED_AT_FIELD));
+                        }
+                    }
                     if (List.of("SUCCESS", "FAILED", "KILLED", "SKIPPED").contains(state)) {
                         assertEquals(state, run.state().current().name());
                         assertEquals(task.getOrDefault("outputs", Map.of()), run.outputs());
@@ -1134,6 +1288,16 @@ class Uc19NativeRecoveryTest {
                                                             ::toPersistenceMap)
                                             .toList())
                             .toJson());
+            var database = context.getBean(org.x9.jooq.JOOQ.class,
+                io.micronaut.inject.qualifiers.Qualifiers.byName("flow"));
+            var messageTable = org.flow.gen.flow.Tables.EXECUTION_MESSAGES;
+            var deliveryTable = org.flow.gen.flow.Tables.WORKER_DELIVERIES;
+            var messages = database.get(dsl -> dsl.selectFrom(messageTable)
+                .where(messageTable.COMPANY_ID.eq(session.getCompanyId())).fetch().formatJSON());
+            var deliveries = database.get(dsl -> dsl.selectFrom(deliveryTable)
+                .where(deliveryTable.COMPANY_ID.eq(session.getCompanyId())).fetch().formatJSON());
+            Files.writeString(directory.resolve(name + "-outbox.json"), messages);
+            Files.writeString(directory.resolve(name + "-deliveries.json"), deliveries);
             try (var admin = PulsarTestEnvironment.admin()) {
                 var stats = new LinkedHashMap<String, Object>();
                 for (String topic : admin.topics().getList("public/default"))

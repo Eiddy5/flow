@@ -1,6 +1,6 @@
 # 注解式 Pulsar 队列与 Executor 切换
 
-当前两条 Executor 队列已使用 PAAS Pulsar，不需要 Flow 队列 YAML；本次没有通知接入。
+当前命令、推进、重试、Worker 任务和 Worker 结果队列使用 PAAS Pulsar，不需要 Flow 队列 YAML。
 封装边界见 [ADR 0092](../decisions/0092-add-annotation-driven-paas-pulsar-queues.md)，
 当前装配见 [ADR 0094](../decisions/0094-use-pulsar-for-executor-queues.md)。
 
@@ -9,15 +9,18 @@
 | 消息类型 | Topic / subscription | 发布入口 | 消费入口 |
 | --- | --- | --- | --- |
 | ExecutionCommand | flow-executor-command | ExecutionService 的 create/resume/cancel/rewind | DefaultExecutor.onCommand → ExecutionCommandEventHandler |
-| ExecutorEvent | flow-executor-event | 外部 Command Handler / 内部 Event Handler | DefaultExecutor.onEvent → ExecutorEventMessageHandler |
+| ExecutorEvent | flow-executor-event | 聚合原子保存的 ADVANCE outbox / 外部 Handler | DefaultExecutor.onEvent → ExecutorEventMessageHandler |
+| WorkerCommand | flow-worker-command | SUBMITTED 与 WORKER outbox 同一次 CAS 保存 | WorkerCommandConsumer.onCommand → Executor 领取确认 → Runner |
+| WorkerResultEvent | flow-worker-result | Worker 保存 RESULT outbox 后发布 / outbox 补发器 | WorkerResultConsumer.onResult → Executor 原尝试接纳 |
+| TaskRetryEvent | flow-delay | task_retry_messages 延迟发布器 | DefaultExecutor.onRetry → 匹配尝试接纳 |
 
-两个消息类型均用 `@FlowQueue(name = QUEUE_NAME, topic = QUEUE_NAME)` 声明。
+消息类型均用 `@FlowQueue(name = QUEUE_NAME, topic = QUEUE_NAME)` 声明。
 发布端通过构造器注入 `Queue<ExecutionCommand>` 或 `Queue<ExecutorEvent>`；由统一
 Factory 按泛型解析声明，无需 `@Named` 或逐队列 Factory。
 
-消费端使用 `@FlowQueueListener(subscription = QUEUE_NAME)`，每个 Topic 每实例一个
-Shared Consumer。两个方法均为 singleton 上的 public void 方法，调用对应 Handler。
-Handler 正常返回后 PAAS 才 ACK；任何处理、保存或后续发布失败都会进入 NACK 重投。
+消费端使用 `@FlowQueueListener(subscription = QUEUE_NAME)`，每个 Topic 使用
+Shared Consumer；Worker 命令每实例配置四个并发消费者。所有入口均为 singleton 上的 public void 方法。
+消费回调正常返回后 PAAS 才 ACK；任何处理、保存或后续发布失败都会进入 NACK 重投。
 它们不创建独立订阅生命周期对象，也不自行关闭共享 PAAS 资源。
 
 业务调用方继续通过 ExecutionService 使用流程能力，不直接调用内部消费 Handler。
@@ -152,3 +155,28 @@ JAVA_HOME=$(/usr/libexec/java_home -v 25) ./gradlew :core:test --tests '*Uc02Exe
 
 测试生命周期仅隔离无关宿主 WebSocket 注册，不替换 Pulsar 传输。上下文重启保留
 持久订阅；最终 fixture 关闭后才清理测试积压。清理不作为业务完成的证据。
+
+## Worker 任务交接与消费后清理
+
+完整顺序见 [ADR 0113](../decisions/0113-submit-worker-tasks-and-clean-consumed-outbox.md)。
+`execution_messages` 只保存待消费的 WORKER、RESULT 与 ADVANCE，Broker 确认仅更新
+published_at；Worker 结果可靠交接完成删除命令，Executor 将结果写入原 Attempt / TaskRun
+后删除结果，推进成功后删除推进消息。重复消费不依赖保留这些正文，而以聚合状态和当前
+`worker_deliveries` 的尝试、代次及 result_id 核验。
+
+首次发送等待对应持久订阅就绪；Worker 结果直接发送也遵循该规则。测试可以关闭
+`flow.worker.enabled` 或 `flow.executor.worker-result.enabled`，确认提交等待或结果待接纳
+窗口；这不改变宿主的全局 Pulsar consumer 开关。Worker 默认租约 10000ms、每 1s 续租。
+失联重投保持原 Attempt，只有 `RunnableTask.canReplay()` 明确保证安全时可重新调用。
+
+隔离环境消费闭合后可只读检查（请替换租户参数）：
+
+```sql
+SELECT kind, count(*) FROM execution_messages
+WHERE company_id = :company_id GROUP BY kind;
+SELECT count(*) FROM task_retry_messages WHERE company_id = :company_id;
+```
+
+完成的消息应无残留；被测试刻意停用消费者的消息须保留到恢复接纳。不要直接删除未消费
+消息来达到零行。`worker_deliveries` 是每个 TaskRun 的有限当前许可，消费后仍保留用于拒绝
+重复/迟到结果，不计入 outbox 残留。

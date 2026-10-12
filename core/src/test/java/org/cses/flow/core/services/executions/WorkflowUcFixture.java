@@ -158,6 +158,14 @@ public class WorkflowUcFixture implements AutoCloseable {
     public <T> T bean(Class<T> type) { return context.getBean(type); }
 
     /**
+     * 查询配置条件下实际装配的组件，供独立技术测试核对关闭开关，不触发缺失组件实例化。
+     * @param type 当前上下文中待核对的组件类型
+     * @param <T> 组件类型
+     * @return 条件满足时返回真实组件，未装配时返回空
+     */
+    public <T> Optional<T> findBean(Class<T> type) { return context.findBean(type); }
+
+    /**
      * 查询具有明确名称的真实组件，用于核对压力运行链路的数据源归属。
      * @param type 组件接口
      * @param name Micronaut Bean 限定名
@@ -196,6 +204,18 @@ public class WorkflowUcFixture implements AutoCloseable {
      */
     public void restartServer() {
         closeServer();
+        startServer();
+    }
+
+    /**
+     * 关闭当前真实上下文，合并指定运维配置后重建应用；运行身份与数据库和 Broker 保持不变。
+     * @param overrides 要覆盖的测试配置，不得为 null，不包含凭据输出
+     */
+    public void restartServerWithProperties(Map<String, Object> overrides) {
+        closeServer();
+        Map<String, Object> updated = new java.util.LinkedHashMap<>(properties);
+        updated.putAll(Objects.requireNonNull(overrides));
+        properties = Map.copyOf(updated);
         startServer();
     }
 

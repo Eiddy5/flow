@@ -7,6 +7,7 @@ package org.flow.gen.flow;
 import java.util.Arrays;
 import java.util.List;
 
+import org.flow.gen.flow.tables.ExecutionMessagesTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.FlowTasksTable;
 import org.flow.gen.flow.tables.FlowsTable;
@@ -15,6 +16,7 @@ import org.flow.gen.flow.tables.TaskRetryMessagesTable;
 import org.flow.gen.flow.tables.TaskRunsTable;
 import org.flow.gen.flow.tables.TriggerRunsTable;
 import org.flow.gen.flow.tables.TriggerSchedulesTable;
+import org.flow.gen.flow.tables.WorkerDeliveriesTable;
 import org.jooq.Catalog;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
@@ -33,6 +35,11 @@ public class Public extends SchemaImpl {
      * The reference instance of <code>public</code>
      */
     public static final Public PUBLIC = new Public();
+
+    /**
+     * The table <code>public.execution_messages</code>.
+     */
+    public final ExecutionMessagesTable EXECUTION_MESSAGES = ExecutionMessagesTable.EXECUTION_MESSAGES;
 
     /**
      * The table <code>public.executions</code>.
@@ -75,6 +82,11 @@ public class Public extends SchemaImpl {
     public final TriggerSchedulesTable TRIGGER_SCHEDULES = TriggerSchedulesTable.TRIGGER_SCHEDULES;
 
     /**
+     * The table <code>public.worker_deliveries</code>.
+     */
+    public final WorkerDeliveriesTable WORKER_DELIVERIES = WorkerDeliveriesTable.WORKER_DELIVERIES;
+
+    /**
      * No further instances allowed
      */
     private Public() {
@@ -90,6 +102,7 @@ public class Public extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
+            ExecutionMessagesTable.EXECUTION_MESSAGES,
             ExecutionsTable.EXECUTIONS,
             FlowTasksTable.FLOW_TASKS,
             FlowsTable.FLOWS,
@@ -97,7 +110,8 @@ public class Public extends SchemaImpl {
             TaskRetryMessagesTable.TASK_RETRY_MESSAGES,
             TaskRunsTable.TASK_RUNS,
             TriggerRunsTable.TRIGGER_RUNS,
-            TriggerSchedulesTable.TRIGGER_SCHEDULES
+            TriggerSchedulesTable.TRIGGER_SCHEDULES,
+            WorkerDeliveriesTable.WORKER_DELIVERIES
         );
     }
 

@@ -2,6 +2,9 @@ package org.cses.flow.infrastructure.repositories.executions;
 
 import jakarta.inject.Singleton;
 import org.cses.flow.common.Fields;
+import org.cses.flow.core.repositories.worker.ExecutionMessage;
+import org.cses.flow.executor.ExecutorEvent;
+import org.cses.flow.infrastructure.repositories.worker.entries.ExecutionMessageEntry;
 import org.cses.flow.infrastructure.datapilot.FlowDataSourceEngine;
 import org.cses.flow.infrastructure.repositories.executions.entries.TaskRetryMessageEntry;
 import org.cses.flow.core.domains.executions.Execution;
@@ -16,7 +19,6 @@ import org.cses.flow.infrastructure.repositories.executions.entries.TaskRunEntry
 import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.Record1;
 import org.jooq.Record2;
 import org.jooq.ResultQuery;
 
@@ -26,6 +28,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
+import static org.flow.gen.flow.Tables.EXECUTION_MESSAGES;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
 import static org.flow.gen.flow.Tables.TASK_RETRY_MESSAGES;
 import static org.jooq.impl.DSL.*;
@@ -92,7 +95,42 @@ public class ExecutionRepositoryImpl extends BaseRepository implements Execution
      */
     @Override
     public void save(DSLContext dsl, Execution execution) {
-        execution.lock(execute(dsl, context -> casEnhancer.save(save(context, execution, execution.lock()))));
+        save(dsl, execution, List.of());
+    }
+
+    /**
+     * 同一条 CAS SQL 保存聚合、推进事件及本轮任务命令，成功后回填版本。
+     * @param dsl 调用方拥有的数据库上下文
+     * @param execution 非空完整聚合，必须保留查询时版本；失败后丢弃重读
+     * @param messages 同租户同运行的完整任务消息，只读
+     * @throws org.jooq.exception.DataChangedException 加载版本陈旧时抛出，不保存任何消息
+     */
+    @Override
+    public void save(DSLContext dsl, Execution execution, List<ExecutionMessage> messages) {
+        execution.lock(execute(dsl, context -> {
+            ExecutionEntry entry = ExecutionEntry.from(execution);
+            var parent = name("stored_execution").as(save(context, entry.toMap(), execution.lock()));
+            var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
+            save(context, execution, parent, statements);
+            for (ExecutionMessage message : messages) addMessage(context, execution, parent, statements, message);
+            return casEnhancer.save(context.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent));
+        }));
+    }
+
+    /**
+     * 成功处理延迟消息后物理删除对应尝试的计划，重复清理无副作用。
+     * @param dsl 调用方数据库上下文
+     * @param companyId 原租户身份
+     * @param executionId 原运行身份
+     * @param taskRunId 原节点身份
+     * @param attemptNumber 正数目标尝试编号
+     */
+    @Override
+    public void retryConsumed(DSLContext dsl, String companyId, String executionId, String taskRunId, int attemptNumber) {
+        deleteRows(dsl, TASK_RETRY_MESSAGES, TASK_RETRY_MESSAGES.COMPANY_ID.eq(companyId)
+            .and(TASK_RETRY_MESSAGES.EXECUTION_ID.eq(executionId))
+            .and(TASK_RETRY_MESSAGES.TASK_RUN_ID.eq(taskRunId))
+            .and(TASK_RETRY_MESSAGES.ATTEMPT_NUMBER.eq(attemptNumber)));
     }
 
     /**
@@ -166,22 +204,6 @@ public class ExecutionRepositoryImpl extends BaseRepository implements Execution
     @Override
     public long count(DSLContext dsl, String companyId) {
         return query(dsl, company(companyId)).count();
-    }
-
-    /**
-     * 将未执行的 CAS 根语句与自有子集合和 outbox 组装为单条 SQL。
-     * @param dsl 调用方数据库上下文
-     * @param execution 待保存的完整聚合
-     * @param expected 对象查询时版本，null 仅尝试新建
-     * @return 成功时返回根版本、CAS 冲突时返回零行的原子 SQL
-     */
-    private ResultQuery<Record1<Long>> save(DSLContext dsl, Execution execution, Long expected) {
-        ExecutionEntry entry = ExecutionEntry.from(execution);
-        var root = save(dsl, entry.toMap(), expected);
-        var parent = name("stored_execution").as(root);
-        var statements = new java.util.ArrayList<org.jooq.CommonTableExpression<?>>();
-        save(dsl, execution, parent, statements);
-        return dsl.with(statements).select(parent.field(EXECUTIONS.LOCK)).from(parent);
     }
 
     /**
@@ -265,17 +287,29 @@ public class ExecutionRepositoryImpl extends BaseRepository implements Execution
     }
 
     /**
-     * Adds the owned TaskRun writes gated by an already prepared root statement.
-     * Inherited snapshots are stored by ExecutionEntry in the root JSONB column.
-     * @param dsl caller's database context
-     * @param execution complete snapshot whose owned runs are saved
-     * @param parent root write returning its Execution ID
-     * @param statements mutable CTE list receiving this root and its child writes
+     * 将根 CAS、子集合、推进事件及重试计划写入同条 SQL，根保存失败不产生消息。
+     * @param dsl 调用方数据库上下文
+     * @param execution 非空完整聚合，自有节点保存到子表，继承快照留在根 JSONB
+     * @param parent 返回根身份的 CAS 语句，只读
+     * @param statements 当前可变 CTE 列表，会追加本聚合及其所属消息写入
      */
     private void save(DSLContext dsl, Execution execution,
             org.jooq.CommonTableExpression<?> parent,
             List<org.jooq.CommonTableExpression<?>> statements) {
         statements.add(parent);
+        addMessage(dsl, execution, parent, statements, ExecutionMessage.advance(ExecutorEvent.from(
+            execution.id(), execution.companyId(), ExecutorEvent.EventType.UPDATED)));
+        var retryCleanup = TASK_RETRY_MESSAGES.COMPANY_ID.eq(execution.companyId())
+            .and(TASK_RETRY_MESSAGES.EXECUTION_ID.eq(execution.id()));
+        if (!execution.isTerminal()) {
+            var waiting = execution.ownTaskRuns().stream().filter(run -> run.state().is(State.Type.RETRY_WAIT))
+                .map(run -> TASK_RETRY_MESSAGES.TASK_RUN_ID.eq(run.id())
+                    .and(TASK_RETRY_MESSAGES.ATTEMPT_NUMBER.eq(run.attemptNumber() + 1)))
+                .reduce(org.jooq.impl.DSL.falseCondition(), Condition::or);
+            retryCleanup = retryCleanup.and(waiting.not());
+        }
+        statements.add(name(parent.getName() + "_expired_retries").as(dsl.deleteFrom(TASK_RETRY_MESSAGES)
+            .where(retryCleanup).and(exists(selectOne().from(parent))).returning(TASK_RETRY_MESSAGES.TASK_RUN_ID)));
         if (execution.isTerminal()) {
             var event = org.cses.flow.scheduler.events.SchedulerEvent.from("FLOW_TERMINATED",
                 execution.companyId(), execution.id(), execution.flowKey(), execution.flowVersion(),
@@ -328,4 +362,25 @@ public class ExecutionRepositoryImpl extends BaseRepository implements Execution
                 .returning(TASK_RUNS.ID)));
     }
 
+    /**
+     * 将完整消息写入由根 CAS 成功约束的 CTE，不覆盖稳定身份的正文。
+     * @param dsl 调用方数据库上下文
+     * @param execution 消息所属完整聚合，只读
+     * @param parent 根 CAS 返回身份的 CTE
+     * @param statements 当前原子 SQL 列表，会追加待执行消息写入
+     * @param message 与聚合身份匹配的非空消息，只读
+     * @throws IllegalArgumentException 消息租户或运行身份不匹配时抛出
+     */
+    private void addMessage(DSLContext dsl, Execution execution, org.jooq.CommonTableExpression<?> parent,
+            List<org.jooq.CommonTableExpression<?>> statements, ExecutionMessage message) {
+        if (!execution.companyId().equals(message.companyId()) || !execution.id().equals(message.executionId())) {
+            throw new IllegalArgumentException("Outbox identity does not match Execution");
+        }
+        var fields = ExecutionMessageEntry.from(message).buildInsertMap();
+        statements.add(name(parent.getName() + "_message_" + statements.size()).as(dsl.insertInto(EXECUTION_MESSAGES)
+            .columns(EXECUTION_MESSAGES.fields())
+            .select(select(java.util.Arrays.stream(EXECUTION_MESSAGES.fields())
+                .map(field -> val(fields.get(field.getName()), field)).toArray(Field<?>[]::new)).from(parent))
+            .onConflictDoNothing().returning(EXECUTION_MESSAGES.ID)));
+    }
 }

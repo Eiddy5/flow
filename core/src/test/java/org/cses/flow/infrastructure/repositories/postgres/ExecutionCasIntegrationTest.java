@@ -7,6 +7,7 @@ import org.cses.flow.core.exceptions.WorkflowException;
 import org.cses.flow.infrastructure.jooq.PostgresJooqTestAdapter;
 import org.cses.flow.infrastructure.repositories.executions.ExecutionRepositoryImpl;
 import org.cses.flow.infrastructure.repositories.enhancers.CasEnhancer;
+import org.cses.flow.core.repositories.worker.ExecutionMessage;
 import org.jooq.DSLContext;
 import org.jooq.exception.DataChangedException;
 import org.junit.jupiter.api.AfterEach;
@@ -26,11 +27,14 @@ import java.util.concurrent.TimeUnit;
 
 import static org.flow.gen.flow.Tables.EXECUTIONS;
 import static org.flow.gen.flow.Tables.TASK_RUNS;
+import static org.flow.gen.flow.Tables.EXECUTION_MESSAGES;
+import static org.flow.gen.flow.Tables.TASK_RETRY_MESSAGES;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** 真实 PostgreSQL 上验证仓储 CAS；不是业务 UC，也不替代公开入口验收。 */
 @EnabledIfEnvironmentVariable(named = "FLOW_POSTGRES_TEST_URL", matches = ".+")
 class ExecutionCasIntegrationTest {
+    private static final String ADVANCE_KIND = "ADVANCE";
 
     private PostgresJooqTestAdapter adapter = PostgresJooqTestAdapter.fromEnvironment();
 
@@ -48,10 +52,7 @@ class ExecutionCasIntegrationTest {
     @AfterEach
     void cleanup() {
         try {
-            database.deleteFrom(TASK_RUNS).where(TASK_RUNS.EXECUTION_ID.in(
-                    database.select(EXECUTIONS.ID).from(EXECUTIONS)
-                            .where(EXECUTIONS.COMPANY_ID.eq(companyId)))).execute();
-            database.deleteFrom(EXECUTIONS).where(EXECUTIONS.COMPANY_ID.eq(companyId)).execute();
+            adapter.removeTenant(companyId);
         } finally {
             adapter.close();
         }
@@ -183,6 +184,7 @@ class ExecutionCasIntegrationTest {
     @Test
     void childFailureRollsBackRootAndDoesNotAdvanceObjectLock() {
         Execution original = create();
+        int messagesBefore = database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id()));
         DSLContext dsl = database.configuration().derive().dsl();
         Execution changed = repository.findById(dsl, companyId, original.id()).orElseThrow();
         changed.createTaskRun("x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1), null, Map.of());
@@ -196,8 +198,67 @@ class ExecutionCasIntegrationTest {
                 retained.taskRuns().stream().map(TaskRun::id).toList());
         assertEquals(original.taskRuns().getFirst().state(), retained.taskRuns().getFirst().state());
         assertEquals(0L, changed.lock());
+        assertEquals(messagesBefore, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id())));
         repository.save(dsl, retained);
         assertEquals(1L, lock(database, original.id()));
+    }
+
+    /** 根 CAS 成功才提交推进与 Worker 消息，陈旧 CAS 或子记录失败不留下额外消息。 */
+    @Test
+    void rootCasAndWorkerMessagesCommitAtomically() {
+        Execution original = create();
+        assertEquals(1, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id())
+            .and(EXECUTION_MESSAGES.KIND.eq(ADVANCE_KIND))));
+        Execution changed = repository.findById(database, companyId, original.id()).orElseThrow();
+        var command = ExecutionMessage.command(companyId, original.id(), original.taskRuns().getFirst().id(), 1);
+        repository.save(database, changed, List.of(command));
+        assertEquals(1L, changed.lock());
+        assertEquals(3, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id())));
+        var rejected = ExecutionMessage.command(companyId, original.id(), original.taskRuns().getFirst().id(), 1);
+        assertThrows(DataChangedException.class, () -> repository.save(database, original, List.of(rejected)));
+        assertEquals(0, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.ID.eq(rejected.id())));
+        var failed = repository.findById(database, companyId, original.id()).orElseThrow();
+        failed.createTaskRun("x".repeat(TASK_RUNS.TASK_ID.getDataType().length() + 1), null, Map.of());
+        assertThrows(WorkflowException.class, () -> repository.save(database, failed, List.of(rejected)));
+        assertEquals(1L, lock(database, original.id()));
+        assertEquals(3, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id())));
+        assertEquals(0, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.ID.eq(rejected.id())));
+    }
+
+    /** 借用调用方事务保存完整聚合和消息后回滚，根、推进与 Worker 消息一起恢复原快照。 */
+    @Test
+    void borrowedTransactionRollsBackRootAndMessagesTogether() {
+        Execution original = create();
+        var command = ExecutionMessage.command(companyId, original.id(), original.taskRuns().getFirst().id(), 1);
+        assertThrows(IllegalStateException.class, () -> database.transaction(configuration -> {
+            repository.save(configuration.dsl(), original, List.of(command));
+            assertEquals(3, configuration.dsl().fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id())));
+            throw new IllegalStateException("注入外层提交前失败");
+        }));
+        assertEquals(0L, lock(database, original.id()));
+        assertEquals(1, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.EXECUTION_ID.eq(original.id())));
+        assertEquals(0, database.fetchCount(EXECUTION_MESSAGES, EXECUTION_MESSAGES.ID.eq(command.id())));
+    }
+
+    /** 重试离开等待后旧计划物理删除，重复消费及迟到发布均不能复活计划。 */
+    @Test
+    void consumedRetryPlanIsDeletedAndCannotBeResurrected() {
+        Execution original = create();
+        String taskRunId = original.taskRuns().getFirst().id();
+        long now = org.cses.flow.core.utils.TimeUtil.now();
+        original.beginTaskRunAttempt(taskRunId, Map.of("request", "original"), now);
+        original.finishTaskRunAttempt(taskRunId, org.cses.flow.core.domains.flows.State.Type.FAILED, "retry", now + 1);
+        original.waitForTaskRunRetry(taskRunId, now + 100);
+        repository.save(database, original);
+        var plan = repository.pendingRetries(database, 100).stream()
+            .filter(retry -> retry.executionId().equals(original.id())).findFirst().orElseThrow();
+        assertEquals(1, database.fetchCount(TASK_RETRY_MESSAGES, TASK_RETRY_MESSAGES.EXECUTION_ID.eq(original.id())));
+        assertTrue(original.retryTaskRun(taskRunId, now + 100));
+        repository.save(database, original);
+        assertEquals(0, database.fetchCount(TASK_RETRY_MESSAGES, TASK_RETRY_MESSAGES.EXECUTION_ID.eq(original.id())));
+        repository.retryConsumed(database, companyId, original.id(), taskRunId, plan.attemptNumber());
+        repository.retryPublished(database, plan, now + 101);
+        assertEquals(0, database.fetchCount(TASK_RETRY_MESSAGES, TASK_RETRY_MESSAGES.EXECUTION_ID.eq(original.id())));
     }
 
     /** 准备其他根已占用的新子记录 ID，验证新建失败不改变归属、不回填 lock。 */
