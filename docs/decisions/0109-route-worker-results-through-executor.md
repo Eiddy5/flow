@@ -9,6 +9,9 @@ Proposed（2026-09-23）。本文是对异步 RunnableTask 状态机的设计，
 应修订 ADR 0059、0094 中“Executor 同步调用 Worker 并当场应用结果”的阶段性条款；
 ADR 0105 的业务重试语义和
 ADR 0106 的延迟队列继续有效。
+Kestra 2.x 的固定源码研究与存储、租约、结果协议细化见
+[ADR 0112](0112-study-kestra-state-persistence-and-recovery.md)；其中候选表与恢复入口
+仍属方案，不表示 UC19 已修复。
 
 ## 背景
 
@@ -88,6 +91,8 @@ stateDiagram-v2
 是否生效；它不是现有代码里的 TaskRun 状态。实现时要确认其与 Execution 聚合
 状态、取消/退回和用户操作的关系。若不引入新枚举，也必须有同等的持久化事实与
 可见恢复入口，不能把不确定调用当作普通 FAILED 并自动增加 Attempt。
+图中的 `RUNNING -> RUNNING` 表示更换技术投递许可；TaskRun 的领域 State 保持原值，
+不调用 `State.withState(RUNNING)`，不追加同状态历史。恢复事实写入独立的投递记录。
 
 | 收到或观察到的事实 | Executor 的持久化决定 | 随后的动作 |
 | --- | --- | --- |
@@ -113,7 +118,9 @@ stateDiagram-v2
    和明确的调用异常转换成不可变结果事件，结果经 Broker 确认后才 ACK 命令。
    进程突然退出而没有结果时保留命令重投与失联检测入口。
 3. 结果事件至少携带 `companyId`、`executionId`、`taskRunId`、`attemptNumber`、
-   `deliveryGeneration`、稳定 `resultId`、结果状态、输出和错误。Executor 消费后
+   `deliveryGeneration` 和稳定 `resultId`。结果正文记录状态、输出和错误；信封可
+   内联正文或携带已持久化结果的稳定引用和摘要。Executor 消费时通过 Flow Engine
+   恢复并核对完整结果，引用保留期覆盖消息重投和对账窗口。Executor
    重新读取当前聚合；只接受当前 RUNNING Attempt 的有效投递代次。已完成、已取消、
    旧轮次和旧执行代次的结果不能使实例重新运行。
 4. Executor 在同一次 CAS 提交中写入 Attempt 结果和 TaskRun/Execution 状态，
@@ -127,6 +134,26 @@ stateDiagram-v2
 数据库和 Pulsar 没有共同事务，因此命令和内部推进都需要与状态保存原子登记的
 outbox 或等价的可重建交接事实。不能把“先保存、随后直接 emit”作为唯一恢复机制。
 Worker 执行与网络调用不得处在持有 Execution CAS 事务的范围内。
+
+### 状态存储与可靠交接的细化
+
+按 ADR 0112，建议把业务聚合与恢复技术事实分开：
+
+- 原 Execution、TaskRun、Attempt、精确 Flow 版本及已有 retry outbox 保持；
+  增加 Worker 实例、每 Attempt 当前投递许可、命令/推进 outbox 和结果记录。
+- 结果记录同时保存未发布结果及已应用凭据。Worker 先保存结果与 REPORTED 事实，
+  发布器收到 Broker 确认后再 ACK 命令；重发已保存结果不再调用插件。
+- Executor 的根 CAS 同时门控状态、许可收敛、结果应用凭据和下一必要消息；
+  多表条件更新必须位于 Engine 的同一短事务，失败整次回滚。
+- 实例心跳与投递租约分开；启动及周期扫描先处理确定结果，再竞争恢复过期许可。
+  新代次与新命令共同提交；旧 owner 不能续租、旧结果不能覆盖当前聚合。
+- 所有操作继续经 DataSourceEngine、纯 CRUD BaseRepository、业务 Impl 和组合
+  CasEnhancer。心跳不增加 Execution lock；状态决定、取消及换代与根 CAS 竞争。
+
+Kestra 提供持久 running store 和失联重交付的参考，但其 `RESUBMITTED` 会追加
+实际 Attempt，且 JDBC 批量消费跨线程。Flow 保留同业务 Attempt 与独立代次，
+并以 outbox 明确闭合 PostgreSQL 与 Pulsar 的提交窗口。
+具体候选字段、锁序要求、旧 RUNNING 接入及故障矩阵以 ADR 0112 为准。
 
 ## 失联与并发收敛
 

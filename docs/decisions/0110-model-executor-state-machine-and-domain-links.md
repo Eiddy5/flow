@@ -7,6 +7,9 @@ Worker 结果回流和其他域的连接放在同一张模型中。RunnableTask 
 失联协议以 [ADR 0109](0109-route-worker-results-through-executor.md) 为细化方案。
 下图均表示**目标架构**；表中的“现有/拟议”标识不能省略。本文不修改运行代码、
 数据库结构或 UC，也不把尚未验证的恢复能力写成现状。
+持久化与失联恢复细节由
+[ADR 0112](0112-study-kestra-state-persistence-and-recovery.md) 补充，包含 Kestra 2.x
+源码顺序、实际事务边界及向 Flow DataSourceEngine / CAS / outbox 的映射。
 
 ## 背景与备选
 
@@ -200,6 +203,12 @@ stateDiagram-v2
 | TaskRun | Executor 经 Execution 聚合方法 | CREATED、RUNNING、RETRY_WAIT、PAUSED、SKIPPED、终态；拟议 RECOVERY_WAIT；parentId、iteration、generation | 一次循环迭代或子调用有自己的 TaskRun；Pause 不是 Worker 的返回状态 |
 | TaskRunAttempt | Executor 在领取及消费 Worker 结果时写入 | 第 n 次实际业务调用的开始、结束、结果和错误 | 消息重复或同次失联恢复不新增 Attempt；业务 retry 才产生 n+1 |
 | 消息交接 | 各 outbox 发布器与 Broker | 待发布、已发布、待消费、已 ACK/NACK | Broker 受理或积压为 0 不能证明 Execution 已收敛 |
+
+拟议的 Worker 实例、当前投递许可和结果记录属于第四层技术事实，承载 owner、
+leaseUntil、deliveryGeneration、resultId 与处理决定；它们不加入 State.Type，
+心跳和同次交付不会增加业务 Attempt 或追加 RUNNING 历史。结果应用和下一消息
+登记则必须与 Execution 根 CAS 同次提交。ADR 0112 的启动/周期恢复扫描从这些
+持久事实接续，不能只读取根 RUNNING 就推断 Worker 存活或批量重置任务。
 
 不同 Task 能力的 TaskRun 路径也不同：
 

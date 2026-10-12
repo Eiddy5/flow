@@ -27,9 +27,13 @@ Flow 已具备定义版本、顺序/条件/并行/循环、Pause、退回派生�
 RunnableTask 重试、运行持久化与 CAS。它们构成运行主干，但单项存在不等于组合行为
 和异常收尾已经完整。
 
-以下是当前工作区的源码和已有文档证据，不是本轮新执行的测试结果：
+以下保留 2026-09-22 形成本文时的源码和文档盘点，不是后续修复结果。
+2026-10-12 的 State 通用迁移和历史校验修复见
+[ADR 0017](0017-centralize-workflow-runtime-state-in-flow-domain.md)，AOT / XML 验证见
+[构建验证手册](../harness/aot-and-xml-compatibility.md)。UC19 恢复仍待实施，
+Kestra 状态存储及协议细化见 [ADR 0112](0112-study-kestra-state-persistence-and-recovery.md)。
 
-| 检查项 | 当前事实 | 本轮应如何理解 |
+| 检查项 | 当时事实 | 当时应如何理解 |
 | --- | --- | --- |
 | 状态迁移 | State.withState 追加历史；StateTest 仍要求拒绝若干迁移。已有报告记录该分歧 | 先明确 State 值对象和 Execution/TaskRun 领域行为分别负责哪些约束，不能直接判定哪一方正确 |
 | Pause 超时 | duration/behavior 有定义与校验，运行时未接通超时推进 | 已暴露配置尚无完整行为，需要落地或明确限制其可用性 |
@@ -42,8 +46,9 @@ RunnableTask 重试、运行持久化与 CAS。它们构成运行主干，但单
 
 ### 2026-09-22 本地隔离验证补记
 
-本轮真实执行结果见 [批量报告](../test-reports/flow/BATCH-2026-09-22-1641.md) 和
-[压力报告](../test-reports/flow/STRESS-2026-09-22-1641.md)。全程使用专属本机
+本轮真实执行及当轮 UC / 回归汇总保留在
+[压力报告](../test-reports/flow/STRESS-2026-09-22-1641.md)；独立批量报告已按滚动
+规则移除。全程使用专属本机
 PostgreSQL/Pulsar，没有使用生产环境；归档后已清理这两个临时容器。
 
 - 105 个已确认 UC 场景最终为 103 PASS、1 FAIL、1 NOT_COVERED。

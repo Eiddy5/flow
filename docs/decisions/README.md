@@ -23,6 +23,7 @@
 
 ## Core 组件与依赖方向
 
+- [`ADR 0112`](0112-study-kestra-state-persistence-and-recovery.md)：**Proposed**，Kestra 2.x 状态保存、Worker 交付、心跳失联与结果回流研究；细化 Flow 的投递许可、结果记录、原子 outbox 和 UC19 恢复验证矩阵，尚未实施。
 - [`ADR 0111`](0111-unify-flow-datasource-and-compose-repository-enhancers.md)：**Accepted**，通过 DataSourceEngine 完成 CRUD，统一宿主配置与 Repository 公共基础，各业务组合 CasEnhancer；包含实施范围和验证边界。
 - [`ADR 0110`](0110-model-executor-state-machine-and-domain-links.md)：**Proposed**，Executor 四层状态、完整推进周期、Worker 结果回流及 Trigger、宿主、SubFlow、存储和消息域连接全景；尚未实施。
 - [`ADR 0109`](0109-route-worker-results-through-executor.md)：**Proposed**，Worker 结果经持久队列回到 Executor，由单一状态写入者决定入库、业务重试、同次投递恢复和后续编排；尚未实施。
@@ -265,7 +266,8 @@
 - [`ADR 0006`](0006-single-execution-branch-routing-and-join.md)：单 Execution 分支、
   并行与汇合。
 - [`ADR 0017`](0017-centralize-workflow-runtime-state-in-flow-domain.md)：统一 State、
-  State.Type、History、服务器系统时间和持久化规则。
+  State.Type、History、服务器系统时间和持久化规则；通用迁移超集与相邻历史校验，
+  保留业务重试及受控祖先重开，各聚合继续限制自身路线。
 - [`ADR 0034`](0034-persist-state-as-one-jsonb-value.md)：Execution 与 TaskRun 将完整
   `current + history` 作为单一 State JSONB 值对象持久化。
 - [`ADR 0020`](0020-stage-executor-cycle-effects.md)：ExecutorContext、nexts 两阶段
@@ -297,7 +299,7 @@
   Server 生命周期持久恢复。
 - [`ADR 0016`](0016-separate-pause-from-external-business-capabilities.md)：PAUSE
   通过 Execution 生命周期统一恢复，审批等业务能力位于 Flow Core 外。
-- [`ADR 0017`](0017-centralize-workflow-runtime-state-in-flow-domain.md)：WAITING、
+- [`ADR 0017`](0017-centralize-workflow-runtime-state-in-flow-domain.md)：PAUSED、
   Resume 和状态历史。
 - [`ADR 0024`](0024-separate-runnable-and-branch-task-capabilities.md)：PAUSE 由
   Executor 直接处理、不进入 Worker 的历史决策；能力名称已由 ADR 0029 修订。
