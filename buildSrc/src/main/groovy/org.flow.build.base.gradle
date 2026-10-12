@@ -12,6 +12,8 @@ repositories {
 
 
 configurations.configureEach {
+    // Its JAXP provider cannot handle the security features required by Logback.
+    exclude group: "pull-parser", module: "pull-parser"
     exclude group: "io.netty", module: "netty-transport-native-io_uring"
     exclude group: "io.netty", module: "netty-transport-classes-io_uring"
     resolutionStrategy {
