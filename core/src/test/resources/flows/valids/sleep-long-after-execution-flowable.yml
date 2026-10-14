@@ -1,0 +1,20 @@
+id: sleep-long-after-execution-flowable
+namespace: org.flow.tests
+
+tasks:
+  - id: sleep-long
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT30S
+
+afterExecution:
+  - id: after-if
+    type: org.flow.plugin.core.flow.If
+    condition: "{{ true }}"
+    then:
+      - id: after-if-log
+        type: org.flow.plugin.core.log.Log
+        message: after execution if child ran
+
+  - id: after-end
+    type: org.flow.plugin.core.log.Log
+    message: after execution following task ran

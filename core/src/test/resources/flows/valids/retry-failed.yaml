@@ -1,0 +1,16 @@
+id: retry-failed
+namespace: org.flow.tests
+
+tasks:
+- id: failed
+  type: org.flow.plugin.core.execution.Fail
+  retry:
+    type: constant
+    interval: PT0.250S
+    maxAttempts: 5
+    maxDuration: PT15S
+
+errors:
+  - id: t2
+    type: org.flow.plugin.core.log.Log
+    message: second {{task.id}}

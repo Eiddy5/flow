@@ -1,0 +1,18 @@
+id: subflow-inherited-labels-parent
+namespace: org.flow.tests
+
+labels:
+  parentFlowLabel1: value1
+  parentFlowLabel2: value2
+
+tasks:
+  - id: launch
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: subflow-inherited-labels-child
+    wait: true
+    transmitFailed: true
+    inheritLabels: true
+    labels:
+      launchTaskLabel: launchFoo
+      parentFlowLabel1: launchBar

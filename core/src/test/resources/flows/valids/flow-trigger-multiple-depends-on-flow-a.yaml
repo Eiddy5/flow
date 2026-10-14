@@ -1,0 +1,10 @@
+id: flow-trigger-multiple-depends-on-flow-a
+namespace: org.flow.tests.trigger.multiple.depends.on
+
+labels:
+  some: label
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from parents: {{execution.id}}"

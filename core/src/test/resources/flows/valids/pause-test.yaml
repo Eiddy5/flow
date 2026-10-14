@@ -1,0 +1,15 @@
+id: pause-test
+namespace: org.flow.tests
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+  - id: last
+    type: org.flow.plugin.core.debug.Return
+    format: "{{task.id}} > {{taskrun.startDate}}"
+
+errors:
+  - id: failed-echo
+    type: org.flow.plugin.core.log.Log
+    description: "Log the error"
+    message: I'm failing {{task.id}}

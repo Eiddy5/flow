@@ -1,0 +1,11 @@
+flow:
+  storage:
+    type: local
+    local:
+      base-path: /tmp/unittest
+  queue:
+    type: postgres
+
+logger:
+  levels:
+    "org.flow.core.migration": WARN

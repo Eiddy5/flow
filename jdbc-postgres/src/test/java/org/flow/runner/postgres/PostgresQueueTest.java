@@ -1,0 +1,83 @@
+package org.flow.runner.postgres;
+
+import java.util.Map;
+
+import org.jooq.exception.DataException;
+import org.junit.jupiter.api.Test;
+
+import org.flow.core.models.executions.TaskRun;
+import org.flow.core.models.flows.State;
+import org.flow.core.queues.QueueException;
+import org.flow.core.queues.UnsupportedMessageException;
+import org.flow.core.runners.WorkerTaskResult;
+import org.flow.core.utils.IdUtils;
+import org.flow.jdbc.runner.JdbcQueueTest;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class PostgresQueueTest extends JdbcQueueTest {
+    @Test
+    void invalidWorkerTaskWithNullCharShouldBeSanitized() {
+        var workerTaskResult = WorkerTaskResult.builder()
+            .taskRun(
+                TaskRun.builder()
+                    .taskId("taskId")
+                    .id(IdUtils.create())
+                    .executionId(IdUtils.create())
+                    .namespace("namespace")
+                    .flowId("flowId")
+                    .state(new State().withState(State.Type.SUCCESS))
+                    .build()
+            )
+            .outputs(Map.of("value", "\u0000"))
+            .build();
+
+        // JdbcJsonbUtils strips null bytes and their JSON-escaped form before storage,
+        // so the emit must succeed rather than throw.
+        assertThatNoException().isThrownBy(() -> workerTaskResultQueue.emit(workerTaskResult));
+    }
+
+    @Test
+    void invalidWorkerTaskWithLoneHighSurrogateShouldThrowDataException() throws QueueException {
+        var workerTaskResult = WorkerTaskResult.builder()
+            .taskRun(
+                TaskRun.builder()
+                    .taskId("taskId")
+                    .id(IdUtils.create())
+                    .executionId(IdUtils.create())
+                    .namespace("namespace")
+                    .flowId("flowId")
+                    .state(new State().withState(State.Type.SUCCESS))
+                    .build()
+            )
+            .outputs(Map.of("value", "test\uD800text"))
+            .build();
+
+        var exception = assertThrows(QueueException.class, () -> workerTaskResultQueue.emit(workerTaskResult));
+        assertThat(exception).isInstanceOf(UnsupportedMessageException.class);
+        assertThat(exception.getCause()).isInstanceOf(DataException.class);
+    }
+
+    @Test
+    void invalidWorkerTaskWithLoneLowSurrogateShouldThrowDataException() throws QueueException {
+        var workerTaskResult = WorkerTaskResult.builder()
+            .taskRun(
+                TaskRun.builder()
+                    .taskId("taskId")
+                    .id(IdUtils.create())
+                    .executionId(IdUtils.create())
+                    .namespace("namespace")
+                    .flowId("flowId")
+                    .state(new State().withState(State.Type.SUCCESS))
+                    .build()
+            )
+            .outputs(Map.of("value", "\uDC59 test"))
+            .build();
+
+        var exception = assertThrows(QueueException.class, () -> workerTaskResultQueue.emit(workerTaskResult));
+        assertThat(exception).isInstanceOf(UnsupportedMessageException.class);
+        assertThat(exception.getCause()).isInstanceOf(DataException.class);
+    }
+}

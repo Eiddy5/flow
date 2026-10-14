@@ -1,0 +1,15 @@
+id: variables-invalid
+namespace: org.flow.tests
+
+tasks:
+  - id: date
+    type: org.flow.plugin.core.debug.Return
+    format: "{{taskrun.startDate}}"
+  - id: parent-seq
+    type: org.flow.plugin.core.flow.Switch
+    value: "{{inputs.invalid}}"
+    cases:
+      FIRST:
+        - id: t1
+          type: org.flow.plugin.core.debug.Return
+          format: "{{task.id}} > {{taskrun.startDate}}"

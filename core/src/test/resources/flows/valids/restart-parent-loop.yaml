@@ -1,0 +1,23 @@
+id: restart-parent-loop
+namespace: org.flow.tests
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello Parent 1
+
+  - id: each
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["1", "2", "3"]
+    tasks:
+      - id: callSubflow
+        type: org.flow.plugin.core.flow.Subflow
+        namespace: org.flow.tests
+        flowId: restart-child
+        wait: true
+        transmitFailed: true
+        inheritLabels: true
+
+  - id: helloParent2
+    type: org.flow.plugin.core.log.Log
+    message: Hello Parent 2

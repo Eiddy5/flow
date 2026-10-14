@@ -1,0 +1,159 @@
+package org.flow.core.models.assets;
+
+import java.time.Instant;
+import java.util.*;
+
+import org.apache.commons.lang3.ObjectUtils;
+
+import com.fasterxml.jackson.annotation.JsonAnySetter;
+
+import org.flow.core.models.HasUID;
+import org.flow.core.models.Plugin;
+import org.flow.core.models.SoftDeletable;
+import org.flow.core.utils.IdUtils;
+import org.flow.core.utils.MapUtils;
+import org.flow.core.validations.TenantId;
+
+import io.swagger.v3.oas.annotations.Hidden;
+import jakarta.annotation.Nullable;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+@Getter
+@NoArgsConstructor
+public abstract class Asset implements HasUID, SoftDeletable<Asset>, Plugin {
+    @Hidden
+    @TenantId
+    protected String tenantId;
+
+    @Pattern(regexp = "^[a-z0-9][a-z0-9._-]*")
+    @Size(min = 1, max = 150)
+    protected String namespace;
+
+    @NotBlank
+    @Pattern(regexp = "^[a-zA-Z0-9][a-zA-Z0-9._:-]*")
+    @Size(min = 1, max = 150)
+    protected String id;
+
+    @NotBlank
+    protected String type;
+
+    protected String displayName;
+
+    protected String description;
+
+    protected Map<String, Object> metadata;
+
+    @Nullable
+    @Hidden
+    private Instant created;
+
+    @Nullable
+    @Hidden
+    private Instant updated;
+
+    @Hidden
+    private boolean deleted;
+
+    public Asset(
+        String tenantId,
+        String namespace,
+        String id,
+        String type,
+        String displayName,
+        String description,
+        Map<String, Object> metadata,
+        Instant created,
+        Instant updated,
+        boolean deleted) {
+        this.tenantId = tenantId;
+        this.namespace = namespace;
+        this.id = id;
+        this.type = type;
+        this.displayName = displayName;
+        this.description = description;
+        this.metadata = Optional.ofNullable(metadata).map(HashMap::new).orElse(new HashMap<>());
+        Instant now = Instant.now();
+        this.created = Optional.ofNullable(created).orElse(now);
+        this.updated = Optional.ofNullable(updated).orElse(now);
+        this.deleted = deleted;
+    }
+
+    /**
+     * Merges this asset over {@code previousAsset}, which is {@code null} on creation.
+     *
+     * @param previousAsset the stored asset this one is merged over, or {@code null} when creating.
+     * @param namespaceDeclared whether the source explicitly declared the namespace field (present, even as
+     *        an explicit {@code null}) rather than omitting it — {@code true} lets this namespace (including
+     *        {@code null}, clearing it to Global) win over the stored one; {@code false} means it was omitted,
+     *        so the previous namespace is kept.
+     * @return this asset, merged.
+     */
+    public <T extends Asset> T toUpdated(T previousAsset, boolean namespaceDeclared) {
+        this.created = Optional.ofNullable(previousAsset).map(Asset::getCreated).or(() -> Optional.ofNullable(this.created)).orElseGet(Instant::now);
+        this.updated = Instant.now();
+
+        String previousType = Optional.ofNullable(previousAsset).map(Asset::getType).orElse(null);
+        // External is a placeholder for "referenced but never declared", never a real user-chosen type: a
+        // real declared type always wins over it, regardless of write order.
+        this.type = (this.type != null && !External.ASSET_TYPE.equals(this.type))
+            ? this.type
+            : ObjectUtils.firstNonNull(previousType, this.type);
+
+        this.namespace = namespaceDeclared
+            ? this.namespace
+            : Optional.ofNullable(previousAsset).map(Asset::getNamespace).orElse(this.namespace);
+
+        this.displayName = Optional.ofNullable(this.displayName).or(() -> Optional.ofNullable(previousAsset).map(Asset::getDisplayName)).orElse(null);
+        this.description = Optional.ofNullable(this.description).or(() -> Optional.ofNullable(previousAsset).map(Asset::getDescription)).orElse(null);
+        this.metadata = Optional.ofNullable(previousAsset).map(Asset::getMetadata).orElse(null) == null
+            ? this.metadata
+            : MapUtils.mergeWithNullableValues(previousAsset.getMetadata(), Optional.ofNullable(this.metadata).orElse(Collections.emptyMap()));
+
+        return (T) this;
+    }
+
+    /** Convenience for callers with no raw-source presence information: a non-null namespace is treated as declared. */
+    public <T extends Asset> T toUpdated(T previousAsset) {
+        return toUpdated(previousAsset, this.namespace != null);
+    }
+
+    @Override
+    public Asset toDeleted() {
+        this.deleted = true;
+        return this;
+    }
+
+    @JsonAnySetter
+    public void setMetadata(String name, Object value) {
+        // `metadataList` is an ElasticSearch indexing-only projection of `metadata` (see EE ElasticSearchAssetRepository).
+        // Fresh indices exclude it from _source, but existing/upgraded indices may still return it; never fold it back
+        // into the metadata map.
+        if ("metadataList".equals(name)) {
+            return;
+        }
+        metadata.put(name, value);
+    }
+
+    @Override
+    public String uid() {
+        return Asset.uid(tenantId, id);
+    }
+
+    public static String uid(String tenantId, String id) {
+        return IdUtils.fromParts(tenantId, id);
+    }
+
+    public Asset withTenantId(String tenantId) {
+        this.tenantId = tenantId;
+        return this;
+    }
+
+    public Asset withNamespace(String namespace) {
+        this.namespace = namespace;
+        return this;
+    }
+}

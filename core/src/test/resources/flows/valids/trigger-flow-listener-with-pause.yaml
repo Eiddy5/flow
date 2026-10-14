@@ -1,0 +1,20 @@
+id: trigger-flow-listener-with-pause
+namespace: org.flow.tests.trigger.pause
+
+outputs:
+  - id: status
+    type: STRING
+    value: "{{trigger.state}}"
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello {{trigger.executionId}} you're in {{trigger.state}}
+
+triggers:
+  - id: listen-flow
+    type: org.flow.plugin.core.trigger.Flow
+    states: [RUNNING, PAUSED, SUCCESS, WARNING, FAILED]
+    dependsOn:
+      - namespace: org.flow.tests.trigger.pause
+        flowId: trigger-flow-with-pause

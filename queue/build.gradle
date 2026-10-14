@@ -1,0 +1,12 @@
+dependencies {
+    // Micronaut bean metadata is generated only in modules that own beans.
+    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor libs.micronaut.inject.java
+    annotationProcessor libs.micronaut.validation.processor
+
+    implementation libs.micronaut.inject.core
+    implementation libs.micronaut.validation.runtime
+    implementation libs.micrometer.core
+
+    implementation project(':core')
+}

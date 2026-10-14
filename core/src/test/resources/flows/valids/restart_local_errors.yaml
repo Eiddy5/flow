@@ -1,0 +1,25 @@
+id: restart_local_errors
+namespace: org.flow.tests
+
+tasks:
+  - id: before
+    type: org.flow.plugin.core.log.Log
+    message: I'm before
+
+  - id: sequential
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+    - id: close
+      type: org.flow.plugin.core.log.Log
+      message: I'm close to fail
+    - id: failStep
+      type: org.flow.plugin.core.execution.Fail
+      description: "This fails"
+    errors:
+    - id: errorHandler
+      type: org.flow.plugin.core.log.Log
+      message: I'm failing {{task.id}}
+
+  - id: after
+    type: org.flow.plugin.core.log.Log
+    message: I'm after

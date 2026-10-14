@@ -1,0 +1,17 @@
+id: disable-simple
+namespace: org.flow.tests
+
+tasks:
+- id: t1
+  type: org.flow.plugin.core.log.Log
+  message: first {{task.id}}
+  level: TRACE
+- id: t2
+  type: org.flow.plugin.core.log.Log
+  message: second {{task.type}}
+  level: WARN
+  disabled: true
+- id: t3
+  type: org.flow.plugin.core.log.Log
+  message: third {{flow.id}}
+  level: ERROR

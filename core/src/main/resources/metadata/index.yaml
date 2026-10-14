@@ -1,0 +1,8 @@
+group: org.flow.plugin.core
+name: "core"
+title: "Core Plugins and tasks"
+description: "Tasks that provide Flow's built-in orchestration, I/O, and observability capabilities."
+body: "Core plugins cover control-flow, execution management, triggers, storage, HTTP, metrics, logging, and templating; combine these foundational tasks to build reliable workflows without adding external dependencies."
+videos: []
+createdBy: "Flow Core Team"
+managedBy: "Flow Core Team"

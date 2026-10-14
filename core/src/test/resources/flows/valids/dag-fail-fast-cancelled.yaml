@@ -1,0 +1,15 @@
+id: dag-fail-fast-cancelled
+namespace: org.flow.tests
+
+tasks:
+  - id: dag
+    type: org.flow.plugin.core.flow.Dag
+    onChildFailure: CANCEL
+    tasks:
+      - task:
+          id: fails_fast
+          type: org.flow.plugin.core.execution.Fail
+      - task:
+          id: sleep
+          type: org.flow.plugin.core.flow.Sleep
+          duration: PT10S

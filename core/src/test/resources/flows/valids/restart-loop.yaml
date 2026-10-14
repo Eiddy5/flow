@@ -1,0 +1,18 @@
+id: restart-loop
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: [1, 2, 3]
+    tasks:
+    - id: inLoop
+      type: org.flow.plugin.core.log.Log
+      message: In da loop
+    - id: failFirstTime
+      type: org.flow.plugin.core.log.Log
+      message: "{{ 1 / taskrun.attemptsCount }}"
+    - id: logSuccess
+      type: org.flow.plugin.core.log.Log
+      message: Success

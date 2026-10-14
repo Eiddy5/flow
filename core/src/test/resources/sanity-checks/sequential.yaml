@@ -1,0 +1,22 @@
+id: sequential
+namespace: sanitychecks.core
+
+tasks:
+  - id: sequential_root
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+      - id: n1_task
+        type: org.flow.plugin.core.debug.Return
+        format: "{{ task.id }} - {{ taskrun.id }} - {{ taskrun.startDate }}"
+
+      - id: sequential_child
+        type: org.flow.plugin.core.flow.Sequential
+        tasks:
+
+        - id: n2_task
+          type: org.flow.plugin.core.debug.Return
+          format: "{{ task.id }} - {{ taskrun.id }} - {{ taskrun.startDate }}"
+
+  - id: last
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ task.id }} > {{ taskrun.startDate }}"

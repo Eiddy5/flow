@@ -1,0 +1,16 @@
+id: replay-sequential-with-error-handler
+namespace: org.flow.tests
+
+tasks:
+  - id: before
+    type: org.flow.plugin.core.debug.Return
+    format: "before"
+  - id: sequential
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+      - id: failing-task
+        type: org.flow.plugin.core.execution.Fail
+    errors:
+      - id: error-handler
+        type: org.flow.plugin.core.debug.Return
+        format: "error handled"

@@ -1,0 +1,13 @@
+id: duplicate
+namespace: org.flow.tests
+
+tasks:
+  - id: date2
+    type: org.flow.plugin.core.debug.MissingTwo
+    format: "{{taskrun.startDate}}"
+
+
+errors:
+  - id: date3
+    type: org.flow.plugin.core.debug.MissingThree
+    format: "{{taskrun.startDate}}"

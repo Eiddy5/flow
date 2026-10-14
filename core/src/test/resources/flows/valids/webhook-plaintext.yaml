@@ -1,0 +1,20 @@
+id: webhook-plaintext
+namespace: org.flow.tests
+
+tasks:
+  - id: return_value
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ trigger.parameters.validationToken[0] ?? 'hello-world' }}"
+
+outputs:
+  - id: response
+    type: STRING
+    value: "{{ outputs.return_value.value }}"
+
+triggers:
+  - id: webhook
+    type: org.flow.plugin.core.trigger.Webhook
+    key: webhook-plaintext
+    wait: true
+    returnOutputs: true
+    responseContentType: "text/plain"

@@ -1,0 +1,20 @@
+id: disable-error
+namespace: org.flow.tests
+
+tasks:
+  - id: failed
+    type: org.flow.plugin.core.execution.Fail
+
+errors:
+  - id: t2
+    type: org.flow.plugin.core.log.Log
+    message: second {{task.id}}
+
+  - id: t3
+    type: org.flow.plugin.core.log.Log
+    message: third {{task.id}}
+    disabled: true
+
+  - id: t4
+    type: org.flow.plugin.core.log.Log
+    message: fourth {{task.id}}

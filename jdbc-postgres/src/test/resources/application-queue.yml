@@ -1,0 +1,4 @@
+flow:
+  server-type: WEBSERVER
+  queue:
+    type: postgres

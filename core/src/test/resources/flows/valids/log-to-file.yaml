@@ -1,0 +1,8 @@
+id: log-to-file
+namespace: org.flow.tests
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello World!
+    logToFile: true

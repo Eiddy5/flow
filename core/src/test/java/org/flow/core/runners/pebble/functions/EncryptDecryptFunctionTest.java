@@ -1,0 +1,47 @@
+package org.flow.core.runners.pebble.functions;
+
+import java.util.Collections;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+
+import org.flow.core.exceptions.IllegalVariableEvaluationException;
+import org.flow.core.runners.VariableRenderer;
+
+import io.micronaut.context.annotation.Value;
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@MicronautTest
+class EncryptDecryptFunctionTest {
+    @Inject
+    private VariableRenderer variableRenderer;
+
+    @Value("${flow.encryption.secret-key}")
+    private String secretKey;
+
+    @Test
+    void missingParameter() {
+        assertThrows(
+            IllegalVariableEvaluationException.class,
+            () -> variableRenderer.render("{{encrypt('toto')}}", Collections.emptyMap())
+        );
+
+        assertThrows(
+            IllegalVariableEvaluationException.class,
+            () -> variableRenderer.render("{{decrypt('toto')}}", Collections.emptyMap())
+        );
+    }
+
+    @Test
+    void encryptDecrypt() throws IllegalVariableEvaluationException {
+        String encrypted = variableRenderer.render("{{encrypt(secretKey, 'toto')}}", Map.of("secretKey", secretKey));
+        assertThat(encrypted).isNotNull();
+
+        String decrypted = variableRenderer.render("{{decrypt(secretKey, '" + encrypted + "')}}", Map.of("secretKey", secretKey));
+        assertThat(decrypted).isEqualTo("toto");
+    }
+}

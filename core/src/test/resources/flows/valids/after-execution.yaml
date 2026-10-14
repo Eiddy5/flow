@@ -1,0 +1,19 @@
+id: after-execution
+namespace: org.flow.tests
+
+outputs:
+  - id: final
+    type: STRING
+    value: "{{ outputs.mytask.value }}"
+
+tasks:
+  - id: mytask
+    type: org.flow.plugin.core.debug.Return
+    format: this is a task output used as a final flow output
+
+afterExecution:
+  - id: end
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      state: "{{execution.state}}"
+      output: "{{execution.outputs.final}}"

@@ -1,0 +1,15 @@
+id: working-directory-invalid-runif
+namespace: org.flow.tests
+
+tasks:
+  - id: workingDirectory
+    type: org.flow.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: s1
+        type: org.flow.plugin.core.debug.Return
+        format: 1
+
+      - id: s2
+        type: org.flow.plugin.core.debug.Return
+        runIf: "{{ outputs.failed }}"
+        format: 2

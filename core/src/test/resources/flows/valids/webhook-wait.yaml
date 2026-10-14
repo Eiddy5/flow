@@ -1,0 +1,19 @@
+id: webhook-wait
+namespace: org.flow.tests
+
+triggers:
+  - id: webhook
+    type: org.flow.plugin.core.trigger.Webhook
+    key: webhook
+    wait: true
+
+outputs:
+  - id: output
+    type: STRING
+    value: "{{outputs.hello.values.some}}"
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      some: output

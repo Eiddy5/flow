@@ -1,0 +1,550 @@
+package org.flow.executor;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import com.google.common.collect.ImmutableMap;
+
+import org.flow.core.context.TestRunContextFactory;
+import org.flow.core.executor.WorkerJobRunningStateStore;
+import org.flow.core.junit.annotations.FlowTest;
+import org.flow.core.metrics.MetricRegistry;
+import org.flow.core.models.conditions.ConditionContext;
+import org.flow.core.models.executions.Execution;
+import org.flow.core.models.executions.LogEntry;
+import org.flow.core.models.executions.MetricEntry;
+import org.flow.core.models.executions.TaskRun;
+import org.flow.core.models.flows.Flow;
+import org.flow.core.models.flows.State;
+import org.flow.core.models.tasks.ResolvedTask;
+import org.flow.core.models.tasks.Task;
+import org.flow.core.models.tasks.WorkerSelector;
+import org.flow.core.queues.DispatchQueueInterface;
+import org.flow.core.queues.KeyedDispatchQueueInterface;
+import org.flow.core.queues.VNodeDispatchQueueInterface;
+import org.flow.core.repositories.ExecutionRepositoryInterface;
+import org.flow.core.repositories.ServiceInstanceRepositoryInterface;
+import org.flow.core.runners.NoTransactionContext;
+import org.flow.core.runners.Worker;
+import org.flow.core.runners.WorkerInstance;
+import org.flow.core.runners.WorkerJobEvent;
+import org.flow.core.runners.WorkerTask;
+import org.flow.core.runners.WorkerTaskData;
+import org.flow.core.runners.WorkerTaskResult;
+import org.flow.core.runners.WorkerTaskRunning;
+import org.flow.core.runners.WorkerTrigger;
+import org.flow.core.runners.WorkerTriggerData;
+import org.flow.core.scheduler.events.TriggerEvent;
+import org.flow.core.scheduler.events.TriggerReceived;
+import org.flow.core.scheduler.events.TriggerWorkerLost;
+import org.flow.core.scheduler.model.TriggerState;
+import org.flow.core.server.ServerConfig;
+import org.flow.core.server.ServerInstance;
+import org.flow.core.server.Service;
+import org.flow.core.server.ServiceInstance;
+import org.flow.core.server.ServiceStateChangeEvent;
+import org.flow.core.server.ServiceType;
+import org.flow.core.server.WorkerTaskRestartStrategy;
+import org.flow.core.services.IgnoreExecutionService;
+import org.flow.core.services.MaintenanceService;
+import org.flow.core.services.WorkerQueueService;
+import org.flow.core.tasks.test.SleepTrigger;
+import org.flow.core.tenant.TenantService;
+import org.flow.core.utils.Await;
+import org.flow.core.utils.CountDownLatchTask;
+import org.flow.core.utils.IdUtils;
+import org.flow.core.utils.TestsUtils;
+import org.flow.core.worker.models.WorkerTriggerResult;
+import org.flow.plugin.core.log.Log;
+import org.flow.worker.WorkerAgent;
+import org.flow.worker.WorkerConfig;
+import org.flow.worker.WorkerJobExecutor;
+import org.flow.worker.fetchers.WorkerJobFetcher;
+import org.flow.worker.senders.QueueWorkerIOSender;
+
+import io.micronaut.context.ApplicationContext;
+import io.micronaut.inject.qualifiers.Qualifiers;
+import io.micronaut.test.annotation.MockBean;
+import jakarta.inject.Inject;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.fail;
+
+@FlowTest(environments = { "test", "liveness" }, startRunner = true, startWorker = false, startScheduler = false)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS) // must be per-class to allow calling once init() which took a lot of time
+public abstract class AbstractServiceLivenessCoordinatorTest {
+
+    public static final String WORKER_QUEUE_UID = "worker-queue-id";
+
+    private static final String ORPHAN_WORKER_QUEUE_ID = "orphan-worker-queue-id";
+
+    @Inject
+    private ApplicationContext applicationContext;
+
+    @Inject
+    private TestRunContextFactory runContextFactory;
+
+    @Inject
+    private KeyedDispatchQueueInterface<WorkerJobEvent> workerJobEventQueue;
+
+    @Inject
+    private DispatchQueueInterface<WorkerTaskResult> workerTaskResultQueue;
+
+    @Inject
+    private VNodeDispatchQueueInterface<TriggerEvent> triggerEventQueue;
+
+    @Inject
+    private DefaultServiceLivenessCoordinator jdbcServiceLivenessHandler;
+
+    @Inject
+    private IgnoreExecutionService ignoreExecutionService;
+
+    @Inject
+    private WorkerJobRunningStateStore workerJobRunningStateStore;
+
+    @Inject
+    private ExecutionRepositoryInterface executionRepository;
+
+    @Inject
+    private ServiceInstanceRepositoryInterface serviceInstanceRepository;
+
+    @BeforeAll
+    void init() {
+        // Simulate that executor and workers are not running on the same JVM.
+        jdbcServiceLivenessHandler.setServerInstance(IdUtils.create());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { WORKER_QUEUE_UID, "<null>" })
+    public void shouldResubmitTaskWhenWorkerIsStopped(String workerQueueId) throws Exception {
+        workerQueueId = "<null>".equals(workerQueueId) ? null : workerQueueId;
+
+        CountDownLatch holdLatch = new CountDownLatch(1);
+        CountDownLatch runningLatch = new CountDownLatch(1);
+        CountDownLatch resubmitLatch = new CountDownLatch(1);
+
+        // GIVEN - create first worker with worker group key "workerQueueId".
+        Worker worker = newWorker();
+        worker.start(1);
+
+        final WorkerTask workerTask = workerTaskWithLatch(holdLatch, workerQueueId);
+        final AtomicReference<WorkerTaskResult> workerTaskResult = new AtomicReference<>();
+        workerTaskResultQueue.addListener(item ->
+        {
+            if (item.uid().equals(workerTask.uid())) {
+                if (item.getTaskRun().getState().getCurrent() == State.Type.SUCCESS) {
+                    workerTaskResult.set(item);
+                    resubmitLatch.countDown();
+                }
+
+                if (item.getTaskRun().getState().getCurrent() == State.Type.RUNNING) {
+                    runningLatch.countDown();
+                }
+            }
+        });
+        workerJobEventQueue.emit(null, WorkerJobEvent.of(workerTask, null));
+        assertThat(runningLatch.await(30, TimeUnit.SECONDS)).isTrue();
+
+        // WHEN - stop first worker. The task is guaranteed to still be running because it is
+        // blocked on holdLatch.
+        worker.close();
+
+        // Release the hold so the re-submitted task on worker 2 can complete immediately.
+        holdLatch.countDown();
+
+        // WHEN - create second worker (this will revoke previously one).
+        Worker newWorker = newWorker();
+        newWorker.start(1);
+
+        // THEN - task should be re-emitted to the same worker group and processed successfully.
+        assertThat(resubmitLatch.await(30, TimeUnit.SECONDS)).isTrue();
+        assertThat(workerTaskResult.get()).isNotNull();
+        assertThat(workerTaskResult.get().getTaskRun().getState().getCurrent()).isEqualTo(State.Type.SUCCESS);
+        assertThat(workerTaskResult.get().getTaskRun().getAttempts()).hasSize(2);
+        assertThat(workerTaskResult.get().getTaskRun().getAttempts().getFirst().getState().getHistories().stream().anyMatch(it -> it.getState() == State.Type.RESUBMITTED)).isTrue();
+        newWorker.close();
+    }
+
+    private Worker newWorker() {
+        // new instance to be able to start multiple workers in the same JVM
+        return new WorkerAgent(
+            applicationContext.getEventPublisher(ServiceStateChangeEvent.class),
+            applicationContext.createBean(WorkerJobExecutor.class),
+            applicationContext.createBean(WorkerJobFetcher.class),
+            List.of(
+                applicationContext.createBean(QueueWorkerIOSender.class, Qualifiers.byTypeArguments(WorkerTaskResult.class)),
+                applicationContext.createBean(QueueWorkerIOSender.class, Qualifiers.byTypeArguments(WorkerTriggerResult.class)),
+                applicationContext.createBean(QueueWorkerIOSender.class, Qualifiers.byTypeArguments(LogEntry.class)),
+                applicationContext.createBean(QueueWorkerIOSender.class, Qualifiers.byTypeArguments(MetricEntry.class))
+            ),
+            applicationContext.getBean(MaintenanceService.class),
+            applicationContext.getBean(MetricRegistry.class),
+            applicationContext.getBean(ServerConfig.class),
+            applicationContext.getBean(WorkerConfig.class)
+        );
+    }
+
+    @Test
+    void shouldNotResubmitTaskForIgnoredExecution() throws Exception {
+        // holdLatch keeps the task blocked, guaranteeing it is still running when the worker stops.
+        CountDownLatch holdLatch = new CountDownLatch(1);
+        CountDownLatch runningLatch = new CountDownLatch(1);
+
+        Worker worker = newWorker();
+        worker.start(1);
+
+        WorkerTask workerTask = workerTaskWithLatch(holdLatch, null);
+        ignoreExecutionService.setIgnoredExecutions(List.of(workerTask.getTaskRun().getExecutionId()));
+
+        var taskResults = new ArrayList<WorkerTaskResult>();
+        workerTaskResultQueue.addListener(item ->
+        {
+            if (!item.uid().equals(workerTask.uid())) {
+                return;
+            }
+            taskResults.add(item);
+            if (item.getTaskRun().getState().getCurrent() == State.Type.SUCCESS) {
+                // no resubmit should happen!
+                fail();
+            }
+
+            if (item.getTaskRun().getState().getCurrent() == State.Type.RUNNING) {
+                runningLatch.countDown();
+            }
+        });
+
+        workerJobEventQueue.emit(null, WorkerJobEvent.of(workerTask, null));
+        assertThat(runningLatch.await(30, TimeUnit.SECONDS)).isTrue();
+
+        // Task is held by holdLatch, guaranteed still running when we stop the worker.
+        worker.close();
+
+        Worker newWorker = newWorker();
+        newWorker.start(1);
+
+        // Wait long enough to cover: (1) worker termination grace period (1s) so the task thread is
+        // force-killed before we release holdLatch, preventing a zombie-thread SUCCESS; and (2) the
+        // full liveness-detection window (timeout 3s + interval 1s + jitter 0.5s ≈ 4.5s) so the
+        // coordinator has had time to detect the dead worker and confirm it did not resubmit.
+        Thread.sleep(5000);
+        try {
+            assertThat(taskResults.getLast().getTaskRun().getState().getCurrent()).isNotEqualTo(State.Type.SUCCESS);
+        } finally {
+            holdLatch.countDown();
+            newWorker.close();
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = { WORKER_QUEUE_UID, "<null>" })
+    public void shouldNotifyTriggerWorkerLostWhenWorkerIsStopped(String workerQueueId) throws Exception {
+        workerQueueId = "<null>".equals(workerQueueId) ? null : workerQueueId;
+        // Given - create first worker.
+        WorkerAgent worker = (WorkerAgent) newWorker();
+        worker.start(1);
+
+        WorkerTrigger workerTrigger = workerTrigger(Duration.ofSeconds(5), workerQueueId);
+
+        CountDownLatch lostLatch = new CountDownLatch(1);
+        CountDownLatch receivedLatch = new CountDownLatch(1);
+        triggerEventQueue.addListener(event ->
+        {
+            if (!event.uid().equals(workerTrigger.uid())) {
+                return;
+            }
+            if (event instanceof TriggerReceived) {
+                receivedLatch.countDown();
+            }
+            if (event instanceof TriggerWorkerLost) {
+                lostLatch.countDown();
+            }
+        });
+
+        workerJobEventQueue.emit(null, WorkerJobEvent.of(workerTrigger, null));
+        assertThat(receivedLatch.await(30, TimeUnit.SECONDS)).isTrue();
+        // WHEN - stop first worker.
+        worker.stopNow(); // simulate a non-graceful stop (hard shutdown, crash, etc.).
+
+        // WHEN - create second worker (this will revoke previously one).
+        WorkerAgent newWorker = (WorkerAgent) newWorker();
+        newWorker.start(1);
+
+        // THEN - the scheduler is notified instead of the job being re-emitted to a worker.
+        assertThat(lostLatch.await(30, TimeUnit.SECONDS)).isTrue();
+        newWorker.close();
+    }
+
+    @Test
+    void shouldDiscardInsteadOfResubmittingTaskRunThatAlreadyEnded() throws Exception {
+        // Given
+        Log task = Log.builder().id("log").type(Log.class.getName()).message("test").build();
+        Execution execution = TestsUtils.mockExecution(flowForTask(task), ImmutableMap.of()).toBuilder().tenantId(TenantService.MAIN_TENANT).build();
+        TaskRun taskRun = TaskRun.of(execution, ResolvedTask.of(task));
+        executionRepository.save(execution.toBuilder().taskRunList(List.of(taskRun.withState(State.Type.SUCCESS))).build().withState(State.Type.SUCCESS));
+
+        ServiceInstance deadWorker = saveWorkerInstance(Service.ServiceState.DISCONNECTED);
+        WorkerTask workerTask = WorkerTask.builder()
+            .data(WorkerTaskData.from(runContextFactory.of(ImmutableMap.of("key", "value"))))
+            .task(task)
+            .taskRun(taskRun)
+            .build();
+        workerJobRunningStateStore.save(NoTransactionContext.INSTANCE, WorkerTaskRunning.of(workerTask, new WorkerInstance(deadWorker.uid(), null)));
+
+        List<String> resubmitted = Collections.synchronizedList(new ArrayList<>());
+        workerJobEventQueue.addListener(event -> resubmitted.add(event.job().uid()));
+
+        // When
+        Await.until(
+            () ->
+            {
+                jdbcServiceLivenessHandler.handleAllWorkersForUncleanShutdown(Instant.now().plus(Duration.ofMinutes(1)));
+                return !leasesHeldBy(deadWorker.uid()).contains(workerTask.uid());
+            },
+            Duration.ofMillis(200),
+            Duration.ofSeconds(30)
+        );
+
+        // Then
+        assertThat(resubmitted).doesNotContain(workerTask.uid());
+    }
+
+    @Test
+    void shouldResubmitOrphanedWorkerJobOnceWhenWorkerInstanceIsInactive() throws Exception {
+        // Given a job left in the running state store by a worker the liveness state machine is done
+        // with — the worker claimed it but never ran it — alongside one held by a
+        // worker that is still running. Both are routed to a Worker Queue no worker serves, so the
+        // resubmitted job stays in the queue instead of being picked up by another test's worker.
+        ServiceInstance inactive = saveWorkerInstance(Service.ServiceState.INACTIVE);
+        ServiceInstance running = saveWorkerInstance(Service.ServiceState.RUNNING);
+
+        WorkerTaskRunning orphaned = workerTaskRunning(inactive.uid());
+        WorkerTaskRunning stillOwned = workerTaskRunning(running.uid());
+        workerJobRunningStateStore.save(NoTransactionContext.INSTANCE, orphaned);
+        workerJobRunningStateStore.save(NoTransactionContext.INSTANCE, stillOwned);
+
+        List<String> resubmitted = Collections.synchronizedList(new ArrayList<>());
+        workerJobEventQueue.addListener(event -> resubmitted.add(event.job().uid()));
+
+        // When the coordinator sweeps — repeatedly, because a freshly saved instance is not
+        // immediately searchable on every backend.
+        Await.until(
+            () ->
+            {
+                jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(afterTerminationGracePeriod());
+                return resubmitted.contains(orphaned.uid());
+            },
+            Duration.ofMillis(200),
+            Duration.ofSeconds(30)
+        );
+        jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(afterTerminationGracePeriod());
+
+        // Then the entry is gone, so the following sweeps do not re-emit it, and the job of the
+        // still-running worker is left for that worker to finish.
+        assertThat(resubmitted.stream().filter(orphaned.uid()::equals)).hasSize(1);
+        assertThat(resubmitted).doesNotContain(stillOwned.uid());
+    }
+
+    @Test
+    void shouldNotResubmitOrphanedWorkerJobWhenTheWorkerRestartStrategyIsNever() {
+        // Given an inactive worker configured never to have its tasks restarted — the setting that
+        // exists to keep a non-idempotent task from running twice.
+        ServiceInstance inactive = saveWorkerInstance(Service.ServiceState.INACTIVE, WorkerTaskRestartStrategy.NEVER);
+        WorkerTaskRunning orphaned = workerTaskRunning(inactive.uid());
+        workerJobRunningStateStore.save(NoTransactionContext.INSTANCE, orphaned);
+
+        List<String> resubmitted = Collections.synchronizedList(new ArrayList<>());
+        workerJobEventQueue.addListener(event -> resubmitted.add(event.job().uid()));
+
+        // When
+        jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(afterTerminationGracePeriod());
+        jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(afterTerminationGracePeriod());
+
+        // Then
+        assertThat(resubmitted).doesNotContain(orphaned.uid());
+    }
+
+    @Test
+    void shouldReclaimOrphanedWorkerJobOnlyOnceTheTerminationGracePeriodElapsed() throws Exception {
+        // Given a worker that has just become INACTIVE, whose last results the executor may not have applied yet
+        ServiceInstance inactive = saveWorkerInstance(Service.ServiceState.INACTIVE);
+        WorkerTaskRunning orphaned = workerTaskRunning(inactive.uid());
+        workerJobRunningStateStore.save(NoTransactionContext.INSTANCE, orphaned);
+
+        List<String> resubmitted = Collections.synchronizedList(new ArrayList<>());
+        workerJobEventQueue.addListener(event -> resubmitted.add(event.job().uid()));
+
+        // When the sweep runs within its termination grace period
+        jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(inactive.updatedAt());
+
+        // Then the job is left alone
+        assertThat(resubmitted).doesNotContain(orphaned.uid());
+        assertThat(leasesHeldBy(inactive.uid())).contains(orphaned.uid());
+
+        // And it is reclaimed once the grace period has elapsed
+        Await.until(
+            () ->
+            {
+                jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(afterTerminationGracePeriod());
+                return resubmitted.contains(orphaned.uid());
+            },
+            Duration.ofMillis(200),
+            Duration.ofSeconds(30)
+        );
+    }
+
+    @Test
+    void shouldDiscardOrphanedWorkerJobWhenItsExecutionNoLongerExists() throws Exception {
+        // Given an entry whose execution was purged, as the ones leaked before an upgrade
+        ServiceInstance inactive = saveWorkerInstance(Service.ServiceState.INACTIVE);
+        WorkerTaskRunning orphaned = workerTaskRunning(inactive.uid(), IdUtils.create());
+        workerJobRunningStateStore.save(NoTransactionContext.INSTANCE, orphaned);
+
+        List<String> resubmitted = Collections.synchronizedList(new ArrayList<>());
+        workerJobEventQueue.addListener(event -> resubmitted.add(event.job().uid()));
+
+        // When
+        Await.until(
+            () ->
+            {
+                jdbcServiceLivenessHandler.handleAllOrphanedWorkerJobs(afterTerminationGracePeriod());
+                return !leasesHeldBy(inactive.uid()).contains(orphaned.uid());
+            },
+            Duration.ofMillis(200),
+            Duration.ofSeconds(30)
+        );
+
+        // Then
+        assertThat(resubmitted).doesNotContain(orphaned.uid());
+    }
+
+    @MockBean(WorkerQueueService.class)
+    WorkerQueueService workerGroupService() {
+        return new WorkerQueueService.Default();
+    }
+
+    private WorkerTask workerTaskWithLatch(CountDownLatch holdLatch, String workerQueueId) {
+        WorkerSelector workerSelector = workerQueueId != null
+            ? new WorkerSelector(java.util.List.of(workerQueueId), null)
+            : null;
+        // signalLatch satisfies the @NotNull countDownLatchKey constraint; not used in assertions.
+        CountDownLatchTask task = CountDownLatchTask.getTaskForCountDownLatch(
+            new CountDownLatch(1),
+            holdLatch,
+            Duration.ofSeconds(30),
+            workerSelector
+        );
+
+        Execution execution = saveExecution(task);
+        ResolvedTask resolvedTask = ResolvedTask.of(task);
+
+        return WorkerTask.builder()
+            .data(WorkerTaskData.from(runContextFactory.of(ImmutableMap.of("key", "value"))))
+            .task(task)
+            .taskRun(TaskRun.of(execution, resolvedTask))
+            .build();
+    }
+
+    private Execution saveExecution(Task task) {
+        Execution execution = TestsUtils.mockExecution(flowForTask(task), ImmutableMap.of()).toBuilder().tenantId(TenantService.MAIN_TENANT).build();
+        return executionRepository.save(execution);
+    }
+
+    private static Instant afterTerminationGracePeriod() {
+        return Instant.now().plus(Duration.ofMinutes(1));
+    }
+
+    private List<String> leasesHeldBy(String workerUid) {
+        List<String> leases = new ArrayList<>();
+        workerJobRunningStateStore.processWorkerJobsForDeadWorker(
+            NoTransactionContext.INSTANCE,
+            workerUid,
+            (txContext, workerJobRunning) -> leases.add(workerJobRunning.uid())
+        );
+        return leases;
+    }
+
+    private ServiceInstance saveWorkerInstance(Service.ServiceState state) {
+        return saveWorkerInstance(state, WorkerTaskRestartStrategy.AFTER_TERMINATION_GRACE_PERIOD);
+    }
+
+    private ServiceInstance saveWorkerInstance(Service.ServiceState state, WorkerTaskRestartStrategy restartStrategy) {
+        return serviceInstanceRepository.save(
+            new ServiceInstance(
+                IdUtils.create(),
+                ServiceType.WORKER,
+                state,
+                new ServerInstance(ServerInstance.Type.STANDALONE, "unit-test", "localhost", null, null),
+                Instant.now(),
+                Instant.now(),
+                List.of(),
+                // Liveness disabled: this instance has no process behind it, and letting the
+                // coordinator declare it non-responding would resubmit its job from the unclean
+                // path and defeat what this test asserts.
+                new ServerConfig(Duration.ofSeconds(1), restartStrategy, new ServerConfig.Liveness(false, Duration.ofSeconds(1), Duration.ofSeconds(3), Duration.ZERO, Duration.ofSeconds(1)), null, null, null),
+                Map.of(),
+                Set.of(),
+                0L
+            )
+        );
+    }
+
+    private WorkerTaskRunning workerTaskRunning(String workerUid) {
+        return workerTaskRunning(workerUid, saveExecution(Log.builder().id("log").type(Log.class.getName()).message("test").build()).getId());
+    }
+
+    private static WorkerTaskRunning workerTaskRunning(String workerUid, String executionId) {
+        return WorkerTaskRunning.builder()
+            .workerInstance(new WorkerInstance(workerUid, ORPHAN_WORKER_QUEUE_ID))
+            .taskRun(
+                TaskRun.builder()
+                    .id(IdUtils.create())
+                    .executionId(executionId)
+                    .namespace("org.flow.unittest")
+                    .flowId("orphaned-worker-job")
+                    .taskId("log")
+                    .state(new State().withState(State.Type.SUBMITTED))
+                    .build()
+            )
+            .task(Log.builder().id("log").type(Log.class.getName()).message("test").build())
+            .data(new WorkerTaskData(Map.of(), null))
+            .build();
+    }
+
+    private WorkerTrigger workerTrigger(Duration sleep, String workerQueueId) {
+        SleepTrigger trigger = SleepTrigger.builder()
+            .type(SleepTrigger.class.getName())
+            .id("unit-test")
+            .duration(sleep.toMillis())
+            .workerSelector(workerQueueId != null ? new org.flow.core.models.tasks.WorkerSelector(java.util.List.of(workerQueueId), null) : null)
+            .build();
+
+        Map.Entry<ConditionContext, TriggerState> mockedTrigger = TestsUtils.mockTrigger(runContextFactory, trigger);
+
+        return WorkerTrigger.builder()
+            .trigger(trigger)
+            .data(WorkerTriggerData.from(mockedTrigger.getKey(), mockedTrigger.getValue().context()))
+            .build();
+    }
+
+    private Flow flowForTask(Task task) {
+        return Flow.builder()
+            .id(IdUtils.create())
+            .namespace("org.flow.unit-test")
+            .tasks(Collections.singletonList(task))
+            .build();
+    }
+}

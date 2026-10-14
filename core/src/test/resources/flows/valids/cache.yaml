@@ -1,0 +1,10 @@
+id: cache
+namespace: org.flow.tests
+
+tasks:
+  - id: cache
+    type: org.flow.core.runners.TaskCacheTest$CounterTask
+    workingDir: "{{workingDir}}"
+    taskCache:
+      enabled: true
+      ttl: PT1S

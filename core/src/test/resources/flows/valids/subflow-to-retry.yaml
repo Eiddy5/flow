@@ -1,0 +1,14 @@
+id: subflow-to-retry
+namespace: org.flow.tests
+
+inputs:
+  - id: counter
+    type: INT
+
+tasks:
+  - id: fail
+    type: org.flow.plugin.core.execution.Fail
+    runIf: "{{inputs.counter < 1}}"
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello World! 🚀

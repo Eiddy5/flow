@@ -1,0 +1,14 @@
+id: restart-child
+namespace: org.flow.tests
+tasks:
+  - id: helloSubflow1
+    type: org.flow.plugin.core.log.Log
+    message: Hello Subflow 1
+
+  - id: failFirstTime
+    type: org.flow.plugin.core.log.Log
+    message: "{{ 1 / taskrun.attemptsCount }}"
+
+  - id: helloSubflow2
+    type: org.flow.plugin.core.log.Log
+    message: Hello Subflow 2

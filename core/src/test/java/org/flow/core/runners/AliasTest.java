@@ -1,0 +1,28 @@
+package org.flow.core.runners;
+
+import org.junit.jupiter.api.Test;
+
+import org.flow.core.junit.annotations.ExecuteFlow;
+import org.flow.core.junit.annotations.FlowTest;
+import org.flow.core.models.executions.Execution;
+import org.flow.core.models.flows.State;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@FlowTest(startRunner = true)
+public class AliasTest {
+
+    @Test
+    @ExecuteFlow("flows/valids/alias-task.yaml")
+    void taskAlias(Execution execution) {
+        assertThat(execution.getState().getCurrent()).isEqualTo(State.Type.SUCCESS);
+        assertThat(execution.getTaskRunList().size()).isEqualTo(2);
+    }
+
+    @Test
+    @ExecuteFlow("flows/valids/alias-trigger.yaml")
+    void triggerAlias(Execution execution) {
+        assertThat(execution.getState().getCurrent()).isEqualTo(State.Type.SUCCESS);
+        assertThat(execution.getTaskRunList().size()).isEqualTo(1);
+    }
+}

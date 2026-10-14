@@ -1,0 +1,20 @@
+id: log
+namespace: sanitychecks.core
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello World! 🚀
+
+
+  - id: trace
+    type: org.flow.plugin.core.log.Log
+    message: Hello World! 🚀
+    level: TRACE
+
+  - id: many_messages
+    type: org.flow.plugin.core.log.Log
+    message: 
+      - Hello World! 🚀
+      - From Flow
+      - ...and beyond

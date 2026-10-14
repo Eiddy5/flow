@@ -1,0 +1,14 @@
+id: schedule-trigger
+namespace: org.flow.tests.schedule
+tasks:
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: simple log
+
+triggers:
+  - id: schedule-every-min
+    type: org.flow.plugin.core.trigger.Schedule
+    cron: "* * * * *"
+  - id: schedule-5-min
+    type: org.flow.plugin.core.trigger.Schedule
+    cron: "*/5 * * * *"

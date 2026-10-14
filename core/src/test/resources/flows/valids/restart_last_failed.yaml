@@ -1,0 +1,16 @@
+id: restart_last_failed
+namespace: org.flow.tests
+
+tasks:
+- id: a
+  type: org.flow.plugin.core.log.Log
+  message: "{{ task.id }}"
+- id: b
+  type: org.flow.plugin.core.log.Log
+  message: "{{ task.id }}"
+- id: c
+  type: org.flow.plugin.core.log.Log
+  message: "{{taskrun.attemptsCount == 1 ? 'ok' : ko}}"
+- id: d
+  type: org.flow.plugin.core.log.Log
+  message: "{{ task.id }}"

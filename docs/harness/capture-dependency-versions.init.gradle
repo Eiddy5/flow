@@ -1,0 +1,40 @@
+import groovy.json.JsonOutput
+import org.gradle.api.artifacts.result.UnresolvedDependencyResult
+
+gradle.projectsEvaluated {
+    rootProject.tasks.register('captureDependencyVersions') {
+        group = 'verification'
+        description = 'Captures selected components and artifacts for dependency version comparisons'
+        doLast {
+            def result = new TreeMap()
+            rootProject.allprojects.sort { it.path }.each { p ->
+                ['compileClasspath', 'runtimeClasspath', 'annotationProcessor',
+                 'testCompileClasspath', 'testRuntimeClasspath', 'testAnnotationProcessor',
+                 'mockitoAgent'].each { name ->
+                    def configuration = p.configurations.findByName(name)
+                    if (configuration != null && configuration.canBeResolved) {
+                        def resolution = configuration.incoming.resolutionResult
+                        def unresolved = resolution.allDependencies.findAll {
+                            it instanceof UnresolvedDependencyResult
+                        }
+                        if (!unresolved.empty) {
+                            throw new GradleException("Unresolved dependencies in ${p.path}:${name}: ${unresolved*.attempted}")
+                        }
+                        result["${p.path}:${name}".toString()] = [
+                            components: resolution.allComponents.collect {
+                                it.moduleVersion?.toString() ?: it.id.displayName
+                            }.unique().sort(),
+                            artifacts: configuration.incoming.artifacts.artifacts.collect {
+                                "${it.id.componentIdentifier.displayName}#${it.file.name}".toString()
+                            }.unique().sort()
+                        ]
+                    }
+                }
+            }
+            def output = rootProject.file(rootProject.providers.gradleProperty('dependencySnapshot').get())
+            output.parentFile.mkdirs()
+            output.text = JsonOutput.prettyPrint(JsonOutput.toJson(result)) + '\n'
+            logger.lifecycle("Captured ${result.size()} resolved configurations in ${output}")
+        }
+    }
+}

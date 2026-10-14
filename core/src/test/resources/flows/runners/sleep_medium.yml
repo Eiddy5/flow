@@ -1,0 +1,7 @@
+id: sleep_medium
+namespace: org.flow.forcerun.tests
+
+tasks:
+  - id: sleep
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT10S

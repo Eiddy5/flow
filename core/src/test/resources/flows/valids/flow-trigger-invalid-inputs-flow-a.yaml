@@ -1,0 +1,7 @@
+id: flow-trigger-invalid-inputs-flow-a
+namespace: org.flow.tests.trigger.invalid.inputs
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "hello"

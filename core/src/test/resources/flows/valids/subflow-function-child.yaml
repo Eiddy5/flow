@@ -1,0 +1,17 @@
+id: subflow-function-child
+namespace: org.flow.tests
+
+inputs:
+  - id: region
+    type: STRING
+    defaults: eu
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ inputs.region }}"
+
+outputs:
+  - id: datacenters
+    type: STRING
+    value: "dc-{{ inputs.region }}"

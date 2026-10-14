@@ -1,0 +1,16 @@
+id: set-variables
+namespace: org.flow.tests
+
+variables:
+  name: World
+
+tasks:
+  - id: set-vars
+    type: org.flow.plugin.core.execution.SetVariables
+    variables:
+      message: Hello
+      name: Loïc
+  - id: output
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      message: "{{ vars.message }} {{ vars.name }}"

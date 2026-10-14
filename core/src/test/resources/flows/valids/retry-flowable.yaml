@@ -1,0 +1,13 @@
+id: retry-flowable
+namespace: org.flow.tests
+
+tasks:
+  - id: flowable
+    type: org.flow.plugin.core.flow.Sequential
+    retry:
+      type: constant
+      interval: PT1S
+      maxAttempts: 3
+    tasks:
+      - id: child
+        type: org.flow.plugin.core.execution.Fail

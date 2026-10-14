@@ -1,0 +1,16 @@
+id: task-allow-failure-flowable
+namespace: org.flow.tests
+
+tasks:
+  - id: seq
+    type: org.flow.plugin.core.flow.Sequential
+    allowFailure: true
+    tasks:
+      - id: fail
+        type: org.flow.plugin.core.execution.Fail
+      - id: log-not-allowed
+        type: org.flow.plugin.core.log.Log
+        message: not allowed
+  - id: log-allowed
+    type: org.flow.plugin.core.log.Log
+    message: I'm allowed

@@ -1,0 +1,50 @@
+dependencies {
+    implementation libs.micronaut.context
+    implementation project(':core')
+    runtimeOnly project(':storage-local')
+    runtimeOnly project(':script')
+    testImplementation libs.assertj.core.pinned
+}
+
+['exportPluginSchemas': 'plugins', 'exportConfigurationSchema': 'configuration'].each { taskName, kind ->
+    tasks.register(taskName, JavaExec) {
+        group = 'documentation'
+        description = "离线导出 ${kind} Schema，不启动 ApplicationContext 或服务器"
+        def plugins = providers.gradleProperty('schemaPlugins').orElse(
+            project(':plugin-fixture').layout.buildDirectory.dir('plugin-release').map { it.asFile.absolutePath })
+        def output = providers.gradleProperty('schemaOutput').orElse(
+            rootProject.layout.buildDirectory.file("exports/${kind}-schema.json").map { it.asFile.absolutePath })
+        if (!providers.gradleProperty('schemaPlugins').isPresent()) {
+            dependsOn ':plugin-fixture:stagePlugin'
+        }
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = 'org.flow.tooling.schema.SchemaExports'
+        inputs.property('kind', kind)
+        inputs.dir(plugins)
+        outputs.file(output)
+        args kind, plugins.get(), output.get()
+    }
+}
+
+tasks.register('verifyRuntimeIsolation') {
+    group = 'verification'
+    description = '验证离线工具不依赖产品入口、宿主运行模块和数据库后端'
+    doLast {
+        def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
+            def id = artifact.moduleVersion.id
+            id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
+                id.group == 'com.github.docker-java' ||
+                (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
+                (id.group == 'org.flow' && ['cli', 'webserver', 'jdbc', 'jdbc-postgres', 'jdbc-mysql', 'jdbc-h2',
+                'queue-jdbc', 'worker', 'executor', 'scheduler', 'indexer',
+                'repository-memory', 'runner-memory'].contains(id.name)) ||
+                (id.group in ['org.cses.flow', 'org.flow'] && id.name in ['flow', 'embedded'])
+        }
+        if (!forbidden.isEmpty()) {
+            throw new GradleException("离线工具包含运行服务依赖：${forbidden*.moduleVersion*.id}")
+        }
+        logger.lifecycle('离线工具运行时依赖隔离检查通过')
+    }
+}
+
+tasks.named('check') { dependsOn 'verifyRuntimeIsolation' }

@@ -1,0 +1,7 @@
+id: flow-trigger-at-least-mode-flow-c
+namespace: org.flow.tests.trigger.at.least.mode
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from flow-c: {{execution.id}}"

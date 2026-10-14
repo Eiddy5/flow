@@ -1,0 +1,13 @@
+id: workingdirectory-impossible
+namespace: org.flow.tests
+
+tasks:
+  - id: impossible
+    type: org.flow.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: log
+        type: org.flow.plugin.core.log.Log
+        message: Hello World
+      - id: pause
+        type: org.flow.plugin.core.flow.Pause
+        pauseDuration: PT5S

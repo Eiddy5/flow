@@ -1,0 +1,13 @@
+id: additional-plugin
+namespace: org.flow.tests
+
+tasks:
+  - id: additional-plugin-1
+    type: org.flow.core.plugins.AdditionalPluginTest$AdditionalPluginTestTask
+    additionalPlugin:
+      type: org.flow.core.plugins.AdditionalPluginTest$AdditionalPluginTest1
+      baseMessage: Hello
+  - id: additional-plugin-2
+    type: org.flow.core.plugins.AdditionalPluginTest$AdditionalPluginTestTask
+    additionalPlugin:
+      type: org.flow.core.plugins.AdditionalPluginTest$AdditionalPluginTest2

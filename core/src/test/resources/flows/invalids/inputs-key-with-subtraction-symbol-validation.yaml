@@ -1,0 +1,12 @@
+id: inputs-key-with-subtraction-symbol-validation
+namespace: org.flow.tests
+
+inputs:
+  - id: server-fqn
+    type: STRING
+    defaults: 'animal'
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: "{{inputs.server-fqn}}"

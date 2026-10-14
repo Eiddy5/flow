@@ -1,0 +1,13 @@
+id: webhook-with-condition
+namespace: org.flow.tests
+
+tasks:
+  - id: out
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ trigger | json }}"
+
+triggers:
+  - id: webhook
+    type: org.flow.plugin.core.trigger.Webhook
+    key: webhookKey
+    when: "{{trigger.body.hello == 'world'}}"

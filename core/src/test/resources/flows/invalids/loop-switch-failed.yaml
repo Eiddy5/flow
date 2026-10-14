@@ -1,0 +1,23 @@
+id: loop-switch-failed
+namespace: org.flow.tests
+
+tasks:
+  - id: foreach
+    type: org.flow.plugin.core.flow.Loop
+    values: [1,2]
+    tasks:
+      - id: switch
+        type: org.flow.plugin.core.flow.Switch
+        value: "{{ item.value  }}"
+        cases:
+          1:
+            - id: log
+              type: org.flow.plugin.core.log.Log
+              message: "hello"
+          2:
+            - id: fail
+              type: org.flow.plugin.core.execution.Fail
+    errors:
+      - id: errorforeach
+        type: org.flow.plugin.core.debug.Return
+        format: "{{ tasksWithState('failed') }}"

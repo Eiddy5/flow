@@ -1,0 +1,9 @@
+id: polling-flow
+namespace: org.flow.tests
+
+variables:
+  custom_var: VARIABLE VALUE
+
+triggers:
+  - id: polling-trigger-1
+    type: org.flow.core.tasks.test.PollingTrigger

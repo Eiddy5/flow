@@ -1,0 +1,13 @@
+id: inputs-with-multiple-constraint-violations
+namespace: org.flow.tests
+inputs:
+  - id: multi
+    type: MULTISELECT
+    values:
+      - A
+      - B
+      - C
+tasks:
+  - id: validMultiSelect
+    type: org.flow.plugin.core.debug.Return
+    format: "{{inputs.multi}}"

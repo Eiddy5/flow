@@ -1,0 +1,14 @@
+id: task-allow-failure-executable-flow
+namespace: org.flow.tests
+
+tasks:
+  - id: fail
+    type: org.flow.plugin.core.flow.Subflow
+    allowFailure: true
+    namespace: org.flow.tests
+    flowId: failing-subflow
+    transmitFailed: true
+    wait: true
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: I'm allowed

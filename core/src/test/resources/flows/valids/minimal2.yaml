@@ -1,0 +1,7 @@
+id: minimal
+namespace: org.flow.tests2
+
+tasks:
+- id: date
+  type: org.flow.plugin.core.debug.Return
+  format: "{{taskrun.startDate}}"

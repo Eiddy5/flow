@@ -1,0 +1,11 @@
+id: retry-subflow
+namespace: org.flow.tests
+retry:
+  type: constant
+  interval: PT1S
+  maxAttempts: 3
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: failed-first

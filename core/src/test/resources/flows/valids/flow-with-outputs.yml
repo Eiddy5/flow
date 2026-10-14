@@ -1,0 +1,12 @@
+id: flow-with-outputs
+namespace: org.flow.tests
+
+tasks:
+- id: return
+  type: org.flow.plugin.core.debug.Return
+  format: "{{ flow.id }}"
+
+outputs:
+- id: "key"
+  value: "{{ outputs.return }}"
+  type: STRING

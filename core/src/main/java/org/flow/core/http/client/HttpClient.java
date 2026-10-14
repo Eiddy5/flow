@@ -1,0 +1,997 @@
+package org.flow.core.http.client;
+
+import java.io.BufferedReader;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.Collections;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLHandshakeException;
+
+import org.apache.commons.lang3.ArrayUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.hc.client5.http.ContextBuilder;
+import org.apache.hc.client5.http.auth.*;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.impl.ChainElement;
+import org.apache.hc.client5.http.impl.DefaultAuthenticationStrategy;
+import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.client5.http.protocol.HttpClientContext;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
+import org.apache.hc.client5.http.ssl.SSLConnectionSocketFactory;
+import org.apache.hc.core5.http.ContentType;
+import org.apache.hc.core5.http.HttpEntity;
+import org.apache.hc.core5.http.HttpHeaders;
+import org.apache.hc.core5.http.ParseException;
+import org.apache.hc.core5.http.io.HttpClientResponseHandler;
+import org.apache.hc.core5.http.io.SocketConfig;
+import org.apache.hc.core5.http.io.entity.EntityUtils;
+import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.ssl.SSLContexts;
+import org.apache.hc.core5.util.Timeout;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+
+import org.flow.core.exceptions.IllegalVariableEvaluationException;
+import org.flow.core.http.HttpRequest;
+import org.flow.core.http.HttpResponse;
+import org.flow.core.http.HttpService;
+import org.flow.core.http.HttpSseEvent;
+import org.flow.core.http.client.apache.*;
+import org.flow.core.http.client.configurations.DigestAuthConfiguration;
+import org.flow.core.http.client.configurations.HttpConfiguration;
+import org.flow.core.runners.DefaultRunContext;
+import org.flow.core.runners.RunContext;
+import org.flow.core.serializers.JacksonMapper;
+import org.flow.core.utils.RetryUtils;
+
+import io.micrometer.common.KeyValues;
+import io.micrometer.core.instrument.binder.httpcomponents.hc5.ApacheHttpClientContext;
+import io.micrometer.core.instrument.binder.httpcomponents.hc5.DefaultApacheHttpClientObservationConvention;
+import io.micrometer.core.instrument.binder.httpcomponents.hc5.ObservationExecChainHandler;
+import io.micrometer.observation.ObservationRegistry;
+import io.micronaut.http.MediaType;
+import jakarta.annotation.Nullable;
+import lombok.Builder;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class HttpClient implements Closeable {
+    /**
+     * Matches a {@code network/prefixLength} allow/deny-list entry, e.g. {@code 169.254.0.0/16}.
+     */
+    private static final Pattern CIDR_ENTRY = Pattern.compile("^(?:(https?)://)?([^/]+)/(\\d{1,3})$");
+
+    private static boolean allowAmbiguousIpAddressLiterals = allowsAmbiguousIpAddressLiterals();
+
+    private transient CloseableHttpClient client;
+    private transient BasicCredentialsProvider defaultCredentialsProvider;
+    private final RunContext runContext;
+    private final HttpConfiguration configuration;
+    private ObservationRegistry observationRegistry;
+    private static final Set<String> IDEMPOTENT_METHODS = Set.of("GET", "HEAD");
+
+    @Builder
+    public HttpClient(RunContext runContext, @Nullable HttpConfiguration configuration) throws IllegalVariableEvaluationException {
+        this.runContext = runContext;
+        this.configuration = configuration == null ? HttpConfiguration.builder().build() : configuration;
+        if (runContext instanceof DefaultRunContext defaultRunContext) {
+            this.observationRegistry = defaultRunContext.services().observationRegistry().orElse(null);
+        }
+
+        this.client = this.createClient();
+    }
+
+    private CloseableHttpClient createClient() throws IllegalVariableEvaluationException {
+        if (this.client != null) {
+            throw new IllegalStateException("Client has already been created");
+        }
+
+        org.apache.hc.client5.http.impl.classic.HttpClientBuilder builder = HttpClients.custom()
+            .disableDefaultUserAgent()
+            .setUserAgent("Flow");
+
+        // Advertise only gzip/deflate so the client never negotiates Brotli (Accept-Encoding: br).
+        // HttpClient5 auto-detects brotli4j on the classpath (e.g. brought in by a plugin) and would
+        // otherwise offer `br`, then fail with UnsatisfiedLinkError when the matching native artifact
+        // is missing. Setting the header explicitly wins: ContentCompressionExec only adds its own
+        // Accept-Encoding when the request has none, so gzip/deflate responses are still auto-decoded.
+        builder.addRequestInterceptorFirst((request, entity, context) -> request.setHeader(HttpHeaders.ACCEPT_ENCODING, "gzip, x-gzip, deflate"));
+
+        // Positioned right after REDIRECT so it re-runs on every hop RedirectExec follows, unlike a request interceptor which only runs once before the redirect loop starts.
+        builder.addExecInterceptorAfter(
+            ChainElement.REDIRECT.name(), "ssrf-guard",
+            (request, scope, chain) -> {
+                validateUri(HttpService.safeURI(request));
+                return chain.proceed(request, scope);
+            }
+        );
+
+        if (observationRegistry != null) {
+            // micrometer, must be placed before the retry strategy (see https://docs.micrometer.io/micrometer/reference/reference/httpcomponents.html#_retry_strategy_considerations)
+            builder.addExecInterceptorAfter(
+                ChainElement.RETRY.name(), "micrometer",
+                new ObservationExecChainHandler(observationRegistry, new CustomApacheHttpClientObservationConvention())
+            );
+        }
+
+        // logger
+        if (this.configuration.getLogs() != null && this.configuration.getLogs().length > 0) {
+            if (
+                ArrayUtils.contains(this.configuration.getLogs(), HttpConfiguration.LoggingType.REQUEST_HEADERS) ||
+                    ArrayUtils.contains(this.configuration.getLogs(), HttpConfiguration.LoggingType.REQUEST_BODY)
+            ) {
+                builder.addRequestInterceptorLast(new LoggingRequestInterceptor(runContext.logger(), this.configuration.getLogs()));
+            }
+
+            if (
+                ArrayUtils.contains(this.configuration.getLogs(), HttpConfiguration.LoggingType.RESPONSE_HEADERS) ||
+                    ArrayUtils.contains(this.configuration.getLogs(), HttpConfiguration.LoggingType.RESPONSE_BODY)
+            ) {
+                builder.addResponseInterceptorLast(new LoggingResponseInterceptor(runContext.logger(), this.configuration.getLogs()));
+            }
+        }
+
+        // Object dependencies
+        PoolingHttpClientConnectionManagerBuilder connectionManagerBuilder = PoolingHttpClientConnectionManagerBuilder.create();
+        ConnectionConfig.Builder connectionConfig = ConnectionConfig.custom();
+        this.defaultCredentialsProvider = new BasicCredentialsProvider();
+
+        // Timeout
+        if (this.configuration.getTimeout() != null) {
+            var connectTimeout = runContext.render(this.configuration.getTimeout().getConnectTimeout()).as(Duration.class);
+            connectTimeout.ifPresent(duration -> connectionConfig.setConnectTimeout(Timeout.of(duration)));
+
+            var readIdleTimeout = runContext.render(this.configuration.getTimeout().getReadIdleTimeout()).as(Duration.class);
+            readIdleTimeout.ifPresent(duration -> connectionConfig.setSocketTimeout(Timeout.of(duration)));
+        }
+
+        // proxy
+        if (this.configuration.getProxy() != null && configuration.getProxy().getAddress() != null) {
+            String proxyAddress = runContext.render(configuration.getProxy().getAddress()).as(String.class).orElse(null);
+
+            if (StringUtils.isNotEmpty(proxyAddress)) {
+                int port = runContext.render(configuration.getProxy().getPort()).as(Integer.class)
+                    .orElseThrow(() -> new IllegalArgumentException("A proxy port is required when a proxy address is set (options.proxy.port)."));
+                SocketAddress proxyAddr = new InetSocketAddress(
+                    proxyAddress,
+                    port
+                );
+
+                Proxy proxy = new Proxy(runContext.render(configuration.getProxy().getType()).as(Proxy.Type.class).orElse(null), proxyAddr);
+
+                builder.setProxySelector(new ProxySelector() {
+                    @Override
+                    public void connectFailed(URI uri, SocketAddress sa, IOException e) {
+                        /* ignore */
+                    }
+
+                    @Override
+                    public List<Proxy> select(URI uri) {
+                        return List.of(proxy);
+                    }
+                });
+
+                if (this.configuration.getProxy().getUsername() != null && this.configuration.getProxy().getPassword() != null) {
+                    builder.setProxyAuthenticationStrategy(new DefaultAuthenticationStrategy());
+
+                    this.defaultCredentialsProvider.setCredentials(
+                        new AuthScope(proxyAddress, port),
+                        new UsernamePasswordCredentials(
+                            runContext.render(this.configuration.getProxy().getUsername()).as(String.class).orElseThrow(),
+                            runContext.render(this.configuration.getProxy().getPassword()).as(String.class).orElseThrow().toCharArray()
+                        )
+                    );
+                }
+            }
+        }
+
+        // ssl
+        if (this.configuration.getSsl() != null) {
+            if (this.configuration.getSsl().getInsecureTrustAllCertificates() != null) {
+                connectionManagerBuilder.setSSLSocketFactory(this.selfSignedConnectionSocketFactory());
+            }
+        }
+
+        // auth
+        if (this.configuration.getAuth() != null) {
+            this.configuration.getAuth().configure(builder, runContext);
+        }
+
+        // root options
+        if (!runContext.render(this.configuration.getFollowRedirects()).as(Boolean.class).orElseThrow()) {
+            builder.disableRedirectHandling();
+        }
+
+        builder.addResponseInterceptorLast(new RunContextResponseInterceptor(this.runContext));
+
+        // TCP Keep-Alive extended socket options (disabled for Windows compatibility)
+        if (!runContext.render(this.configuration.getEnabledTcpExtendedKeepAlive()).as(Boolean.class).orElse(true)) {
+            connectionManagerBuilder.setDefaultSocketConfig(
+                SocketConfig.custom()
+                    .setTcpKeepIdle(0)
+                    .setTcpKeepInterval(0)
+                    .setTcpKeepCount(0)
+                    .build()
+            );
+        }
+
+        // builder object
+        connectionManagerBuilder.setDefaultConnectionConfig(connectionConfig.build());
+        builder.setConnectionManager(connectionManagerBuilder.build());
+        builder.setDefaultCredentialsProvider(this.defaultCredentialsProvider);
+
+        this.client = builder.build();
+
+        return client;
+    }
+
+    private SSLConnectionSocketFactory selfSignedConnectionSocketFactory() {
+        try {
+            SSLContext sslContext = SSLContexts
+                .custom()
+                .loadTrustMaterial(null, (chain, authType) -> true)
+                .build();
+
+            return new SSLConnectionSocketFactory(sslContext, NoopHostnameVerifier.INSTANCE);
+        } catch (NoSuchAlgorithmException | KeyStoreException | KeyManagementException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
+    /**
+     * Send a request
+     *
+     * @param request the request
+     * @param cls the class of the response
+     * @param <T> the type of response expected
+     * @return the response
+     */
+    public <T> HttpResponse<T> request(HttpRequest request, Class<T> cls) throws HttpClientException, IllegalVariableEvaluationException {
+        boolean allowFailed = runContext.render(this.configuration.getAllowFailed()).as(Boolean.class).orElseThrow();
+        List<Integer> allowedResponseCodes = this.configuration.getAllowedResponseCodes() != null ? runContext.render(this.configuration.getAllowedResponseCodes()).asList(Integer.class)
+            : null;
+        HttpClientContext httpClientContext = this.clientContext(request);
+
+        return this.request(request, httpClientContext, r ->
+        {
+            this.throwIfResponseNotAllowed(r, httpClientContext, allowFailed, allowedResponseCodes);
+            T body = bodyHandler(cls, r.getEntity());
+
+            return HttpResponse.from(r, body, request, httpClientContext);
+        });
+    }
+
+    /**
+     * Send a request, getting the response with body as input stream
+     *
+     * @param request the request
+     * @param consumer the consumer of the response
+     * @return the response without the body
+     */
+    public HttpResponse<Void> request(HttpRequest request, Consumer<HttpResponse<InputStream>> consumer) throws HttpClientException, IllegalVariableEvaluationException {
+        boolean allowFailed = runContext.render(this.configuration.getAllowFailed()).as(Boolean.class).orElseThrow();
+        List<Integer> allowedResponseCodes = this.configuration.getAllowedResponseCodes() != null ? runContext.render(this.configuration.getAllowedResponseCodes()).asList(Integer.class)
+            : null;
+        HttpClientContext httpClientContext = this.clientContext(request);
+
+        return this.request(request, httpClientContext, r ->
+        {
+            this.throwIfResponseNotAllowed(r, httpClientContext, allowFailed, allowedResponseCodes);
+            HttpResponse<InputStream> from = HttpResponse.from(
+                r,
+                r.getEntity() != null ? r.getEntity().getContent() : null,
+                request,
+                httpClientContext
+            );
+
+            consumer.accept(from);
+
+            return HttpResponse.from(r, null, request, httpClientContext);
+        });
+    }
+
+    /**
+     * Send a request and expect a json response
+     *
+     * @param request the request
+     * @param <T> the type of response expected
+     * @return the response
+     */
+    public <T> HttpResponse<T> request(HttpRequest request) throws HttpClientException, IllegalVariableEvaluationException {
+        boolean allowFailed = runContext.render(this.configuration.getAllowFailed()).as(Boolean.class).orElseThrow();
+        List<Integer> allowedResponseCodes = this.configuration.getAllowedResponseCodes() != null ? runContext.render(this.configuration.getAllowedResponseCodes()).asList(Integer.class)
+            : null;
+        HttpClientContext httpClientContext = this.clientContext(request);
+
+        return this.request(request, httpClientContext, response ->
+        {
+            this.throwIfResponseNotAllowed(response, httpClientContext, allowFailed, allowedResponseCodes);
+            T body = JacksonMapper.ofJson().readValue(response.getEntity().getContent(), new TypeReference<>() {
+            });
+
+            return HttpResponse.from(response, body, request, httpClientContext);
+        });
+    }
+
+    /**
+     * Send an SSE (Server-Sent Events) request and consume events with typed data.
+     *
+     * @param request the HTTP request
+     * @param cls the class type for deserializing event data
+     * @param eventConsumer consumer that processes each SSE event with typed data
+     * @param <T> the type of data in the SSE events
+     * @return the HTTP response without the body, as events are consumed through the eventConsumer
+     */
+    public <T> HttpResponse<Void> sseRequest(
+        HttpRequest request,
+        Class<T> cls,
+        Consumer<HttpSseEvent<T>> eventConsumer) throws HttpClientException, IllegalVariableEvaluationException {
+        HttpClientContext httpClientContext = this.clientContext(request);
+
+        HttpClientResponseHandler<HttpResponse<Void>> responseHandler = response ->
+        {
+
+            parseSse(response.getEntity().getContent(), cls, eventConsumer);
+
+            return HttpResponse.from(response, null, request, httpClientContext);
+        };
+
+        return this.request(request, httpClientContext, responseHandler);
+    }
+
+    private <T> void parseSse(InputStream inputStream, Class<T> cls, Consumer<HttpSseEvent<T>> eventConsumer) throws IOException {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            String line;
+            StringBuilder dataBuffer = new StringBuilder();
+            boolean hasData = false;
+            String eventId = null;
+            String eventName = null;
+            String comment = null;
+            Duration retry = null;
+
+            while ((line = reader.readLine()) != null) {
+                if (line.isEmpty()) {
+                    // Empty line: dispatch event if data was provided
+                    if (hasData) {
+                        // Per spec: remove the trailing newline from the data buffer
+                        if (!dataBuffer.isEmpty() && dataBuffer.charAt(dataBuffer.length() - 1) == '\n') {
+                            dataBuffer.setLength(dataBuffer.length() - 1);
+                        }
+                        sendSseData(cls, eventConsumer, dataBuffer, eventId, eventName, comment, retry);
+                    }
+
+                    // Reset for next event (even if no data was present)
+                    dataBuffer.setLength(0);
+                    hasData = false;
+                    eventId = null;
+                    eventName = null;
+                    comment = null;
+                    retry = null;
+                    continue;
+                }
+
+                if (line.startsWith(":")) {
+                    // Comment line - entire line starts with colon
+                    comment = stripLeadingSpace(line.substring(1));
+                    continue;
+                }
+
+                // Parse field name and value
+                String fieldName;
+                String fieldValue;
+                int colonIndex = line.indexOf(':');
+                if (colonIndex >= 0) {
+                    fieldName = line.substring(0, colonIndex);
+                    // Per spec: strip only a single leading space after the colon
+                    fieldValue = stripLeadingSpace(line.substring(colonIndex + 1));
+                } else {
+                    // No colon: entire line is the field name, value is empty string
+                    fieldName = line;
+                    fieldValue = "";
+                }
+
+                switch (fieldName) {
+                    case "data" -> {
+                        hasData = true;
+                        // Per spec: append value + newline to data buffer
+                        dataBuffer.append(fieldValue).append('\n');
+                    }
+                    case "id" -> {
+                        // Per spec: ignore if value contains NULL character
+                        if (!fieldValue.contains("\0")) {
+                            eventId = fieldValue;
+                        }
+                    }
+                    case "event" -> eventName = fieldValue;
+                    case "retry" -> {
+                        // Per spec: only accept if value consists entirely of ASCII digits
+                        if (!fieldValue.isEmpty() && fieldValue.chars().allMatch(c -> c >= '0' && c <= '9')) {
+                            try {
+                                retry = Duration.ofMillis(Long.parseLong(fieldValue));
+                            } catch (NumberFormatException e) {
+                                // Value overflows, ignore
+                            }
+                        }
+                    }
+                    default -> {
+                        // Unknown field names are ignored per spec
+                    }
+                }
+            }
+
+            // Per spec: end of stream does NOT dispatch pending events
+        }
+    }
+
+    /**
+     * Strip a single leading U+0020 SPACE character, per SSE spec.
+     */
+    private static String stripLeadingSpace(String value) {
+        if (!value.isEmpty() && value.charAt(0) == ' ') {
+            return value.substring(1);
+        }
+        return value;
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void sendSseData(
+        Class<T> cls,
+        Consumer<HttpSseEvent<T>> eventConsumer,
+        StringBuilder dataBuffer,
+        String eventId,
+        String eventName,
+        String comment,
+        Duration retry) {
+        String dataStr = dataBuffer.toString();
+        T parsedData = null;
+
+        if (!dataStr.isEmpty()) {
+            try {
+                StringEntity tempEntity = new StringEntity(dataStr, ContentType.APPLICATION_JSON);
+
+                parsedData = bodyHandler(cls, tempEntity);
+            } catch (Exception e) {
+                if (String.class.isAssignableFrom(cls)) {
+                    parsedData = (T) dataStr;
+                } else {
+                    runContext.logger().warn("Failed to parse SSE event data: {}", dataStr, e);
+                }
+            }
+        }
+
+        HttpSseEvent<T> event = HttpSseEvent.<T> builder()
+            .data(parsedData)
+            .id(eventId)
+            .name(eventName)
+            .comment(comment)
+            .retry(retry)
+            .build();
+
+        if (eventConsumer != null) {
+            eventConsumer.accept(event);
+        }
+    }
+
+    private HttpClientContext clientContext(HttpRequest request) throws IllegalVariableEvaluationException {
+        HttpClientContext httpClientContext = ContextBuilder.create().build();
+
+        if (this.configuration.getAuth() instanceof DigestAuthConfiguration digestAuthConfiguration) {
+            String username = runContext.render(digestAuthConfiguration.getUsername()).as(String.class).orElse(null);
+            String password = runContext.render(digestAuthConfiguration.getPassword()).as(String.class).orElse(null);
+
+            if (StringUtils.isEmpty(username) || password == null) {
+                throw new IllegalArgumentException("Digest authentication requires both `username` and `password`.");
+            }
+
+            URI uri = request.getUri();
+            if (uri == null || uri.getHost() == null) {
+                throw new IllegalArgumentException("Digest authentication requires an absolute URI with a host.");
+            }
+
+            int port = uri.getPort() != -1 ? uri.getPort() : ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80);
+            AuthScope digestScope = new AuthScope(uri.getHost(), port);
+            UsernamePasswordCredentials digestCredentials = new UsernamePasswordCredentials(username, password.toCharArray());
+
+            httpClientContext.setCredentialsProvider((authScope, context) ->
+            {
+                if (digestScope.match(authScope) >= 0) {
+                    return digestCredentials;
+                }
+                return this.defaultCredentialsProvider.getCredentials(authScope, context);
+            });
+        }
+
+        return httpClientContext;
+    }
+
+    private void throwIfResponseNotAllowed(
+        org.apache.hc.core5.http.HttpResponse response,
+        HttpClientContext context,
+        boolean allowFailed,
+        List<Integer> allowedResponseCodes) throws IOException {
+        if (isAllowedStatusCode(response.getCode(), allowFailed, allowedResponseCodes)) {
+            return;
+        }
+
+        throw new IOException(HttpResponseFailure.exception(response, context));
+    }
+
+    private static boolean isAllowedStatusCode(int statusCode, boolean allowFailed, List<Integer> allowedResponseCodes) {
+        if (allowedResponseCodes != null && !allowedResponseCodes.isEmpty()) {
+            return allowedResponseCodes.contains(statusCode);
+        }
+
+        if (allowFailed) {
+            return true;
+        }
+
+        return statusCode < 400;
+    }
+
+    private <T> HttpResponse<T> request(
+        HttpRequest request,
+        HttpClientContext httpClientContext,
+        HttpClientResponseHandler<HttpResponse<T>> responseHandler) throws HttpClientException, IllegalVariableEvaluationException {
+        validateUri(request.getUri());
+
+        String method = request.getMethod();
+        List<Integer> retryableCodes = resolveRetryableStatusCodes(method);
+        boolean retryTransportFailures = isMethodEligibleForTransportRetry(method);
+
+        return RetryUtils.<HttpResponse<T>, HttpClientException> of(
+            configuration.getRetry(),
+            retryFailed ->
+            {
+                if (retryFailed.getCause() instanceof HttpClientException ex) {
+                    return ex;
+                }
+
+                throw new IllegalStateException(
+                    "Retry failed with an unexpected exception type",
+                    retryFailed.getCause()
+                );
+            }
+        ).run(
+            (res, throwable) ->
+            {
+                if (throwable instanceof HttpClientResponseException ex) {
+                    return retryableCodes.contains(
+                        ex.getResponse().getStatus().getCode()
+                    );
+                }
+
+                if (throwable instanceof HttpClientRequestException httpEx) {
+                    // ConnectException means the request never reached the server, so any method is safe to retry.
+                    Throwable cause = httpEx.getCause();
+                    if (cause instanceof SSLHandshakeException) {
+                        return false;
+                    }
+                    return cause instanceof ConnectException || retryTransportFailures;
+                }
+
+                return false;
+            },
+            () ->
+            {
+                try {
+                    return this.client.execute(
+                        request.to(runContext),
+                        httpClientContext,
+                        responseHandler
+                    );
+                } catch (SocketException | SSLHandshakeException e) {
+                    throw new HttpClientRequestException(
+                        e.getMessage(),
+                        request,
+                        e
+                    );
+                } catch (IOException e) {
+                    if (e.getCause() instanceof HttpClientException ex) {
+                        throw ex;
+                    }
+                    throw new RuntimeException(e);
+                }
+            }
+        );
+    }
+
+    /**
+     * Resolves the retryable status codes for a given HTTP method: the method's entry in
+     * {@code retryOnStatusCodesByMethod} if one is configured (matched case-insensitively), otherwise the
+     * global {@code retryOnStatusCodes} for GET/HEAD methods only.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Integer> resolveRetryableStatusCodes(String method) throws IllegalVariableEvaluationException {
+        if (configuration.getRetryOnStatusCodesByMethod() != null) {
+            Map<String, List<Integer>> byMethod = runContext
+                .render(configuration.getRetryOnStatusCodesByMethod())
+                .asMap(String.class, List.class);
+
+            for (Map.Entry<String, List<Integer>> entry : byMethod.entrySet()) {
+                if (entry.getKey().equalsIgnoreCase(method)) {
+                    return entry.getValue();
+                }
+            }
+        }
+
+        // Methods other than GET and HEAD are not retried on a status code unless configured per method.
+        if (!IDEMPOTENT_METHODS.contains(method.toUpperCase(Locale.ROOT))) {
+            return List.of();
+        }
+
+        return runContext.render(configuration.getRetryOnStatusCodes()).asList(Integer.class);
+    }
+
+    /**
+     * Whether this method can retry transport failures such as timeouts
+     * or connection drops that occur after data has been sent.
+     */
+    private boolean isMethodEligibleForTransportRetry(String method) throws IllegalVariableEvaluationException {
+        return runContext
+            .render(configuration.getRetryableTransportFailureMethods())
+            .asList(String.class)
+            .stream()
+            .anyMatch(configured -> configured.equalsIgnoreCase(method));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void validateUri(URI uri) {
+        List<String> allowedList = (List<String>) ((DefaultRunContext) runContext).getTaskProperty("flow.tasks.http.allowed-list", List.class).orElse(Collections.emptyList());
+        List<String> deniedList = (List<String>) ((DefaultRunContext) runContext).getTaskProperty("flow.tasks.http.denied-list", List.class).orElse(Collections.emptyList());
+
+        if (allowedList.isEmpty() && deniedList.isEmpty()) {
+            return;
+        }
+
+        if (resolveAuthority(uri) == null) {
+            // A list is configured but the URI carries no authority at all, so there is no host to check it
+            // against: fail closed on both directions instead of silently letting an unmatchable URI through.
+            throw new IllegalArgumentException("The URI %s has no resolvable host to check against the configured allow/deny lists (flow.tasks.http.allowed-list / flow.tasks.http.denied-list).".formatted(uri));
+        }
+
+        // first check that if there is an allow list, it matches one
+        if (!allowedList.isEmpty()) {
+            if (allowedList.stream().noneMatch(entry -> isListEntryMatch(entry, uri))) {
+                throw new IllegalArgumentException("The URI %s is not in the configured allowed list (flow.tasks.http.allowed-list).".formatted(uri));
+            }
+        }
+
+        // then check that there are no exclusion for it
+        if (deniedList.stream().anyMatch(entry -> isListEntryMatch(entry, uri))) {
+            throw new IllegalArgumentException("The URI %s is in the configured denied list (flow.tasks.http.denied-list).".formatted(uri));
+        }
+    }
+
+    /**
+     * The host and raw port ({@code -1} when none was given, same convention as {@link URI#getPort()}) Flow is
+     * actually about to connect to, as resolved by {@link #resolveAuthority(URI)}.
+     */
+    private record ResolvedAuthority(String host, int port) {
+    }
+
+    /**
+     * Resolves the host and port of the URI Flow is actually about to connect to, falling back to a manual
+     * parse of the raw authority when {@link URI#getHost()} returns {@code null}. That happens for an authority
+     * containing an underscore, or a partial dotted-decimal IPv4 literal such as {@code 169.254.43518}: strings
+     * {@code java.net.URI}'s hostname grammar rejects, but that Apache HttpClient still connects to verbatim via
+     * {@code URIUtils.extractHost}. Returns {@code null} only when the URI carries no authority at all.
+     */
+    private static ResolvedAuthority resolveAuthority(URI uri) {
+        if (uri.getHost() != null) {
+            return new ResolvedAuthority(uri.getHost(), uri.getPort());
+        }
+
+        String authority = uri.getAuthority();
+        if (authority == null) {
+            return null;
+        }
+
+        String hostAndPort = authority.substring(authority.lastIndexOf('@') + 1);
+        int colon = hostAndPort.lastIndexOf(':');
+        if (colon == -1) {
+            return new ResolvedAuthority(hostAndPort, -1);
+        }
+
+        try {
+            return new ResolvedAuthority(hostAndPort.substring(0, colon), Integer.parseInt(hostAndPort.substring(colon + 1)));
+        } catch (NumberFormatException e) {
+            return new ResolvedAuthority(hostAndPort, -1);
+        }
+    }
+
+    /**
+     * 去除主机末尾的点和 IPv6 方括号后解析 IP 字面量；非法字面量返回空，不查询 DNS。
+     * IPv6 始终以方括号形式交给 JDK，使其只能解析字面量，失败时不能回退到主机名解析。
+     *
+     * @param host 待比较的非空主机文本；允许 IPv4 的一至四段十进制形式和 IPv6 scope
+     * @return 不含主机名的 IP 地址；输入不是合法字面量时为空
+     */
+    private static Optional<InetAddress> parseIpLiteral(String host) {
+        String candidate = stripTrailingDot(host);
+        if (candidate.startsWith("[") && candidate.endsWith("]")) {
+            candidate = candidate.substring(1, candidate.length() - 1);
+        }
+
+        try {
+            if (candidate.indexOf(':') >= 0) {
+                String ipv6Literal = candidate.startsWith("[") && candidate.endsWith("]") ? candidate : "[" + candidate + "]";
+                return Optional.of(InetAddress.getByName(ipv6Literal));
+            }
+            byte[] address = parseIpv4Literal(candidate);
+            return address == null ? Optional.empty() : Optional.of(InetAddress.getByAddress(address));
+        } catch (UnknownHostException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * 读取 JDK 已初始化的 IP 字面量数字规则，结果随类初始化缓存，不受后续系统属性改写影响。
+     * 使用带方括号的 IPv4 映射 IPv6 探针，只进入字面量解析，不查询 DNS。
+     *
+     * @return JDK 的 {@code jdk.net.allowAmbiguousIPAddressLiterals} 策略允许 Unicode 数字时为 {@code true}
+     */
+    private static boolean allowsAmbiguousIpAddressLiterals() {
+        try {
+            InetAddress.getByName("[::ffff:１.２.３.４]");
+            return true;
+        } catch (UnknownHostException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 将一至四段十进制 IPv4 转为四字节地址；前导零按十进制处理，最后一段占用剩余字节。
+     * 保留 JDK 字面量解析的 15 字符长度上限及 Unicode 数字策略，避免地址变体绕过主机或 CIDR 匹配。
+     *
+     * @param candidate 非空引用的 IPv4 候选文本；不进行网络查询
+     * @return 新建的四字节地址；包含非十进制字符、空段或超出长度及数值范围时返回 {@code null}
+     */
+    private static byte[] parseIpv4Literal(String candidate) {
+        if (candidate.isEmpty() || candidate.length() > 15) {
+            return null;
+        }
+        String[] parts = candidate.split("\\.", -1);
+        if (parts.length > 4) {
+            return null;
+        }
+        long address = 0;
+        for (int index = 0; index < parts.length; index++) {
+            String part = parts[index];
+            if (part.isEmpty()) {
+                return null;
+            }
+            long limit = index == parts.length - 1 ? 1L << ((5 - parts.length) * 8) : 256;
+            long value = 0;
+            for (int offset = 0; offset < part.length(); offset++) {
+                char digit = part.charAt(offset);
+                int digitValue = allowAmbiguousIpAddressLiterals
+                    ? Character.digit(digit, 10)
+                    : digit >= '0' && digit <= '9' ? digit - '0' : -1;
+                if (digitValue < 0) {
+                    return null;
+                }
+                value = value * 10 + digitValue;
+                if (value >= limit) {
+                    return null;
+                }
+            }
+            address |= index == parts.length - 1 ? value : value << ((3 - index) * 8);
+        }
+        return new byte[] {(byte) (address >>> 24), (byte) (address >>> 16), (byte) (address >>> 8), (byte) address};
+    }
+
+    /**
+     * 将 IP 字面量转为统一地址文本；其余输入转为去除末尾点的小写主机名，不查询 DNS。
+     *
+     * @param host 待比较的非空主机文本；支持整数、部分十进制 IPv4 和 IPv4 映射 IPv6
+     * @return 用于允许及拒绝名单比较的地址或主机名
+     */
+    private static String canonicalHost(String host) {
+        return parseIpLiteral(host)
+            .map(InetAddress::getHostAddress)
+            .orElseGet(() -> stripTrailingDot(host).toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * A {@code network/prefixLength} allow/deny-list entry, e.g. {@code 169.254.0.0/16}, so an entire range can
+     * be denied without enumerating every textual spelling of every address in it.
+     */
+    private record Cidr(InetAddress network, int prefixLength, String scheme) {
+        static Cidr parsed(String entry) {
+            Matcher matcher = CIDR_ENTRY.matcher(entry);
+            if (!matcher.matches()) {
+                return null;
+            }
+
+            Optional<InetAddress> network = parseIpLiteral(matcher.group(2));
+            if (network.isEmpty()) {
+                return null;
+            }
+
+            int prefixLength;
+            try {
+                prefixLength = Integer.parseInt(matcher.group(3));
+            } catch (NumberFormatException e) {
+                return null;
+            }
+
+            if (prefixLength > network.get().getAddress().length * 8) {
+                return null;
+            }
+
+            return new Cidr(network.get(), prefixLength, matcher.group(1));
+        }
+
+        boolean contains(String host) {
+            Optional<InetAddress> address = parseIpLiteral(host);
+            if (address.isEmpty()) {
+                return false;
+            }
+
+            byte[] addressBytes = address.get().getAddress();
+            byte[] networkBytes = network.getAddress();
+            if (addressBytes.length != networkBytes.length) {
+                return false;
+            }
+
+            int fullBytes = prefixLength / 8;
+            for (int i = 0; i < fullBytes; i++) {
+                if (addressBytes[i] != networkBytes[i]) {
+                    return false;
+                }
+            }
+
+            int remainingBits = prefixLength % 8;
+            if (remainingBits == 0) {
+                return true;
+            }
+
+            int mask = 0xFF << (8 - remainingBits);
+            return (addressBytes[fullBytes] & mask) == (networkBytes[fullBytes] & mask);
+        }
+    }
+
+    /**
+     * Matches a {@code flow.tasks.http.allowed-list} / {@code denied-list} entry against the URI Flow is
+     * actually about to connect to. Matching is done on the resolved authority (host, and scheme/port when the
+     * entry specifies them) rather than on the raw URI string, so that URL-encoded userinfo
+     * (e.g. {@code https://api.trusted.com@169.254.169.254/}, whose host is {@code 169.254.169.254}) or a
+     * subdomain suffix (e.g. {@code https://api.trusted.com.attacker.example/}) cannot impersonate an entry
+     * they merely start with. An IP-literal host is compared on its canonical form, so {@code 2852039166} and
+     * {@code 169.254.169.254} match the same entry.
+     * <p>
+     * An entry matches its host exactly. Write it as {@code *.api.trusted.com} to also match every subdomain of
+     * {@code api.trusted.com} (not {@code api.trusted.com} itself, which needs its own entry), or as a
+     * {@code network/prefixLength} CIDR range (e.g. {@code 169.254.0.0/16}) to match every address in it.
+     */
+    private static boolean isListEntryMatch(String entry, URI uri) {
+        ResolvedAuthority requestAuthority = resolveAuthority(uri);
+        if (requestAuthority == null) {
+            return false;
+        }
+
+        Cidr cidr = Cidr.parsed(entry);
+        if (cidr != null) {
+            return cidr.contains(requestAuthority.host())
+                && (cidr.scheme() == null || cidr.scheme().equalsIgnoreCase(uri.getScheme()));
+        }
+
+        boolean matchSubdomains = entry.startsWith("*.") || entry.contains("://*.");
+        String strippedEntry = entry.replace("://*.", "://").replaceFirst("^\\*\\.", "");
+
+        URI entryUri;
+        try {
+            entryUri = URI.create(strippedEntry.contains("://") ? strippedEntry : "//" + strippedEntry);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+
+        ResolvedAuthority entryAuthority = resolveAuthority(entryUri);
+        if (entryAuthority == null) {
+            return false;
+        }
+
+        String host = canonicalHost(requestAuthority.host());
+        String lowerEntryHost = canonicalHost(entryAuthority.host());
+        boolean hostMatches = matchSubdomains && parseIpLiteral(host).isEmpty()
+            ? host.endsWith("." + lowerEntryHost)
+            : host.equals(lowerEntryHost);
+        if (!hostMatches) {
+            return false;
+        }
+
+        if (entryUri.getScheme() != null && !entryUri.getScheme().equalsIgnoreCase(uri.getScheme())) {
+            return false;
+        }
+
+        if (entryAuthority.port() != -1 && entryAuthority.port() != defaultedPort(uri.getScheme(), requestAuthority.port())) {
+            return false;
+        }
+
+        String entryPath = entryUri.getPath();
+        if (entryPath != null && !entryPath.isEmpty() && !"/".equals(entryPath)) {
+            String path = uri.getPath() == null ? "" : uri.getPath();
+            if (!path.startsWith(entryPath)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Strips a single trailing dot from a hostname, e.g. {@code dangerous-url.com.}, since DNS resolves it
+     * identically to {@code dangerous-url.com} and it would otherwise fail both the exact and suffix match.
+     */
+    private static String stripTrailingDot(String host) {
+        return host.endsWith(".") ? host.substring(0, host.length() - 1) : host;
+    }
+
+    /**
+     * Returns {@code port}, or the scheme's default port when {@code port} is {@code -1}, so that an
+     * allow/deny-list entry with an explicit default port still matches a request that omits it.
+     */
+    private static int defaultedPort(String scheme, int port) {
+        if (port != -1) {
+            return port;
+        }
+
+        return switch (scheme == null ? "" : scheme.toLowerCase(Locale.ROOT)) {
+            case "https" -> 443;
+            case "http" -> 80;
+            default -> -1;
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> T bodyHandler(Class<?> cls, HttpEntity entity) throws IOException, ParseException {
+        if (entity == null) {
+            return null;
+        } else if (String.class.isAssignableFrom(cls)) {
+            return (T) EntityUtils.toString(entity);
+        } else if (Byte[].class.isAssignableFrom(cls)) {
+            return (T) ArrayUtils.toObject(EntityUtils.toByteArray(entity));
+        } else if (MediaType.APPLICATION_YAML.equals(entity.getContentType()) || "application/yaml".equals(entity.getContentType())) {
+            return (T) JacksonMapper.ofYaml().readValue(entity.getContent(), cls);
+        } else {
+            return (T) JacksonMapper.ofJson(false).readValue(entity.getContent(), cls);
+        }
+    }
+
+    @Override
+    public void close() throws IOException {
+        if (this.client != null) {
+            this.client.close();
+        }
+    }
+
+    public static class CustomApacheHttpClientObservationConvention extends DefaultApacheHttpClientObservationConvention {
+        @Override
+        public KeyValues getLowCardinalityKeyValues(ApacheHttpClientContext context) {
+            return KeyValues.concat(
+                super.getLowCardinalityKeyValues(context),
+                KeyValues.of("type", "core-client")
+            );
+        }
+    }
+}

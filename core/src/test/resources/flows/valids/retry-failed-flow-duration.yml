@@ -1,0 +1,12 @@
+id: retry-failed-flow-duration
+namespace: org.flow.tests
+retry:
+  behavior: RETRY_FAILED_TASK
+  type: constant
+  maxDuration: PT7S
+  interval: PT2S
+
+tasks:
+  - id: fail
+    type: org.flow.plugin.core.execution.Fail
+

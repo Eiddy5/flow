@@ -1,0 +1,8 @@
+group: org.flow.plugin.core.log
+name: "log"
+title: "Log"
+description: "Tasks that write, fetch, or purge Flow logs."
+body: "Emit structured log messages, retrieve stored logs, or clean up log storage; provide message content or log query filters and consider namespace or execution scoping when purging."
+videos: []
+createdBy: "Flow Core Team"
+managedBy: "Flow Core Team"

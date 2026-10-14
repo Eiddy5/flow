@@ -1,0 +1,21 @@
+id: flow-trigger-multiple-depends-on-flow-listen
+namespace: org.flow.tests.trigger.multiple.depends.on
+
+triggers:
+  - id: flow1
+    type: org.flow.plugin.core.trigger.Flow
+    dependsOn:
+      - namespace: org.flow.tests.trigger.multiple.depends.on
+        flowId: flow-trigger-multiple-depends-on-flow-a
+        states: [SUCCESS]
+  - id: flow2
+    type: org.flow.plugin.core.trigger.Flow
+    dependsOn:
+      - namespace: org.flow.tests.trigger.multiple.depends.on
+        flowId: flow-trigger-multiple-depends-on-flow-a
+        states: [FAILED]
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "It works"

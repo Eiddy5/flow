@@ -1,0 +1,12 @@
+id: flow-trigger-depends-on-outputs-unrelated
+namespace: org.flow.tests.trigger.depends.on.outputs.other
+
+tasks:
+  - id: ret
+    type: org.flow.plugin.core.debug.Return
+    format: "do_not_leak"
+
+outputs:
+  - id: secret
+    type: STRING
+    value: "{{ outputs.ret.value }}"

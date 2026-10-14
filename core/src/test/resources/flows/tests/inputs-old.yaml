@@ -1,0 +1,9 @@
+id: inputs-old
+namespace: org.flow.tests
+inputs:
+  - id: "myInput"
+    type: STRING
+tasks:
+  - id: date
+    type: org.flow.plugin.core.debug.Return
+    format: "{{taskrun.startDate}}"

@@ -1,0 +1,10 @@
+id: replay-revision
+namespace: org.flow.tests
+
+variables:
+  greeting: "{{ this_is_undefined }}"
+
+tasks:
+  - id: print
+    type: org.flow.plugin.core.log.Log
+    message: "{{ render(vars.greeting) }}"

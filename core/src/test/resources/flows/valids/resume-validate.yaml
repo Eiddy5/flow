@@ -1,0 +1,23 @@
+id: resume-validate
+namespace: org.flow.tests
+
+labels:
+  year: 2025
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    onResume:
+      - id: approved
+        description: Whether to approve the request
+        type: BOOL
+        defaults: true
+  - id: last
+    type: org.flow.plugin.core.debug.Return
+    format: "{{task.id}} > {{taskrun.startDate}}"
+
+errors:
+  - id: failed-echo
+    type: org.flow.plugin.core.log.Log
+    description: "Log the error"
+    message: I'm failing {{task.id}}

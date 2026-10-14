@@ -1,0 +1,22 @@
+id: flow-trigger-invalid-inputs-flow-listen
+namespace: org.flow.tests.trigger.invalid.inputs
+
+inputs:
+  - id: someInput
+    type: STRING
+    required: false
+
+triggers:
+  - id: flow
+    type: org.flow.plugin.core.trigger.Flow
+    dependsOn:
+      - namespace: org.flow.tests.trigger.invalid.inputs
+        flowId: flow-trigger-invalid-inputs-flow-a
+        states: [SUCCESS]
+    inputs:
+      someInput: "{{ trigger.outputs.nonExistentField }}"
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "It works"

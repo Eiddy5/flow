@@ -1,0 +1,101 @@
+package org.flow.scheduler;
+
+import java.time.DayOfWeek;
+import java.time.ZonedDateTime;
+import java.util.List;
+import java.util.function.Function;
+
+import org.flow.core.models.flows.FlowWithSource;
+import org.flow.core.models.property.Property;
+import org.flow.core.models.triggers.AbstractTrigger;
+import org.flow.core.models.triggers.TriggerId;
+import org.flow.plugin.core.debug.Return;
+import org.flow.plugin.core.trigger.Schedule;
+import org.flow.plugin.core.trigger.ScheduleOnDates;
+
+public interface Fixtures {
+
+    String TEST_TENANT = "tenant";
+    String TEST_NAMESPACE = "org.flow.unittest";
+    String TEST_FLOW_ID = "test";
+    String TEST_TRIGGER_ID = "trigger";
+
+    static TriggerId triggerId() {
+        return triggerId(TEST_TRIGGER_ID);
+    }
+
+    static TriggerId triggerId(String triggerId) {
+        return TriggerId.of(TEST_TENANT, TEST_NAMESPACE, TEST_FLOW_ID, triggerId);
+    }
+
+    static FlowWithSource defaultFlow() {
+        return defaultFlow(Schedule.ScheduleBuilder::build);
+    }
+
+    static FlowWithSource defaultFlow(Function<Schedule.ScheduleBuilder<?, ?>, Schedule> builder) {
+        return flowWithSchedulePT15M("Europe/Paris", builder);
+    }
+
+    static FlowWithSource flowWithTrigger(AbstractTrigger trigger) {
+        return FlowWithSource.builder()
+            .tenantId(TEST_TENANT)
+            .id(TEST_FLOW_ID)
+            .revision(0)
+            .namespace(TEST_NAMESPACE)
+            .tasks(List.of(Return.builder().id("return").type(Return.class.getName()).build()))
+            .triggers(List.of(trigger))
+            .build();
+    }
+
+    static FlowWithSource flowWithTrigger(AbstractTrigger trigger, String flowId) {
+        return FlowWithSource.builder()
+            .tenantId(TEST_TENANT)
+            .id(flowId)
+            .revision(0)
+            .namespace(TEST_NAMESPACE)
+            .tasks(List.of(Return.builder().id("return").type(Return.class.getName()).build()))
+            .triggers(List.of(trigger))
+            .build();
+    }
+
+    static FlowWithSource flowWithSchedulePT15M(String timeZone) {
+        return flowWithSchedulePT15M(timeZone, Schedule.ScheduleBuilder::build);
+    }
+
+    static FlowWithSource flowWithScheduleOnDate(String timeZone, List<ZonedDateTime> dates) {
+        return flowWithScheduleOnDate(timeZone, dates, ScheduleOnDates.ScheduleOnDatesBuilder::build);
+    }
+
+    static FlowWithSource flowWithScheduleOnDate(String timeZone, List<ZonedDateTime> dates, Function<ScheduleOnDates.ScheduleOnDatesBuilder<?, ?>, ScheduleOnDates> builder) {
+
+        ScheduleOnDates.ScheduleOnDatesBuilder<?, ?> schedule = ScheduleOnDates.builder()
+            .id(TEST_TRIGGER_ID)
+            .type(ScheduleOnDates.class.getName())
+            .dates(Property.ofValue(dates))
+            .timezone(timeZone);
+
+        return flowWithTrigger(builder.apply(schedule));
+    }
+
+    static FlowWithSource flowWithSchedulePT15M(String timeZone, Function<Schedule.ScheduleBuilder<?, ?>, Schedule> builder) {
+
+        Schedule.ScheduleBuilder<?, ?> schedule = Schedule.builder()
+            .id(TEST_TRIGGER_ID)
+            .type(Schedule.class.getName())
+            .cron("*/15 * * * *")
+            .timezone(timeZone);
+
+        return flowWithTrigger(builder.apply(schedule));
+    }
+
+    static FlowWithSource flowWithEveryMinuteScheduleOnDayWeek(String timeZone, DayOfWeek dayOfWeek) {
+        Schedule schedule = Schedule.builder()
+            .id(TEST_TRIGGER_ID)
+            .type(Schedule.class.getName())
+            .cron("*/1 * * * *")
+            .timezone(timeZone)
+            .when("{{dayOfWeek(trigger.date) == '" + dayOfWeek.toString() + "'}}")
+            .build();
+        return flowWithTrigger(schedule);
+    }
+}

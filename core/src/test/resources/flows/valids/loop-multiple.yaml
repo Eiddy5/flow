@@ -1,0 +1,19 @@
+id: loop-multiple
+namespace: org.flow.tests
+
+tasks:
+  - id: loop1
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["value 1", "value 2", "value 3"]
+    tasks:
+      - id: return1
+        type: org.flow.plugin.core.debug.Return
+        format: "{{item.index}} - {{ item.value }}"
+  - id: loop2
+    type: org.flow.plugin.core.flow.Loop
+    values: ["value 1", "value 2", "value 3"]
+    tasks:
+      - id: return2
+        type: org.flow.plugin.core.debug.Return
+        format: "{{item.index}} - {{ item.value }}"

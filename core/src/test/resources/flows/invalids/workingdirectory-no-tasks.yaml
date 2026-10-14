@@ -1,0 +1,6 @@
+id: workingdirectory-no-tasks
+namespace: org.flow.tests
+
+tasks:
+  - id: impossible
+    type: org.flow.plugin.core.flow.WorkingDirectory

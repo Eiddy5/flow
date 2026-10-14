@@ -1,0 +1,13 @@
+id: bad-flowable
+namespace: org.flow.tests
+
+tasks:
+  - id: flowable
+    type: org.flow.core.tasks.test.BadSequential
+    tasks:
+      - id: log1
+        type: org.flow.plugin.core.log.Log
+        message: Log 1
+      - id: log2
+        type: org.flow.plugin.core.log.Log
+        message: Log 2

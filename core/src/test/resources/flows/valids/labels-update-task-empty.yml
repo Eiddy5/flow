@@ -1,0 +1,14 @@
+id: labels-update-task-empty
+namespace: org.flow.tests
+
+tasks:
+  - id: from-string
+    type: org.flow.plugin.core.execution.Labels
+    labels: "{ \"fromStringKey\": \"\", \"\": \"value2\" }"
+  - id: from-list
+    type: org.flow.plugin.core.execution.Labels
+    labels:
+      - key: "fromListKey"
+        value: ""
+      - key: ""
+        value: "value2"

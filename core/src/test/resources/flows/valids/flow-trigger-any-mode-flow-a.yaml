@@ -1,0 +1,7 @@
+id: flow-trigger-any-mode-flow-a
+namespace: org.flow.tests.trigger.any.mode
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from flow-a: {{execution.id}}"

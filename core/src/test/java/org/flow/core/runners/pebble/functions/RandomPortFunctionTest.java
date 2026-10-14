@@ -1,0 +1,25 @@
+package org.flow.core.runners.pebble.functions;
+
+import java.util.Collections;
+
+import org.junit.jupiter.api.Test;
+
+import org.flow.core.exceptions.IllegalVariableEvaluationException;
+import org.flow.core.runners.VariableRenderer;
+
+import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import jakarta.inject.Inject;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@MicronautTest
+class RandomPortFunctionTest {
+    @Inject
+    VariableRenderer variableRenderer;
+
+    @Test
+    void checkIsDefined() throws IllegalVariableEvaluationException {
+        String rendered = variableRenderer.render("{{ randomPort() }}", Collections.emptyMap());
+        assertThat(Integer.parseInt(rendered)).isGreaterThanOrEqualTo(0);
+    }
+}

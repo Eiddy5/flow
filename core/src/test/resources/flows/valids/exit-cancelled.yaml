@@ -1,0 +1,26 @@
+id: exit-cancelled
+namespace: org.flow.tests
+
+inputs:
+  - id: state
+    type: SELECT
+    values:
+      - CONTINUE
+      - END
+    defaults: END
+
+tasks:
+  - id: if
+    type: org.flow.plugin.core.flow.If
+    condition: "{{inputs.state == 'CONTINUE'}}"
+    then:
+      - id: hello
+        type: org.flow.plugin.core.log.Log
+        message: I'm continuing
+    else:
+      - id: exit
+        type: org.flow.plugin.core.execution.Exit
+        state: CANCELLED
+  - id: end
+    type: org.flow.plugin.core.log.Log
+    message: I'm ending

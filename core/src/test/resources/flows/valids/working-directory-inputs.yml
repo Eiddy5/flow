@@ -1,0 +1,13 @@
+id: working-directory-inputs
+namespace: org.flow.tests
+
+tasks:
+  - id: workingDir
+    type: org.flow.plugin.core.flow.WorkingDirectory
+    inputFiles:
+      input.txt: Hello World
+    tasks:
+      - id: inputFiles
+        type: org.flow.plugin.core.flow.WorkingDirectoryTest$LocalFiles
+        outputs:
+          - input.txt

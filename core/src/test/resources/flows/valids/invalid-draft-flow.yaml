@@ -1,0 +1,4 @@
+id: invalid-draft-flow
+namespace: org.flow.tests
+draft: true
+tasks: []

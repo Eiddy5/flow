@@ -1,0 +1,7 @@
+id: npe-labels-update-task
+namespace: org.flow.tests
+tasks:
+  - id: labels
+    type: org.flow.plugin.core.execution.Labels
+    labels:
+      someLabel: "{{ taskrun.id }}"

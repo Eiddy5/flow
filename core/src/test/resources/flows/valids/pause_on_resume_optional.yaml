@@ -1,0 +1,15 @@
+id: pause_on_resume_optional
+namespace: org.flow.tests
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    onResume:
+      - id: asked
+        type: STRING
+        required: false
+
+  - id: last
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      asked: "{{outputs.pause.onResume.asked ?? 'MISSING'}}"

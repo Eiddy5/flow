@@ -1,0 +1,15 @@
+id: http-listen-encrypted
+namespace: org.flow.tests
+
+triggers:
+  - id: http
+    type: org.flow.plugin.fs.http.Trigger
+    encryptBody: true
+    uri: https://api.chucknorris.io/jokes/random
+    responseCondition: "{{ fromJson(response.body).id is not null }}"
+    interval: PT1S
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Flow team wishes you a great day! 👋

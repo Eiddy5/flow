@@ -1,0 +1,8 @@
+id: duplicate-key
+namespace: org.flow.tests
+
+tasks:
+  - id: bad-task
+    type: org.flow.plugin.core.log.Log
+    message: Hello World
+    message: Hello World

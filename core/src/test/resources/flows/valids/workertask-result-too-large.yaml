@@ -1,0 +1,6 @@
+id: workertask-result-too-large
+namespace: org.flow.tests
+
+tasks:
+  - id: workertask-result-too-large
+    type: org.flow.core.runners.test.WorkerTaskResultTooLarge

@@ -1,0 +1,18 @@
+id: subflow-function-mutual-b
+namespace: org.flow.tests
+
+# Mutual recursion b -> a -> b -> ... see subflow-function-mutual-a.
+inputs:
+  - id: x
+    type: STRING
+    defaults: "{{ subflow(namespace='org.flow.tests', id='subflow-function-mutual-a').outputs.x }}"
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ inputs.x }}"
+
+outputs:
+  - id: x
+    type: STRING
+    value: "{{ inputs.x }}"

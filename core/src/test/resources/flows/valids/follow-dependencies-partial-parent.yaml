@@ -1,0 +1,13 @@
+id: follow-dependencies-partial-parent
+namespace: org.flow.tests
+
+# The subflow terminates, then the pause keeps this execution alive: a dependency
+# graph that is only partially terminated.
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: follow-dependencies-partial-child
+
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause

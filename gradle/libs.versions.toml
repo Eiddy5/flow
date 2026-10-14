@@ -1,48 +1,166 @@
+# Shared dependency coordinates and versions for the root build and all modules.
+# Libraries without version.ref are managed by the BOMs declared by their owning modules.
+
 [versions]
-micronaut-plugins = "4.6.2"
-shadow = "8.3.9"
-hikaricp = "7.1.0"
-cloud-datapilot = "2.0.48"
-jsonschema-generator = "4.38.0"
-swagger-annotations = "2.2.43"
+assertj-managed = "3.27.4"
+jakarta-validation-api = "3.1.1"
+jsr305 = "3.0.2"
+junit = "5.14.0"
+logback = "1.5.37"
+opentelemetry = "1.54.1"
+swagger = "2.2.46"
+archunit-junit5 = "1.4.2"
+assertj = "3.27.7"
+awaitility = "4.3.0"
+bouncycastle = "1.85"
+caffeine = "3.2.4"
+commons-compress = "1.28.0"
+commons-io = "2.22.0"
+commons-lang3 = "3.20.0"
+cron-utils = "9.2.1"
+failsafe = "3.3.2"
+friendly-id = "1.1.0"
+gitignore-reader = "2.0.0"
+gson = "2.13.2"
+guava = "33.7.1-jre"
+hamcrest = "3.0"
+hamcrest-date = "2.0.8"
+httpclient5 = "5.6.4"
+jackson = "2.22.1"
+jackson-annotations = "2.22"
+jackson-jq = "1.6.2"
+jakarta-annotation-api = "3.0.0"
+jakarta-xml-bind-api = "4.0.5"
+janino = "3.1.12"
+jansi = "2.4.3"
+java-uuid-generator = "5.2.0"
+jetty = "12.0.31"
+jollyday = "2.19.0"
+jooq = "3.21.7"
+json-patch = "1.13"
+json-schema-validator = "3.0.6"
+jsonschema = "4.38.0"
+junit-pioneer = "2.3.0"
+ksuid = "1.1.4"
+log4j-to-slf4j = "2.26.1"
+logback-ecs-encoder = "1.8.0"
+lombok = "1.18.46"
+maven-resolver = "2.0.10"
+micronaut-platform = "4.10.18"
+mockito = "5.23.0"
+mockito-junit = "5.20.0"
+pebble = "4.1.2"
+plexus-utils = "4.1.0"
+postgresql = "42.7.13"
+slf4j = "2.0.18"
+testcontainers = "1.21.4"
+wiremock-jetty12 = "3.13.2"
 
 [libraries]
-cron-utils = { module = "com.cronutils:cron-utils", version = "9.2.1" }
-micronaut-http-validation = { module = "io.micronaut:micronaut-http-validation" }
-micronaut-validation = { module = "io.micronaut.validation:micronaut-validation" }
-jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api" }
-micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
-micronaut-discovery-client = { module = "io.micronaut.discovery:micronaut-discovery-client" }
-micronaut-elasticsearch = { module = "io.micronaut.elasticsearch:micronaut-elasticsearch" }
-micronaut-jackson-databind = { module = "io.micronaut:micronaut-jackson-databind" }
-logback-classic = { module = "ch.qos.logback:logback-classic" }
-jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml" }
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit-junit5" }
+# Preserve the previous shared test version and the explicit tests/tooling override.
+assertj-core-managed = { module = "org.assertj:assertj-core", version.ref = "assertj-managed" }
+assertj-core-pinned = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
+bcpkix-jdk18on = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
+caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
+commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
+commons-io = { module = "commons-io:commons-io", version.ref = "commons-io" }
+commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commons-lang3" }
+cron-utils = { module = "com.cronutils:cron-utils", version.ref = "cron-utils" }
+failsafe = { module = "dev.failsafe:failsafe", version.ref = "failsafe" }
+friendly-id = { module = "com.devskiller.friendly-id:friendly-id", version.ref = "friendly-id" }
+gitignore-reader = { module = "nl.basjes.gitignore:gitignore-reader", version.ref = "gitignore-reader" }
+gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+hamcrest-core = { module = "org.hamcrest:hamcrest", version.ref = "hamcrest" }
+hamcrest-date = { module = "org.exparity:hamcrest-date", version.ref = "hamcrest-date" }
+hamcrest-library = { module = "org.hamcrest:hamcrest-library", version.ref = "hamcrest" }
+httpclient5 = { module = "org.apache.httpcomponents.client5:httpclient5", version.ref = "httpclient5" }
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson-annotations" }
+jackson-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson" }
+jackson-core = { module = "com.fasterxml.jackson.core:jackson-core", version.ref = "jackson" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-dataformat-ion = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-ion", version.ref = "jackson" }
+jackson-dataformat-xml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-xml", version.ref = "jackson" }
+jackson-dataformat-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+jackson-datatype-guava = { module = "com.fasterxml.jackson.datatype:jackson-datatype-guava", version.ref = "jackson" }
+jackson-datatype-jdk8 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jdk8", version.ref = "jackson" }
+jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
+jackson-jq = { module = "net.thisptr:jackson-jq", version.ref = "jackson-jq" }
+jackson-module-parameter-names = { module = "com.fasterxml.jackson.module:jackson-module-parameter-names", version.ref = "jackson" }
+jakarta-annotation-api = { module = "jakarta.annotation:jakarta.annotation-api", version.ref = "jakarta-annotation-api" }
+jakarta-validation-api = { module = "jakarta.validation:jakarta.validation-api", version.ref = "jakarta-validation-api" }
+jakarta-xml-bind-api = { module = "jakarta.xml.bind:jakarta.xml.bind-api", version.ref = "jakarta-xml-bind-api" }
+janino = { module = "org.codehaus.janino:janino", version.ref = "janino" }
+jansi = { module = "org.fusesource.jansi:jansi", version.ref = "jansi" }
+java-uuid-generator = { module = "com.fasterxml.uuid:java-uuid-generator", version.ref = "java-uuid-generator" }
+jcl-over-slf4j = { module = "org.slf4j:jcl-over-slf4j", version.ref = "slf4j" }
+jetty-bom = { module = "org.eclipse.jetty:jetty-bom", version.ref = "jetty" }
+jollyday-core = { module = "de.focus-shift:jollyday-core", version.ref = "jollyday" }
+jollyday-jaxb = { module = "de.focus-shift:jollyday-jaxb", version.ref = "jollyday" }
+jooq = { module = "org.jooq:jooq", version.ref = "jooq" }
+json-patch = { module = "com.github.java-json-tools:json-patch", version.ref = "json-patch" }
+json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
+jsonschema-generator = { module = "com.github.victools:jsonschema-generator", version.ref = "jsonschema" }
+jsonschema-module-jackson = { module = "com.github.victools:jsonschema-module-jackson", version.ref = "jsonschema" }
+jsonschema-module-jakarta-validation = { module = "com.github.victools:jsonschema-module-jakarta-validation", version.ref = "jsonschema" }
+jsonschema-module-swagger2 = { module = "com.github.victools:jsonschema-module-swagger-2", version.ref = "jsonschema" }
+jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "jsr305" }
+jul-to-slf4j = { module = "org.slf4j:jul-to-slf4j", version.ref = "slf4j" }
+junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine" }
+junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params" }
+junit-pioneer = { module = "org.junit-pioneer:junit-pioneer", version.ref = "junit-pioneer" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
-paas-json = { module = "org.paas:paas-json" }
-pass-authx = { module = "org.pass:pass-authx", version = "0.1.0-SNAPSHOT" }
-paas-session = { module = "org.paas:paas-session" }
-paas-pulsar = { module = "org.paas:paas-pulsar" }
-lombok = { module = "org.projectlombok:lombok" }
-hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
-
-grpc-inprocess = { module = "io.grpc:grpc-inprocess" }
-grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded" }
-jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension" }
-jooq-paas = { module = "org.jooq:jooq-paas" }
-micronaut-jooq = { module = "io.micronaut.sql:micronaut-jooq" }
+ksuid = { module = "com.github.ksuid:ksuid", version.ref = "ksuid" }
+log4j-to-slf4j = { module = "org.apache.logging.log4j:log4j-to-slf4j", version.ref = "log4j-to-slf4j" }
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+logback-ecs-encoder = { module = "co.elastic.logging:logback-ecs-encoder", version.ref = "logback-ecs-encoder" }
+lombok = { module = "org.projectlombok:lombok", version.ref = "lombok" }
+maven-resolver-connector-basic = { module = "org.apache.maven.resolver:maven-resolver-connector-basic", version.ref = "maven-resolver" }
+maven-resolver-impl = { module = "org.apache.maven.resolver:maven-resolver-impl", version.ref = "maven-resolver" }
+maven-resolver-supplier-mvn3 = { module = "org.apache.maven.resolver:maven-resolver-supplier-mvn3", version.ref = "maven-resolver" }
+maven-resolver-transport-apache = { module = "org.apache.maven.resolver:maven-resolver-transport-apache", version.ref = "maven-resolver" }
+maven-resolver-transport-file = { module = "org.apache.maven.resolver:maven-resolver-transport-file", version.ref = "maven-resolver" }
+micrometer-core = { module = "io.micrometer:micrometer-core" }
+micrometer-java21 = { module = "io.micrometer:micrometer-java21" }
+micronaut-context = { module = "io.micronaut:micronaut-context" }
+micronaut-data-model = { module = "io.micronaut.data:micronaut-data-model" }
+micronaut-hibernate-validator = { module = "io.micronaut.beanvalidation:micronaut-hibernate-validator" }
+micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
+micronaut-http-server-netty = { module = "io.micronaut:micronaut-http-server-netty" }
+micronaut-inject-core = { module = "io.micronaut:micronaut-inject" }
+micronaut-inject-java = { module = "io.micronaut:micronaut-inject-java" }
+micronaut-jackson-databind = { module = "io.micronaut:micronaut-jackson-databind" }
 micronaut-jdbc-hikari = { module = "io.micronaut.sql:micronaut-jdbc-hikari" }
-postgresql = { module = "org.postgresql:postgresql" }
-opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
-org-x9-cloud-datapilot = { module = "org.x9.cloud:cloud-datapilot", version.ref = "cloud-datapilot" }
-jsonschema-generator = { module = "com.github.victools:jsonschema-generator", version.ref = "jsonschema-generator" }
-jsonschema-module-jackson = { module = "com.github.victools:jsonschema-module-jackson", version.ref = "jsonschema-generator" }
-jsonschema-module-jakarta-validation = { module = "com.github.victools:jsonschema-module-jakarta-validation", version.ref = "jsonschema-generator" }
-jsonschema-module-swagger = { module = "com.github.victools:jsonschema-module-swagger-2", version.ref = "jsonschema-generator" }
-swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version.ref = "swagger-annotations" }
+micronaut-jooq = { module = "io.micronaut.sql:micronaut-jooq" }
+micronaut-management = { module = "io.micronaut:micronaut-management" }
+micronaut-micrometer-observation = { module = "io.micronaut.micrometer:micronaut-micrometer-observation" }
+micronaut-micrometer-registry-prometheus = { module = "io.micronaut.micrometer:micronaut-micrometer-registry-prometheus" }
+micronaut-platform = { module = "io.micronaut.platform:micronaut-platform", version.ref = "micronaut-platform" }
+micronaut-retry = { module = "io.micronaut:micronaut-retry" }
+micronaut-runtime = { module = "io.micronaut:micronaut-runtime" }
+micronaut-test-junit5 = { module = "io.micronaut.test:micronaut-test-junit5" }
+micronaut-validation-runtime = { module = "io.micronaut.validation:micronaut-validation" }
+micronaut-validation-processor = { module = "io.micronaut.validation:micronaut-validation-processor" }
+mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
+mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito-junit" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp", version.ref = "opentelemetry" }
+pebble = { module = "io.pebbletemplates:pebble", version.ref = "pebble" }
+plexus-utils = { module = "org.codehaus.plexus:plexus-utils", version.ref = "plexus-utils" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" }
+reactor-core = { module = "io.projectreactor:reactor-core" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version.ref = "swagger" }
+testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+wiremock-jetty12 = { module = "org.wiremock:wiremock-jetty12", version.ref = "wiremock-jetty12" }
 
-[plugins]
-micronaut-application = { id = "io.micronaut.application", version.ref = "micronaut-plugins" }
-micronaut-aot = { id = "io.micronaut.aot", version.ref = "micronaut-plugins" }
-micronaut-test-resources = { id = "io.micronaut.test-resources", version.ref = "micronaut-plugins" }
-micronaut-library = { id = "io.micronaut.library", version.ref = "micronaut-plugins" }
-shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+micronaut-http = { module = "io.micronaut:micronaut-http" }
+micronaut-micrometer-core = { module = "io.micronaut.micrometer:micronaut-micrometer-core" }
+micronaut-tracing-opentelemetry = { module = "io.micronaut.tracing:micronaut-tracing-opentelemetry" }
+micronaut-data-connection-jdbc = { module = "io.micronaut.data:micronaut-data-connection-jdbc" }
+micronaut-jdbc = { module = "io.micronaut.sql:micronaut-jdbc" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+micronaut-reactor = { module = "io.micronaut.reactor:micronaut-reactor" }
+micronaut-data-tx-jdbc = { module = "io.micronaut.data:micronaut-data-tx-jdbc" }

@@ -1,0 +1,7 @@
+id: load-directory-second
+namespace: org.flow.tests.loaddir
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: second

@@ -1,0 +1,23 @@
+id: flow-trigger-at-least-mode-flow-listen
+namespace: org.flow.tests.trigger.at.least.mode
+
+triggers:
+  - id: flow
+    type: org.flow.plugin.core.trigger.Flow
+    mode: AT_LEAST
+    minSatisfied: 2
+    dependsOn:
+      - namespace: org.flow.tests.trigger.at.least.mode
+        flowId: flow-trigger-at-least-mode-flow-a
+        states: [SUCCESS]
+      - namespace: org.flow.tests.trigger.at.least.mode
+        flowId: flow-trigger-at-least-mode-flow-b
+        states: [SUCCESS]
+      - namespace: org.flow.tests.trigger.at.least.mode
+        flowId: flow-trigger-at-least-mode-flow-c
+        states: [SUCCESS]
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "It works"

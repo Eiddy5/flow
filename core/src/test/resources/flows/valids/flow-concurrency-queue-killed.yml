@@ -1,0 +1,11 @@
+id: flow-concurrency-queue-killed
+namespace: org.flow.tests
+
+concurrency:
+  behavior: QUEUE
+  limit: 1
+
+tasks:
+  - id: sleep
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT1M

@@ -1,80 +1,117 @@
-plugins {
-    id 'org.flow.build.base'
-    alias(libs.plugins.micronaut.library)
-    id 'java-library'
+configurations {
+    tests
 }
 
-repositories {
-    maven {
-        url = uri(repoUrl)
-        allowInsecureProtocol = true
-    }
-    mavenCentral()
-    gradlePluginPortal()
+tasks.register('copyGradleProperties', Copy) {
+    group = "build"
+    shouldRunAfter compileJava
+
+    from '../gradle.properties'
+    into layout.buildDirectory.dir('generated/version')
 }
 
-configurations.configureEach {
-    exclude group: "io.netty", module: "netty-transport-native-io_uring"
-    exclude group: "io.netty", module: "netty-transport-classes-io_uring"
-    exclude group: "org.paas", module: "paas-diagnostic"
-    exclude group: "org.paas", module: "paas-response-wrapper"
-    exclude group: "org.paas", module: "paas-temporal"
-    resolutionStrategy {
-        force(libs.hikaricp)
-    }
+processResources.dependsOn copyGradleProperties
+sourceSets.main.resources.srcDir layout.buildDirectory.dir('generated/version')
+
+tasks.withType(Test).configureEach {
+    systemProperty 'flow.test-classpath', sourceSets.test.runtimeClasspath.asPath
 }
 
 dependencies {
-    testImplementation("org.junit.jupiter:junit-jupiter-params")
-    api(project(':gen'))
-    implementation(libs.cron.utils)
+    // Flow
+    api project(':model')
+    annotationProcessor project(':processor')
 
-    compileOnly(libs.lombok)
-    annotationProcessor(libs.lombok)
-    annotationProcessor(libs.micronaut.http.validation)
+    // serializers
+    implementation libs.jackson.dataformat.ion
 
-    implementation(libs.micronaut.jackson.databind)
-    implementation(libs.jackson.dataformat.yaml)
-    implementation(libs.jsonschema.generator) {
+    // reactor
+    api libs.reactor.core
+
+    // awaitility
+    api libs.awaitility
+
+    // Micronaut APIs exposed by native services; adapters remain implementation details.
+    api platform(libs.micronaut.platform)
+    api libs.micronaut.context
+    api libs.micronaut.data.model
+    api libs.micronaut.http
+    implementation libs.micronaut.validation.runtime
+    implementation libs.micronaut.hibernate.validator
+    implementation libs.micronaut.jackson.databind
+    implementation libs.micronaut.retry
+    implementation libs.micronaut.micrometer.core
+    implementation libs.micrometer.core
+    runtimeOnly libs.micronaut.micrometer.registry.prometheus
+    runtimeOnly libs.micronaut.tracing.opentelemetry
+    runtimeOnly libs.micronaut.reactor
+    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor libs.micronaut.inject.java
+    annotationProcessor libs.micronaut.validation.processor
+
+    // utils
+    implementation libs.pebble
+    implementation libs.logback.ecs.encoder
+    implementation libs.jollyday.core
+    implementation libs.jollyday.jaxb
+    implementation libs.gitignore.reader
+    implementation libs.failsafe
+    implementation libs.caffeine
+    implementation libs.ksuid
+    api libs.httpclient5
+
+    // plugins
+    implementation libs.maven.resolver.impl
+    implementation libs.maven.resolver.supplier.mvn3
+    implementation libs.maven.resolver.connector.basic
+    implementation libs.maven.resolver.transport.file
+    implementation libs.maven.resolver.transport.apache
+
+    // scheduler
+    implementation libs.cron.utils
+
+    // schema
+    implementation (libs.jsonschema.generator) {
         exclude group: 'com.fasterxml.jackson.core'
     }
-    implementation(libs.jsonschema.module.jackson)
-    implementation(libs.jsonschema.module.jakarta.validation)
-    implementation(libs.jsonschema.module.swagger) {
+    implementation libs.jsonschema.module.jakarta.validation
+    implementation libs.jsonschema.module.jackson
+    implementation libs.jsonschema.module.swagger2
+
+    // Json Diff
+    implementation (libs.json.patch) {
         exclude group: 'com.fasterxml.jackson.core'
     }
-    implementation(libs.swagger.annotations)
-    implementation(libs.micronaut.jooq)
-    implementation(libs.micronaut.jdbc.hikari)
-    api(libs.org.x9.cloud.datapilot)
 
-    api(libs.jooq.paas)
-    api(libs.jakarta.validation.api)
-    api(libs.paas.json)
-    api(libs.paas.session)
-    implementation(libs.paas.pulsar)
+    // Json schema validator
+    implementation libs.json.schema.validator
 
-    runtimeOnly(libs.postgresql)
+    // micrometer
+    implementation libs.micronaut.micrometer.observation
+    implementation libs.micrometer.java21
 
-    testImplementation(libs.micronaut.validation)
-    testImplementation(libs.logback.classic)
-    testRuntimeOnly(libs.junit.platform.launcher)
-    testCompileOnly(libs.lombok)
-    testAnnotationProcessor(libs.lombok)
-    testAnnotationProcessor(libs.micronaut.http.validation)
-}
+    // test
+    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor libs.micronaut.inject.java
+    testAnnotationProcessor libs.micronaut.validation.processor
+    testImplementation libs.micronaut.test.junit5
+    testAnnotationProcessor project(':processor')
+    testImplementation project(':tests')
 
-micronaut {
-    testRuntime("junit5")
-    processing {
-        incremental(true)
-        annotations("org.cses.flow.*")
-    }
-}
+    testImplementation project(':jdbc-postgres')
+    testImplementation project(':storage-local')
+    testImplementation project(':worker')
+    testImplementation project(':scheduler')
+    testImplementation project(':executor')
+    testImplementation project(':indexer')
 
-tasks.withType(Test).configureEach {
-    useJUnitPlatform()
-    testLogging {
-        showStandardStreams = true
-    }
+    testImplementation libs.micronaut.http.client
+    testImplementation libs.micronaut.http.server.netty
+    testImplementation libs.micronaut.management
+
+    testImplementation libs.testcontainers.core
+    testImplementation libs.testcontainers.junit.jupiter
+    testImplementation libs.bcpkix.jdk18on
+
+    testImplementation libs.wiremock.jetty12
 }

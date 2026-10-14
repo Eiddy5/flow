@@ -1,0 +1,15 @@
+id: flow-trigger-paused-listen
+namespace: org.flow.tests.trigger.paused
+
+triggers:
+  - id: flow
+    type: org.flow.plugin.core.trigger.Flow
+    dependsOn:
+      - namespace: org.flow.tests.trigger.paused
+        flowId: flow-trigger-paused-flow
+        states: [PAUSED]
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "It works"

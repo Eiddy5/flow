@@ -1,0 +1,17 @@
+id: scheduled_missing_inputs_defaults_2
+namespace: org.flow.tests
+
+inputs:
+  - id: user2
+    type: STRING
+
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: hey there {{ inputs.user2 }}! 👋
+
+triggers:
+  - id: every_minute
+    type: org.flow.plugin.core.trigger.Schedule
+    cron: "*/1 * * * *"

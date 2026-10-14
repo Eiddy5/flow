@@ -1,0 +1,15 @@
+id: finally-flow-error-first
+namespace: org.flow.tests
+
+tasks:
+  - id: ko
+    type: org.flow.plugin.core.execution.Fail
+
+  - id: ok
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ task.id }}"
+
+finally:
+  - id: a1
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ task.id }}"

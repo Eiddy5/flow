@@ -1,0 +1,32 @@
+id: allow-failure-with-retry
+namespace: org.flow.tests
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello World! 🚀
+
+  - id: retry_block
+    type: org.flow.plugin.core.flow.AllowFailure
+    tasks:
+      - id: failing_task
+        type: org.flow.plugin.core.log.Log
+        message: "{{ taskrun.attemptsCount == 3 ? 'success' : ko }}"
+        retry:
+          type: constant
+          behavior: RETRY_FAILED_TASK
+          interval: PT0.1S
+          maxAttempts: 3
+          warningOnRetry: true
+    errors:
+      - id: error_handler
+        type: org.flow.plugin.core.log.Log
+        message: "Error handler executed"
+    finally:
+      - id: finally_task
+        type: org.flow.plugin.core.log.Log
+        message: "Finally block executed"
+
+  - id: downstream_task
+    type: org.flow.plugin.core.log.Log
+    message: "Downstream task executed"

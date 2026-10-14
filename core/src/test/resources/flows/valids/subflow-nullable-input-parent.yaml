@@ -1,0 +1,17 @@
+id: subflow-nullable-input-parent
+namespace: org.flow.tests
+
+inputs:
+  - id: integerValue
+    type: INT
+    required: false
+
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: subflow-nullable-input-child
+    wait: true
+    transmitFailed: true
+    inputs:
+      integerValue: "{{ inputs.integerValue }}"

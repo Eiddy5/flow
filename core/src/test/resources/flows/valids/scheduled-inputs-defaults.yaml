@@ -1,0 +1,17 @@
+id: scheduled_inputs_defaults
+namespace: org.flow.tests
+
+inputs:
+  - id: user
+    type: STRING
+    defaults: John
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: hey there {{ inputs.user }}! 👋
+
+triggers:
+  - id: every_minute
+    type: org.flow.plugin.core.trigger.Schedule
+    cron: "*/1 * * * *"

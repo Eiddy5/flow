@@ -1,0 +1,6 @@
+id: subflow-function-failing
+namespace: org.flow.tests
+
+tasks:
+  - id: fail
+    type: org.flow.plugin.core.execution.Fail

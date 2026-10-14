@@ -1,0 +1,10 @@
+id: flow-trigger-multiple-conditions-flow-a
+namespace: org.flow.tests.trigger.multiple.conditions
+
+labels:
+  some: label
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from parents: {{execution.id}}"

@@ -1,0 +1,19 @@
+id: loop-values-from-uri
+namespace: org.flow.tests
+
+tasks:
+  - id: write
+    type: org.flow.plugin.core.storage.Write
+    content: |-
+      {date:"2025-12-03T12:00:00Z",title:"Coupe_du_monde_masculine_de_rugby_à_XV_2027",views:490}
+      {date:"2025-12-03T12:00:00Z",title:"Michel-Ange",views:448}
+      {date:"2025-12-03T12:00:00Z",title:"Histoire_des_jeux",views:438}
+    extension: .ion
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: "{{ outputs.write.uri }}"
+    tasks:
+      - id: item
+        type: org.flow.plugin.core.debug.Return
+        format: "{{item.index}} - {{item.value}}"

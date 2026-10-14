@@ -1,0 +1,10 @@
+id: retry-dynamic-task
+namespace: "org.flow.tests"
+tasks:
+  - id: dynamic
+    type: org.flow.core.tasks.test.DynamicTask
+    fail: true
+    retry:
+      type: constant
+      maxAttempts: 2
+      interval: PT0.5S

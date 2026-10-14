@@ -1,0 +1,19 @@
+id: condition_with_input
+namespace: org.flow.tests
+
+inputs:
+  - id: condition
+    type: SELECT
+    values:
+      - success
+      - fail
+    defaults: success
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello World!
+
+  - id: fail
+    type: org.flow.plugin.core.execution.Fail
+    runIf: "{{ inputs.condition == 'fail' }}"

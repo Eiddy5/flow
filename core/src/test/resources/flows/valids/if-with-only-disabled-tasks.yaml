@@ -1,0 +1,15 @@
+id: if-with-only-disabled-tasks
+namespace: org.flow.tests
+
+variables:
+  numeric_variable: 42
+
+tasks:
+  - id: if
+    type: org.flow.plugin.core.flow.If
+    condition: "{{ vars.numeric_variable > 0 }}"
+    then:
+      - id: log1
+        disabled: true
+        type: org.flow.plugin.core.log.Log
+        message: Log 1

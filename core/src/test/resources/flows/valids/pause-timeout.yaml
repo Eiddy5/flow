@@ -1,0 +1,10 @@
+id: pause-timeout
+namespace: org.flow.tests
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    timeout: PT1S
+  - id: last
+    type: org.flow.plugin.core.debug.Return
+    format: "{{task.id}} > {{taskrun.startDate}}"

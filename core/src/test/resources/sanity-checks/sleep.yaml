@@ -1,0 +1,20 @@
+id: sleep
+namespace: sanitychecks.core
+
+tasks:
+  - id: before
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ now() | timestamp('Europe/London') }}"
+
+  - id: sleep_5
+    type: org.flow.plugin.core.flow.Sleep
+    duration: "PT5S"
+
+  - id: after
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ now() | timestamp('Europe/London') }}"
+
+  - id: assert
+    type: org.flow.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs.after.value | number - outputs.before.value | number >= 5 }}"

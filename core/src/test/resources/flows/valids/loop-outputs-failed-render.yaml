@@ -1,0 +1,16 @@
+id: loop-outputs-failed-render
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["value 1", "value 2", "value 3"]
+    outputs:
+      - id: value
+        type: STRING
+        value: "{{outputs.nonExistentTask.value}}"
+    tasks:
+      - id: doWork
+        type: org.flow.plugin.core.debug.Return
+        format: "some output"

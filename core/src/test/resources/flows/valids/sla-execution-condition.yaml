@@ -1,0 +1,28 @@
+id: sla-execution-condition
+namespace: org.flow.tests
+
+inputs:
+  - id: string
+    type: SELECT
+    values:
+      - PASS
+      - CANCEL
+      - LABEL
+    defaults: PASS
+
+sla:
+  - id: condition
+    type: EXECUTION_ASSERTION
+    behavior: CANCEL
+    assert: "{{inputs.string != 'CANCEL'}}"
+  - id: condition
+    type: EXECUTION_ASSERTION
+    behavior: NONE
+    assert: "{{inputs.string != 'LABEL'}}"
+    labels:
+      sla: violated
+
+tasks:
+  - id: return
+    type: org.flow.plugin.core.debug.Return
+    format: "true"

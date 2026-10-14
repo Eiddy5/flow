@@ -1,0 +1,18 @@
+id: change-state-errors
+namespace: org.flow.tests
+
+errors:
+  - id: print_error_log
+    type: org.flow.plugin.core.log.Log
+    message: "Failure alert for flow {{ flow.namespace }}.{{ flow.id }} with ID {{ execution.id }}"
+
+tasks:
+  - id: before_task
+    type: org.flow.plugin.core.debug.Return
+    format: "this always works"
+  - id: make_error
+    type: org.flow.plugin.core.debug.Return
+    format: "{{error}}"
+  - id: after-task
+    type: org.flow.plugin.core.debug.Return
+    format: "after"

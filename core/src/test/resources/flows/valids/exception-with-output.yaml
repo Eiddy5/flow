@@ -1,0 +1,7 @@
+id: exception-with-output
+namespace: org.flow.tests
+
+tasks:
+  - id: exception
+    type: org.flow.core.runners.test.TaskThatFail
+    message: Oh no!

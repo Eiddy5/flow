@@ -1,0 +1,33 @@
+id: subflow-parent-retry
+namespace: org.flow.tests
+
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Parallel
+    tasks:
+      - id: seq1
+        type: org.flow.plugin.core.flow.Sequential
+        tasks:
+        - id: subflow1
+          type: org.flow.plugin.core.flow.Subflow
+          flowId: subflow-to-retry
+          namespace: org.flow.tests
+          inputs:
+            counter: "{{ taskrun.attemptsCount }}"
+          retry:
+            type: constant
+            maxAttempts: 3
+            interval: PT1S
+      - id: seq2
+        type: org.flow.plugin.core.flow.Sequential
+        tasks:
+        - id: subflow2
+          type: org.flow.plugin.core.flow.Subflow
+          flowId: subflow-to-retry
+          namespace: org.flow.tests
+          inputs:
+            counter: "{{ taskrun.attemptsCount }}"
+          retry:
+            type: constant
+            maxAttempts: 3
+            interval: PT1S

@@ -1,0 +1,19 @@
+id: if-condition
+namespace: org.flow.tests
+
+inputs:
+  - id: param
+    type: STRING
+
+tasks:
+  - id: if
+    type: org.flow.plugin.core.flow.If
+    condition: "{{inputs.param}}"
+    then:
+      - id: when-true
+        type: org.flow.plugin.core.log.Log
+        message: 'Condition was true'
+    else:
+      - id: when-false
+        type: org.flow.plugin.core.log.Log
+        message: 'Condition was false'

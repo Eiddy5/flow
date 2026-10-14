@@ -1,0 +1,8 @@
+id: subflow-parent-of-failed
+namespace: org.flow.tests
+
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: failed-first

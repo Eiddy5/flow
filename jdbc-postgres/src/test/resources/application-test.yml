@@ -1,0 +1,44 @@
+flow:
+  migration:
+    auto: true
+  server-type: STANDALONE
+  queue:
+    type: postgres
+    message-protection:
+      enabled: true
+      limit: 1048576
+  repository:
+    type: postgres
+  storage:
+    type: local
+    local:
+      base-path: /tmp/unittest
+  jdbc:
+    queues:
+      min-poll-interval: 10ms
+      max-poll-interval: 100ms
+      poll-switch-interval: 5s
+  tasks:
+    subflow:
+      allow-parameter-outputs: true
+  server:
+    liveness:
+      enabled: false
+    termination-grace-period: 5s
+    service:
+      purge:
+        initial-delay: 1h
+        fixed-delay: 1d
+        retention: 30d
+logger:
+  levels:
+    "org.flow.core.migration": WARN
+
+datasources:
+  flow:
+    url: ${FLOW_UPSTREAM_TEST_URL:jdbc:postgresql://localhost:5432/flow_unit}
+    driverClassName: org.postgresql.Driver
+    username: ${FLOW_UPSTREAM_TEST_USER:flow}
+    password: ${FLOW_UPSTREAM_TEST_PASSWORD:flow}
+    dialect: POSTGRES
+    schema: test_${random.uuid}

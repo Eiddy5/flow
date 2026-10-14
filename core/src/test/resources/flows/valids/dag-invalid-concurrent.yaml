@@ -1,0 +1,12 @@
+id: dag-invalid-concurrent
+namespace: org.flow.tests
+
+tasks:
+  - id: dag
+    type: org.flow.plugin.core.flow.Dag
+    concurrent: "{{ 0 - 1 }}"
+    tasks:
+      - task:
+          id: a
+          type: org.flow.plugin.core.log.Log
+          message: hello

@@ -1,0 +1,33 @@
+id: duplicate
+namespace: org.flow.tests
+
+tasks:
+  - id: date
+    type: org.flow.plugin.core.debug.Return
+    format: "{{taskrun.startDate}}"
+  - id: listen
+    type: org.flow.plugin.core.debug.Return
+    format: "{{taskrun.startDate}}"
+
+  - id: seq
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+      - id: date
+        type: org.flow.plugin.core.debug.Return
+        format: "{{taskrun.startDate}}"
+    errors:
+      - id: date
+        type: org.flow.plugin.core.debug.Return
+        format: "{{taskrun.startDate}}"
+
+errors:
+  - id: date
+    type: org.flow.plugin.core.debug.Return
+    format: "{{taskrun.startDate}}"
+triggers:
+  - id: trigger
+    type: org.flow.plugin.core.trigger.Schedule
+    cron: '* * * * *'
+  - id: trigger
+    type: org.flow.plugin.core.trigger.Webhook
+    key: t

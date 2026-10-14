@@ -1,0 +1,30 @@
+package org.flow.core.trace.propagation;
+
+import java.util.List;
+
+import org.flow.core.models.executions.Execution;
+
+import io.opentelemetry.context.propagation.TextMapGetter;
+import jakarta.annotation.Nullable;
+
+public class ExecutionTextMapGetter implements TextMapGetter<Execution> {
+    public static final ExecutionTextMapGetter INSTANCE = new ExecutionTextMapGetter();
+
+    @Override
+    public Iterable<String> keys(Execution carrier) {
+        return List.of("traceparent");
+    }
+
+    @Nullable
+    @Override
+    public String get(@Nullable Execution carrier, String key) {
+        if (carrier == null) {
+            return null;
+        }
+
+        return switch (key) {
+            case "traceparent" -> carrier.getTraceParent();
+            default -> null;
+        };
+    }
+}

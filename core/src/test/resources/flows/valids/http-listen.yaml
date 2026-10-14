@@ -1,0 +1,14 @@
+id: http-listen
+namespace: org.flow.tests
+
+triggers:
+  - id: http
+    type: org.flow.plugin.fs.http.Trigger
+    uri: https://api.chucknorris.io/jokes/random
+    responseCondition: "{{ response.statusCode == 200 }}"
+    interval: PT1S
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Flow team wishes you a great day! 👋

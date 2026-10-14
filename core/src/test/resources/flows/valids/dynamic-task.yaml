@@ -1,0 +1,8 @@
+id: dynamic-task
+namespace: "org.flow.tests"
+tasks:
+  - id: dynamic
+    type: org.flow.core.tasks.test.DynamicTask
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: End log

@@ -1,0 +1,17 @@
+id: switch-impossible
+namespace: org.flow.tests
+
+inputs:
+  - id: string
+    type: STRING
+
+tasks:
+  - id: impossible
+    type: org.flow.plugin.core.flow.Switch
+    value: "{{inputs.string}}"
+    cases:
+      "NO":
+      - id: date
+        type: org.flow.plugin.core.debug.Return
+        format: "{{taskrun.startDate}}"
+    defaults: null

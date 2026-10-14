@@ -1,0 +1,12 @@
+id: replay-moved-task
+namespace: org.flow.tests
+
+tasks:
+  - id: standalone
+    type: org.flow.plugin.core.log.Log
+    message: standalone ran at top level
+  - id: seq
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+      - id: boom
+        type: org.flow.plugin.core.execution.Fail

@@ -1,0 +1,7 @@
+id: minimal-bis
+namespace: org.flow.tests.minimal.bis
+
+tasks:
+  - id: date
+    type: org.flow.plugin.core.debug.Return
+    format: "{{taskrun.startDate}}"

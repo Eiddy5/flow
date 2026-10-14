@@ -1,0 +1,22 @@
+id: retry-and-fail
+namespace: org.flow.tests
+description: >
+  Retrying step should prevent following steps from executing.
+
+tasks:
+  - id: keepFailingWithRetry
+    type: org.flow.plugin.core.execution.Fail
+    description: Keep retrying with a simple retry defined.
+    retry:
+      type: constant
+      maxAttempts: 3
+      interval: PT1S
+
+  - id: thisTaskShouldNotBeExecuted
+    type: org.flow.plugin.core.log.Log
+    message: "The previous task should fail"
+
+errors:
+  - id: error
+    type: org.flow.plugin.core.log.Log
+    message: once

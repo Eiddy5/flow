@@ -1,0 +1,14 @@
+id: sequential-with-disabled
+namespace: org.flow.tests
+
+tasks:
+  - id: Sequential
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+      - id: hello
+        type: org.flow.plugin.core.log.Log
+        message: Hello World! 🚀
+        disabled: true
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: Hello World!

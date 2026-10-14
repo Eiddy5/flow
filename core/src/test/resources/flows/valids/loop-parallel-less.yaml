@@ -1,0 +1,12 @@
+id: loop-parallel-less
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 2
+    values: ["value 1", "value 2", "value 3", "value 4"]
+    tasks:
+      - id: item
+        type: org.flow.plugin.core.debug.Return
+        format: "{{item.index}} - {{item.value}}"

@@ -1,0 +1,8 @@
+id: recursive-flow
+namespace: org.flow.tests
+
+tasks:
+  - id: taskInvalid
+    type: org.flow.plugin.core.flow.Subflow
+    flowId: recursive-flow
+    namespace: org.flow.tests

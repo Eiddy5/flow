@@ -1,0 +1,12 @@
+id: subflow-child-with-output
+namespace: org.flow.tests
+
+tasks:
+  - id: return
+    type: org.flow.plugin.core.debug.Return
+    format: "Some value"
+
+outputs:
+  - id: flow_a_output
+    type: STRING
+    value: "{{ outputs.return.value }}"

@@ -1,0 +1,8 @@
+id: sla-parent-flow
+namespace: org.flow.tests
+
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: sla-subflow

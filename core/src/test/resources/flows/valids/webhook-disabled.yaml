@@ -1,0 +1,13 @@
+id: webhook-disabled
+namespace: org.flow.tests
+
+tasks:
+  - id: out
+    type: org.flow.plugin.core.debug.Return
+    format: "{{trigger | json }}"
+
+triggers:
+  - id: webhook
+    type: org.flow.plugin.core.trigger.Webhook
+    key: webhook-disabled-key
+    disabled: true

@@ -1,0 +1,16 @@
+id: kv
+namespace: org.flow.tests
+inputs:
+  - id: namespace
+    type: STRING
+    defaults: "org.flow.tests"
+  - id: errorOnMissing
+    type: BOOL
+    defaults: false
+tasks:
+  - id: get
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ kv('my-key').field ?? null }}"
+  - id: getWithArgs
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ kv('my-key', inputs.namespace, inputs.errorOnMissing).field }}"

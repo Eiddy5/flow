@@ -1,0 +1,13 @@
+id: return
+namespace: org.flow.tests
+
+tasks:
+- id: date
+  type: org.flow.plugin.core.debug.Return
+  format: "{{taskrun.startDate}}"
+- id: task-id
+  type: org.flow.plugin.core.debug.Return
+  format: "{{task.id}}"
+- id: flow-id
+  type: org.flow.plugin.core.debug.Return
+  format: "{{flow.id}}"

@@ -1,0 +1,13 @@
+id: sla-max-duration-ok
+namespace: org.flow.tests
+
+sla:
+  - id: maxDuration
+    type: MAX_DURATION
+    behavior: FAIL
+    duration: PT10S
+
+tasks:
+  - id: sleep
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT0.5S

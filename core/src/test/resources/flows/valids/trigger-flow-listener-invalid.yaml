@@ -1,0 +1,20 @@
+id: trigger-flow-listener-invalid
+namespace: org.flow.tests.trigger
+
+inputs:
+  - id: from-parent
+    type: STRING
+
+tasks:
+  - id: only-invalid
+    type: org.flow.plugin.core.debug.Return
+    format: "childs: {{inputs['from-parent']}}"
+
+triggers:
+  - id: listen-flow-invalid
+    type: org.flow.plugin.core.trigger.Flow
+    inputs:
+      from-parent: '{{ outputs.invalid.value }}'
+    dependsOn:
+      - namespace: org.flow.tests.trigger
+        flowId: trigger-flow

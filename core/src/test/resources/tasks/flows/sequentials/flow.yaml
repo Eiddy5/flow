@@ -1,0 +1,16 @@
+id: sequential
+namespace: org.flow.tests
+
+tasks:
+  - id: seq
+    type: org.flow.plugin.core.flow.Sequential
+    tasks:
+      - id: 1
+        type: org.flow.plugin.core.debug.Return
+        format: "{{task.id}}"
+      - id: 2
+        type: org.flow.plugin.core.debug.Return
+        format: "{{task.id}}"
+      - id: 3
+        type: org.flow.plugin.core.debug.Return
+        format: "{{task.id}}"

@@ -1,0 +1,12 @@
+id: webhook-failed
+namespace: org.flow.tests
+
+tasks:
+  - id: out
+    type: org.flow.plugin.core.execution.Fail
+
+triggers:
+  - id: webhook
+    type: org.flow.plugin.core.trigger.Webhook
+    key: "{{ flow.id }}"
+    wait: true

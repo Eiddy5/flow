@@ -1,0 +1,11 @@
+id: pause_on_pause
+namespace: org.flow.tests
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    pauseDuration: PT0.5S
+    onPause:
+      id: hello
+      type: org.flow.plugin.core.log.Log
+      message: Hello World! 🚀

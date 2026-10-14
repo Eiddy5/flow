@@ -1,0 +1,13 @@
+id: loop-pause-resume
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values:
+      - 1
+      - 2
+    tasks:
+      - id: pause
+        type: org.flow.plugin.core.flow.Pause

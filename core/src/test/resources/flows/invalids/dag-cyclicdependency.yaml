@@ -1,0 +1,38 @@
+id: "dag-cyclicdependency"
+namespace: org.flow.tests
+tasks:
+  - id: dag
+    description: "my task"
+    type: org.flow.plugin.core.flow.Dag
+    tasks:
+      - task:
+          id: task1
+          type: org.flow.plugin.core.log.Log
+          message: "1 !"
+        dependsOn:
+          - task2
+      - task:
+          id: task2
+          type: org.flow.plugin.core.log.Log
+          message: "2 !"
+        dependsOn:
+          - task1
+      - task:
+          id: task3
+          type: org.flow.plugin.core.log.Log
+          message: "1 !"
+        dependsOn:
+          - task2
+      - task:
+          id: task4
+          type: org.flow.plugin.core.log.Log
+          message: "1 !"
+        dependsOn:
+          - task2
+      - task:
+          id: task5
+          type: org.flow.plugin.core.log.Log
+          message: "1 !"
+        dependsOn:
+          - task4
+          - task3

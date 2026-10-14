@@ -1,0 +1,245 @@
+package org.flow.scheduler.internals;
+
+import java.time.Clock;
+import java.time.DateTimeException;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
+
+import org.flow.core.exceptions.FlowBlockedException;
+import org.flow.core.exceptions.FlowProcessingException;
+import org.flow.core.exceptions.InvalidTriggerConfigurationException;
+import org.flow.core.models.conditions.ConditionContext;
+import org.flow.core.models.flows.FlowId;
+import org.flow.core.models.flows.FlowInterface;
+import org.flow.core.models.flows.FlowWithSource;
+import org.flow.core.models.triggers.AbstractTrigger;
+import org.flow.core.models.triggers.Schedulable;
+import org.flow.core.runners.RunContext;
+import org.flow.core.runners.RunContextFactory;
+import org.flow.core.scheduler.model.TriggerState;
+import org.flow.core.scheduler.store.TriggerStateStore;
+import org.flow.core.services.FlowParsingService;
+import org.flow.core.utils.ListUtils;
+import org.flow.core.utils.Logs;
+import org.flow.scheduler.SchedulableTriggerFetcher;
+import org.flow.scheduler.models.TriggerEvaluationContext;
+import org.flow.scheduler.stores.FlowMetaStore;
+
+import jakarta.inject.Named;
+import jakarta.inject.Singleton;
+
+@Singleton
+public class DefaultSchedulableTriggerFetcher implements SchedulableTriggerFetcher {
+
+    private static final Logger LOG = LoggerFactory.getLogger(DefaultSchedulableTriggerFetcher.class);
+
+    // Services
+    private final RunContextFactory runContextFactory;
+
+    // Stores
+    private final TriggerStateStore triggerStateStore;
+    private final FlowMetaStore flowMetaStore;
+    private final FlowParsingService flowParsingService;
+
+    public DefaultSchedulableTriggerFetcher(RunContextFactory runContextFactory,
+        @Named("cached") TriggerStateStore triggerStateStore,
+        FlowMetaStore flowMetaStore,
+        FlowParsingService flowParsingService) {
+        this.runContextFactory = runContextFactory;
+        this.triggerStateStore = triggerStateStore;
+        this.flowMetaStore = flowMetaStore;
+        this.flowParsingService = flowParsingService;
+    }
+
+    /**
+     * {@inheritDoc}
+     **/
+    @Override
+    public List<TriggerEvaluationContext> getSchedulableTriggers(final Clock clock, final ZonedDateTime now, final Set<Integer> assignments) {
+        List<TriggerState> triggers = this.triggerStateStore.findTriggersEligibleForScheduling(now, assignments, false);
+
+        return triggers.stream()
+            .filter(triggerState -> !triggerState.isDisabled())
+            // A paused backfill freezes the trigger's next evaluation date, so the trigger stays eligible on
+            // every loop: evaluating it would re-create an execution for the same date about once per second.
+            .filter(triggerState -> !triggerState.hasPausedBackfill())
+            .map(triggerState ->
+            {
+                Optional<FlowWithSource> maybeFlowTrigger = flowMetaStore.find(
+                    FlowId.of(
+                        triggerState.getTenantId(),
+                        triggerState.getNamespace(),
+                        triggerState.getFlowId(),
+                        null
+                    )
+                );
+
+                // Check whether the Flow still exists
+                if (maybeFlowTrigger.isEmpty() || maybeFlowTrigger.get().isDeleted()) {
+                    triggerStateStore.delete(triggerState);
+                    return null;
+                }
+
+                final FlowWithSource rawFlow = maybeFlowTrigger.get();
+
+                final boolean disabledInDefinition = isDisabledInDefinition(rawFlow, triggerState.getTriggerId());
+
+                // The mirror is only refreshed by a trigger event, so correct it here: it is what the search
+                // filter and the API report, and a state written before it existed carries the wrong value.
+                if (disabledInDefinition != triggerState.isSourceDisabled()) {
+                    triggerState = triggerStateStore.save(triggerState.sourceDisabled(clock, disabledInDefinition));
+                }
+
+                if (disabledInDefinition) {
+                    return null;
+                }
+
+                final FlowWithSource flow;
+                try {
+                    flow = TriggerFlowParser.parseForTrigger(flowParsingService, rawFlow, LOG);
+                } catch (FlowBlockedException e) {
+                    // Skip the flow: it is blocked by governance and must not run.
+                    logBlockedByGovernance(rawFlow, triggerState, e);
+                    return null;
+                } catch (FlowProcessingException e) {
+                    disableUnparseable(clock, triggerState, e);
+                    return null;
+                }
+
+                // Validate that the trigger still exists and is enabled before processing. This check covers several cases:
+                // 1. The overall Flow might be disabled 
+                // 2. The specific trigger may have been removed.
+                // 3. The trigger itself may have been disabled.
+                // 
+                // 2. and 3. can occur if the Flow has been updated but the associated TriggerEvent
+                // has not yet been processed. In these cases, 
+                final String triggerId = triggerState.getTriggerId();
+                Optional<AbstractTrigger> maybeTrigger = ListUtils.emptyOnNull(flow.getTriggers()).stream().filter(it -> it.getId().equals(triggerId)).findFirst();
+                // Drafts are resolved away by the meta-store (find(revision=null) returns the latest
+                // non-draft revision), so no draft check is needed here — a draft never reaches this point.
+                if (flow.isDisabled() || maybeTrigger.isEmpty() || maybeTrigger.get().isDisabled()) {
+                    // Skip processing this trigger to avoid acting on stale or invalid trigger.
+                    return null;
+                }
+
+                final AbstractTrigger trigger = maybeTrigger.get();
+
+                RunContext runContext = runContextFactory.of(flow, trigger);
+                ConditionContext conditionContext = ConditionContext.builder().flow(flow).runContext(runContext).build();
+
+                try {
+                    if (triggerState.getNextEvaluationDate() == null) {
+                        ZonedDateTime nextEvaluationDate = NextEvaluationDate.get(clock, trigger, triggerState.context(), conditionContext);
+                        triggerState = triggerState.updateForNextEvaluationDate(clock, nextEvaluationDate);
+                    }
+
+                    return new TriggerEvaluationContext(
+                        flow,
+                        trigger,
+                        triggerState,
+                        conditionContext.withVariables(Map.of("trigger", Map.of("date", getTriggerDateForConditionContext(clock, now, triggerState, trigger))))
+                    );
+                } catch (Exception e) {
+                    logError(now, conditionContext, flow, trigger, e);
+                    if (e instanceof InvalidTriggerConfigurationException) {
+                        disableForInvalidConfiguration(clock, triggerState, e);
+                    }
+                    return null;
+                }
+            })
+            .filter(Objects::nonNull)
+            .toList();
+    }
+
+    /**
+     * Returns the {@code trigger.date} to be injected into the {@link ConditionContext}.
+     */
+    private static ZonedDateTime getTriggerDateForConditionContext(Clock clock, ZonedDateTime now, TriggerState state, AbstractTrigger trigger) {
+        try {
+            ZoneId tz = trigger instanceof Schedulable schedulable ? ZoneId.of(schedulable.getTimezone()) : clock.getZone();
+            return Optional.ofNullable(state.getNextEvaluationDate())
+                .map(instant -> instant.atZone(tz))
+                .orElseGet(() -> now.truncatedTo(ChronoUnit.SECONDS));
+        } catch (DateTimeException e) {
+            throw new InvalidTriggerConfigurationException(
+                "The timezone of trigger '%s' is not a valid zone id: %s.".formatted(trigger.getId(), e.getMessage()),
+                e
+            );
+        }
+    }
+
+    private static boolean isDisabledInDefinition(final FlowWithSource flow, final String triggerId) {
+        return ListUtils.emptyOnNull(flow.getTriggers()).stream()
+            .filter(it -> it.getId().equals(triggerId))
+            .findFirst()
+            .map(AbstractTrigger::isDisabled)
+            .orElse(false);
+    }
+
+    private void disableUnparseable(final Clock clock, final TriggerState triggerState, final FlowProcessingException e) {
+        triggerStateStore.save(triggerState.disabled(clock, true));
+        Logs.logTrigger(
+            triggerState,
+            LOG,
+            Level.WARN,
+            "Disabled: the flow cannot be parsed on this version ({}). Fix the flow, then enable the trigger again.",
+            e.getMessage()
+        );
+    }
+
+    private void disableForInvalidConfiguration(final Clock clock, final TriggerState triggerState, final Throwable e) {
+        triggerStateStore.save(triggerState.disabled(clock, true));
+        Logs.logTrigger(
+            triggerState,
+            LOG,
+            Level.WARN,
+            "Disabled: the trigger configuration is invalid ({}). Fix the flow, then enable the trigger again.",
+            e.getMessage()
+        );
+    }
+
+    /**
+     * Reports a governance block in the trigger's own logs. Skipping is otherwise invisible to the user: the
+     * trigger simply stops firing, and the only trace is a server-side log they cannot reach.
+     */
+    private void logBlockedByGovernance(final FlowWithSource flow, final TriggerState triggerState, final FlowBlockedException e) {
+        ListUtils.emptyOnNull(flow.getTriggers()).stream()
+            .filter(it -> it.getId().equals(triggerState.getTriggerId()))
+            .findFirst()
+            .ifPresent(trigger ->
+                Logs.logExecution(
+                    flow,
+                    runContextFactory.of(flow, trigger).logger(),
+                    Level.WARN,
+                    "[trigger: {}] Skipped: {}",
+                    trigger.getId(),
+                    e.getMessage()
+                )
+            );
+    }
+
+    private void logError(final ZonedDateTime now, ConditionContext conditionContext, FlowInterface flow, AbstractTrigger trigger, Throwable e) {
+        Logger logger = conditionContext.getRunContext().logger();
+
+        Logs.logExecution(
+            flow,
+            logger,
+            Level.ERROR,
+            "[trigger: {}] [date: {}] Evaluate Failed with error '{}'",
+            trigger.getId(),
+            now.truncatedTo(ChronoUnit.SECONDS),
+            e.getMessage(),
+            e
+        );
+    }
+}

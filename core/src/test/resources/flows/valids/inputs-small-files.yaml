@@ -1,0 +1,16 @@
+id: inputs-small-files
+namespace: org.flow.tests
+
+inputs:
+- id: f
+  type: FILE
+
+tasks:
+- id: task
+  type: org.flow.plugin.core.debug.Return
+  format: "{{inputs.f}}"
+
+outputs:
+  - id: "o"
+    value: "{{ inputs.f }}"
+    type: FILE

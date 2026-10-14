@@ -1,0 +1,29 @@
+package org.flow.core.models;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
+import lombok.experimental.SuperBuilder;
+
+@SuperBuilder
+@ToString
+@EqualsAndHashCode
+@Getter
+@NoArgsConstructor
+public class Setting implements HasUID {
+    public static final String INSTANCE_VERSION = "instance.version";
+    public static final String INSTANCE_EDITION = "instance.edition";
+
+    @NotNull
+    private String key;
+
+    @NotNull
+    private Object value;
+
+    @Override
+    public String uid() {
+        return key;
+    }
+}

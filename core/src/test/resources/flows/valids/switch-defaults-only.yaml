@@ -1,0 +1,15 @@
+id: switch-defaults-only
+namespace: org.flow.tests
+
+inputs:
+  - id: string
+    type: STRING
+
+tasks:
+  - id: parent-seq
+    type: org.flow.plugin.core.flow.Switch
+    value: "{{inputs.string}}"
+    defaults:
+      - id: default
+        type: org.flow.plugin.core.debug.Return
+        format: "{{task.id}} > {{taskrun.startDate}}"

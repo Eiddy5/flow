@@ -1,0 +1,5 @@
+id: my#flow
+namespace: MY$NAMESPACE
+tasks:
+- type: org.flow.plugin.core.log.Log
+  message: "bla"

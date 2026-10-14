@@ -1,0 +1,21 @@
+id: parallel
+namespace: sanitychecks.core
+
+variables:
+  test: test
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Parallel
+    tasks:
+      - id: 1st
+        type: org.flow.plugin.core.debug.Return
+        format: "{{ task.id }}"
+      - id: 2nd
+        type: org.flow.plugin.core.debug.Return
+        format: "{{vars.test}}"
+
+  - id: assert
+    type: org.flow.plugin.core.execution.Assert
+    conditions:
+      - "{{ outputs['1st'].value == '1st' }}"
+      - "{{ outputs['2nd'].value == 'test' }}"

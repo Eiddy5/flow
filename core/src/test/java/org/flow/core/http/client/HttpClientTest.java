@@ -1,0 +1,1057 @@
+package org.flow.core.http.client;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.Proxy;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.AbstractMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+
+import org.apache.commons.io.IOUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.ExecutionMode;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junitpioneer.jupiter.RetryingTest;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.net.HttpHeaders;
+
+import org.flow.core.context.TestRunContextFactory;
+import org.flow.core.exceptions.IllegalVariableEvaluationException;
+import org.flow.core.http.HttpRequest;
+import org.flow.core.http.HttpResponse;
+import org.flow.core.http.HttpSseEvent;
+import org.flow.core.http.client.configurations.HttpConfiguration;
+import org.flow.core.http.client.configurations.ProxyConfiguration;
+import org.flow.core.junit.annotations.FlowTest;
+import org.flow.core.models.executions.Execution;
+import org.flow.core.models.executions.LogEntry;
+import org.flow.core.models.flows.Flow;
+import org.flow.core.models.property.Property;
+import org.flow.core.models.tasks.retrys.Exponential;
+import org.flow.core.queues.DispatchQueueInterface;
+import org.flow.core.runners.RunContext;
+import org.flow.core.serializers.JacksonMapper;
+import org.flow.core.utils.IdUtils;
+import org.flow.core.utils.TestsUtils;
+
+import io.micronaut.context.ApplicationContext;
+import io.micronaut.http.HttpStatus;
+import io.micronaut.http.MediaType;
+import io.micronaut.http.annotation.*;
+import io.micronaut.http.multipart.CompletedFileUpload;
+import io.micronaut.http.server.multipart.MultipartBody;
+import io.micronaut.runtime.server.EmbeddedServer;
+import io.micronaut.scheduling.TaskExecutors;
+import io.micronaut.scheduling.annotation.ExecuteOn;
+import jakarta.annotation.Nullable;
+import jakarta.inject.Inject;
+import lombok.Builder;
+import reactor.core.publisher.Flux;
+
+import static org.apache.commons.lang3.ArrayUtils.toPrimitive;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+@FlowTest
+@Testcontainers
+@org.junit.jupiter.api.parallel.Execution(ExecutionMode.SAME_THREAD)
+class HttpClientTest {
+    @Inject
+    private ApplicationContext applicationContext;
+
+    @Inject
+    private TestRunContextFactory runContextFactory;
+
+    private URI embeddedServerUri;
+
+    @SuppressWarnings("resource")
+    @Container
+    static GenericContainer<?> proxy = new GenericContainer<>("kalaksi/tinyproxy")
+        .withExposedPorts(8888)
+        .withEnv(Map.of("AUTH_USER", "pr0xy", "AUTH_PASSWORD", "p4ss"));
+
+    @Inject
+    DispatchQueueInterface<LogEntry> workerTaskLogQueue;
+
+    @BeforeEach
+    void setUp() {
+        EmbeddedServer embeddedServer = applicationContext.getBean(EmbeddedServer.class);
+        embeddedServer.start();
+        embeddedServerUri = embeddedServer.getURI();
+        ClientTestController.retryAttempts.set(0);
+    }
+
+    HttpClient client() throws IllegalVariableEvaluationException {
+        return client(null);
+    }
+
+    HttpClient client(@Nullable Consumer<HttpClient.HttpClientBuilder> consumer) throws IllegalVariableEvaluationException {
+        HttpClient.HttpClientBuilder builder = HttpClient
+            .builder()
+            .runContext(runContextFactory.of());
+
+        if (consumer != null) {
+            consumer.accept(builder);
+        }
+
+        return builder.build();
+    }
+
+    @RetryingTest(5) // Flaky on CI but never locally even with 100 repetitions
+    void getText() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        Flow flow = TestsUtils.mockFlow();
+        Execution execution = TestsUtils.mockExecution(flow, Map.of());
+
+        List<LogEntry> logs = new CopyOnWriteArrayList<>();
+        workerTaskLogQueue.addListener(logs::add);
+
+        RunContext runContext = runContextFactory.of(flow, execution);
+
+        HttpClient.HttpClientBuilder configuration = HttpClient
+            .builder()
+            .runContext(runContext)
+            .configuration(HttpConfiguration.builder().logs(HttpConfiguration.LoggingType.values()).build());
+
+        try (HttpClient client = configuration.build()) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.builder()
+                    .uri(URI.create(embeddedServerUri + "/http/text"))
+                    .addHeader("X-Unit", "Test")
+                    .build(),
+                String.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).isEqualTo("pong");
+
+            List<LogEntry> logEntries = TestsUtils.awaitLogs(logs, 6);
+
+            assertThat(logEntries.stream().filter(logEntry -> logEntry.getMessage().startsWith("request")).count()).isEqualTo(3L);
+            assertThat(logEntries.stream().filter(logEntry -> logEntry.getMessage().contains("X-Unit: Test")).count()).isEqualTo(1L);
+            assertThat(logEntries.stream().filter(logEntry -> logEntry.getMessage().startsWith("response")).count()).isEqualTo(3L);
+        }
+    }
+
+    @Test
+    void getByte() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<Byte[]> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/text")),
+                Byte[].class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(toPrimitive(response.getBody())).isEqualTo("pong".getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    @Test
+    void getEmpty() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/empty")),
+                String.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(204);
+            assertThat(response.getBody()).isNull();
+        }
+    }
+
+    @Test
+    void shouldOfferGzipButNeverBrotli() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        // Given / When: the client advertises its accepted encodings to the server
+        try (HttpClient client = client()) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/accept-encoding")),
+                String.class
+            );
+
+            // Then: gzip/deflate are offered (compression preserved) but Brotli (br) is never negotiated,
+            // so httpclient5 never invokes brotli4j and cannot throw UnsatisfiedLinkError.
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).contains("gzip");
+            assertThat(response.getBody()).doesNotContain("br");
+        }
+    }
+
+    @Test
+    void getJsonMap() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<Map<String, String>> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/json"))
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody().get("ping")).isEqualTo("pong");
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void getJsonList() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<List<Integer>> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/json?array=true"))
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).containsExactlyInAnyOrder(1, 2, 3);
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void getJsonAsText() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/json")),
+                String.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).isEqualTo("{\"ping\":\"pong\"}");
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfig() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://dangerous-url.com")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://dangerous-url.com is in the configured denied list (flow.tasks.http.denied-list).");
+
+            exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://dangerous-url.com/path")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://dangerous-url.com/path is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfigWhenHostHasATrailingDot() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://dangerous-url.com./")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://dangerous-url.com./ is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfigWhenIpLiteralUsesAPartialInetAtonForm() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://169.254.43518/latest/meta-data/")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://169.254.43518/latest/meta-data/ is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfigWhenAuthorityContainsAnUnderscore() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://flow_internal_db/x")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://flow_internal_db/x is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfigWhenHostIsADecimalIpLiteral() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://2852039166/latest/meta-data/")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://2852039166/latest/meta-data/ is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfigWhenHostIsInADeniedCidrRange() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create("http://10.1.2.3/x")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://10.1.2.3/x is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    @Test
+    void shouldDenyUrlFromConfigWhenReachedThroughARedirect() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            var exception = assertThrows(IllegalArgumentException.class, () -> client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/redirect-to-denied")),
+                String.class
+            ));
+            assertThat(exception.getMessage()).isEqualTo("The URI http://dangerous-url.com/ is in the configured denied list (flow.tasks.http.denied-list).");
+        }
+    }
+
+    private static final String UUID = IdUtils.create();
+
+    static Stream<Arguments> postJsonSource() throws JsonProcessingException {
+        return Stream.of(
+            Arguments.of(HttpRequest.JsonRequestBody.builder().content(Map.of("ping", UUID)).build()),
+            Arguments.of(
+                HttpRequest.InputStreamRequestBody.builder()
+                    .content(new ByteArrayInputStream(JacksonMapper.ofJson().writeValueAsBytes(Map.of("ping", UUID))))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .build()
+            ),
+            Arguments.of(
+                HttpRequest.ByteArrayRequestBody.builder()
+                    .content(JacksonMapper.ofJson().writeValueAsBytes(Map.of("ping", UUID)))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .build()
+            )
+
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("postJsonSource")
+    void postJson(HttpRequest.RequestBody requestBody) throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<Map<String, String>> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/json-post"), "POST", requestBody)
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody().get("ping")).isEqualTo(UUID);
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void postCustomObject() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        CustomObject test = CustomObject.builder()
+            .id(IdUtils.create())
+            .name("test")
+            .build();
+
+        try (HttpClient client = client()) {
+            HttpResponse<CustomObject> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/json-post"), "POST", HttpRequest.JsonRequestBody.builder().content(test).build()),
+                CustomObject.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody().id).isEqualTo(test.id);
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void postCustomObject_WithUnknownResponseField() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        CustomObject test = CustomObject.builder()
+            .id(IdUtils.create())
+            .name("test")
+            .build();
+
+        Map<String, String> withAdditionalField = JacksonMapper.ofJson().convertValue(test, new TypeReference<>() {
+        });
+
+        withAdditionalField.put("foo", "bar");
+
+        try (HttpClient client = client()) {
+            HttpResponse<CustomObject> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/json-post"), "POST", HttpRequest.JsonRequestBody.builder().content(withAdditionalField).build()),
+                CustomObject.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody().id).isEqualTo(test.id);
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void postMultipart() throws IOException, URISyntaxException, IllegalVariableEvaluationException, HttpClientException {
+        Map<String, Object> multipart = Map.of(
+            "ping", "pong",
+            "int", 1,
+            "file", new File(Objects.requireNonNull(this.getClass().getClassLoader().getResource("logback.xml")).toURI()),
+            "inputStream", new ByteArrayInputStream(
+                IOUtils.toString(
+                    Objects.requireNonNull(this.getClass().getClassLoader().getResourceAsStream("logback.xml")),
+                    StandardCharsets.UTF_8
+                )
+                    .getBytes(StandardCharsets.UTF_8)
+            )
+        );
+
+        try (HttpClient client = client()) {
+            HttpResponse<Map<String, Object>> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/multipart"), "POST", HttpRequest.MultipartRequestBody.builder().content(multipart).build())
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody().get("ping")).isEqualTo("pong");
+            assertThat(response.getBody().get("int")).isEqualTo("1");
+            assertThat((String) response.getBody().get("file")).contains("logback");
+            // @FIXME: Request seems to be correct, but not returned by micronaut
+            // assertThat((String) response.getBody().get("inputStream"), containsString("logback"));
+            assertThat(response.getHeaders().firstValue(HttpHeaders.CONTENT_TYPE).orElseThrow()).isEqualTo(MediaType.APPLICATION_JSON);
+        }
+    }
+
+    @Test
+    void errorUnreachable() throws IOException, IllegalVariableEvaluationException {
+        try (HttpClient client = client()) {
+            URI uri = URI.create("http://localhost:1234");
+
+            HttpClientRequestException e = assertThrows(HttpClientRequestException.class, () ->
+            {
+                client.request(HttpRequest.of(uri));
+            });
+
+            assertThat(e.getRequest().getUri()).isEqualTo(uri);
+            assertThat(e.getMessage()).contains("Connection refused");
+        }
+    }
+
+    @Test
+    void response305() throws IOException, IllegalVariableEvaluationException, HttpClientException {
+        try (HttpClient client = client()) {
+            HttpResponse<Map<String, String>> response = client.request(HttpRequest.of(URI.create(embeddedServerUri + "/http/error?status=305")));
+
+            assertThat(response.getStatus().getCode()).isEqualTo(305);
+        }
+    }
+
+    @Test
+    void error400() throws IOException, IllegalVariableEvaluationException {
+        try (HttpClient client = client()) {
+            URI uri = URI.create(embeddedServerUri + "/http/error");
+
+            HttpClientResponseException e = assertThrows(HttpClientResponseException.class, () ->
+            {
+                client.request(HttpRequest.of(uri));
+            });
+
+            assertThat(Objects.requireNonNull(e.getResponse()).getStatus().getCode()).isEqualTo(400);
+            assertThat(e.getMessage()).contains("Required QueryValue [status]");
+            assertThat(new String((byte[]) e.getResponse().getBody())).contains("Required QueryValue [status]");
+        }
+    }
+
+    @Test
+    void error404() throws IOException, IllegalVariableEvaluationException {
+        try (HttpClient client = client()) {
+            URI uri = URI.create(embeddedServerUri + "/http/error?status=404");
+
+            HttpClientResponseException e = assertThrows(HttpClientResponseException.class, () ->
+            {
+                client.request(HttpRequest.of(uri));
+            });
+
+            assertThat(Objects.requireNonNull(e.getResponse()).getStatus().getCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void noError404() throws IOException, IllegalVariableEvaluationException, HttpClientException {
+        try (HttpClient client = client(b -> b.configuration(HttpConfiguration.builder().allowFailed(Property.ofValue(true)).build()))) {
+            HttpResponse<Map<String, String>> response = client.request(HttpRequest.of(URI.create(embeddedServerUri + "/http/error?status=404")));
+
+            assertThat(response.getStatus().getCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void noErrorPost404() throws IOException, IllegalVariableEvaluationException, HttpClientException {
+        try (HttpClient client = client(b -> b.configuration(HttpConfiguration.builder().allowFailed(Property.ofValue(true)).build()))) {
+            URI uri = URI.create(embeddedServerUri + "/http/post-error");
+
+            HttpResponse<Map<String, String>> response = client
+                .request(HttpRequest.builder().uri(uri).method("POST").body(HttpRequest.StringRequestBody.builder().content("OK").build()).build());
+
+            assertThat(response.getStatus().getCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void specialContentType() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client()) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(
+                    URI.create(embeddedServerUri + "/http/content-type"), Map.of(
+                        "Content-Type", List.of("application/vnd.campaignsexport.v1+json")
+                    )
+                ),
+                String.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).isEqualTo("application/vnd.campaignsexport.v1+json");
+        }
+    }
+
+    @Test
+    void getProxy() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (
+            HttpClient client = client(
+                b -> b
+                    .configuration(
+                        HttpConfiguration.builder()
+                            .proxy(
+                                ProxyConfiguration.builder()
+                                    .type(Property.ofValue(Proxy.Type.HTTP))
+                                    .address(Property.ofValue(proxy.getHost()))
+                                    .username(Property.ofValue("pr0xy"))
+                                    .password(Property.ofValue("p4ss"))
+                                    .port(Property.ofValue(proxy.getFirstMappedPort()))
+                                    .build()
+                            )
+                            .build()
+                    )
+            )
+        ) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create("https://www.google.com")),
+                String.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).contains("<html");
+        }
+    }
+
+    @Test
+    void shouldFailWithClearMessageWhenProxyAddressSetWithoutPort() {
+        IllegalArgumentException exception = assertThrows(
+            IllegalArgumentException.class,
+            () -> client(
+                b -> b
+                    .configuration(
+                        HttpConfiguration.builder()
+                            .proxy(
+                                ProxyConfiguration.builder()
+                                    .type(Property.ofValue(Proxy.Type.HTTP))
+                                    .address(Property.ofValue("10.242.3.60"))
+                                    .build()
+                            )
+                            .build()
+                    )
+            )
+        );
+
+        assertThat(exception.getMessage()).contains("proxy port is required");
+    }
+
+    @Test
+    void shouldReturnResponseForAllowedResponseCode() throws IOException, IllegalVariableEvaluationException, HttpClientException {
+        try (HttpClient client = client(b -> b.configuration(HttpConfiguration.builder().allowedResponseCodes(Property.ofValue(List.of(404))).build()))) {
+            HttpResponse<Map<String, String>> response = client.request(HttpRequest.of(URI.create(embeddedServerUri + "/http/error?status=404")));
+
+            assertThat(response.getStatus().getCode()).isEqualTo(404);
+        }
+    }
+
+    @Test
+    void shouldThrowExceptionForNotAllowedResponseCode() throws IOException, IllegalVariableEvaluationException {
+        try (HttpClient client = client(b -> b.configuration(HttpConfiguration.builder().allowedResponseCodes(Property.ofValue(List.of(404))).build()))) {
+            URI uri = URI.create(embeddedServerUri + "/http/error?status=405");
+
+            HttpClientResponseException e = assertThrows(HttpClientResponseException.class, () ->
+            {
+                client.request(HttpRequest.of(uri));
+            });
+
+            assertThat(Objects.requireNonNull(e.getResponse()).getStatus().getCode()).isEqualTo(405);
+        }
+    }
+
+    @Test
+    void shouldSucceedWithTcpExtendedKeepAliveDisabled() throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        // Given - extended TCP keep-alive disabled (fix for Windows workers)
+        try (
+            HttpClient client = client(
+                b -> b.configuration(
+                    HttpConfiguration.builder()
+                        .enabledTcpExtendedKeepAlive(Property.ofValue(false))
+                        .build()
+                )
+            )
+        ) {
+            // When
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/text")),
+                String.class
+            );
+
+            // Then
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).isEqualTo("pong");
+        }
+    }
+
+    @Test
+    void testSseRequestWithText() throws Exception {
+        List<HttpSseEvent<String>> consumedEvents = new CopyOnWriteArrayList<>();
+
+        try (HttpClient client = client()) {
+            HttpResponse<Void> response = client.sseRequest(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/sse/simple")),
+                String.class,
+                consumedEvents::add
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.contentType()).isEqualTo("text/event-stream");
+            assertThat(consumedEvents).hasSize(3);
+            assertThat(consumedEvents.get(0).data()).isEqualTo("Event 1");
+            assertThat(consumedEvents.get(1).data()).isEqualTo("Event 2");
+            assertThat(consumedEvents.get(2).data()).isEqualTo("Event 3");
+        }
+    }
+
+    @Test
+    void testSseRequestWithJson() throws Exception {
+        List<HttpSseEvent<CustomObject>> consumedEvents = new CopyOnWriteArrayList<>();
+
+        try (HttpClient client = client()) {
+            HttpResponse<Void> response = client.sseRequest(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/sse/json")),
+                CustomObject.class,
+                consumedEvents::add
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.contentType()).isEqualTo("text/event-stream");
+            assertThat(consumedEvents).hasSize(2);
+            assertThat(consumedEvents.get(0).data().id()).isEqualTo("1");
+            assertThat(consumedEvents.get(0).data().name()).isEqualTo("Hello");
+            assertThat(consumedEvents.get(1).data().id()).isEqualTo("2");
+            assertThat(consumedEvents.get(1).data().name()).isEqualTo("World");
+        }
+    }
+
+    @Test
+    void shouldNotRetryByDefault() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client()) {
+            URI uri = URI.create(embeddedServerUri + "/http/retry?failureStatus=502&succeedAfterAttempts=1");
+
+            assertThrows(HttpClientResponseException.class, () -> client.request(HttpRequest.of(uri)));
+            assertThat(ClientTestController.retryAttempts.get()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void shouldRetryGetOnGatewayError()
+        throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (HttpClient client = client(b -> b.configuration(withRetry(5).build()))) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/retry?failureStatus=502&succeedAfterAttempts=4")),
+                String.class
+            );
+
+            assertThat(response.getBody()).isEqualTo("recovered");
+            assertThat(ClientTestController.retryAttempts.get()).isEqualTo(5);
+        }
+    }
+
+    @Test
+    void shouldNotRetryPostOnGatewayErrorByDefault() throws IllegalVariableEvaluationException, IOException {
+        try (HttpClient client = client(b -> b.configuration(withRetry(3).build()))) {
+            URI uri = URI.create(embeddedServerUri + "/http/retry?failureStatus=502&succeedAfterAttempts=1");
+
+            assertThrows(HttpClientResponseException.class, () -> client.request(post(uri)));
+            assertThat(ClientTestController.retryAttempts.get()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void shouldRetryPostOnStatusCodeWhenConfiguredByMethod()
+        throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        HttpConfiguration configuration = withRetry(3)
+            .retryOnStatusCodesByMethod(Property.ofValue(Map.of("POST", List.of(502))))
+            .build();
+
+        try (HttpClient client = client(b -> b.configuration(configuration))) {
+            HttpResponse<String> response = client.request(
+                post(URI.create(embeddedServerUri + "/http/retry?failureStatus=502&succeedAfterAttempts=1")),
+                String.class
+            );
+
+            assertThat(response.getBody()).isEqualTo("recovered");
+            assertThat(ClientTestController.retryAttempts.get()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void shouldRetryPerMethodOverrideWhenMethodMatches()
+        throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        try (
+            HttpClient client = client(
+                b -> b.configuration(
+                    withRetry(3)
+                        .retryOnStatusCodes(Property.ofValue(List.of(404)))
+                        .retryOnStatusCodesByMethod(Property.ofValue(Map.of("GET", List.of(500))))
+                        .build()
+                )
+            )
+        ) {
+            HttpResponse<String> response = client.request(
+                HttpRequest.of(URI.create(embeddedServerUri + "/http/retry?failureStatus=500&succeedAfterAttempts=1")),
+                String.class
+            );
+
+            assertThat(response.getStatus().getCode()).isEqualTo(200);
+            assertThat(response.getBody()).isEqualTo("recovered");
+            assertThat(ClientTestController.retryAttempts.get()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void shouldNotRetryPerMethodOverrideWhenMethodDoesNotMatch()
+        throws IllegalVariableEvaluationException, IOException {
+        try (
+            HttpClient client = client(
+                b -> b.configuration(
+                    withRetry(3)
+                        .retryOnStatusCodes(Property.ofValue(List.of(404)))
+                        .retryOnStatusCodesByMethod(Property.ofValue(Map.of("GET", List.of(500))))
+                        .build()
+                )
+            )
+        ) {
+            HttpClientResponseException exception = assertThrows(
+                HttpClientResponseException.class,
+                () -> client.request(post(URI.create(embeddedServerUri + "/http/retry?failureStatus=500&succeedAfterAttempts=1")))
+            );
+
+            assertThat(exception.getResponse().getStatus().getCode()).isEqualTo(500);
+            assertThat(ClientTestController.retryAttempts.get()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void shouldRetryGetOnConnectionReset() throws Exception {
+        // The server resets more times than Apache's own built-in retry could absorb on its own.
+        try (
+            ResettingServer server = new ResettingServer(new ServerSocket(0), 3);
+            HttpClient client = client(b -> b.configuration(withRetry(5).build()))
+        ) {
+            HttpResponse<String> response = client.request(HttpRequest.of(server.uri()), String.class);
+
+            assertThat(response.getBody()).isEqualTo("ok");
+        }
+    }
+
+    @Test
+    void shouldNotRetryPostOnConnectionReset() throws Exception {
+        try (
+            ResettingServer server = new ResettingServer(new ServerSocket(0), Integer.MAX_VALUE);
+            HttpClient client = client(b -> b.configuration(withRetry(3).build()))
+        ) {
+            assertThrows(HttpClientRequestException.class, () -> client.request(post(server.uri())));
+            assertThat(server.attempts.get()).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void shouldRetryPostOnConnectionResetWhenMethodConfigured() throws Exception {
+        HttpConfiguration configuration = withRetry(3)
+            .retryableTransportFailureMethods(Property.ofValue(List.of("POST")))
+            .build();
+
+        try (
+            ResettingServer server = new ResettingServer(new ServerSocket(0), 1);
+            HttpClient client = client(b -> b.configuration(configuration))
+        ) {
+            HttpResponse<String> response = client.request(post(server.uri()), String.class);
+
+            assertThat(response.getBody()).isEqualTo("ok");
+            assertThat(server.attempts.get()).isEqualTo(2);
+        }
+    }
+
+    @Test
+    void shouldRetryPostOnConnectionRefused() throws Exception {
+        int port;
+        try (ServerSocket probe = new ServerSocket(0)) {
+            port = probe.getLocalPort();
+        }
+
+        Thread.ofVirtual().start(() ->
+        {
+            try {
+                Thread.sleep(300);
+                new ResettingServer(new ServerSocket(port), 0);
+            } catch (Exception ignored) {
+                // the assertion below fails if the server never starts
+            }
+        });
+
+        HttpConfiguration configuration = HttpConfiguration.builder()
+            .retry(
+                Exponential.builder()
+                    .interval(Duration.ofMillis(200))
+                    .maxInterval(Duration.ofMillis(400))
+                    .maxAttempts(5)
+                    .build()
+            )
+            .build();
+
+        try (HttpClient client = client(b -> b.configuration(configuration))) {
+            HttpResponse<String> response = client.request(post(URI.create("http://localhost:" + port)), String.class);
+
+            assertThat(response.getBody()).isEqualTo("ok");
+        }
+    }
+
+    private static HttpConfiguration.HttpConfigurationBuilder withRetry(int maxAttempts) {
+        return HttpConfiguration.builder()
+            .retry(
+                Exponential.builder()
+                    .interval(Duration.ofMillis(10))
+                    .maxInterval(Duration.ofMillis(50))
+                    .maxAttempts(maxAttempts)
+                    .build()
+            );
+    }
+
+    private static HttpRequest post(URI uri) {
+        return HttpRequest.builder()
+            .uri(uri)
+            .method("POST")
+            .body(HttpRequest.StringRequestBody.builder().content("body").build())
+            .build();
+    }
+
+    private static final class ResettingServer implements AutoCloseable {
+        private final ServerSocket socket;
+        final AtomicInteger attempts = new AtomicInteger();
+
+        ResettingServer(ServerSocket socket, int failFirst) {
+            this.socket = socket;
+            Thread.ofVirtual().start(() ->
+            {
+                try {
+                    while (!socket.isClosed()) {
+                        try (Socket s = socket.accept()) {
+                            int attempt = attempts.incrementAndGet();
+                            drainRequest(s.getInputStream());
+                            if (attempt <= failFirst) {
+                                s.setSoLinger(true, 0); // closing the socket sends a TCP reset
+                            } else {
+                                s.getOutputStream().write(
+                                    "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".getBytes(StandardCharsets.UTF_8)
+                                );
+                            }
+                        }
+                    }
+                } catch (IOException ignored) {
+                    // socket closed
+                }
+            });
+        }
+
+        private static void drainRequest(InputStream in) throws IOException {
+            ByteArrayOutputStream head = new ByteArrayOutputStream();
+            int state = 0;
+            int b;
+            while (state < 4 && (b = in.read()) != -1) {
+                head.write(b);
+                state = (b == '\r' && state % 2 == 0) || (b == '\n' && state % 2 == 1) ? state + 1 : (b == '\r' ? 1 : 0);
+            }
+
+            // Read the body too: closing with unread bytes would reset the connection before the reply is read.
+            String headers = head.toString(StandardCharsets.US_ASCII).toLowerCase(Locale.ROOT);
+            int start = headers.indexOf("content-length:");
+            if (start >= 0) {
+                int end = headers.indexOf("\r\n", start);
+                in.readNBytes(Integer.parseInt(headers.substring(start + "content-length:".length(), end).trim()));
+            }
+        }
+
+        URI uri() {
+            return URI.create("http://localhost:" + socket.getLocalPort());
+        }
+
+        @Override
+        public void close() throws IOException {
+            socket.close();
+        }
+    }
+
+    @Controller("/http/")
+    public static class ClientTestController {
+        // Counts attempts against /http/retry; reset in @BeforeEach.
+        static final AtomicInteger retryAttempts = new AtomicInteger();
+
+        @SuppressWarnings("JsonStandardCompliance")
+        @Get("text")
+        @Produces(MediaType.TEXT_PLAIN)
+        public io.micronaut.http.HttpResponse<String> text() {
+            return io.micronaut.http.HttpResponse.ok("pong");
+        }
+
+        @Get("content-type")
+        @Produces(MediaType.TEXT_PLAIN)
+        public io.micronaut.http.HttpResponse<String> contentType(io.micronaut.http.HttpRequest<?> request) {
+            return io.micronaut.http.HttpResponse.ok(request.getContentType().orElseThrow().toString());
+        }
+
+        @Get("accept-encoding")
+        @Produces(MediaType.TEXT_PLAIN)
+        public io.micronaut.http.HttpResponse<String> acceptEncoding(io.micronaut.http.HttpRequest<?> request) {
+            String encoding = request.getHeaders().get(HttpHeaders.ACCEPT_ENCODING);
+            return io.micronaut.http.HttpResponse.ok(encoding == null ? "" : encoding);
+        }
+
+        @Get("json")
+        public io.micronaut.http.HttpResponse<Object> json(@QueryValue(defaultValue = "false") Boolean array) {
+            return io.micronaut.http.HttpResponse.ok(array ? List.of(1, 2, 3) : Map.of("ping", "pong"));
+        }
+
+        @Post("json-post")
+        public io.micronaut.http.HttpResponse<Object> jsonPost(@Body Map<String, Object> data) {
+            return io.micronaut.http.HttpResponse.ok(data);
+        }
+
+        @Get("empty")
+        public io.micronaut.http.HttpResponse<Object> empty() {
+            return io.micronaut.http.HttpResponse.noContent();
+        }
+
+        @Get("redirect-to-denied")
+        public io.micronaut.http.HttpResponse<Object> redirectToDenied() {
+            return io.micronaut.http.HttpResponse.temporaryRedirect(URI.create("http://dangerous-url.com/"));
+        }
+
+        @Get("no-content")
+        public io.micronaut.http.HttpResponse<Void> noContent() {
+            return io.micronaut.http.HttpResponse.noContent();
+        }
+
+        @Get("error")
+        public io.micronaut.http.HttpResponse<Object> errors(@QueryValue int status) {
+            return io.micronaut.http.HttpResponse
+                .status(HttpStatus.valueOf(status))
+                .body(Map.of("status", status));
+        }
+
+        @Post("error")
+        public io.micronaut.http.HttpResponse<Object> postErrors(@QueryValue int status, @Body String body) {
+            return io.micronaut.http.HttpResponse
+                .status(HttpStatus.valueOf(status))
+                .body(Map.of("status", status));
+        }
+
+        // Fails with failureStatus for the first succeedAfterAttempts calls, then returns 200 "recovered".
+        @Get("retry")
+        @Produces(MediaType.TEXT_PLAIN)
+        public io.micronaut.http.HttpResponse<String> retryGet(@QueryValue int failureStatus, @QueryValue int succeedAfterAttempts) {
+            return retryResponse(failureStatus, succeedAfterAttempts);
+        }
+
+        @Post(uri = "retry", consumes = MediaType.ALL)
+        @Produces(MediaType.TEXT_PLAIN)
+        public io.micronaut.http.HttpResponse<String> retryPost(
+            @QueryValue int failureStatus,
+            @QueryValue int succeedAfterAttempts,
+            @Body String body) {
+            return retryResponse(failureStatus, succeedAfterAttempts);
+        }
+
+        private static io.micronaut.http.HttpResponse<String> retryResponse(int failureStatus, int succeedAfterAttempts) {
+            int attempt = retryAttempts.incrementAndGet();
+            if (attempt <= succeedAfterAttempts) {
+                return io.micronaut.http.HttpResponse.status(HttpStatus.valueOf(failureStatus)).body("failing");
+            }
+            return io.micronaut.http.HttpResponse.ok("recovered");
+        }
+
+        @ExecuteOn(TaskExecutors.IO)
+        @Post(uri = "multipart", consumes = MediaType.MULTIPART_FORM_DATA)
+        public io.micronaut.http.HttpResponse<Object> multipartPost(@Body MultipartBody body) {
+            Map<String, String> result = Flux.from(body).<AbstractMap.SimpleEntry<String, String>> handle((input, sink) ->
+            {
+                if (input instanceof CompletedFileUpload fileUpload) {
+                    try {
+                        try (var inputStream = fileUpload.getInputStream()) {
+                            sink.next(
+                                new AbstractMap.SimpleEntry<>(
+                                    fileUpload.getName(),
+                                    IOUtils.toString(inputStream, StandardCharsets.UTF_8)
+                                )
+                            );
+                        }
+                    } catch (IOException e) {
+                        fileUpload.discard();
+                        sink.error(e);
+                    }
+                } else {
+                    try {
+                        sink.next(new AbstractMap.SimpleEntry<>(input.getName(), new String(input.getBytes())));
+                    } catch (IOException e) {
+                        sink.error(e);
+                    }
+                }
+            })
+                .collectMap(AbstractMap.SimpleEntry::getKey, AbstractMap.SimpleEntry::getValue)
+                .block();
+
+            return io.micronaut.http.HttpResponse.ok(result);
+        }
+
+        @Get(uri = "sse/simple", produces = MediaType.TEXT_EVENT_STREAM)
+        public Flux<String> sseSimple() {
+            return Flux.just(
+                "data: Event 1\n\n",
+                "data: Event 2\n\n",
+                "data: Event 3\n\n"
+            );
+        }
+
+        @Get(uri = "sse/json", produces = MediaType.TEXT_EVENT_STREAM)
+        public Flux<String> sseJson() {
+            return Flux.just(
+                "data: {\"name\": \"Hello\", \"id\": 1}\n\n",
+                "data: {\"name\": \"World\", \"id\": 2}\n\n"
+            );
+        }
+    }
+
+    @Builder
+    public record CustomObject(
+        String id,
+        String name) {
+    }
+}

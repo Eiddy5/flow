@@ -1,0 +1,6 @@
+id: execution-start-date
+namespace: org.flow.tests
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ execution.startDate }}"

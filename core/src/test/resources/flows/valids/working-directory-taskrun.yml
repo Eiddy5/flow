@@ -1,0 +1,15 @@
+id: working-directory-taskrun
+namespace: org.flow.tests
+
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 0
+    values: ["1"]
+    tasks:
+      - id: workingDir
+        type: org.flow.plugin.core.flow.WorkingDirectory
+        tasks:
+          - id: log-taskrun
+            type: org.flow.plugin.core.debug.Return
+            format:  "{{ item.value }}"

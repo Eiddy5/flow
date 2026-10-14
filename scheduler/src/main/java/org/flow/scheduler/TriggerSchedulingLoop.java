@@ -1,0 +1,481 @@
+package org.flow.scheduler;
+
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import org.flow.core.metrics.MetricRegistry;
+import org.flow.core.scheduler.events.TriggerEvent;
+
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
+
+/**
+ * The scheduling loop is responsible for periodically invoking the {@link TriggerScheduler#onSchedule} method
+ * (once every second) and for processing any queued trigger events.
+ */
+public class TriggerSchedulingLoop implements Runnable {
+
+    private static final Logger LOG = LoggerFactory.getLogger(TriggerSchedulingLoop.class);
+
+    private static final long SCHEDULE_INTERVAL_MILLIS = Duration.ofSeconds(1).toMillis();
+    // Trigger work overrunning the interval has already cost a scheduling slot, so only jitter is tolerated.
+    private static final long MAX_CYCLE_WORK_MILLIS = SCHEDULE_INTERVAL_MILLIS + (SCHEDULE_INTERVAL_MILLIS / 10);
+
+    private final int schedulingLoopId;
+    private final TriggerScheduler triggerScheduler;
+    private final Clock clock;
+
+    // Queue
+    private final BlockingQueue<CompletableTriggerEvent> triggerEventQueue = new LinkedBlockingQueue<>();
+    private final ReentrantLock triggerEventQueueLock = new ReentrantLock();
+    private final Condition notEmptyTriggerEventQueue = triggerEventQueueLock.newCondition();
+
+    // Services
+    private final TriggerEventHandler triggerEventHandler;
+
+    // Threading
+    private volatile Thread thread;
+    private final AtomicBoolean initialized = new AtomicBoolean(false);
+
+    private final AtomicReference<State> state = new AtomicReference<>(State.STARTING);
+    private volatile CountDownLatch started = new CountDownLatch(1);
+    private volatile CountDownLatch stopped = new CountDownLatch(1);
+
+    // Pause & Resume
+    private final AtomicBoolean paused = new AtomicBoolean(false);
+    private final ReentrantLock pauseLock = new ReentrantLock();
+    private final Condition unpaused = pauseLock.newCondition();
+
+    private final BlockingQueue<Runnable> internalLoopCallables = new LinkedBlockingQueue<>();
+
+    private volatile Set<Integer> assignments = Set.of();
+
+    // Metrics
+    private final Timer metricEventLoopTickTimer;
+    private final Timer metricEventLoopProcessTimer;
+    private final Counter metricEventLoopEventCounter;
+
+    /**
+     * Creates a new {@link TriggerSchedulingLoop} instance.
+     *
+     * @param schedulingLoopId the scheduling-loop identifier.
+     * @param triggerScheduler the {@link TriggerScheduler}.
+     * @param triggerEventHandler the {@link TriggerEventHandler}.
+     * @param metricRegistry the {@link MeterRegistry}.
+     * @param clock the {@link Clock}.
+     */
+    public TriggerSchedulingLoop(int schedulingLoopId,
+        TriggerScheduler triggerScheduler,
+        TriggerEventHandler triggerEventHandler,
+        MetricRegistry metricRegistry,
+        Clock clock) {
+        this.schedulingLoopId = schedulingLoopId;
+        this.triggerScheduler = triggerScheduler;
+        this.triggerEventHandler = triggerEventHandler;
+        this.clock = clock;
+
+        String[] tags = { "thread-id", String.valueOf(schedulingLoopId) };
+        this.metricEventLoopTickTimer = metricRegistry
+            .timer(MetricRegistry.METRIC_SCHEDULER_EVENTLOOP_TICK_DURATION, MetricRegistry.METRIC_SCHEDULER_EVENTLOOP_TICK_DURATION_DESCRIPTION, tags);
+        this.metricEventLoopEventCounter = metricRegistry
+            .counter(MetricRegistry.METRIC_SCHEDULER_EVENTLOOP_EVENT_RECEIVED_TOTAL, MetricRegistry.METRIC_SCHEDULER_EVENTLOOP_EVENT_RECEIVED_TOTAL_DESCRIPTION, tags);
+        this.metricEventLoopProcessTimer = metricRegistry
+            .timer(MetricRegistry.METRIC_SCHEDULER_EVENTLOOP_EVENT_PROCESS_DURATION, MetricRegistry.METRIC_SCHEDULER_EVENTLOOP_EVENT_PROCESS_DURATION_DESCRIPTION, tags);
+    }
+
+    /**
+     * Gets the identifier of this event-loop.
+     *
+     * @return the int identifier.
+     */
+    public int id() {
+        return this.schedulingLoopId;
+    }
+
+    /**
+     * {@inheritDoc}
+     **/
+    @Override
+    public void run() {
+        State previous = state.getAndUpdate(current -> current == State.STARTING ? State.RUNNING : current);
+        if (State.RUNNING == previous) {
+            throw new IllegalStateException("Already running");
+        }
+        if (State.STARTING != previous) {
+            // stop() already ran: release whoever waits on the latches, and never enter the loop.
+            started.countDown();
+            stopped.countDown();
+            return;
+        }
+
+        this.thread = Thread.currentThread();
+        // Signal that this loop has actually started, so that a stop() request issued right after
+        // submission cannot race startup and be silently dropped (see awaitStarted/stop).
+        this.started.countDown();
+        Instant nextScheduleTime = clock.instant();
+        // An evaluation that follows an initialization re-reads the whole trigger set on a cold path, so its
+        // duration says nothing about whether this loop can keep up.
+        boolean coldEvaluation = true;
+        try {
+            while (isRunning()) {
+                long start = System.nanoTime();
+                try {
+                    waitIfPaused();
+
+                    // Check if the loop was stopped while being paused
+                    if (!isRunning()) {
+                        continue;
+                    }
+
+                    // Check whether vNodes are available for this event-loop
+                    // The list of vNodes assignments can be empty if:
+                    // 1. This scheduler is starting
+                    // 2. The vNode assignments was cleared/revoked
+                    if (assignments.isEmpty()) {
+                        doOnEndLoop();
+                        if (assignments.isEmpty()) {
+                            // Small busy-loop - assignment is expected to complete in a few milliseconds.
+                            Thread.sleep(Duration.ofMillis(50));
+                        }
+                        continue;
+                    }
+
+                    if (!initialized.get()) {
+                        triggerScheduler.onStart(clock, clock.instant(), assignments);
+                        initialized.set(true);
+                        // setAssignments() resets `initialized`, so a rebalance goes through here too.
+                        coldEvaluation = true;
+                    }
+
+                    // Only the trigger work is measured: a pause, the initialization above and the end-loop
+                    // actions below are not the load this loop is sized for.
+                    long workStart = System.nanoTime();
+
+                    // Process all received triggers events for current assignments.
+                    int processedEvents = processTriggerEvents();
+
+                    // Sampled after the initialization and the event drain, either of which can take seconds:
+                    // this instant is the eligibility cut-off, the schedule date of the executions created from
+                    // it, and the left bound of scheduler.evaluation.loop.duration.
+                    Instant now = clock.instant();
+
+                    // Check whether triggers should be scheduled
+                    int evaluatedTriggers = 0;
+                    boolean evaluated = !now.isBefore(nextScheduleTime);
+                    if (evaluated) {
+                        evaluatedTriggers = triggerScheduler.onSchedule(clock, now, assignments);
+                        // Move to the first slot after `now`: the slots in between are not replayed, since the
+                        // evaluation above already served their triggers, but the one-second grid is kept so
+                        // that the schedule dates never drift.
+                        long slots = (now.toEpochMilli() - nextScheduleTime.toEpochMilli()) / SCHEDULE_INTERVAL_MILLIS + 1;
+                        nextScheduleTime = nextScheduleTime.plusMillis(SCHEDULE_INTERVAL_MILLIS * slots);
+                    }
+
+                    long workMillis = (System.nanoTime() - workStart) / 1_000_000;
+                    if (workMillis > MAX_CYCLE_WORK_MILLIS && !coldEvaluation) {
+                        LOG.warn(
+                            "Scheduling loop {} cannot keep up with its trigger load: one cycle spent {}ms processing {} trigger event(s) and evaluating {} trigger(s).",
+                            schedulingLoopId,
+                            workMillis,
+                            processedEvents,
+                            evaluatedTriggers
+                        );
+                    }
+                    coldEvaluation &= !evaluated;
+
+                    // Execute end-loop actions
+                    doOnEndLoop();
+
+                    // May wait before next iteration
+                    long waitMillis = Math.max(0, nextScheduleTime.toEpochMilli() - clock.instant().toEpochMilli());
+                    if (waitMillis > 0) {
+                        waitForNextIterationOrNewEvent(Duration.ofMillis(waitMillis));
+                    }
+
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    LOG.warn("Interrupted while waiting in scheduling loop. Stopping.");
+                    state.compareAndSet(State.RUNNING, State.STOPPED);
+                } catch (Exception e) {
+                    LOG.error("Error in scheduling loop", e);
+                } finally {
+                    long end = System.nanoTime();
+                    metricEventLoopTickTimer.record(end - start, TimeUnit.NANOSECONDS);
+                }
+            }
+        } finally {
+            stopped.countDown();
+            LOG.info("[{}-{}] stopped", getClass().getSimpleName(), schedulingLoopId);
+        }
+    }
+
+    private void waitForNextIterationOrNewEvent(final Duration duration) throws InterruptedException {
+        if (triggerEventQueue.isEmpty()) {
+            triggerEventQueueLock.lock();
+            try {
+                if (triggerEventQueue.isEmpty()) {
+                    notEmptyTriggerEventQueue.await(duration.toMillis(), TimeUnit.MILLISECONDS);
+                }
+            } finally {
+                triggerEventQueueLock.unlock();
+            }
+        }
+    }
+
+    /**
+     * Resets the lifecycle latches so this loop can be safely (re)submitted to an executor.
+     * <p>
+     * Must only be called when the loop is not running, i.e. before resubmitting it via
+     * {@link #run()}. This makes the {@code started}/{@code stopped} latches per-run instead of
+     * one-shot, which is required for a loop instance to be reliably started and stopped more
+     * than once (e.g. when toggling maintenance mode).
+     */
+    public void prepareForStart() {
+        this.started = new CountDownLatch(1);
+        this.stopped = new CountDownLatch(1);
+        this.state.set(State.STARTING);
+    }
+
+    /**
+     * Blocks until this loop has actually started running, or the timeout elapses.
+     *
+     * @param timeout the maximum time to wait.
+     */
+    public void awaitStarted(final Duration timeout) {
+        try {
+            if (!started.await(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                LOG.warn("Timeout while waiting for scheduling loop {} to start", schedulingLoopId);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Stops this loop.
+     * <p>
+     * This method blocks until the current processing loop is completed.
+     */
+    public void stop() {
+        State previous = state.getAndSet(State.STOPPED);
+
+        if (State.STARTING == previous) {
+            // No thread to interrupt yet: the pending run() will see STOPPED and decline to start.
+            started.countDown();
+            stopped.countDown();
+            return;
+        }
+
+        if (State.RUNNING != previous) {
+            LOG.debug("[{}] stop() called but not running", getClass().getSimpleName());
+            return;
+        }
+
+        resume(); // In case it's paused and blocked
+
+        Thread runner = this.thread;
+        if (runner != null) {
+            runner.interrupt();
+        }
+
+        // Awaited even with no thread to interrupt: the loop exits on the state change, not the interrupt.
+        try {
+            if (!stopped.await(5, TimeUnit.SECONDS)) {
+                LOG.warn("Timeout while waiting for scheduling loop {} to complete", schedulingLoopId);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private void waitIfPaused() throws InterruptedException {
+        if (!paused.get()) {
+            return; // return immediately
+        }
+        pauseLock.lock();
+        try {
+            while (paused.get() && isRunning()) {
+                LOG.info("Paused. Waiting for scheduling loop to resume");
+                unpaused.await(); // Wait until resume() signals
+                LOG.info("Resumed");
+            }
+        } finally {
+            pauseLock.unlock();
+        }
+    }
+
+    /**
+     * Gets the current assignment for this event loop.
+     *
+     * @return the assignments.
+     */
+    public Set<Integer> assignments() {
+        return assignments;
+    }
+
+    public void setAssignments(final Set<Integer> assignments) {
+        this.assignments = assignments == null ? Set.of() : Set.copyOf(assignments);
+        this.initialized.set(false);
+    }
+
+    /**
+     * Pauses this event-loop instance.
+     */
+    public void pause() {
+        pauseLock.lock();
+        try {
+            paused.set(true);
+        } finally {
+            pauseLock.unlock();
+        }
+    }
+
+    /**
+     * Registers an {@link Runnable action} that will be executed on next end loop.
+     *
+     * @param action the action to be run.
+     * @return the {@link CompletableFuture}.
+     */
+    public CompletableFuture<Void> doOnEndLoop(final Runnable action) {
+        final CompletableFuture<Void> future = new CompletableFuture<>();
+        internalLoopCallables.add(() ->
+        {
+            try {
+                action.run();
+                future.complete(null);
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            }
+        });
+        return future;
+    }
+
+    /**
+     * Resumes this event-loop instance if currently paused.
+     */
+    public void resume() {
+        pauseLock.lock();
+        try {
+            if (paused.compareAndSet(true, false)) {
+                unpaused.signalAll();
+            }
+        } finally {
+            pauseLock.unlock();
+        }
+    }
+
+    /**
+     *
+     * @param events The trigger events.
+     */
+    public CompletableFuture<Void> addTriggerEvents(int vNode, List<TriggerEvent> events) {
+        List<CompletableFuture<Void>> futures = events.stream().map(event -> addTriggerEvent(vNode, event)).toList();
+        return CompletableFuture.allOf(futures.toArray(new CompletableFuture<?>[0]));
+    }
+
+    /**
+     *
+     * @param event The trigger event.
+     */
+    public CompletableFuture<Void> addTriggerEvent(int vNode, TriggerEvent event) {
+        CompletableTriggerEvent completable = new CompletableTriggerEvent(event, vNode);
+        this.metricEventLoopEventCounter.increment();
+        this.triggerEventQueue.add(completable);
+        this.triggerEventQueueLock.lock();
+        try {
+            notEmptyTriggerEventQueue.signal(); // wake up waiting loop if needed
+        } finally {
+            triggerEventQueueLock.unlock();
+        }
+        return completable;
+    }
+
+    /**
+     * Processes all trigger events currently queued by this scheduling loop.
+     *
+     * @return the number of events processed.
+     */
+    public int processTriggerEvents() {
+        List<CompletableTriggerEvent> drained = new ArrayList<>();
+        triggerEventQueue.drainTo(drained);
+        drained.forEach(item ->
+        {
+            metricEventLoopProcessTimer.record(() ->
+            {
+                try {
+                    triggerEventHandler.handle(clock, item.vnode(), item.event());
+                } catch (Exception e) {
+                    LOG.warn("Error handling trigger event [uid={}, type={}]", item.event().uid(), item.event().type(), e);
+                } finally {
+                    // always complete the future successfully
+                    item.complete(null);
+                }
+            });
+        });
+        return drained.size();
+    }
+
+    private void doOnEndLoop() {
+        List<Runnable> drained = new ArrayList<>();
+        internalLoopCallables.drainTo(drained);
+
+        for (Runnable runnable : drained) {
+            runnable.run();
+        }
+    }
+
+    /**
+     * Checks whether this scheduling-loop is running.
+     *
+     * @return {@code true} if running.
+     */
+    public boolean isRunning() {
+        return State.RUNNING == state.get();
+    }
+
+    private enum State {
+        STARTING,
+        RUNNING,
+        STOPPED
+    }
+
+    /**
+     * Wraps a {@link TriggerEvent} with the associated Virtual Node (vNodes).
+     */
+    public static class CompletableTriggerEvent extends CompletableFuture<Void> {
+
+        private final TriggerEvent event;
+        private final Integer vnode;
+
+        public CompletableTriggerEvent(TriggerEvent event, Integer vnode) {
+            this.event = Objects.requireNonNull(event, "event must not be null");
+            this.vnode = Objects.requireNonNull(vnode, "vnode must not be null");
+        }
+
+        public TriggerEvent event() {
+            return event;
+        }
+
+        public Integer vnode() {
+            return vnode;
+        }
+    }
+}

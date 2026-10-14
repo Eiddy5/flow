@@ -1,0 +1,15 @@
+id: task-allow-warning-runnable
+namespace: org.flow.tests
+
+tasks:
+  - id: fail
+    type: org.flow.plugin.core.execution.Fail
+    allowFailure: true
+    allowWarning: true
+    retry:
+      type: constant
+      interval: PT0.100S
+      maxAttempts: 3
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: I'm allowed

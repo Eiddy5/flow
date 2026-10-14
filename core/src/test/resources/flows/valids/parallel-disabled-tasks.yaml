@@ -1,0 +1,33 @@
+id: parallel-disabled-tasks
+namespace: org.flow.tests
+
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Parallel
+    tasks:
+      - id: sequence1
+        type: org.flow.plugin.core.flow.Sequential
+        tasks:
+          - id: task1
+            type: org.flow.plugin.core.debug.Return
+            format: "{{ task.id }}"
+
+          - id: task2
+            type: org.flow.plugin.core.debug.Return
+            format: "{{ task.id }}"
+
+      - id: sequence2
+        type: org.flow.plugin.core.flow.Sequential
+        tasks:
+          - id: task3
+            type: org.flow.plugin.core.debug.Return
+            format: "{{ task.id }}"
+
+          - id: task4
+            type: org.flow.plugin.core.debug.Return
+            format: "{{ task.id }}"
+
+      - id: task5
+        type: org.flow.plugin.core.debug.Return
+        format: "{{ task.id }}"
+        disabled: true

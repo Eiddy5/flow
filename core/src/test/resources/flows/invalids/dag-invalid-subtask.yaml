@@ -1,0 +1,15 @@
+id: "dag-invalid-subtask"
+namespace: org.flow.tests
+tasks:
+  - id: dag
+    type: org.flow.plugin.core.flow.Dag
+    tasks:
+      - task:
+          id: task1
+          type: org.flow.plugin.core.log.Log
+      - task:
+          id: task2
+          type: org.flow.plugin.core.log.Log
+          message: "ok"
+        dependsOn:
+          - task1

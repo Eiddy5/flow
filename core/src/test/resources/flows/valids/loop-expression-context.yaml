@@ -1,0 +1,19 @@
+id: loop-expression-context
+namespace: org.flow.tests
+
+tasks:
+  - id: before
+    type: org.flow.plugin.core.debug.Return
+    format: "I'm before the loop"
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["value 1", "value 2", "value 3"]
+    tasks:
+      - id: canAccessBefore
+        type: org.flow.plugin.core.debug.Return
+        format: "{{outputs.before.value}}"
+      - id: contextIsFromParent
+        type: org.flow.plugin.core.debug.Return
+        format: "{{execution.id}}"
+

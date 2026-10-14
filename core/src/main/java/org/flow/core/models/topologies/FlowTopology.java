@@ -1,0 +1,30 @@
+package org.flow.core.models.topologies;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
+import org.flow.core.models.HasUID;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.Builder;
+import lombok.Value;
+
+@Value
+@Builder
+public class FlowTopology implements HasUID {
+    @NotNull
+    FlowNode source;
+
+    @NotNull
+    FlowRelation relation;
+
+    @NotNull
+    FlowNode destination;
+
+    /** {@inheritDoc **/
+    @Override
+    @JsonIgnore
+    public String uid() {
+        // we use destination as prefix to enable prefixScan on FlowTopologyUpdateTransformer
+        return destination.getUid() + "|" + source.getUid();
+    }
+}

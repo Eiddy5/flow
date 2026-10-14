@@ -1,0 +1,26 @@
+id: loop-nested
+namespace: org.flow.tests
+
+tasks:
+  - id: loop1
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: [1, 2, 3]
+    tasks:
+      - id: loop2
+        type: org.flow.plugin.core.flow.Loop
+        values: [1, 2, 3]
+        tasks:
+          - id: loop3
+            type: org.flow.plugin.core.flow.Loop
+            values: [ 1, 2, 3 ]
+            tasks:
+            - id: item
+              type: org.flow.plugin.core.debug.Return
+              format: "{{item.index}} - {{item.value}}"
+            - id: parent
+              type: org.flow.plugin.core.debug.Return
+              format: "{{item.parent.index}} - {{item.parent.value}}"
+            - id: parents
+              type: org.flow.plugin.core.debug.Return
+              format: "{{item.parents[0].index}} - {{item.parents[0].value}} - {{item.parents[1].index}} - {{item.parents[1].value}}"

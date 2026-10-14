@@ -1,0 +1,13 @@
+id: loop-break
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["value 1", "value 2", "value 3"]
+    breakWhen: "{{item.index >= 1}}"
+    tasks:
+      - id: item
+        type: org.flow.plugin.core.debug.Return
+        format: "{{item.index}} - {{item.value}}"

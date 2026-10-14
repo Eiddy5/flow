@@ -1,0 +1,580 @@
+package org.flow.executor;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.slf4j.event.Level;
+
+import com.google.common.annotations.VisibleForTesting;
+
+import org.flow.core.executor.WorkerJobRunningStateStore;
+import org.flow.core.killswitch.EvaluationType;
+import org.flow.core.killswitch.KillSwitchService;
+import org.flow.core.metrics.MetricRegistry;
+import org.flow.core.models.executions.Execution;
+import org.flow.core.models.executions.TaskRun;
+import org.flow.core.models.triggers.TriggerId;
+import org.flow.core.queues.KeyedDispatchQueueInterface;
+import org.flow.core.queues.QueueException;
+import org.flow.core.repositories.ServiceInstanceRepositoryInterface;
+import org.flow.core.runners.*;
+import org.flow.core.scheduler.events.TriggerWorkerLost;
+import org.flow.core.scheduler.queue.TriggerEventQueue;
+import org.flow.core.scheduler.vnodes.VNodeController;
+import org.flow.core.server.*;
+import org.flow.core.utils.Logs;
+
+import io.micrometer.core.instrument.Counter;
+import io.micronaut.context.annotation.Context;
+import io.micronaut.context.annotation.Requires;
+import io.micronaut.scheduling.annotation.Scheduled;
+import jakarta.annotation.PostConstruct;
+import jakarta.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+
+import static org.flow.core.server.Service.ServiceState.*;
+
+/**
+ * Responsible for coordinating the state of all service instances.
+ *
+ * @see ServiceInstance
+ */
+@Slf4j
+@Context
+@Requires(property = "flow.server-type", pattern = "(EXECUTOR|STANDALONE)")
+public class DefaultServiceLivenessCoordinator extends AbstractServiceLivenessTask {
+
+    private static final int DEFAULT_SCHEDULE_JITTER_MAX_MS = 500;
+
+    private static final String DEFAULT_REASON_FOR_DISCONNECTED = "The service was detected as non-responsive after the session timeout. " +
+        "Service transitioned to the 'DISCONNECTED' state.";
+
+    private static final String DEFAULT_REASON_FOR_NOT_RUNNING = "The service was detected as non-responsive or terminated after termination grace period. " +
+        "Service transitioned to the 'NOT_RUNNING' state.";
+
+    private static final String TASK_NAME = "service-liveness-coordinator-task";
+
+    private final ServiceLivenessStore store;
+    private final ServiceRegistry serviceRegistry;
+    private final ServiceLivenessUpdater serviceLivenessUpdater;
+    private final ServiceInstanceRepositoryInterface serviceInstanceRepository;
+    private final Duration purgeRetention;
+
+    private final KillSwitchService killSwitchService;
+    private final KeyedDispatchQueueInterface<WorkerJobEvent> workerJobEventQueue;
+    private final WorkerJobRunningStateStore workerJobRunningStateStore;
+    private final ExecutionStateStore executionStateStore;
+    private final TriggerEventQueue triggerEventQueue;
+    private final MetricRegistry metricRegistry;
+    private final VNodeController vNodeController;
+    private final List<ServiceResourceReleaser> serviceResourceReleasers;
+
+    private Counter workerJobResubmitCounter;
+    private Counter workerJobOrphanCounter;
+    // mutable for testing purpose
+    String serverId = ServerInstance.INSTANCE_ID;
+
+    @VisibleForTesting
+    void setServerInstance(String serverId) {
+        this.serverId = serverId;
+    }
+
+    /**
+     * Creates a new {@link DefaultServiceLivenessCoordinator} instance.
+     *
+     * @param store The {@link ServiceInstanceRepositoryInterface}.
+     * @param serverConfig The server configuration.
+     */
+    @Inject
+    public DefaultServiceLivenessCoordinator(final ServiceLivenessStore store,
+        final ServiceRegistry serviceRegistry,
+        final ServiceLivenessUpdater serviceLivenessUpdater,
+        final ServiceInstanceRepositoryInterface serviceInstanceRepository,
+        final KillSwitchService killSwitchService,
+        final KeyedDispatchQueueInterface<WorkerJobEvent> workerJobEventQueue,
+        final WorkerJobRunningStateStore workerJobRunningStateStore,
+        final ExecutionStateStore executionStateStore,
+        final TriggerEventQueue triggerEventQueue,
+        final ServerConfig serverConfig,
+        final MetricRegistry metricRegistry,
+        final VNodeController vNodeController,
+        final List<ServiceResourceReleaser> serviceResourceReleasers) {
+        super(TASK_NAME, serverConfig);
+        this.serviceRegistry = serviceRegistry;
+        this.serviceLivenessUpdater = serviceLivenessUpdater;
+        this.serviceInstanceRepository = serviceInstanceRepository;
+        this.store = store;
+        this.killSwitchService = killSwitchService;
+        this.workerJobEventQueue = workerJobEventQueue;
+        this.workerJobRunningStateStore = workerJobRunningStateStore;
+        this.executionStateStore = executionStateStore;
+        this.triggerEventQueue = triggerEventQueue;
+        this.metricRegistry = metricRegistry;
+        this.purgeRetention = serverConfig.service() != null && serverConfig.service().purge() != null
+            ? serverConfig.service().purge().retention()
+            : null;
+        this.vNodeController = vNodeController;
+        this.serviceResourceReleasers = serviceResourceReleasers;
+    }
+
+    @PostConstruct
+    void initMetrics() {
+        this.workerJobResubmitCounter = metricRegistry.counter(
+            MetricRegistry.METRIC_EXECUTOR_WORKER_JOB_RESUBMIT_COUNT,
+            MetricRegistry.METRIC_EXECUTOR_WORKER_JOB_RESUBMIT_COUNT_DESCRIPTION
+        );
+        this.workerJobOrphanCounter = metricRegistry.counter(
+            MetricRegistry.METRIC_EXECUTOR_WORKER_JOB_ORPHAN_COUNT,
+            MetricRegistry.METRIC_EXECUTOR_WORKER_JOB_ORPHAN_COUNT_DESCRIPTION
+        );
+    }
+
+    /**
+     * {@inheritDoc}
+     **/
+    @Override
+    protected void onSchedule(Instant now) throws Exception {
+        if (
+            Optional.ofNullable(serviceRegistry.get(ServiceType.EXECUTOR))
+                .filter(service -> service.instance().is(RUNNING))
+                .isEmpty()
+        ) {
+            log.debug(
+                "The liveness coordinator task was temporarily disabled. Executor is not yet in the RUNNING state."
+            );
+            return;
+        }
+
+        // Each step is isolated: they are independent sweeps, and letting one failure abort the tick
+        // silently disables every step after it — including the vNode rebalance below, without which
+        // no scheduler is ever assigned a vNode and all trigger scheduling stops cluster-wide.
+        // The tick runs again on the next interval, so a step that failed is simply retried.
+
+        // Update all RUNNING but non-responding services to DISCONNECTED.
+        runStep("handleAllNonRespondingServices", () -> handleAllNonRespondingServices(now));
+
+        // Handle all workers which are not in a RUNNING state.
+        runStep("handleAllWorkersForUncleanShutdown", () -> handleAllWorkersForUncleanShutdown(now));
+
+        // Update all services in one of the TERMINATED states to NOT_RUNNING.
+        runStep("handleAllServicesForTerminatedStates", () -> handleAllServicesForTerminatedStates(now));
+
+        // Update all services in NOT_RUNNING to EMPTY (a.k.a soft delete).
+        runStep("handleAllServiceInNotRunningState", this::handleAllServiceInNotRunningState);
+
+        // Reclaim the worker jobs left behind by the workers the steps above are done with.
+        runStep("handleAllOrphanedWorkerJobs", () -> handleAllOrphanedWorkerJobs(now));
+
+        runStep("maybeDetectAndLogNewConnectedServices", this::maybeDetectAndLogNewConnectedServices);
+
+        // May reassign scheduler VNodes
+        runStep("checkServicesAndRebalanceVNodes", vNodeController::checkServicesAndRebalanceVNodes);
+    }
+
+    /**
+     * Runs one step of the liveness tick, reporting a failure without letting it skip the steps after it.
+     *
+     * @param name the step name, used for reporting.
+     * @param step the step to run.
+     */
+    private void runStep(final String name, final Runnable step) {
+        try {
+            step.run();
+        } catch (Exception e) {
+            log.error("Liveness coordination step '{}' failed. It will be retried on the next interval.", name, e);
+        }
+    }
+
+    /**
+     * Handles all worker services which are shutdown or considered to be terminated.
+     * <p>
+     * This method may re-submit tasks is necessary.
+     *
+     * @param now the time of the execution.
+     */
+    protected void handleAllWorkersForUncleanShutdown(Instant now) {
+        serviceInstanceRepository.processAllNonRunningInstances((txContext, serviceInstance) ->
+        {
+            if (!serviceInstance.type().isWorker()) {
+                return;
+            }
+
+            // List of workers for which we don't know the actual state of tasks executions.
+            // Re-emit all WorkerJobs for unclean workers
+            boolean isUncleanShutdownService = isUncleanShutdownService(serviceInstance, now);
+            if (isUncleanShutdownService) {
+                if (serviceInstance.config().workerTaskRestartStrategy().isRestartable()) {
+                    log.info("Trigger task restart for non-responding worker after termination grace period: {}.", serviceInstance.uid());
+                    reEmitWorkerJobsForWorker(txContext, serviceInstance.uid());
+                }
+            } else if (serviceInstance.is(Service.ServiceState.TERMINATED_GRACEFULLY)) {
+                // triggers whose terminal result was not flushed need to be released even when terminated gracefully
+                if (serviceInstance.config().workerTaskRestartStrategy().isRestartable()) {
+                    log.info("Trigger restart for terminated gracefully worker: {}.", serviceInstance.uid());
+                    notifyTriggersLostForWorker(txContext, serviceInstance.uid());
+                }
+            }
+
+            // Transit GRACEFUL or UNCLEAN SHUTDOWN worker to NOT_RUNNING.
+            if (isUncleanShutdownService || serviceInstance.is(Service.ServiceState.TERMINATED_GRACEFULLY)) {
+                serviceInstanceRepository.mayTransitServiceTo(
+                    txContext,
+                    serviceInstance,
+                    Service.ServiceState.NOT_RUNNING,
+                    DEFAULT_REASON_FOR_NOT_RUNNING
+                );
+            }
+        });
+    }
+
+    /**
+     * {@inheritDoc}
+     **/
+    protected void update(ServiceInstance instance, Service.ServiceState state, String reason) {
+        serviceLivenessUpdater.update(instance, state, reason);
+    }
+
+    /**
+     * Handles all unresponsive services and update their status to disconnected.
+     * <p>
+     * This method may re-submit tasks is necessary.
+     *
+     * @param now the time of the execution.
+     */
+    protected void handleAllNonRespondingServices(Instant now) {
+        // Retrieves all services that are supposed to be running.
+        serviceInstanceRepository.processInstanceInStates(allRunningStates(), (txContext, serviceInstance) ->
+        {
+            // Detect and handle non-responding services.
+            if (isNonRespondingService(serviceInstance, now)) {
+                // Attempt to transit all non-responding services to DISCONNECTED.
+                serviceInstanceRepository.mayTransitServiceTo(
+                    txContext,
+                    serviceInstance,
+                    Service.ServiceState.DISCONNECTED,
+                    DEFAULT_REASON_FOR_DISCONNECTED
+                );
+
+                // Eventually restart worker tasks
+                if (
+                    serviceInstance.type().isWorker() &&
+                        serviceInstance.config().workerTaskRestartStrategy().equals(WorkerTaskRestartStrategy.IMMEDIATELY)
+                ) {
+                    log.info("Trigger task restart for non-responding worker after timeout: {}.", serviceInstance.uid());
+                    reEmitWorkerJobsForWorker(txContext, serviceInstance.uid());
+                }
+
+                // release service resources
+                serviceResourceReleasers.forEach(releaser -> releaser.releaseResources(serviceInstance, DEFAULT_REASON_FOR_DISCONNECTED));
+            }
+        });
+    }
+
+    @Scheduled(initialDelay = "${flow.server.service.purge.initial-delay}", fixedDelay = "${flow.server.service.purge.fixed-delay}")
+    public void purgeEmptyInstances() {
+        int purged = serviceInstanceRepository.purgeEmptyInstances(Instant.now().minus(purgeRetention));
+        log.info("Purged {} service instances", purged);
+    }
+
+    /**
+     * Reclaims the running worker jobs held by workers that have left the cluster.
+     * <p>
+     * A job the worker claimed but never ran leaves an entry that no other step
+     * reclaims: {@link #handleAllWorkersForUncleanShutdown} re-emits tasks for unclean workers only,
+     * so an entry left by a worker that terminated gracefully keeps its task run {@code SUBMITTED}
+     * forever. Only {@code INACTIVE} workers are considered, so a worker that is merely disconnected
+     * keeps its jobs until the termination grace period has decided its fate, and a worker configured
+     * with {@link WorkerTaskRestartStrategy#NEVER} keeps them for good.
+     * <p>
+     * A worker is only reclaimed from once its termination grace period has elapsed since it became
+     * {@code INACTIVE}: a worker that terminated gracefully gets there in the same tick, while the executor
+     * may not have applied its last results yet, and a {@code WorkingDirectory} keeps its lease until it has.
+     */
+    protected void handleAllOrphanedWorkerJobs(Instant now) {
+        Set<String> liveWorkerUids = store.findAllInstancesInStates(Set.of(CREATED, RUNNING))
+            .stream()
+            .map(ServiceInstance::uid)
+            .collect(Collectors.toSet());
+
+        // Every worker still running holds its own jobs, so the candidates are what is left once they
+        // are out. On a healthy cluster nothing is, and the state of no instance has to be read at all.
+        Set<String> candidateWorkerUids = new HashSet<>(workerJobRunningStateStore.findWorkerUidsWithRunningJobs());
+        candidateWorkerUids.removeAll(liveWorkerUids);
+
+        if (candidateWorkerUids.isEmpty()) {
+            return;
+        }
+
+        Set<String> reclaimableWorkerUids = candidateWorkerUids
+            .stream()
+            .map(serviceInstanceRepository::findById)
+            .flatMap(Optional::stream)
+            .filter(instance -> instance.is(INACTIVE))
+            .filter(instance -> instance.config() != null && instance.config().workerTaskRestartStrategy().isRestartable())
+            .filter(instance -> instance.isTerminationGracePeriodElapsed(now))
+            .map(ServiceInstance::uid)
+            .collect(Collectors.toSet());
+
+        if (reclaimableWorkerUids.isEmpty()) {
+            return;
+        }
+
+        workerJobRunningStateStore.processOrphanWorkerJobs(NoTransactionContext.INSTANCE, reclaimableWorkerUids, (txContext, workerJobRunning) ->
+        {
+            log.warn(
+                "Reclaiming the worker job '{}' left by the worker '{}': the worker is no longer part of the cluster.",
+                workerJobRunning.uid(),
+                workerJobRunning.getWorkerInstance().uid()
+            );
+            workerJobOrphanCounter.increment();
+            resubmitWorkerJobRunning(txContext, workerJobRunning);
+        });
+    }
+
+    private void reEmitWorkerJobsForWorker(final TransactionContext txContext, final String id) {
+        workerJobResubmitCounter.increment();
+
+        workerJobRunningStateStore.processWorkerJobsForDeadWorker(txContext, id, (txContext2, workerJobRunning) ->
+        {
+            resubmitWorkerJobRunning(txContext2, workerJobRunning);
+        });
+    }
+
+    private void notifyTriggersLostForWorker(final TransactionContext txContext, final String id) {
+        workerJobRunningStateStore.processWorkerJobsForDeadWorker(txContext, id, (txContext2, workerJobRunning) ->
+        {
+            if (workerJobRunning instanceof WorkerTriggerRunning workerTriggerRunning) {
+                notifyTriggerWorkerLost(txContext2, workerTriggerRunning);
+            }
+        });
+    }
+
+    /**
+     * {@inheritDoc}
+     **/
+    @Override
+    protected Duration getScheduleInterval() {
+        // Multiple Executors can be running in parallel. We add a jitter to
+        // help distributing the load more evenly among the ServiceLivenessCoordinator.
+        // This is also used to prevent all ServiceLivenessCoordinator from attempting to query the repository simultaneously.
+        Random r = new Random(); //SONAR
+        int jitter = r.nextInt(DEFAULT_SCHEDULE_JITTER_MAX_MS);
+        return serverConfig.liveness().interval().plus(Duration.ofMillis(jitter));
+    }
+
+    private boolean isUncleanShutdownService(final ServiceInstance instance, final Instant now) {
+        // ...all services that have transitioned to DISCONNECTED or TERMINATING for more than terminationGracePeriod.
+        if (instance.state().isDisconnectedOrTerminating() && instance.isTerminationGracePeriodElapsed(now)) {
+            maybeLogNonRespondingAfterTerminationGracePeriod(instance, now);
+            return true;
+        }
+
+        // ...all services that have transitioned to TERMINATED_FORCED.
+        // Only select workers that have been terminated for at least the grace period, to ensure that all in-flight
+        // task runs had enough time to be fully handled by the executors.
+        return instance.is(Service.ServiceState.TERMINATED_FORCED) && instance.isTerminationGracePeriodElapsed(now);
+    }
+
+    private boolean isNonRespondingService(final ServiceInstance instance, final Instant now) {
+        boolean isNonResponding = instance.config() != null && // protect against non-complete instance
+            instance.config().liveness().enabled() &&
+            instance.isSessionTimeoutElapsed(now) &&
+            // exclude any service running on the same server as the executor, to prevent the latter from shutting down.
+            !instance.server().id().equals(serverId) &&
+            // only keep services eligible for liveness probe
+            instance.createdAt().isBefore(now.minus(instance.config().liveness().initialDelay()));
+
+        // warn
+        if (isNonResponding) {
+            log.warn(
+                "Detected non-responding service [id={}, type={}, hostname={}] after timeout ({}ms).",
+                instance.uid(),
+                instance.type(),
+                instance.server().hostname(),
+                now.toEpochMilli() - instance.updatedAt().toEpochMilli()
+            );
+        }
+
+        return isNonResponding;
+
+    }
+
+    private void handleAllServiceInNotRunningState() {
+        // Soft delete all services which are NOT_RUNNING anymore.
+        store.findAllInstancesInStates(Set.of(Service.ServiceState.NOT_RUNNING))
+            .forEach(instance ->
+            {
+                safelyUpdate(instance, Service.ServiceState.INACTIVE, null);
+
+                // release service resources
+                serviceResourceReleasers.forEach(releaser -> releaser.releaseResources(instance, "service inactive"));
+            });
+    }
+
+    private void handleAllServicesForTerminatedStates(final Instant now) {
+        store
+            .findAllInstancesInStates(Set.of(DISCONNECTED, TERMINATING, TERMINATED_GRACEFULLY, TERMINATED_FORCED))
+            .stream()
+            .filter(instance -> !instance.type().isWorker()) // WORKERS are handle above.
+            .filter(instance -> instance.isTerminationGracePeriodElapsed(now) || instance.state().equals(TERMINATED_GRACEFULLY))
+            .peek(instance -> maybeLogNonRespondingAfterTerminationGracePeriod(instance, now))
+            .forEach(instance -> safelyUpdate(instance, NOT_RUNNING, DEFAULT_REASON_FOR_NOT_RUNNING));
+    }
+
+    private void maybeDetectAndLogNewConnectedServices() {
+        if (log.isDebugEnabled()) {
+            // Log the newly-connected services (useful for troubleshooting).
+            store.findAllInstancesInStates(Set.of(CREATED, RUNNING))
+                .stream()
+                .filter(instance -> instance.createdAt().isAfter(lastScheduledExecution()))
+                .forEach(instance ->
+                {
+                    log.debug(
+                        "Detected new service [id={}, type={}, hostname={}] (started at: {}).",
+                        instance.uid(),
+                        instance.type(),
+                        instance.server().hostname(),
+                        instance.createdAt()
+                    );
+                });
+        }
+    }
+
+    private void safelyUpdate(final ServiceInstance instance,
+        final Service.ServiceState state,
+        final String reason) {
+        try {
+            update(instance, state, reason);
+        } catch (Exception e) {
+            // Log and ignore exception - it's safe to ignore error because the run() method is supposed to schedule at fix rate.
+            log.error(
+                "Unexpected error while service [id={}, type={}, hostname={}] transition from {} to {}.",
+                instance.uid(),
+                instance.type(),
+                instance.server().hostname(),
+                instance.state(),
+                state,
+                e
+            );
+        }
+    }
+
+    private void maybeLogNonRespondingAfterTerminationGracePeriod(final ServiceInstance instance,
+        final Instant now) {
+        if (instance.state().isDisconnectedOrTerminating()) {
+            log.warn(
+                "Detected non-responding service [id={}, type={}, hostname={}] after termination grace period ({}ms).",
+                instance.uid(),
+                instance.type(),
+                instance.server().hostname(),
+                now.toEpochMilli() - instance.updatedAt().toEpochMilli()
+            );
+        }
+    }
+
+    private void resubmitWorkerJobRunning(TransactionContext txContext, WorkerJobRunning workerJobRunning) {
+        // WorkerTaskRunning
+        if (workerJobRunning instanceof WorkerTaskRunning workerTaskRunning) {
+            resubmitWorkerTask(txContext, workerTaskRunning);
+        }
+
+        // WorkerTriggerRunning
+        if (workerJobRunning instanceof WorkerTriggerRunning workerTriggerRunning) {
+            notifyTriggerWorkerLost(txContext, workerTriggerRunning);
+        }
+    }
+
+    private void resubmitWorkerTask(TransactionContext txContext, WorkerTaskRunning workerTaskRunning) {
+        if (workerTaskRunning.isResultPending()) {
+            // The durable result queue owns delivery now; rerunning would repeat task side effects.
+            if (isTaskRunTerminated(workerTaskRunning.getTaskRun())) {
+                workerJobRunningStateStore.deleteByKeyAndWorker(txContext, workerTaskRunning.uid(), workerTaskRunning.getWorkerInstance().uid());
+            }
+            return;
+        }
+        if (isTaskRunTerminated(workerTaskRunning.getTaskRun())) {
+            log.warn(
+                "Discarding the running entry of task run '{}' of execution '{}' instead of resubmitting it, because the task run has already ended or its execution no longer exists.",
+                workerTaskRunning.getTaskRun().getId(),
+                workerTaskRunning.getTaskRun().getExecutionId()
+            );
+            workerJobRunningStateStore.deleteByKeyAndWorker(txContext, workerTaskRunning.uid(), workerTaskRunning.getWorkerInstance().uid());
+        } else if (killSwitchService.evaluate(workerTaskRunning.getTaskRun()) != EvaluationType.PASS) {
+            // if the execution is switch-killed, we remove the workerTaskRunning and skip its resubmission
+            log.warn("Ignoring worker job resubmission for execution {} because there is a kill switch for it", workerTaskRunning.getTaskRun().getExecutionId());
+            workerJobRunningStateStore.deleteByKeyAndWorker(txContext, workerTaskRunning.uid(), workerTaskRunning.getWorkerInstance().uid());
+        } else {
+            try {
+                String raw = workerTaskRunning.getWorkerInstance().workerQueueId();
+                String workerQueueId = (raw == null || raw.isEmpty()) ? null : raw;
+                WorkerTask workerTask = WorkerTask.builder()
+                    .taskRun(workerTaskRunning.getTaskRun().onRunningResend())
+                    .task(workerTaskRunning.getTask())
+                    .data(workerTaskRunning.getData())
+                    .build();
+                workerJobEventQueue.emit(workerQueueId, WorkerJobEvent.of(workerTask, workerQueueId));
+                // The lease is released only once the job is back on the queue: left in place it is
+                // picked up by the next orphan sweep and the task is resubmitted a second time.
+                workerJobRunningStateStore.deleteByKeyAndWorker(txContext, workerTaskRunning.uid(), workerTaskRunning.getWorkerInstance().uid());
+                Logs.logTaskRun(
+                    workerTaskRunning.getTaskRun(),
+                    Level.WARN,
+                    "Resubmit WorkerTask."
+                );
+            } catch (QueueException e) {
+                Logs.logTaskRun(
+                    workerTaskRunning.getTaskRun(),
+                    Level.ERROR,
+                    "Unable to resubmit WorkerTask.",
+                    e
+                );
+            }
+        }
+    }
+
+    /**
+     * Whether the task run of a running entry has already ended in its execution, in which case resubmitting
+     * the entry would run it a second time. An execution that no longer exists counts as ended, since it was
+     * purged or deleted and none of its tasks can still be in flight. An execution that cannot be read is not
+     * taken as proof that the task run ended, so the entry is resubmitted rather than risking to lose a task.
+     */
+    private boolean isTaskRunTerminated(TaskRun taskRun) {
+        try {
+            Execution execution = executionStateStore.findByIdWithoutAcl(taskRun.getExecutionId());
+            return execution == null || execution.findTaskRunByTaskRunIdIfPresent(taskRun.getId())
+                .map(current -> current.getState().isTerminated())
+                .orElse(false);
+        } catch (Exception e) {
+            log.warn("Unable to read execution '{}' to check whether task run '{}' has already ended.", taskRun.getExecutionId(), taskRun.getId(), e);
+            return false;
+        }
+    }
+
+    /**
+     * The worker holding the trigger is gone: delete its running entry and notify the scheduler,
+     * which owns resubmission. Re-emitting the persisted job from here would replay a stale
+     * trigger definition and ignore a disabled or deleted state.
+     */
+    private void notifyTriggerWorkerLost(TransactionContext txContext, WorkerTriggerRunning workerTriggerRunning) {
+        TriggerId triggerId = TriggerId.of(
+            workerTriggerRunning.getData().tenantId(),
+            workerTriggerRunning.getData().namespace(),
+            workerTriggerRunning.getData().flowId(),
+            workerTriggerRunning.getTrigger().getId()
+        );
+        workerJobRunningStateStore.deleteByKeyAndWorker(txContext, workerTriggerRunning.uid(), workerTriggerRunning.getWorkerInstance().uid());
+        triggerEventQueue.send(new TriggerWorkerLost(triggerId, workerTriggerRunning.getWorkerInstance().uid(), workerTriggerRunning.getDispatchEpoch()));
+        Logs.logTrigger(
+            triggerId,
+            Level.WARN,
+            "Worker '{}' lost, notifying the scheduler.",
+            workerTriggerRunning.getWorkerInstance().uid()
+        );
+    }
+}

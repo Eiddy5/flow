@@ -1,0 +1,11 @@
+id: replay
+namespace: org.flow.tests
+
+tasks:
+  - id: output
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      name: World
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: "Hello {{ outputs.output.values.name }}"

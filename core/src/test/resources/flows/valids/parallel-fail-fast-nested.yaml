@@ -1,0 +1,20 @@
+id: parallel-fail-fast-nested
+namespace: org.flow.tests
+
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Parallel
+    onChildFailure: CANCEL
+    tasks:
+      - id: fails_fast
+        type: org.flow.plugin.core.execution.Fail
+
+      - id: sequence
+        type: org.flow.plugin.core.flow.Sequential
+        tasks:
+          - id: sleep1
+            type: org.flow.plugin.core.flow.Sleep
+            duration: PT10S
+          - id: sleep2
+            type: org.flow.plugin.core.flow.Sleep
+            duration: PT10S

@@ -1,0 +1,12 @@
+id: flow-concurrency-parallel-subflow-kill-child
+namespace: org.flow.tests
+
+concurrency:
+  behavior: QUEUE
+  limit: 1
+
+tasks:
+  - id: flow1
+    type: org.flow.plugin.core.flow.Subflow
+    flowId: flow-concurrency-parallel-subflow-kill-grandchild
+    namespace: org.flow.tests

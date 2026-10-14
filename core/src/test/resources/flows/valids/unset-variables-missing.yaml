@@ -1,0 +1,12 @@
+id: unset-variables-missing
+namespace: org.flow.tests
+
+tasks:
+  - id: unset-variables
+    type: org.flow.plugin.core.execution.UnsetVariables
+    variables:
+      - message
+  - id: output
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      message: "{{ vars.message ??? 'default' }}"

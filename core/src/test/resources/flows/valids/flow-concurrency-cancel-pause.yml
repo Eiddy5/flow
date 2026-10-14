@@ -1,0 +1,11 @@
+id: flow-concurrency-cancel-pause
+namespace: org.flow.tests
+
+concurrency:
+  behavior: CANCEL
+  limit: 1
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    pauseDuration: PT1S

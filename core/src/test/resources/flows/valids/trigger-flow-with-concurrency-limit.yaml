@@ -1,0 +1,17 @@
+id: trigger-flow-with-concurrency-limit
+namespace: org.flow.tests.trigger.concurrency
+
+concurrency:
+  limit: 1
+  behavior: QUEUE
+
+tasks:
+  - id: sleep
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT0.5S
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: "we are between sleeps"
+  - id: sleep_2
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT0.5S

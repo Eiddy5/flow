@@ -1,0 +1,27 @@
+package org.flow.core.models.tasks.runners;
+
+import org.flow.core.models.tasks.Output;
+
+import jakarta.annotation.Nullable;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
+
+@AllArgsConstructor
+@Getter
+@SuperBuilder
+@NoArgsConstructor
+public class TaskRunnerResult<T extends TaskRunnerDetailResult> implements Output {
+    private int exitCode;
+
+    private AbstractLogConsumer logConsumer;
+
+    @Nullable
+    private T details;
+
+    public TaskRunnerResult(int exitCode, AbstractLogConsumer logConsumer) {
+        this.exitCode = exitCode;
+        this.logConsumer = logConsumer;
+    }
+}

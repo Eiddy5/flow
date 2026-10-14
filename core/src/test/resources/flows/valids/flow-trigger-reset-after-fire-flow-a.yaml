@@ -1,0 +1,7 @@
+id: flow-trigger-reset-after-fire-flow-a
+namespace: org.flow.tests.trigger.reset.after.fire
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from parent: {{execution.id}}"

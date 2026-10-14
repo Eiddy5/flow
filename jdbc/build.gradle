@@ -1,0 +1,33 @@
+dependencies {
+    // Micronaut bean metadata is generated only in modules that own beans.
+    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor libs.micronaut.inject.java
+    annotationProcessor libs.micronaut.validation.processor
+
+    implementation libs.micronaut.context
+    implementation libs.micronaut.validation.runtime
+    implementation libs.micrometer.core
+
+    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor libs.micronaut.inject.java
+    testImplementation libs.micronaut.test.junit5
+
+    implementation project(":core")
+    implementation project(":scheduler")
+    implementation project(":executor")
+    implementation project(":worker")
+
+    implementation(libs.micronaut.data.tx.jdbc)
+    implementation(libs.micronaut.jdbc.hikari)
+    implementation(libs.micronaut.jooq)
+    // see https://github.com/jOOQ/jOOQ/issues/14865
+    compileOnly (libs.jakarta.xml.bind.api)
+
+    testImplementation(libs.postgresql)
+    testImplementation project(':tests')
+    testImplementation project(':queue')
+    testImplementation project(':queue-jdbc')
+    testImplementation project(path: ':core', configuration: 'testArtifacts')
+    testImplementation project(path: ':executor', configuration: 'testArtifacts')
+    testImplementation project(path: ':queue', configuration: 'testArtifacts')
+}

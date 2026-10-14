@@ -1,0 +1,162 @@
+package org.flow.core.validations;
+
+import java.time.Duration;
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+
+import org.flow.core.junit.annotations.FlowTest;
+import org.flow.core.models.validations.ModelValidator;
+import org.flow.core.utils.IdUtils;
+import org.flow.plugin.core.trigger.Schedule;
+
+import jakarta.inject.Inject;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@FlowTest
+class ScheduleValidationTest {
+    @Inject
+    private ModelValidator modelValidator;
+
+    @Test
+    void cronValidation() throws Exception {
+        Schedule build = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("* * * * *")
+            .build();
+
+        assertThat(modelValidator.isValid(build).isEmpty()).isTrue();
+
+        build = Schedule.builder()
+            .type(Schedule.class.getName())
+            .cron("$ome Inv@lid Cr0n")
+            .build();
+
+        assertThat(modelValidator.isValid(build).isPresent()).isTrue();
+        assertThat(modelValidator.isValid(build).get().getMessage()).contains("invalid cron expression");
+    }
+
+    @Test
+    void shouldRejectUnsatisfiableCronExpressions() {
+        for (String cron : List.of("0 0 30 2 *", "0 0 31 4 *", "0 0 31 6 *")) {
+            Schedule schedule = Schedule.builder()
+                .id(IdUtils.create())
+                .type(Schedule.class.getName())
+                .cron(cron)
+                .build();
+
+            var violation = modelValidator.isValid(schedule);
+
+            assertThat(violation).isPresent();
+            assertThat(violation.get().getMessage()).contains("invalid cron expression", cron);
+        }
+    }
+
+    @Test
+    void shouldNotReportCronValidationForInvalidTimezone() {
+        Schedule schedule = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("* * * * *")
+            .timezone("Not/AZone")
+            .build();
+
+        var violation = modelValidator.isValid(schedule);
+
+        assertThat(violation).isPresent();
+        assertThat(violation.get().getMessage())
+            .contains("not a valid time-zone ID")
+            .doesNotContain("invalid cron expression");
+    }
+
+    @Test
+    void shouldAcceptSatisfiableCalendarCronExpressions() {
+        for (String cron : List.of("0 0 29 2 *", "0 0 31 1 *", "0 0 30 4 *")) {
+            Schedule schedule = Schedule.builder()
+                .id(IdUtils.create())
+                .type(Schedule.class.getName())
+                .cron(cron)
+                .build();
+
+            assertThat(modelValidator.isValid(schedule)).isEmpty();
+        }
+    }
+
+    @Test
+    void nicknameValidation() throws Exception {
+        Schedule build = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("@hourly")
+            .build();
+
+        assertThat(modelValidator.isValid(build).isEmpty()).isTrue();
+    }
+
+    @Test
+    void withSecondsValidation() throws Exception {
+        Schedule build = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .withSeconds(true)
+            .cron("* * * * * *")
+            .build();
+
+        assertThat(modelValidator.isValid(build).isEmpty()).isTrue();
+
+        build = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("* * * * * *")
+            .build();
+
+        assertThat(modelValidator.isValid(build).isPresent()).isTrue();
+        assertThat(modelValidator.isValid(build).get().getMessage()).contains("invalid cron expression");
+    }
+
+    @Test
+    void lateMaximumDelayValidation() {
+        Schedule build = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("* * * * *")
+            .lateMaximumDelay(Duration.ofSeconds(10))
+            .build();
+
+        assertThat(modelValidator.isValid(build).isPresent()).isFalse();
+    }
+
+    @Test
+    void intervalValidation() {
+        Schedule build = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("* * * * *")
+            .interval(Duration.ofSeconds(5))
+            .build();
+
+        assertThat(modelValidator.isValid(build).isPresent()).isTrue();
+        assertThat(modelValidator.isValid(build).get().getMessage()).contains("interval: must be null");
+    }
+
+    @Test
+    void sundayDayOfTheWeekAlias() {
+        Schedule sundayAsZero = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("0 9 * * 0")
+            .build();
+
+        assertThat(modelValidator.isValid(sundayAsZero)).isNotPresent();
+
+        Schedule sundayAsSeven = Schedule.builder()
+            .id(IdUtils.create())
+            .type(Schedule.class.getName())
+            .cron("0 9 * * 7")
+            .build();
+
+        assertThat(modelValidator.isValid(sundayAsSeven)).isNotPresent();
+    }
+}

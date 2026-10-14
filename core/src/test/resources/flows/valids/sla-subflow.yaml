@@ -1,0 +1,13 @@
+id: sla-subflow
+namespace: org.flow.tests
+
+sla:
+  - id: maxDuration
+    type: MAX_DURATION
+    duration: PT1S
+    behavior: FAIL
+
+tasks:
+  - id: sleep
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT10S

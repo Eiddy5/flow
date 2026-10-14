@@ -1,0 +1,9 @@
+id: subflow-parent-no-wait
+namespace: org.flow.tests
+
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: subflow-child-with-output
+    wait: false

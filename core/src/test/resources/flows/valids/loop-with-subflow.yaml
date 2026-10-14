@@ -1,0 +1,15 @@
+id: loop-with-subflow
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values:
+      - 1
+      - 2
+    tasks:
+      - id: subflow
+        type: org.flow.plugin.core.flow.Subflow
+        flowId: minimal
+        namespace: org.flow.tests

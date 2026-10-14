@@ -1,0 +1,11 @@
+id: if-condition-fail
+namespace: org.flow.tests
+
+tasks:
+  - id: if
+    type: org.flow.plugin.core.flow.If
+    condition: "{{ inputs.run }}"
+    then:
+      - id: hello
+        type: org.flow.plugin.core.log.Log
+        message: Hello World! 🚀

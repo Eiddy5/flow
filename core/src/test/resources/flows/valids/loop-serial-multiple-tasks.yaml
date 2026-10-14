@@ -1,0 +1,15 @@
+id: loop-serial-multiple-tasks
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["value 1", "value 2"]
+    tasks:
+      - id: first
+        type: org.flow.plugin.core.log.Log
+        message: "First task for {{ item.value }}"
+      - id: second
+        type: org.flow.plugin.core.log.Log
+        message: "Second task for {{ item.value }}"

@@ -1,0 +1,13 @@
+dependencies {
+    // Micronaut bean metadata is generated only in modules that own beans.
+    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor libs.micronaut.inject.java
+
+    implementation libs.micronaut.context
+
+    implementation project(':core')
+    implementation project(':queue')
+
+    implementation project(':jdbc')
+    implementation libs.jooq
+}

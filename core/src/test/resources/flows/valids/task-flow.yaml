@@ -1,0 +1,30 @@
+id: task-flow
+namespace: org.flow.tests
+
+inputs:
+  - id: string
+    type: STRING
+
+labels:
+  mainFlowLabel: flowFoo
+  overriding: parent
+
+tasks:
+  - id: launch
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: switch
+    inputs:
+      string: "{{ inputs.string }}"
+    wait: true
+    transmitFailed: true
+    inheritLabels: true
+    labels:
+      launchTaskLabel: launchFoo
+
+triggers:
+  - id: schedule
+    type: org.flow.plugin.core.trigger.Schedule
+    cron: "0 * * * *"
+    inputs:
+      string: hello

@@ -1,0 +1,25 @@
+dependencies {
+    // Micronaut bean metadata is generated only in modules that own beans.
+    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor libs.micronaut.inject.java
+
+    implementation libs.micronaut.inject.core
+    implementation libs.micrometer.core
+
+    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor libs.micronaut.inject.java
+    testImplementation libs.micronaut.test.junit5
+
+    annotationProcessor project(':processor')
+    implementation project(":core")
+
+    // test
+    testAnnotationProcessor project(':processor')
+    testImplementation project(path: ':core', configuration: 'testArtifacts')
+    testImplementation project(':storage-local')
+    testImplementation project(':worker')
+
+    testImplementation project(':tests')
+    testImplementation project(':jdbc')
+    testImplementation project(':jdbc-postgres')
+}

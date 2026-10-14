@@ -1,0 +1,10 @@
+id: if-without-condition
+namespace: org.flow.tests
+
+tasks:
+  - id: if
+    type: org.flow.plugin.core.flow.If
+    then:
+      - id: when_true
+        type: org.flow.plugin.core.log.Log
+        message: "Condition was true"

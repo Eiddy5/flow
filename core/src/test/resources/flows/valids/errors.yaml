@@ -1,0 +1,29 @@
+id: errors
+namespace: org.flow.tests
+
+tasks:
+- id: failed
+  type: org.flow.plugin.core.execution.Fail
+errors:
+  - id: t2
+    type: org.flow.plugin.core.log.Log
+    message: |
+      {%- for log in errorLogs() -%}
+      - task: {{ log.taskId }}, message: {{ log.message }}
+      {%- endfor -%}
+
+  - id: t3
+    type: org.flow.plugin.core.flow.Parallel
+    tasks:
+      - id: t3-t1
+        type: org.flow.plugin.core.flow.Parallel
+        tasks:
+          - id: t3-t1-t1
+            type: org.flow.plugin.core.flow.Parallel
+            tasks:
+              - id: t3-t1-t1-t1
+                type: org.flow.plugin.core.flow.Parallel
+                tasks:
+                  - id: t3-t1-t1-t1-last
+                    type: org.flow.plugin.core.log.Log
+                    message: "t3-t1-t1-t1-last : {{task.id}}"

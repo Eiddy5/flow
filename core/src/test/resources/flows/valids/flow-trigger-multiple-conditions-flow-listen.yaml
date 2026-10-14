@@ -1,0 +1,21 @@
+id: flow-trigger-multiple-conditions-flow-listen
+namespace: org.flow.tests.trigger.multiple.conditions
+
+triggers:
+  - id: on_completion
+    type: org.flow.plugin.core.trigger.Flow
+    states: [ SUCCESS ]
+    dependsOn:
+      - namespace: org.flow.tests.trigger.multiple.conditions
+        flowId: flow-trigger-multiple-conditions-flow-a
+  - id: on_failure
+    type: org.flow.plugin.core.trigger.Flow
+    states: [ FAILED ]
+    dependsOn:
+      - namespace: org.flow.tests.trigger.multiple.conditions
+        flowId: flow-trigger-multiple-conditions-flow-a
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "It works"

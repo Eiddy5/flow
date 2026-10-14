@@ -1,0 +1,9 @@
+id: executable-fail
+namespace: org.flow.tests
+
+tasks:
+  - id: launch
+    type: org.flow.core.tasks.test.BadExecutable
+    namespace: org.flow.tests
+    flowId: logs
+    wait: true

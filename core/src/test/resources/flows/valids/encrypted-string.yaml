@@ -1,0 +1,10 @@
+id: encrypted-string
+namespace: org.flow.tests
+
+tasks:
+  - id: hello
+    type: org.flow.core.tasks.test.Encrypted
+    format: "Hello World"
+  - id: return
+    type: org.flow.plugin.core.debug.Return
+    format: "{{outputs.hello.value}}"

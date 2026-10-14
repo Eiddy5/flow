@@ -1,0 +1,18 @@
+id: retry-success-first-attempt
+namespace: org.flow.tests
+
+tasks:
+- id: not-retry-and-no-warning
+  type: org.flow.plugin.core.log.Log
+  message: "foo"
+  retry:
+    type: constant
+    interval: PT0.250S
+    maxAttempts: 5
+    maxDuration: PT15S
+    warningOnRetry: true
+
+errors:
+  - id: never-happen
+    type: org.flow.plugin.core.log.Log
+    message: Never {{task.id}}

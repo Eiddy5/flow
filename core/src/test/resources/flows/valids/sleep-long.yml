@@ -1,0 +1,13 @@
+id: sleep-long
+namespace: org.flow.tests
+
+tasks:
+  - id: sleep-long
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT30S
+
+afterExecution:
+  - id: output
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      state: "{{execution.state}}"

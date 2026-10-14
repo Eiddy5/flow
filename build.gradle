@@ -1,42 +1,329 @@
-plugins {
-    alias(libs.plugins.micronaut.application) apply false
-    alias(libs.plugins.micronaut.library) apply false
-    alias(libs.plugins.micronaut.aot) apply false
-    alias(libs.plugins.micronaut.test.resources) apply false
-    alias(libs.plugins.shadow) apply false
+plugins { id 'java-library' }
+allprojects {
+    version = '2.0.5'
+    repositories { mavenCentral() }
+    group = 'org.flow'
+    apply plugin: 'java-library'
+    dependencies {
+        // Consume third-party BOMs directly; versions live in the shared catalog.
+        ['api', 'annotationProcessor', 'testAnnotationProcessor'].each { configuration ->
+            add(configuration, enforcedPlatform(rootProject.libs.jackson.bom))
+            add(configuration, enforcedPlatform(rootProject.libs.jetty.bom))
+        }
+
+        constraints {
+            // Preserve the versions previously fixed for these transitive dependencies.
+            api rootProject.libs.commons.compress
+            api rootProject.libs.gson
+            api rootProject.libs.jooq
+            api rootProject.libs.plexus.utils
+            api rootProject.libs.jakarta.annotation.api
+            annotationProcessor rootProject.libs.jakarta.annotation.api
+            annotationProcessor rootProject.libs.slf4j.api
+            testAnnotationProcessor rootProject.libs.jakarta.annotation.api
+            testAnnotationProcessor rootProject.libs.slf4j.api
+        }
+
+        // lombok
+        annotationProcessor rootProject.libs.lombok
+        compileOnly rootProject.libs.lombok
+
+        // logs
+        implementation rootProject.libs.slf4j.api
+        implementation rootProject.libs.logback.classic
+        implementation rootProject.libs.janino
+        implementation rootProject.libs.log4j.to.slf4j
+        implementation rootProject.libs.jul.to.slf4j
+        implementation rootProject.libs.jcl.over.slf4j
+        implementation rootProject.libs.jansi
+
+        // OTEL
+        implementation rootProject.libs.opentelemetry.exporter.otlp
+
+        // jackson
+        implementation rootProject.libs.jackson.core
+        implementation rootProject.libs.jackson.databind
+        implementation rootProject.libs.jackson.annotations
+        implementation rootProject.libs.jackson.dataformat.yaml
+        implementation rootProject.libs.jackson.module.parameter.names
+        implementation rootProject.libs.jackson.datatype.guava
+        implementation rootProject.libs.jackson.datatype.jsr310
+        implementation rootProject.libs.java.uuid.generator
+
+        // flow
+        implementation rootProject.libs.friendly.id
+        implementation (rootProject.libs.jackson.jq) {
+            exclude group: 'com.fasterxml.jackson.core'
+        }
+
+        // exposed utils
+        api rootProject.libs.guava
+        api rootProject.libs.commons.io
+        api rootProject.libs.commons.lang3
+        api rootProject.libs.swagger.annotations
+        api rootProject.libs.jsr305 // brings @CheckReturnValue and already in path in core
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.compilerArgs.add('-parameters')
+        inputs.file(rootProject.file('lombok.config'))
+    }
+    tasks.withType(JavaExec).configureEach {
+        javaLauncher = project.javaToolchains.launcherFor(project.java.toolchain)
+    }
+    tasks.withType(Jar).configureEach {
+        manifest.attributes('X-Flow-Name': project.name, 'X-Flow-Title': project.name,
+            'X-Flow-Group': project.group, 'X-Flow-Version': project.version)
+    }
 }
+ext.testHeapSizes = [
+    'processor'        : '256m',
+    'executor'         : '768m',
+    'scheduler'        : '768m',
+    'worker'           : '768m',
+    'jdbc-postgres'    : '1024m',
+    'tests'            : '1024m',
+    'core'             : '2560m',
+]
 
-subprojects {
-    group = 'org.cses.flow'
-    version = providers.gradleProperty('flowVersion').get()
+allprojects {
+    apply plugin: 'jacoco'
 
-    apply plugin: 'maven-publish'
-
-    plugins.withId('java') {
-        publishing {
-            publications {
-                mavenJava(MavenPublication) {
-                    from components.java
-                    artifactId = project.name == 'server' ? 'flow' : project.name
-                }
-            }
-            repositories {
-                maven {
-                    name = 'internal'
-                    url = uri(providers.gradleProperty('repoUrl').get())
-                    allowInsecureProtocol = true
-                    credentials {
-                        username = providers.gradleProperty('repoUser').orNull
-                        password = providers.gradleProperty('repoPassword').orNull
-                    }
-                }
-            }
+    configurations {
+        mockitoAgent
+        // Exposes this project's compiled test classes/resources to other projects, replacing the
+        // Gradle 9.5-incompatible `project(':x').sourceSets.test.output` cross-project script access.
+        testArtifacts {
+            canBeConsumed = true
+            canBeResolved = false
         }
     }
 
-    plugins.withId('com.gradleup.shadow') {
-        components.java.withVariantsFromConfiguration(configurations.shadowRuntimeElements) {
-            skip()
+    artifacts {
+        sourceSets.test.output.files.each { dir ->
+            testArtifacts(dir) { builtBy tasks.named('testClasses') }
         }
     }
+
+    dependencies {
+        // lombok
+        testAnnotationProcessor rootProject.libs.lombok
+        testCompileOnly rootProject.libs.lombok
+
+        testImplementation platform(rootProject.libs.junit.bom)
+        testImplementation rootProject.libs.junit.jupiter.engine
+        testImplementation rootProject.libs.junit.jupiter.params
+        testImplementation rootProject.libs.junit.pioneer
+        testImplementation rootProject.libs.mockito.junit.jupiter
+        mockitoAgent(rootProject.libs.mockito.core) {
+            transitive = false // just the core
+        }
+
+        // hamcrest
+        testImplementation rootProject.libs.hamcrest.core
+        testImplementation rootProject.libs.hamcrest.library
+        testImplementation rootProject.libs.hamcrest.date
+
+        //assertj
+        testImplementation rootProject.libs.assertj.core.managed
+
+        // awaitility
+        testImplementation rootProject.libs.awaitility
+
+    }
+
+    def commonTestConfig = { Test t ->
+        t.timeout = java.time.Duration.ofMinutes(
+            (System.getenv('GRADLE_TEST_TIMEOUT_MIN') ?: '30').toInteger()
+        )
+        // Bounds a single test method so it fails by itself, rather than a hung test consuming
+        // the module's whole Gradle-level timeout above and discarding every test's JUnit XML.
+        t.systemProperty 'junit.jupiter.execution.timeout.default',
+            System.getenv('JUNIT_TEST_TIMEOUT_MIN') ? "${System.getenv('JUNIT_TEST_TIMEOUT_MIN')} m" : '5 m'
+        t.finalizedBy jacocoTestReport
+
+
+        // -PprofileHeap: raise the ceiling so no module is heap-starved, and log real GC
+        // occupancy per module so per-module maxHeapSize can be set from measurements
+        // instead of guessed. See dev-tools/analyze-test-heap.sh.
+        if (project.hasProperty('profileHeap')) {
+            t.maxHeapSize = '8g'
+            def heapProfileDir = "${rootDir}/heap-profile"
+            mkdir(heapProfileDir)
+            t.jvmArgs += ["-Xlog:gc:file=${heapProfileDir}/${project.name}-gc.log:time,uptime,level,tags"]
+        } else {
+            t.maxHeapSize = rootProject.ext.testHeapSizes.getOrDefault(project.name, '512m')
+        }
+
+        // By default a thread that hits OutOfMemoryError just dies silently (JVM default
+        // UncaughtExceptionHandler) while the rest of the JVM limps on in a degraded state.
+        // Exit immediately instead.
+        t.jvmArgs += ["-XX:+ExitOnOutOfMemoryError"]
+
+        // configure en_US default locale for tests
+        t.systemProperty 'user.language', 'en'
+        t.systemProperty 'user.country', 'US'
+        // macOS may retain user.script=Hans after language/country overrides.
+        // Clear it so this test-only locale is en_US, not en_US_#Hans.
+        t.systemProperty 'user.script', ''
+
+        t.environment 'SECRET_MY_SECRET', "{\"secretKey\":\"secretValue\"}".bytes.encodeBase64().toString()
+        t.environment 'SECRET_NEW_LINE', "cGFzc3dvcmR2ZXJ5dmVyeXZleXJsb25ncGFzc3dvcmR2ZXJ5dmVyeXZleXJsb25ncGFzc3dvcmR2\nZXJ5dmVyeXZleXJsb25ncGFzc3dvcmR2ZXJ5dmVyeXZleXJsb25ncGFzc3dvcmR2ZXJ5dmVyeXZl\neXJsb25n"
+        t.environment 'SECRET_WEBHOOK_KEY', "secretKey".bytes.encodeBase64().toString()
+        t.environment 'SECRET_NON_B64_SECRET', "some secret value"
+        t.environment 'SECRET_PASSWORD', "cGFzc3dvcmQ="
+        t.environment 'ENV_TEST1', "true"
+        t.environment 'ENV_TEST2', "Pass by env"
+    }
+
+    tasks.register('integrationTest', Test) { Test t ->
+        description = 'Runs integration tests'
+        group = 'verification'
+
+        useJUnitPlatform {
+            includeTags 'integration'
+        }
+
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+
+        reports {
+            junitXml.required = true
+            junitXml.outputPerTestCase = true
+            junitXml.mergeReruns = true
+            junitXml.includeSystemErrLog = true
+            junitXml.outputLocation = layout.buildDirectory.dir("test-results/test")
+        }
+
+        // Integration tests typically not parallel (but you can enable)
+        maxParallelForks = 1
+        commonTestConfig(t)
+    }
+
+    tasks.register('unitTest', Test) { Test t ->
+        description = 'Runs unit tests'
+        group = 'verification'
+
+        useJUnitPlatform {
+            excludeTags 'flaky', 'integration'
+        }
+
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+
+        reports {
+            junitXml.required = true
+            junitXml.outputPerTestCase = true
+            junitXml.mergeReruns = true
+            junitXml.includeSystemErrLog = true
+            junitXml.outputLocation = layout.buildDirectory.dir("test-results/test")
+        }
+
+        commonTestConfig(t)
+    }
+
+    tasks.register('flakyTest', Test) { Test t ->
+        group = 'verification'
+        description = 'Runs tests tagged @Flaky but does not fail the build.'
+
+        useJUnitPlatform {
+            includeTags 'flaky'
+        }
+
+        testClassesDirs = sourceSets.test.output.classesDirs
+        classpath = sourceSets.test.runtimeClasspath
+
+        reports {
+            junitXml.required = true
+            junitXml.outputPerTestCase = true
+            junitXml.mergeReruns = true
+            junitXml.includeSystemErrLog = true
+            junitXml.outputLocation = layout.buildDirectory.dir("test-results/flakyTest")
+        }
+        commonTestConfig(t)
+        t.ignoreFailures = true
+        t.filter { failOnNoMatchingTests = false }
+        t.outputs.doNotCacheIf("Flaky tests are non-deterministic") { true }
+        t.mustRunAfter(tasks.named('test'))
+    }
+
+    // test task (default)
+    tasks.named('test', Test) { Test t ->
+        group = 'verification'
+        description = 'Runs all non-flaky tests.'
+
+        useJUnitPlatform {
+            excludeTags 'flaky'
+        }
+        reports {
+            junitXml.required = true
+            junitXml.outputPerTestCase = true
+            junitXml.mergeReruns = true
+            junitXml.includeSystemErrLog = true
+            junitXml.outputLocation = layout.buildDirectory.dir("test-results/test")
+        }
+        commonTestConfig(t)
+        jvmArgs "-javaagent:${configurations.mockitoAgent.singleFile}"
+    }
+
+    tasks.named('check') {
+        dependsOn(tasks.named('test'))// default behaviour
+        dependsOn(tasks.named('flakyTest'))
+    }
 }
+
+// 本项目直接聚合原生运行模块和跨模块技术验证。
+dependencies {
+    api project(':core')
+    implementation project(':jdbc')
+    implementation project(':jdbc-postgres')
+    runtimeOnly project(':queue-jdbc')
+    implementation project(':executor')
+    implementation project(':worker')
+    runtimeOnly project(':scheduler')
+    runtimeOnly project(':indexer')
+    runtimeOnly project(':storage-local')
+    runtimeOnly project(':script')
+    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor libs.micronaut.inject.java
+    testImplementation libs.micronaut.test.junit5
+    testRuntimeOnly rootProject.libs.junit.platform.launcher
+    testImplementation project(':queue-jdbc')
+    testImplementation libs.jooq
+    testImplementation rootProject.libs.postgresql
+    testImplementation rootProject.libs.micronaut.data.connection.jdbc
+}
+
+tasks.named('test') {
+    // 真实数据库和强杀验收必须执行，不能由旧测试报告或远程构建缓存替代。
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+    dependsOn ':plugin-fixture:stagePlugin', ':tooling:exportPluginSchemas'
+    systemProperty 'fixture.plugins', project(':plugin-fixture').layout.buildDirectory.dir('plugin-release').get().asFile.absolutePath
+    systemProperty 'flow.plugins.path', project(':plugin-fixture').layout.buildDirectory.dir('plugin-release').get().asFile.absolutePath
+    systemProperty 'flow.schema-bundle', rootProject.layout.buildDirectory.file('exports/plugins-schema.json').get().asFile.absolutePath
+    systemProperty 'flow.test-classpath', sourceSets.test.runtimeClasspath.asPath
+    environment 'FLOW_TEST_URL', providers.environmentVariable('FLOW_TEST_URL').getOrElse('')
+    environment 'FLOW_CONTROL_URL', providers.environmentVariable('FLOW_CONTROL_URL').getOrElse('')
+}
+
+tasks.register('verifyRuntimeIsolation') {
+    group = 'verification'
+    description = '验证项目运行产物未引入 Pulsar、旧 Flow 或独立产品后端'
+    doLast {
+        def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
+            def id = artifact.moduleVersion.id
+            id.group.startsWith('io.kestra') || id.group in ['io.grpc', 'io.micronaut.grpc', 'com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] || id.group.contains('pulsar') || id.name.contains('pulsar') || id.group == 'com.github.docker-java' ||
+                (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
+                (id.group == 'org.cses.flow' && ['core', 'scheduler', 'flow', 'embedded'].contains(id.name)) ||
+                (id.group == 'org.flow.fixture') ||
+                (id.group == 'org.flow' && ['embedded', 'tooling', 'tests', 'cli', 'webserver', 'jdbc-h2', 'jdbc-mysql', 'runner-memory', 'repository-memory'].contains(id.name))
+        }
+        if (!forbidden.isEmpty()) {
+            throw new GradleException("项目运行时包含禁止的依赖：${forbidden*.moduleVersion*.id}")
+        }
+        logger.lifecycle('项目运行时依赖隔离检查通过')
+    }
+}
+
+tasks.named('check') { dependsOn 'verifyRuntimeIsolation' }

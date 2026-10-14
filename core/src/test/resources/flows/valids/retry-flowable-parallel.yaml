@@ -1,0 +1,15 @@
+id: retry-flowable-parallel
+namespace: org.flow.tests
+
+tasks:
+  - id: flowable
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 0
+    values: [0, 1]
+    retry:
+      type: constant
+      interval: PT1S
+      maxAttempts: 3
+    tasks:
+      - id: child
+        type: org.flow.plugin.core.execution.Fail

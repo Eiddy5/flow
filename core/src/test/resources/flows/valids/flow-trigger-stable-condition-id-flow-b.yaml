@@ -1,0 +1,7 @@
+id: flow-trigger-stable-condition-id-flow-b
+namespace: org.flow.tests.trigger.stable.condition.id
+
+tasks:
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from flow-b: {{execution.id}}"

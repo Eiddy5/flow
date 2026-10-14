@@ -1,0 +1,95 @@
+jackson:
+  serialization:
+    writeDatesAsTimestamps: false
+    writeDurationsAsTimestamps: false
+  serialization-inclusion: non_null
+
+micronaut:
+  metrics:
+    export:
+      otlp:
+        enabled: false
+
+flow:
+  migration:
+    auto: true
+  encryption:
+    secret-key: I6EGNzRESu3X3pKZidrqCGOHQFUFC0yK
+  url: https://mysuperhost.com/subpath
+  server-type: STANDALONE
+  repository:
+    type: postgres
+  queue:
+    type: postgres
+  storage:
+    type: local
+    local:
+      base-path: /tmp/unittest
+  local-files:
+    # relative to the Gradle test working directory (the module directory)
+    allowed-paths:
+      - build/resources/test
+  jdbc:
+    queues:
+      min-poll-interval: 10ms
+      max-poll-interval: 100ms
+      poll-switch-interval: 5s
+
+  variables:
+    globals:
+      string: "string"
+      int: 1
+      bool: true
+      nested:
+        int: 2
+
+  server:
+    liveness:
+      enabled: false
+    service:
+      purge:
+        initial-delay: 1h
+        fixed-delay: 1d
+        retention: 30d
+    termination-grace-period: 5s
+
+  unittest: true
+
+  plugins:
+    configurations:
+      - type: org.flow.plugin.Test0
+        values:
+          prop0: value0
+      - type: org.flow.plugin.Test1
+        values:
+          prop1: value1
+      - type: org.flow.plugin.Test2
+        values:
+          prop2: value2
+      - type: org.flow.plugin.core.trigger.Schedule
+        values:
+          recoverMissedSchedules: ALL
+      - type: org.flow.core.runners.test.task.Alias
+        values:
+          prop0: value0
+
+  tasks:
+    http:
+      denied-list:
+        - http://dangerous-url.com
+        - http://169.254.169.254
+        - http://flow_internal_db
+        - 10.0.0.0/8
+
+logger:
+  levels:
+    "org.flow.core.migration": WARN
+
+datasources:
+  flow:
+    url: ${FLOW_UPSTREAM_TEST_URL:jdbc:postgresql://localhost:5432/flow_unit}
+    driverClassName: org.postgresql.Driver
+    username: ${FLOW_UPSTREAM_TEST_USER:flow}
+    password: ${FLOW_UPSTREAM_TEST_PASSWORD:flow}
+    dialect: POSTGRES
+    schema: test_${random.uuid}

@@ -1,0 +1,8 @@
+group: org.flow.plugin.core.metric
+name: "metric"
+title: "Metric"
+description: "Tasks that publish custom metrics from flows."
+body: "Send counters, gauges, and timing metrics to Flow's metric store for dashboards and alerts; define the metric name, type, value, labels, and optional timestamp to record meaningful telemetry."
+videos: []
+createdBy: "Flow Core Team"
+managedBy: "Flow Core Team"

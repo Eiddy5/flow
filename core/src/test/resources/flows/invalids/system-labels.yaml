@@ -1,0 +1,11 @@
+id: system-labels
+namespace: org.flow.tests
+
+labels:
+  system.label: system_key
+  system.id: id
+  another: label
+
+tasks:
+  - type: org.flow.plugin.core.log.Log
+    message: "bla"

@@ -1,0 +1,30 @@
+id: webhook-outputs
+namespace: org.flow.tests
+
+tasks:
+  - id: out
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      status: "ok"
+
+  - id: second
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      executionId: "{{ execution.id }}"
+      code: 202
+
+outputs:
+  - id: status
+    type: STRING
+    value: "{{ outputs.out.values.status }}"
+  - id: executionId
+    type: STRING
+    value: "{{ outputs.second.values.executionId }}"
+
+triggers:
+  - id: webhook
+    type: org.flow.plugin.core.trigger.Webhook
+    key: "{{ flow.id }}"
+    wait: true
+    returnOutputs: true
+    responseCode: "{{ outputs.second.values.code }}"

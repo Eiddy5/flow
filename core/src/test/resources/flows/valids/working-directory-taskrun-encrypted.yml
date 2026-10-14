@@ -1,0 +1,13 @@
+id: working-directory-taskrun-encrypted
+namespace: org.flow.tests
+
+tasks:
+  - id: workingDir
+    type: org.flow.plugin.core.flow.WorkingDirectory
+    tasks:
+      - id: encrypted
+        type: org.flow.core.tasks.test.Encrypted
+        format: "Hello World"
+      - id: decrypted
+        type: org.flow.plugin.core.debug.Return
+        format: "{{outputs.encrypted.value}}"

@@ -1,0 +1,25 @@
+dependencies {
+    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor libs.micronaut.inject.java
+    annotationProcessor project(':processor')
+
+    implementation project(':core')
+    implementation project(':worker')
+    implementation project(':scheduler')
+    implementation project(':executor')
+    implementation project(':indexer')
+    implementation libs.micronaut.runtime
+    implementation libs.micronaut.test.junit5
+    api libs.micronaut.http.client
+
+    implementation libs.junit.jupiter.engine
+    implementation libs.junit.jupiter.params
+
+    api libs.hamcrest.core
+    api libs.hamcrest.library
+    api libs.mockito.junit.jupiter
+    api libs.assertj.core.pinned
+    api libs.junit.platform.launcher
+
+    testImplementation libs.archunit.junit5
+}

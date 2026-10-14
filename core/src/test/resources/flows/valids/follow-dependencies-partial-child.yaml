@@ -1,0 +1,7 @@
+id: follow-dependencies-partial-child
+namespace: org.flow.tests
+
+tasks:
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: "Terminated dependency of {{ labels.system.correlationId }}"

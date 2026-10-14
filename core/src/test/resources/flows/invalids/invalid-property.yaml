@@ -1,0 +1,7 @@
+id: duplicate
+namespace: org.flow.tests
+
+tasks:
+  - id: taskInvalid
+    type: org.flow.plugin.core.debug.Return
+    invalid: "{{taskrun.startDate}}"

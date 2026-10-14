@@ -1,0 +1,6 @@
+id: null-output
+namespace: org.flow.tests
+
+tasks:
+  - id: null-output
+    type: org.flow.core.tasks.test.NullOutputTask

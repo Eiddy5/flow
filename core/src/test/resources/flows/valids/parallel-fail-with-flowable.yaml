@@ -1,0 +1,28 @@
+id: parallel-fail-with-flowable
+namespace: org.flow.tests
+
+inputs:
+  - id: user
+    type: STRING
+    defaults: Rick Astley
+
+
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Parallel
+    tasks:
+      - id: if-1
+        type: org.flow.plugin.core.flow.If
+        condition: "{{ inputs.user == 'Rick Astley'}}"
+        then:
+          - id: sleep
+            type: org.flow.plugin.core.flow.Sleep
+            duration: PT1S
+
+      - id: if-2
+        type: org.flow.plugin.core.flow.If
+        condition: "{{ inputs.user == 'Rick Astley'}}"
+        then:
+          - id: fail_missing_variable
+            type: org.flow.plugin.core.log.Log
+            message: "{{ vars.nonexistent_variable }}"

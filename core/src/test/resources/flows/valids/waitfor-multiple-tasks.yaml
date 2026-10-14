@@ -1,0 +1,18 @@
+id: waitfor-multiple-tasks
+namespace: org.flow.tests
+
+tasks:
+  - id: waitfor
+    type: org.flow.plugin.core.flow.WaitFor
+    condition: "{{ outputs.output_values.values.count == '4'}}"
+    checkFrequency:
+      maxIterations: 3
+      interval: PT0.2S
+    tasks:
+      - id: echo
+        type: org.flow.plugin.core.log.Log
+        message: "looping ..."
+      - id: output_values
+        type: org.flow.plugin.core.output.OutputValues
+        values:
+          count: "{{ outputs.waitfor.iterationCount + 1 }}"

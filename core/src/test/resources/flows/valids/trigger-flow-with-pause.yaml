@@ -1,0 +1,13 @@
+id: trigger-flow-with-pause
+namespace: org.flow.tests.trigger.pause
+
+tasks:
+  - id: hello
+    type: org.flow.plugin.core.log.Log
+    message: Hello World! 🚀
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    pauseDuration: PT1S
+  - id: hello_again
+    type: org.flow.plugin.core.log.Log
+    message: I'm restarted

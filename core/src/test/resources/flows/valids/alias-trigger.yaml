@@ -1,0 +1,11 @@
+id: alias-trigger
+namespace: org.flow.tests
+
+triggers:
+  - id: alias
+    type: org.flow.core.runners.test.trigger.Alias
+
+tasks:
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: Hello World

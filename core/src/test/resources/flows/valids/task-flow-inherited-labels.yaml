@@ -1,0 +1,19 @@
+id: task-flow-inherited-labels
+namespace: org.flow.tests
+
+inputs:
+  - id: string
+    type: STRING
+
+tasks:
+  - id: launch
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: switch
+    inputs:
+      string: "{{ inputs.string }}"
+    wait: true
+    transmitFailed: true
+    inheritLabels: true
+    labels:
+      launchTaskLabel: launchFoo

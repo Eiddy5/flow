@@ -1,0 +1,15 @@
+id: loop-null
+namespace: org.flow.tests
+
+tasks:
+  - id: 1_each
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: '[1, null, {"key": "my-key", "value": "my-value"}]'
+    tasks:
+      - id: 1-1
+        type: org.flow.plugin.core.debug.Return
+        format: "{{task.id}} > {{item.value}} > {{taskrun.startDate}}"
+  - id: 2_end
+    type: org.flow.plugin.core.debug.Return
+    format: "{{task.id}} > {{taskrun.startDate}}"

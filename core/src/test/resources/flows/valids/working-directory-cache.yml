@@ -1,0 +1,20 @@
+id: working-directory-cache
+namespace: org.flow.tests
+
+tasks:
+  - id: workingDir
+    type: org.flow.plugin.core.flow.WorkingDirectory
+    cache:
+      ttl: PT5m
+      patterns:
+        - "*.txt"
+    tasks:
+      - id: exists
+        type: org.flow.plugin.core.flow.WorkingDirectoryTest$LocalFiles
+        outputs:
+          - hello.txt
+      - id: inputFiles
+        type: org.flow.plugin.core.flow.WorkingDirectoryTest$LocalFiles
+        inputs:
+          hello.txt: |
+            HELLO WORLD

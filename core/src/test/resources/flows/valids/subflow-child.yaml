@@ -1,0 +1,8 @@
+id: subflow-child
+namespace: org.flow.tests
+
+tasks:
+  - id: subflow
+    type: org.flow.plugin.core.flow.Subflow
+    namespace: org.flow.tests
+    flowId: subflow-grand-child

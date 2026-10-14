@@ -1,0 +1,11 @@
+id: inputs-ion-file
+namespace: org.flow.tests
+
+inputs:
+  - id: payload
+    type: ION
+
+tasks:
+  - id: task
+    type: org.flow.plugin.core.debug.Return
+    format: "{{ inputs.payload }}"

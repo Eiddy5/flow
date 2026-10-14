@@ -1,0 +1,34 @@
+id: waitfor-nested
+namespace: org.flow.tests
+
+tasks:
+  - id: loop_1
+    type: org.flow.plugin.core.flow.LoopUntil
+    condition: "{{ outputs.loop_1_return.value | number >= 3 }}"
+    checkFrequency:
+      interval: PT0.2S
+    tasks:
+      - id: loop_1_return
+        type: org.flow.plugin.core.debug.Return
+        format: "{{ outputs.loop_1.iterationCount }}"
+      - id: loop_2
+        type: org.flow.plugin.core.flow.LoopUntil
+        condition: "{{ outputs.loop_2_return.value | number >= 3 }}"
+        checkFrequency:
+          interval: PT0.2S
+        tasks:
+          - id: loop_2_return
+            type: org.flow.plugin.core.debug.Return
+            format: "{{ outputs.loop_2.iterationCount }}"
+          - id: loop_3
+            type: org.flow.plugin.core.flow.LoopUntil
+            condition: "{{ outputs.loop_3_return.value | number >= 3 }}"
+            checkFrequency:
+              interval: PT0.2S
+            tasks:
+              - id: loop_3_return
+                type: org.flow.plugin.core.debug.Return
+                format: "{{ outputs.loop_3.iterationCount }}"
+              - id: loop_3_log
+                type: org.flow.plugin.core.log.Log
+                message: "loop_3 iteration: {{ outputs.loop_3_return.value }}"

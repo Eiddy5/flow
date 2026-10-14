@@ -1,0 +1,13 @@
+id: flow-trigger-paused-flow
+namespace: org.flow.tests.trigger.paused
+
+labels:
+  some: label
+
+tasks:
+  - id: pause
+    type: org.flow.plugin.core.flow.Pause
+    pauseDuration: PT0.5S
+  - id: only
+    type: org.flow.plugin.core.debug.Return
+    format: "from parents: {{execution.id}}"

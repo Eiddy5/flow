@@ -1,0 +1,13 @@
+id: restart_always_failed
+namespace: org.flow.tests
+
+tasks:
+  - id: failStep
+    type: org.flow.plugin.core.execution.Fail
+    description: "This fails"
+
+errors:
+  - id: errorHandler
+    type: org.flow.plugin.core.log.Log
+    message: I'm failing {{task.id}}
+    level: INFO

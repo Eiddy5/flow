@@ -1,0 +1,22 @@
+id: trigger-flow-listener
+namespace: org.flow.tests.trigger
+
+inputs:
+  - id: from-parent
+    type: STRING
+
+tasks:
+  - id: only-listener
+    type: org.flow.plugin.core.debug.Return
+    format: "childs: {{inputs['from-parent']}}"
+
+triggers:
+  - id: listen-flow
+    type: org.flow.plugin.core.trigger.Flow
+    inputs:
+      from-parent: '{{ outputs.only.value }}'
+    dependsOn:
+      - states:
+          - SUCCESS
+        namespace: org.flow.tests.trigger
+        flowId: trigger-flow

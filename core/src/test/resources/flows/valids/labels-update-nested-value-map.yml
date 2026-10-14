@@ -1,0 +1,9 @@
+id: labels-update-nested-value-map
+namespace: org.flow.tests
+
+tasks:
+  - id: list_form_nested_value
+    type: org.flow.plugin.core.execution.Labels
+    labels:
+      stage:
+        name: done

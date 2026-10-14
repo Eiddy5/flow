@@ -1,0 +1,10 @@
+id: alias-task
+namespace: org.flow.tests
+
+tasks:
+  - id: origin
+    type: org.flow.core.runners.test.TaskWithAlias
+    message: I'm the original task
+  - id: alias
+    type: org.flow.core.runners.test.task.Alias
+    message: I'm an alias

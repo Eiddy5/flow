@@ -1,0 +1,7 @@
+id: subflow-grand-child
+namespace: org.flow.tests
+
+tasks:
+  - id: firstLevel
+    type: org.flow.plugin.core.log.Log
+    message: "My grandparent is {{labels.system.correlationId}}"

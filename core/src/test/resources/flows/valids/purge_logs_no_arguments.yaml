@@ -1,0 +1,7 @@
+id: purge_logs_no_arguments
+namespace: org.flow.tests
+
+tasks:
+  - id: purge_logs
+    type: org.flow.plugin.core.log.PurgeLogs
+    endDate: "{{ now() | dateAdd(2, 'HOURS') }}"

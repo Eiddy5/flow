@@ -1,0 +1,59 @@
+package org.flow.core.runners.pebble.filters;
+
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.util.Arrays;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+
+import com.google.common.collect.ImmutableMap;
+
+import org.flow.core.exceptions.IllegalVariableEvaluationException;
+import org.flow.core.junit.annotations.FlowTest;
+import org.flow.core.runners.VariableRenderer;
+
+import jakarta.inject.Inject;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+@FlowTest
+class KeysFilterTest {
+    @Inject
+    VariableRenderer variableRenderer;
+
+    @Test
+    void map() throws IllegalVariableEvaluationException {
+        ZonedDateTime date = ZonedDateTime.parse("2013-09-08T16:19:00+02").withZoneSameLocal(ZoneId.systemDefault());
+
+        ImmutableMap<String, Object> vars = ImmutableMap.of(
+            "vars", ImmutableMap.of(
+                "second", Map.of(
+                    "string", "string",
+                    "int", 1,
+                    "float", 1.123F,
+                    "list", Arrays.asList(
+                        "string",
+                        1,
+                        1.123F
+                    ),
+                    "bool", true,
+                    "date", date,
+                    "map", Map.of(
+                        "string", "string",
+                        "int", 1,
+                        "float", 1.123F
+                    )
+                )
+            )
+        );
+
+        String render = variableRenderer.render("{{ vars.second.list | keys }}", vars);
+        assertThat(render).isEqualTo("[0,1,2]");
+
+        render = variableRenderer.render("{{ vars.second | keys }}", vars);
+        assertThat(render).contains("\"string\"");
+        assertThat(render).contains("\"map\"");
+        assertThat(render.split(",").length).isEqualTo(7);
+    }
+}

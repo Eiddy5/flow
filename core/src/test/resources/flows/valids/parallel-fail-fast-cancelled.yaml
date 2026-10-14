@@ -1,0 +1,14 @@
+id: parallel-fail-fast-cancelled
+namespace: org.flow.tests
+
+tasks:
+  - id: parallel
+    type: org.flow.plugin.core.flow.Parallel
+    onChildFailure: CANCEL
+    tasks:
+      - id: fails_fast
+        type: org.flow.plugin.core.execution.Fail
+
+      - id: sleep
+        type: org.flow.plugin.core.flow.Sleep
+        duration: PT10S

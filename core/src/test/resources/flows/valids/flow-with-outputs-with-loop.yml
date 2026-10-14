@@ -1,0 +1,22 @@
+id: flow-with-outputs-with-loop
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    values:
+      - a
+      - b
+    tasks:
+      - id: inner
+        type: org.flow.plugin.core.log.Log
+        message: "iteration {{ item.value }}"
+
+  - id: after_loop
+    type: org.flow.plugin.core.debug.Return
+    format: done
+
+outputs:
+  - id: out
+    type: STRING
+    value: "{{ outputs.after_loop.value }}"

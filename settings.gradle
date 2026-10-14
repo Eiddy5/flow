@@ -1,49 +1,17 @@
-pluginManagement {
-    repositories {
-        maven {
-            url = uri(providers.gradleProperty("repoUrl").get())
-            allowInsecureProtocol = true
-        }
-        gradlePluginPortal()
-        mavenCentral()
-        maven {
-            url "https://plugins.gradle.org/m2/"
-            allowInsecureProtocol = true
-        }
-        maven {
-            url "https://oss.sonatype.org/content/repositories/snapshots/"
-        }
-    }
-}
-
-
 rootProject.name = "flow"
-
-
-include("gen")
-include("core")
-include("scheduler")
-include("server")
-
-// 将本地构建选择传给 AuthX 等嵌套构建，统一依赖来源。
-def localBuilds = [
-    [flag: 'useLocalPaas', path: 'localPaasPath', fallback: '../paas'],
-    [flag: 'useLocalPaasService', path: 'localPaasServicePath', fallback: '../paas-service'],
-    [flag: 'useLocalPassAuthx', path: 'localPassAuthxPath', fallback: '../pass-auth']
-]
-def sharedProperties = new LinkedHashMap(gradle.startParameter.projectProperties)
-localBuilds.each { local ->
-    def enabled = providers.gradleProperty(local.flag).orNull ?: 'false'
-    sharedProperties.put(local.flag, enabled)
-    if (enabled.toBoolean()) {
-        def path = file(providers.gradleProperty(local.path).orNull ?: local.fallback)
-            .toPath().toRealPath().toString()
-        sharedProperties.put(local.path, path)
-    }
-}
-gradle.startParameter.projectProperties = sharedProperties
-localBuilds.each { local ->
-    if (sharedProperties[local.flag].toBoolean()) {
-        includeBuild(sharedProperties[local.path])
-    }
-}
+include 'model'
+include 'processor'
+include 'core'
+include 'queue'
+include 'queue-jdbc'
+include 'jdbc'
+include 'jdbc-postgres'
+include 'executor'
+include 'worker'
+include 'scheduler'
+include 'indexer'
+include 'storage-local'
+include 'script'
+include 'tests'
+include 'plugin-fixture'
+include 'tooling'

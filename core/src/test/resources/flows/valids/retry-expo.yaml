@@ -1,0 +1,12 @@
+id: retry-expo
+namespace: org.flow.tests
+
+tasks:
+  - id: failed
+    type: org.flow.plugin.core.execution.Fail
+    retry:
+      type: exponential
+      maxAttempts: 3
+      maxDuration: PT15S
+      interval: PT0.25s
+      maxInterval: PT5S

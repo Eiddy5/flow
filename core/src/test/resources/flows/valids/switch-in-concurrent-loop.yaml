@@ -1,0 +1,23 @@
+id: switch-in-concurrent-loop
+namespace: org.flow.tests
+
+tasks:
+  - id: iterate_and_check_name
+    type: org.flow.plugin.core.flow.Loop
+    tasks:
+      - id: switch
+        type: org.flow.plugin.core.flow.Switch
+        value: "{{ item.value }}"
+        cases:
+          "Alice":
+            - id: OOMCRM_EB_DD_000
+              type: org.flow.plugin.core.log.Log
+              message: Alice
+          "Bob":
+            - id: OOMCRM_EB_DD_001
+              type: org.flow.plugin.core.log.Log
+              message: Bob
+
+    values: ["Alice", "Bob"]
+
+    concurrencyLimit: 0

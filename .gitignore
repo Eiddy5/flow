@@ -26,3 +26,11 @@ out/
 !.codex/skills/generate-uc/**
 !.codex/skills/implement-flow-postgres-repository/
 !.codex/skills/implement-flow-postgres-repository/**
+
+# Flow source build and local runtime artifacts
+.gradle/
+**/build/
+core/src/main/resources/gradle.properties
+**/allure-results/
+**/data/
+*.hprof

@@ -1,0 +1,24 @@
+flow:
+  migration:
+    auto: true
+  storage:
+    type: local
+    local:
+      base-path: /tmp/unittest
+  repository:
+    type: postgres
+  queue:
+    type: postgres
+# Disable Micronaut embedded gRPC server and health check
+logger:
+  levels:
+    "org.flow.core.migration": WARN
+
+datasources:
+  flow:
+    url: ${FLOW_UPSTREAM_TEST_URL:jdbc:postgresql://localhost:5432/flow_unit}
+    driverClassName: org.postgresql.Driver
+    username: ${FLOW_UPSTREAM_TEST_USER:flow}
+    password: ${FLOW_UPSTREAM_TEST_PASSWORD:flow}
+    dialect: POSTGRES
+    schema: test_${random.uuid}

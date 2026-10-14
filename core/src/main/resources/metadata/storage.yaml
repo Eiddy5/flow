@@ -1,0 +1,8 @@
+group: org.flow.plugin.core.storage
+name: "storage"
+title: "Storage"
+description: "Tasks that manipulate files in Flow's internal storage."
+body: "Write, delete, concatenate, split, deduplicate, filter, reverse, size, or list files used by executions; provide source and target storage URIs and any encoding or line-handling options to transform stored data safely."
+videos: []
+createdBy: "Flow Core Team"
+managedBy: "Flow Core Team"

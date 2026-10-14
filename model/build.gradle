@@ -1,0 +1,10 @@
+dependencies {
+    api libs.jakarta.annotation.api
+    api libs.jakarta.validation.api
+    api libs.swagger.annotations
+
+    // Jackson
+    api libs.jackson.dataformat.xml
+    api libs.jackson.datatype.jsr310
+    api libs.jackson.datatype.jdk8
+}

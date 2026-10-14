@@ -1,0 +1,45 @@
+id: loop-switch
+namespace: org.flow.tests
+
+tasks:
+  - id: t1
+    type: org.flow.plugin.core.debug.Return
+    format: "{{task.id}}"
+  - id: 2_each
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: '["a", "b"]'
+    tasks:
+      # Switch
+      - id: 2-1_switch
+        type: org.flow.plugin.core.flow.Switch
+        value: "{{item.value}}"
+        cases:
+          a:
+            - id: 2-1_switch-letter-a
+              type: org.flow.plugin.core.debug.Return
+              format: "{{task.id}}"
+          b:
+            - id: 2-1_switch-letter-b
+              type: org.flow.plugin.core.debug.Return
+              format: "{{task.id}}"
+
+            - id: 2-1_each
+              type: org.flow.plugin.core.flow.Loop
+              values: '["1", "2"]'
+              tasks:
+              - id: 2-1-1_switch
+                type: org.flow.plugin.core.flow.Switch
+                value: "{{item.value}}"
+                cases:
+                  1:
+                    - id: 2-1-1_switch-number-1
+                      type: org.flow.plugin.core.debug.Return
+                      format: "{{item.value}}"
+                  2:
+                    - id: 2-1-1_switch-number-2
+                      type: org.flow.plugin.core.debug.Return
+                      format: "{{item.value}} {{item.parent.value}}"
+  - id: 2_end
+    type: org.flow.plugin.core.debug.Return
+    format: "{{task.id}}"

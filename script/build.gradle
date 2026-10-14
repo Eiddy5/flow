@@ -1,0 +1,14 @@
+dependencies {
+    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor libs.micronaut.inject.java
+    testImplementation libs.micronaut.test.junit5
+    // Flow
+    implementation project(':core')
+    annotationProcessor project(':processor')
+
+
+    testImplementation project(path: ':core', configuration: 'testArtifacts')
+    testImplementation project(':tests')
+    testImplementation project(':storage-local')
+    testImplementation project(':jdbc-postgres')
+}

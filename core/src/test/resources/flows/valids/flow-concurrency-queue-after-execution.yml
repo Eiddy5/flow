@@ -1,0 +1,17 @@
+id: flow-concurrency-queue-after-execution
+namespace: org.flow.tests
+
+concurrency:
+  behavior: QUEUE
+  limit: 1
+
+tasks:
+  - id: sleep
+    type: org.flow.plugin.core.flow.Sleep
+    duration: PT2S
+
+afterExecution:
+  - id: afterExecution
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      some: value

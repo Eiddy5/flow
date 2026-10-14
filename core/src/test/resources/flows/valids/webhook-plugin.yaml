@@ -1,0 +1,24 @@
+id: webhook-plugin
+namespace: org.flow.tests
+
+tasks:
+  - id: hello
+    type: org.flow.core.tasks.test.Encrypted
+    format: "Hello World"
+  - id: return
+    type: org.flow.plugin.core.debug.Return
+    format: "{{outputs.hello.value}}"
+  - id: out
+    type: org.flow.plugin.core.output.OutputValues
+    values:
+      encrypted: "{{ trigger.encryptedString }}"
+
+triggers:
+  - id: webhook1
+    type: org.flow.plugin.core.trigger.WebhookTestPlugin
+    key: case1
+
+  - id: webhook2
+    type: org.flow.plugin.core.trigger.WebhookTestPlugin
+    key: case2
+

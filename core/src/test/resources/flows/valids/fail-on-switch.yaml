@@ -1,0 +1,24 @@
+id: fail-on-switch
+namespace: org.flow.tests
+
+inputs:
+  - id: param
+    type: STRING
+    required: true
+
+tasks:
+  - id: switch
+    type: org.flow.plugin.core.flow.Switch
+    value: "{{inputs.param}}"
+    cases:
+      case1:
+        - id: case1
+          type: org.flow.plugin.core.log.Log
+          message: Case 1
+      case2:
+        - id: case2
+          type: org.flow.plugin.core.log.Log
+          message: Case 2
+      notexist:
+        - id: fail
+          type: org.flow.plugin.core.execution.Fail

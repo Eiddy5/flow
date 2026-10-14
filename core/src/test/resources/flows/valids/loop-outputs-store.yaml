@@ -1,0 +1,20 @@
+id: loop-outputs-store
+namespace: org.flow.tests
+
+tasks:
+  - id: loop
+    type: org.flow.plugin.core.flow.Loop
+    concurrencyLimit: 1
+    values: ["value 1", "value 2", "value 3"]
+    fetchType: STORE
+    outputs:
+      - id: value
+        type: STRING
+        value: "{{outputs.createOutput.value}}"
+    tasks:
+      - id: createOutput
+        type: org.flow.plugin.core.debug.Return
+        format: "some output"
+  - id: end
+    type: org.flow.plugin.core.debug.Return
+    format: "{{outputs.loop.outputs}}"

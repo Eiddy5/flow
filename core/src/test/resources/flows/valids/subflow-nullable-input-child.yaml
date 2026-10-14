@@ -1,0 +1,12 @@
+id: subflow-nullable-input-child
+namespace: org.flow.tests
+
+inputs:
+  - id: integerValue
+    type: INT
+    required: false
+
+tasks:
+  - id: log
+    type: org.flow.plugin.core.log.Log
+    message: "{{ inputs.integerValue }}"
