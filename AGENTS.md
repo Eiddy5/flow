@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-This is a Micronaut Java application built with Gradle Kotlin DSL. The authoritative
+This is a Micronaut Java project based on pinned upstream sources, built with Gradle Groovy DSL. The authoritative
 project directory map and directory responsibilities are documented in
 `docs/project-structure.md`.
 
@@ -15,32 +15,20 @@ document when the project structure changes.
 Use the Gradle wrapper for all local commands:
 
 ```bash
-./gradlew test
+./gradlew classes jar verifyRuntimeIsolation
+./gradlew :tooling:exportPluginSchemas
+python3 verify-upstream.py
+bash docs/harness/verify-flow.sh
 ```
 
-Runs the JUnit 5 and Micronaut test suite.
-
-```bash
-./gradlew run
-```
-
-Starts the Micronaut application locally.
-
-```bash
-./gradlew build
-```
-
-Compiles, tests, and assembles the project artifact.
-
-```bash
-./gradlew shadowJar
-```
-
-Builds a runnable shaded JAR when needed for deployment.
+The harness creates and cleans up a dedicated PostgreSQL container. Full module
+regression uses `bash docs/harness/verify-flow.sh --full-regression` (`./gradlew test`
+with isolated test databases). Direct Java usage, datasource configuration, migration, and lifecycle are documented in
+`docs/harness/java-engine.md`.
 
 ## Coding Style & Naming Conventions
 
-Use Java 21. Keep packages under `org.cses.flow` unless the project package is intentionally changed. Use 4-space indentation, descriptive class names, and standard Java naming: `PascalCase` for classes, `camelCase` for methods and fields, and uppercase names for constants. Prefer constructor injection for Micronaut beans. Keep configuration keys lowercase and hierarchical in YAML.
+Use the JDK selected by the build environment or host Java configuration; see ADR 0125 for compatibility boundaries. Use `org.flow.*` Java packages, `org.flow` artifact coordinates and `flow.*` configuration keys. Implement runtime behavior in its owning native module; the root Java library aggregates these modules for direct use. Before changing architecture or applying an older Flow convention, read the current decision chain through ADR 0125 in `docs/decisions/README.md`. Upstream style and protocol exceptions are defined in `docs/standards/development.md`. Use 4-space indentation, descriptive class names, and standard Java naming: `PascalCase` for classes, `camelCase` for methods and fields, and uppercase names for constants. Prefer constructor injection for Micronaut beans. Keep configuration keys lowercase and hierarchical in YAML.
 
 ## Testing Guidelines
 
@@ -107,7 +95,7 @@ AI agents should use this workflow:
 
 ## Commit & Pull Request Guidelines
 
-This repository currently has no commit history, so use clear, imperative commit messages such as `Add flow controller` or `Fix Consul bootstrap config`. Keep each commit focused. Pull requests should include a short summary, testing performed, linked issue or task if available, and notes for configuration changes. Include screenshots only for user-visible UI changes.
+Use conventional commit types with Chinese descriptions. Keep each commit focused on one change chain. Pull requests should include a short summary, testing performed, linked issue or task if available, and notes for configuration changes. Include screenshots only for user-visible UI changes.
 
 ## Security & Configuration Tips
 

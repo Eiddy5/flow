@@ -1,13 +1,26 @@
 # Flow 架构决策索引
 
-当前运行时持久化边界以 [ADR 0084](0084-save-domain-snapshots-without-business-transactions.md) 为准：
-普通读取领域、调用领域方法、完整快照保存；不使用业务事务或锁定读取。
-下列早期 ADR 的业务事务表述按该决策修订；当前 Executor 的 Pulsar 传输见 ADR 0094。
-显式 `lock` 随对象携带，不再维护元数据缓存或作用域，版本协议见
-[ADR 0097](0097-carry-lock-in-aggregate-and-inherit-cas-repository.md)。
-当前实现组织见 [ADR 0111](0111-unify-flow-datasource-and-compose-repository-enhancers.md)：
-通过 DataSourceEngine 统一 CRUD、`BaseRepository` 公共能力、业务 `XxxRepositoryImpl` 与组合式
-`CasEnhancer`，保留根、子集合和所属 outbox 的原子保存。
+当前 Micronaut 来源以 [ADR 0126](0126-use-internal-micronaut.md) 为准：
+按 main 的内部仓库与 BOM 方式接入，保持 Java 21 下限，不引入其他 PaaS 模块；
+修订 ADR 0123、0124 中保留官方 Micronaut 来源的条款。
+当前 Java 版本选择以 [ADR 0125](0125-use-build-selected-java-version.md) 为准：
+不固定 Java 25，遵循所属构建的标准 Java 配置和构建 JDK；保留实际字节码兼容性要求。
+当前 Micronaut 依赖归属以 [ADR 0124](0124-scope-micronaut-dependencies-by-module.md) 为准：
+按模块的 API、运行装配和测试需要声明，不再全局加入整组框架及处理器。
+版本管理沿用 [ADR 0123](0123-manage-dependencies-with-version-catalog.md)：
+坐标和版本集中到 TOML，移除独立 platform 模块，直接引用必要的第三方 BOM。
+当前包名、制品坐标和配置以 [ADR 0122](0122-use-flow-namespace-and-configuration.md) 为准：
+使用 `org.flow.*`、`org.flow` 和 `flow.*`。
+当前 Java 使用入口以 [ADR 0121](0121-use-native-modules-directly.md) 为准：移除 embedded，
+直接通过原生模块和根 Java Library 使用本项目。源码架构以 [ADR 0116](0116-replace-flow-root-with-kestra-sources.md) 为准：
+旧 Flow 完整备份后，由固定 Kestra 原生后端源码直接组成根构建；
+[ADR 0117](0117-prune-kestra-product-entrypoints.md) 裁剪独立产品入口与 MySQL 后端，
+[ADR 0118](0118-prune-kestra-core-product-features.md) 裁剪核心产品功能、Docker 及专用兼容接口，
+[ADR 0119](0119-use-postgresql-only.md) 将生产和测试数据库统一为 PostgreSQL。
+[ADR 0120](0120-replace-worker-grpc-with-jdbc-queues.md) 用 JDBC 队列替换 Worker gRPC 并移除 Controller。核心迁移范围和阶段
+门槛沿用 [ADR 0115](0115-migrate-kestra-core-before-business.md)；当前队列使用原生
+JDBC，实现共用可配置 `datasources.flow`。旧 Pulsar、DataSourceEngine/CAS 和旧领域
+模型的 ADR 保留为历史，不覆盖当前原生协议。真实 CSES 和业务库尚未切换。
 
 ## 文档定位
 
@@ -21,11 +34,33 @@
 历史测试报告可能保留已经移除的具体模型规范文件名，以忠实记录当次执行环境；
 读取这些历史引用时，使用本索引定位当前 ADR，不回写历史报告。
 
-当前 Worker 交接以 [ADR 0113](0113-submit-worker-tasks-and-clean-consumed-outbox.md) 为准：
-任务提交为 SUBMITTED，领取确认后 RUNNING，独立结果队列返回 Executor；许可、聚合 CAS 和
-消息保存使用短技术事务，调用 Runner 与 Broker 发送不进入事务。消费完成物理清理 outbox。
-
 ## Core 组件与依赖方向
+
+- [`ADR 0126`](0126-use-internal-micronaut.md)：**Accepted**，仅接入内部 Micronaut，保留 TOML、按模块声明和 Java 21 下限；实际验证状态见依赖管理指南。
+
+- [`ADR 0125`](0125-use-build-selected-java-version.md)：**Accepted**，移除固定 Java 25，编译、测试和工具任务使用构建选择的 JDK，不改写真实目标版本元数据。
+
+- [`ADR 0124`](0124-scope-micronaut-dependencies-by-module.md)：**Accepted**，按模块职责声明 Micronaut 库、处理器和测试依赖，保留运行装配；框架来源条款已由 ADR 0126 修订。
+
+- [`ADR 0123`](0123-manage-dependencies-with-version-catalog.md)：**Accepted**，采用 TOML 版本目录并移除 platform；内部 Micronaut 接入由 ADR 0126 继续实施。
+
+- [`ADR 0122`](0122-use-flow-namespace-and-configuration.md)：**Accepted**，统一项目命名、配置和插件资源，保留来源归属和不可变 SQL 校验。
+
+- [`ADR 0121`](0121-use-native-modules-directly.md)：**Accepted**，移除 embedded，职责归原生模块；根 Java Library 聚合依赖，同一应用内直接调用。
+
+- [`ADR 0120`](0120-replace-worker-grpc-with-jdbc-queues.md)：**Accepted**，Worker 直接使用 JDBC 队列，原子领取与归属校验、可靠结果回传；移除 gRPC，Pulsar 留待后续。
+
+- [`ADR 0119`](0119-use-postgresql-only.md)：**Accepted**，删除 H2/memory 后端及多方言处理；保留 JDBC 分层与宿主具名池，将仍有价值的独有测试迁到 PG。
+
+- [`ADR 0118`](0118-prune-kestra-core-product-features.md)：**Accepted**，移除 AI/MCP、Dashboard、匿名上报、自动安装和 Docker，保留执行、JDBC、调度、通用扩展与三根 Schema 导出；不保留退役功能的专用兼容接口。
+
+- [`ADR 0117`](0117-prune-kestra-product-entrypoints.md)：**Accepted**，提取离线 Schema 工具，移除 CLI/Web/MySQL，保留原生管理服务与扩展导出。
+
+- [`ADR 0116`](0116-replace-flow-root-with-kestra-sources.md)：**Accepted**，完整备份旧工程，取消子工程并行布局，以 Kestra 原生源码直接替换根项目。
+
+- [`ADR 0115`](0115-migrate-kestra-core-before-business.md)：**Accepted / 实施中**，固定上游完整核心、扩展与 Task 导出迁移，现有具名数据源上的 JDBC 队列；第一阶段不加入 Route 或业务，验收状态见迁移台账。
+
+- [`ADR 0114`](0114-evaluate-kestra-as-embedded-cses-engine.md)：相似度及同 JVM 嵌入研究；现有数据源、JDBC 队列、扩展与 Task 导出范围及风险依据，实施决策见 ADR 0115。
 
 - [`ADR 0113`](0113-submit-worker-tasks-and-clean-consumed-outbox.md)：**Accepted**，任务与结果双队列、SUBMITTED、原 Attempt 接管及消费后清理；修订 ADR 0109/0112 的相关条款。
 

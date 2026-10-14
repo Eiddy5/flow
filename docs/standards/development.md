@@ -14,6 +14,18 @@ AI Agent 在开始编码或审查代码前必须阅读本文件。
 领域、模块或场景规范可以增加更严格的要求，但不得绕过本规范。改变公共接口、
 模块边界、领域模型、数据模型或本规范核心规则时，必须新增或修订 ADR。
 
+## 引擎源码适用边界
+
+按 [ADR 0115](../decisions/0115-migrate-kestra-core-before-business.md) 和
+[ADR 0116](../decisions/0116-replace-flow-root-with-kestra-sources.md)，当前根项目以
+固定上游源码为本体。按 [ADR 0122](../decisions/0122-use-flow-namespace-and-configuration.md)，
+当前源码和测试统一使用 `org.flow.*`，配置使用 `flow.*`。除命名协议外，保留上游的 ID、时间、
+序列化、Java 类型、事务和代码风格；下面旧 Flow 的 StringUtil、毫秒 bigint、PAAS JSON
+及领域模型约定不覆盖这些协议，也不适用于必须传递原生类型的宿主装配边界。
+按 [ADR 0121](../decisions/0121-use-native-modules-directly.md)，运行职责直接归原生模块，
+不再设置 embedded 宿主适配层。新增手写代码仍遵守缩进、命名、复用和方法说明等通用规则。
+新增业务领域模型须另行确认，不能在本阶段为套用旧规范而改写引擎模型。
+
 ## 1. 技术 ID
 
 ### 统一生成入口
