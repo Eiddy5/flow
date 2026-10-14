@@ -32,7 +32,7 @@ tasks.register('verifyRuntimeIsolation') {
     doLast {
         def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
             def id = artifact.moduleVersion.id
-            id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
+            id.group.startsWith('org.paas') || id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
                 id.group == 'com.github.docker-java' ||
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
                 (id.group == 'org.flow' && ['cli', 'webserver', 'jdbc', 'jdbc-postgres', 'jdbc-mysql', 'jdbc-h2',

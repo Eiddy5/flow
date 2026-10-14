@@ -10575,8 +10575,8 @@
   },
   "modified": {
     "core/build.gradle": {
-      "sha256": "583bae4f28cf2f0f3ccf14102003ab312e33a4abb17b527c4e4e8334b975e722",
-      "reason": "构建版本资源不回写源目录；第二轮按 ADR 0118 移除产品能力及专用兼容接口，保留通用执行与扩展；清除无用源码、注册、配置或依赖，保留核心与扩展验收 ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0121：移除 embedded，原生模块直接提供 Java 运行、具名数据源与显式迁移，迁移对应技术验证。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "98968a9d856db3ec031639b92277d91ead8ed565f3da1f311f92767804ca53c7",
+      "reason": "构建版本资源不回写源目录；第二轮按 ADR 0118 移除产品能力及专用兼容接口，保留通用执行与扩展；清除无用源码、注册、配置或依赖，保留核心与扩展验收 ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0121：移除 embedded，原生模块直接提供 Java 运行、具名数据源与显式迁移，迁移对应技术验证。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "core/src/main/resources/docs/index.peb": {
       "sha256": "f50e57302a83b8a64dbe1110845b9943f9da6897e749b22dc2f370454df318c7",
@@ -12303,8 +12303,8 @@
       "reason": "ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖"
     },
     "executor/build.gradle": {
-      "sha256": "a5137985df83d8b81e22a9fd4d46884abde6f178f7e745e00a0effc42a27881c",
-      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "5f51e5c19122054182b24e8fd4add8aac8d0201a09cdadfb02c663dfef13f1af",
+      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "executor/src/test/resources/application-test.yml": {
       "sha256": "3fd3d843f0b7f61ec3bb65deb333dc0631d0260fbd81796cfeef8f441116c61d",
@@ -12319,12 +12319,12 @@
       "reason": "ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0125：移除固定 Java 25 检查及高版本专用启动参数"
     },
     "indexer/build.gradle": {
-      "sha256": "8ac4b6b39ae19c805139b92898cda0e8a769c9087c1014aefb9c6e17c6c12eb7",
-      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "c9daeb501fa0ec48204b7ab24f35d743e26a523930a544624329bbdc4867645b",
+      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "jdbc-postgres/build.gradle": {
-      "sha256": "c65642b11ed03f9efa04e40a5ecc0af1fe319ce3063d5b69a75cad509d98c6b4",
-      "reason": "ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "3080c95fd237568492fb1ad5096e8b2cf0b8024764643bc57c35bc5ce54cfd61",
+      "reason": "ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "jdbc-postgres/src/test/resources/application-liveness.yml": {
       "sha256": "15abed04ca91e7fe489f0c6d60dbc5b9df8a471da69bbcad1a43dfa16e65bb8b",
@@ -12339,8 +12339,8 @@
       "reason": "第二轮验收支持环境变量指定独立 PostgreSQL 验证库，保留原测试断言 ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0120：Worker 使用 PostgreSQL/JDBC 队列，领取和结果与归属原子提交；删除 gRPC Controller 与代理。 ADR 0121：移除 embedded，原生模块直接提供 Java 运行、具名数据源与显式迁移，迁移对应技术验证。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖"
     },
     "jdbc/build.gradle": {
-      "sha256": "601c5fdaa22a3f0fcbba92f23602804a7bd30812b0b8e8b7bf4dee4fec988158",
-      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "c614cf9af27c975efa838c8cc275e2f013e316639b162f17faf476b51f389664",
+      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "jdbc/src/test/resources/application-cleaner.yml": {
       "sha256": "50df4ad0b72a457a6cfbed9f00eb0384d52b2a77f40fd5c76275cc5f94e21d23",
@@ -12359,44 +12359,44 @@
       "reason": "ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖"
     },
     "queue-jdbc/build.gradle": {
-      "sha256": "78bb32cc2fa4577977b53319e8aad6d1a6665f8076d4d7b82fd6574ebb80fc52",
-      "reason": "ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "263cb37e901b9d81aede60e509c156f24241ac9aefc8f7cb8d35fe76e1123e00",
+      "reason": "ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "queue/build.gradle": {
-      "sha256": "1b9c94e2b9a06848488ae352cb9ce7bdf862eabf6dea65bb9de577f1cfe4d5e6",
-      "reason": "ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "ff6fcb57572666cae879e23f3d3341da0081abdf0d736810a6de22fa9600e659",
+      "reason": "ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "scheduler/build.gradle": {
-      "sha256": "59d00d402e785b0d2dbf3756f5c8f251f9a8906ada2fb2ebc85b7ef0dc6e25ba",
-      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "a27b57b464fda34fdaae6ccb1c4dd5c5d1acb5aecfcfd0ccb7ce97616e73f813",
+      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "scheduler/src/test/resources/application-test.yml": {
       "sha256": "467f23c20f51c2092d956953681ff91e69af68b80a58a9a26e257072e24c24e3",
       "reason": "清除无用源码、注册、配置或依赖，保留核心与扩展验收 ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0120：Worker 使用 PostgreSQL/JDBC 队列，领取和结果与归属原子提交；删除 gRPC Controller 与代理。 ADR 0121：移除 embedded，原生模块直接提供 Java 运行、具名数据源与显式迁移，迁移对应技术验证。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖"
     },
     "script/build.gradle": {
-      "sha256": "119f037d6e22d0653ed0feadf60672c900f36b2a617460331edf5cefcebb94bb",
-      "reason": "第二轮按 ADR 0118 移除产品能力及专用兼容接口，保留通用执行与扩展 ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "d06a37d94dd9a9ca09e6ee2c74cc0eee1f1261427063163a57a8e034ba80496c",
+      "reason": "第二轮按 ADR 0118 移除产品能力及专用兼容接口，保留通用执行与扩展 ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "script/src/test/resources/application.yml": {
       "sha256": "bba70a0c811ba7327a3dbd4c10a7729680cfbb6443dfeec44ee2b27296e10572",
       "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖"
     },
     "storage-local/build.gradle": {
-      "sha256": "d2e9b76e07a83faf8bc2431a235b5b02f6f4be7c2e74ba560910b2998ad7e3da",
-      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "8ab2f29440be98582204c4831e61a9e1a07f4ac8109047e1a3f9e63e4b750242",
+      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "storage-local/src/test/resources/application-test.yml": {
       "sha256": "19162628f94c949bb0afcfbb2fffdb25dc3f705cbe6bf1b8b333c961049fdde9",
       "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0120：Worker 使用 PostgreSQL/JDBC 队列，领取和结果与归属原子提交；删除 gRPC Controller 与代理。 ADR 0121：移除 embedded，原生模块直接提供 Java 运行、具名数据源与显式迁移，迁移对应技术验证。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖"
     },
     "tests/build.gradle": {
-      "sha256": "320309b973f8971ca6c52ec494a03fcf1226d787be1125fa3ee59287c7ad148d",
-      "reason": "删除只供 Problems 使用的 Web 编译依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "a983a9b0da6511d4b59aa7a7805c4f90412f809bfa18024973b755c3dad83145",
+      "reason": "删除只供 Problems 使用的 Web 编译依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "worker/build.gradle": {
-      "sha256": "cfc78c08bd55368859850b1736ddbc626bc6e912cb812b8bea88a1603c1274da",
-      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0120：Worker 使用 PostgreSQL/JDBC 队列，领取和结果与归属原子提交；删除 gRPC Controller 与代理。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器"
+      "sha256": "c3654cefba02489305d14e53aeaab70be9bb586bebca8fa8bc2260f8f344f5ab",
+      "reason": "ADR 0119：仅保留 PostgreSQL；删除 H2/memory 与多方言分支，将保留能力的测试迁到真实 PG。 ADR 0120：Worker 使用 PostgreSQL/JDBC 队列，领取和结果与归属原子提交；删除 gRPC Controller 与代理。; ADR 0122：统一 org.flow 包、flow 配置及运行标识，移除 Kotlp 依赖；ADR 0123：外部依赖通过 TOML 版本目录统一引用；ADR 0124：按模块声明 Micronaut 依赖和注解处理器；ADR 0126：仅接入内部 Micronaut，排除 PaaS/Redisson 平台并保持官方第三方依赖与 Java 21 下限"
     },
     "worker/src/test/resources/application-test.yml": {
       "sha256": "3fd3d843f0b7f61ec3bb65deb333dc0631d0260fbd81796cfeef8f441116c61d",

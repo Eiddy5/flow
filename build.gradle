@@ -1,7 +1,23 @@
 plugins { id 'java-library' }
 allprojects {
     version = '2.0.5'
-    repositories { mavenCentral() }
+    repositories {
+        mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = 'internalMicronaut'
+                    url = uri(rootProject.providers.gradleProperty('repoUrl').get())
+                    allowInsecureProtocol = true
+                }
+            }
+            filter {
+                // Internal releases append a fourth numeric version component; unchanged
+                // upstream Micronaut components still resolve from Maven Central.
+                includeVersionByRegex 'io[.]micronaut([.].*)?', '.*', '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+.*'
+            }
+        }
+    }
     group = 'org.flow'
     apply plugin: 'java-library'
     dependencies {
@@ -284,7 +300,12 @@ dependencies {
     runtimeOnly project(':indexer')
     runtimeOnly project(':storage-local')
     runtimeOnly project(':script')
-    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
     testAnnotationProcessor libs.micronaut.inject.java
     testImplementation libs.micronaut.test.junit5
     testRuntimeOnly rootProject.libs.junit.platform.launcher
@@ -313,7 +334,7 @@ tasks.register('verifyRuntimeIsolation') {
     doLast {
         def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
             def id = artifact.moduleVersion.id
-            id.group.startsWith('io.kestra') || id.group in ['io.grpc', 'io.micronaut.grpc', 'com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] || id.group.contains('pulsar') || id.name.contains('pulsar') || id.group == 'com.github.docker-java' ||
+            id.group.startsWith('org.paas') || id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['io.grpc', 'io.micronaut.grpc', 'com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] || id.group.contains('pulsar') || id.name.contains('pulsar') || id.group == 'com.github.docker-java' ||
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
                 (id.group == 'org.cses.flow' && ['core', 'scheduler', 'flow', 'embedded'].contains(id.name)) ||
                 (id.group == 'org.flow.fixture') ||

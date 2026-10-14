@@ -46,9 +46,11 @@ log4j-to-slf4j = "2.26.1"
 logback-ecs-encoder = "1.8.0"
 lombok = "1.18.46"
 maven-resolver = "2.0.10"
-micronaut-platform = "4.10.18"
+micrometer = "1.15.12"
+micronaut-platform = "4.10.6.52"
 mockito = "5.23.0"
 mockito-junit = "5.20.0"
+netty = "4.2.18.Final"
 pebble = "4.1.2"
 plexus-utils = "4.1.0"
 postgresql = "42.7.13"
@@ -123,6 +125,7 @@ maven-resolver-supplier-mvn3 = { module = "org.apache.maven.resolver:maven-resol
 maven-resolver-transport-apache = { module = "org.apache.maven.resolver:maven-resolver-transport-apache", version.ref = "maven-resolver" }
 maven-resolver-transport-file = { module = "org.apache.maven.resolver:maven-resolver-transport-file", version.ref = "maven-resolver" }
 micrometer-core = { module = "io.micrometer:micrometer-core" }
+micrometer-bom = { module = "io.micrometer:micrometer-bom", version.ref = "micrometer" }
 micrometer-java21 = { module = "io.micrometer:micrometer-java21" }
 micronaut-context = { module = "io.micronaut:micronaut-context" }
 micronaut-data-model = { module = "io.micronaut.data:micronaut-data-model" }
@@ -145,6 +148,7 @@ micronaut-validation-runtime = { module = "io.micronaut.validation:micronaut-val
 micronaut-validation-processor = { module = "io.micronaut.validation:micronaut-validation-processor" }
 mockito-core = { module = "org.mockito:mockito-core", version.ref = "mockito" }
 mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version.ref = "mockito-junit" }
+netty-bom = { module = "io.netty:netty-bom", version.ref = "netty" }
 opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp", version.ref = "opentelemetry" }
 pebble = { module = "io.pebbletemplates:pebble", version.ref = "pebble" }
 plexus-utils = { module = "org.codehaus.plexus:plexus-utils", version.ref = "plexus-utils" }

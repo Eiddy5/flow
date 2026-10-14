@@ -1,6 +1,11 @@
 dependencies {
     // Micronaut bean metadata is generated only in modules that own beans.
-    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
     annotationProcessor libs.micronaut.inject.java
     annotationProcessor libs.micronaut.validation.processor
 
@@ -8,7 +13,12 @@ dependencies {
     implementation libs.micronaut.validation.runtime
     implementation libs.micrometer.core
 
-    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
     testAnnotationProcessor libs.micronaut.inject.java
     testImplementation libs.micronaut.test.junit5
 

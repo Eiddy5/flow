@@ -1,5 +1,10 @@
 dependencies {
-    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
     testAnnotationProcessor libs.micronaut.inject.java
     testImplementation libs.micronaut.test.junit5
     // Flow

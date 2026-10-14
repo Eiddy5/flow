@@ -32,7 +32,14 @@ dependencies {
     api libs.awaitility
 
     // Micronaut APIs exposed by native services; adapters remain implementation details.
-    api platform(libs.micronaut.platform)
+    api(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
+    api platform(libs.micrometer.bom)
+    api platform(libs.netty.bom)
     api libs.micronaut.context
     api libs.micronaut.data.model
     api libs.micronaut.http
@@ -45,7 +52,12 @@ dependencies {
     runtimeOnly libs.micronaut.micrometer.registry.prometheus
     runtimeOnly libs.micronaut.tracing.opentelemetry
     runtimeOnly libs.micronaut.reactor
-    annotationProcessor platform(libs.micronaut.platform)
+    annotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
     annotationProcessor libs.micronaut.inject.java
     annotationProcessor libs.micronaut.validation.processor
 
@@ -91,7 +103,12 @@ dependencies {
     implementation libs.micrometer.java21
 
     // test
-    testAnnotationProcessor platform(libs.micronaut.platform)
+    testAnnotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
     testAnnotationProcessor libs.micronaut.inject.java
     testAnnotationProcessor libs.micronaut.validation.processor
     testImplementation libs.micronaut.test.junit5
