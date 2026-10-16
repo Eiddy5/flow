@@ -10,7 +10,8 @@ gradle.projectsEvaluated {
             rootProject.allprojects.sort { it.path }.each { p ->
                 ['compileClasspath', 'runtimeClasspath', 'annotationProcessor',
                  'testCompileClasspath', 'testRuntimeClasspath', 'testAnnotationProcessor',
-                 'mockitoAgent'].each { name ->
+                 'mockitoAgent', 'codegenCompileClasspath', 'codegenRuntimeClasspath',
+                 'codegenAnnotationProcessor'].each { name ->
                     def configuration = p.configurations.findByName(name)
                     if (configuration != null && configuration.canBeResolved) {
                         def resolution = configuration.incoming.resolutionResult

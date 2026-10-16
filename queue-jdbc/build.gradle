@@ -1,4 +1,5 @@
 dependencies {
+    implementation project(':gen')
     // Micronaut bean metadata is generated only in modules that own beans.
     annotationProcessor(platform(libs.micronaut.platform)) {
         exclude group: 'org.paas'
@@ -14,5 +15,4 @@ dependencies {
     implementation project(':queue')
 
     implementation project(':jdbc')
-    implementation libs.jooq
 }

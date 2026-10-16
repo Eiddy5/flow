@@ -10,10 +10,17 @@ scheduler、indexer、jdbc-postgres、queue-jdbc、storage-local 和需要的 sc
 当前源码尚未发布新的 Maven 制品。Gradle 调用工程可以通过 composite build 直接消费
 本项目，模块版本和传递依赖使用本仓库配置，不需要复制 JAR：
 
-框架使用内部 Micronaut 平台 `4.10.6.52`（核心 `4.10.12.20`）。调用工程也必须
+框架使用内部 Micronaut 平台 `4.10.6.335`（核心 `4.10.12.23`）。调用工程也必须
 配置内部框架仓库；仓库配置不会随 `includeBuild` 或发布元数据传递。具体仓库
 过滤与 `repoUrl` 配置见 [依赖管理指南](dependency-management.md#内部-micronaut-与消费方仓库)。
-引入 Flow 不需要添加其他 PaaS 模块。
+gen 通过内部 jOOQ 传递引入必要的 PaaS 组件和 Pulsar 客户端类型，调用工程不必
+另行添加 PaaS 聚合服务。Flow 队列仍使用 JDBC，不要求运行 Pulsar。
+
+JDBC 模块自动提供最低优先级默认值：`jooq.send-event=false`、
+`table.db-change.listeners.pulsar.enabled=false`、`pulsar.consumer.enabled=false`，
+避免内部数据库事件和消费者随 Context 自动启动。宿主确实使用这些能力时，可以
+通过自己的 YAML、环境变量、系统属性或 builder 配置显式开启；这些宿主值优先。
+版本及生成边界见 [数据库对象生成指南](jooq-generation.md)。
 
 ```groovy
 // 调用工程的 settings.gradle

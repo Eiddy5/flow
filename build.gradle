@@ -6,7 +6,7 @@ allprojects {
         exclusiveContent {
             forRepository {
                 maven {
-                    name = 'internalMicronaut'
+                    name = 'internalLibraries'
                     url = uri(rootProject.providers.gradleProperty('repoUrl').get())
                     allowInsecureProtocol = true
                 }
@@ -15,6 +15,8 @@ allprojects {
                 // Internal releases append a fourth numeric version component; unchanged
                 // upstream Micronaut components still resolve from Maven Central.
                 includeVersionByRegex 'io[.]micronaut([.].*)?', '.*', '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+.*'
+                includeVersionByRegex 'org[.]jooq', '.*', '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+.*'
+                includeGroupByRegex 'org[.]paas([.].*)?'
             }
         }
     }
@@ -127,6 +129,8 @@ allprojects {
         testCompileOnly rootProject.libs.lombok
 
         testImplementation platform(rootProject.libs.junit.bom)
+        // Keep the existing test harness API when internal platform imports offer Testcontainers 2.
+        testImplementation enforcedPlatform(rootProject.libs.testcontainers.bom)
         testImplementation rootProject.libs.junit.jupiter.engine
         testImplementation rootProject.libs.junit.jupiter.params
         testImplementation rootProject.libs.junit.pioneer
@@ -310,7 +314,7 @@ dependencies {
     testImplementation libs.micronaut.test.junit5
     testRuntimeOnly rootProject.libs.junit.platform.launcher
     testImplementation project(':queue-jdbc')
-    testImplementation libs.jooq
+    testImplementation project(':gen')
     testImplementation rootProject.libs.postgresql
     testImplementation rootProject.libs.micronaut.data.connection.jdbc
 }
@@ -330,11 +334,19 @@ tasks.named('test') {
 
 tasks.register('verifyRuntimeIsolation') {
     group = 'verification'
-    description = '验证项目运行产物未引入 Pulsar、旧 Flow 或独立产品后端'
+    description = '验证运行产物仅包含必要 PaaS/客户端依赖，不引入产品后端或代码生成器'
     doLast {
+        def generatedObjectLibraries = ['paas-common', 'paas-json', 'paas-sql', 'paas-exception', 'paas-pulsar']
+        def pulsarClientLibraries = ['bouncy-castle-bc', 'pulsar-client-admin-api', 'pulsar-client-api',
+                                    'pulsar-client-original', 'pulsar-common']
         def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
             def id = artifact.moduleVersion.id
-            id.group.startsWith('org.paas') || id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['io.grpc', 'io.micronaut.grpc', 'com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] || id.group.contains('pulsar') || id.name.contains('pulsar') || id.group == 'com.github.docker-java' ||
+            (id.group.startsWith('org.paas') && !(id.group == 'org.paas' && id.name in generatedObjectLibraries)) ||
+                (id.group == 'org.jooq' && !(id.name in ['jooq', 'jooq-paas'])) ||
+                ((id.group.contains('pulsar') || id.name.contains('pulsar')) &&
+                    !(id.group == 'org.paas' && id.name == 'paas-pulsar') &&
+                    !(id.group == 'org.apache.pulsar' && id.name in pulsarClientLibraries)) ||
+                id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['io.grpc', 'io.micronaut.grpc', 'com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] || id.group == 'com.github.docker-java' ||
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
                 (id.group == 'org.cses.flow' && ['core', 'scheduler', 'flow', 'embedded'].contains(id.name)) ||
                 (id.group == 'org.flow.fixture') ||

@@ -33,5 +33,5 @@ dependencies {
     testImplementation project(':jdbc')
     testImplementation project(':jdbc-postgres')
     testImplementation project(':indexer')
-    testImplementation libs.jooq
+    testImplementation project(':gen')
 }

@@ -1,4 +1,5 @@
 dependencies {
+    api project(':gen')
     // Micronaut bean metadata is generated only in modules that own beans.
     annotationProcessor(platform(libs.micronaut.platform)) {
         exclude group: 'org.paas'
@@ -29,7 +30,9 @@ dependencies {
 
     implementation(libs.micronaut.data.tx.jdbc)
     implementation(libs.micronaut.jdbc.hikari)
-    implementation(libs.micronaut.jooq)
+    implementation(libs.micronaut.jooq) {
+        exclude group: 'io.micronaut', module: 'micronaut-http-server-netty'
+    }
     // see https://github.com/jOOQ/jOOQ/issues/14865
     compileOnly (libs.jakarta.xml.bind.api)
 

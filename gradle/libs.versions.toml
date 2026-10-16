@@ -36,7 +36,8 @@ jansi = "2.4.3"
 java-uuid-generator = "5.2.0"
 jetty = "12.0.31"
 jollyday = "2.19.0"
-jooq = "3.21.7"
+jooq = "3.21.4.1"
+paas = "1.0.0.161"
 json-patch = "1.13"
 json-schema-validator = "3.0.6"
 jsonschema = "4.38.0"
@@ -47,7 +48,7 @@ logback-ecs-encoder = "1.8.0"
 lombok = "1.18.46"
 maven-resolver = "2.0.10"
 micrometer = "1.15.12"
-micronaut-platform = "4.10.6.52"
+micronaut-platform = "4.10.6.335"
 mockito = "5.23.0"
 mockito-junit = "5.20.0"
 netty = "4.2.18.Final"
@@ -59,6 +60,7 @@ testcontainers = "1.21.4"
 wiremock-jetty12 = "3.13.2"
 
 [libraries]
+testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
 archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit-junit5" }
 # Preserve the previous shared test version and the explicit tests/tooling override.
 assertj-core-managed = { module = "org.assertj:assertj-core", version.ref = "assertj-managed" }
@@ -102,6 +104,10 @@ jetty-bom = { module = "org.eclipse.jetty:jetty-bom", version.ref = "jetty" }
 jollyday-core = { module = "de.focus-shift:jollyday-core", version.ref = "jollyday" }
 jollyday-jaxb = { module = "de.focus-shift:jollyday-jaxb", version.ref = "jollyday" }
 jooq = { module = "org.jooq:jooq", version.ref = "jooq" }
+jooq-bom = { module = "org.jooq:jooq-bom", version.ref = "jooq" }
+jooq-paas = { module = "org.jooq:jooq-paas", version.ref = "jooq" }
+jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension", version.ref = "jooq" }
+paas-bom = { module = "org.paas:paas-bom", version.ref = "paas" }
 json-patch = { module = "com.github.java-json-tools:json-patch", version.ref = "json-patch" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
 jsonschema-generator = { module = "com.github.victools:jsonschema-generator", version.ref = "jsonschema" }
