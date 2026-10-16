@@ -30,8 +30,8 @@ import jakarta.annotation.Nullable;
 import jakarta.inject.Inject;
 import lombok.SneakyThrows;
 
-import static org.flow.jdbc.repository.AbstractJdbcRepository.KEY_FIELD;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.VALUE_FIELD;
+
+
 
 @Requires(condition = PostgresRepository.PostgresCondition.class)
 @EachBean(JdbcTableConfig.class)
@@ -44,7 +44,7 @@ public class PostgresRepository<T> extends org.flow.jdbc.AbstractJdbcRepository<
     }
 
     @Override
-    public Condition fullTextCondition(List<String> fields, String query) {
+    public Condition fullTextCondition(List<? extends Field<?>> fields, String query) {
         if (query == null || query.equals("*")) {
             return DSL.noCondition();
         }
@@ -53,42 +53,42 @@ public class PostgresRepository<T> extends org.flow.jdbc.AbstractJdbcRepository<
             throw new IllegalArgumentException("Invalid fullTextCondition" + fields);
         }
 
-        return DSL.condition(fields.getFirst() + " @@ FULLTEXT_SEARCH(?)", query);
+        return DSL.condition("{0} @@ FULLTEXT_SEARCH({1})", fields.getFirst(), DSL.val(query));
     }
 
     @SneakyThrows
     @Override
-    public Map<Field<Object>, Object> persistFields(T entity) {
+    public Map<Field<?>, Object> persistFields(T entity) {
         String json = MAPPER.writeValueAsString(entity);
-        Map<Field<Object>, Object> fields = HashMap.newHashMap(1);
-        fields.put(VALUE_FIELD, DSL.val(JdbcJsonbUtils.valueOf(json)));
+        Map<Field<?>, Object> fields = HashMap.newHashMap(1);
+        fields.put(valueField(), JdbcJsonbUtils.valueOf(json));
         return fields;
     }
 
     @SneakyThrows
     @Override
-    public void persist(T entity, DSLContext context, @Nullable Map<Field<Object>, Object> fields) {
-        Map<Field<Object>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
+    public void persist(T entity, DSLContext context, @Nullable Map<Field<?>, Object> fields) {
+        Map<Field<?>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
 
         context
             .insertInto(table)
-            .set(KEY_FIELD, key(entity))
+            .set(keyField(), key(entity))
             .set(finalFields)
-            .onConflict(KEY_FIELD)
+            .onConflict(keyField())
             .doUpdate()
             .set(excluded(finalFields))
             .execute();
     }
 
     @Override
-    protected InsertOnDuplicateSetMoreStep<Record> buildInsertRequest(T entity, Map<Field<Object>, Object> fields,
+    protected InsertOnDuplicateSetMoreStep<Record> buildInsertRequest(T entity, Map<Field<?>, Object> fields,
         DSLContext dslContext) {
 
         return dslContext
             .insertInto(table)
-            .set(KEY_FIELD, key(entity))
+            .set(keyField(), key(entity))
             .set(fields)
-            .onConflict(KEY_FIELD)
+            .onConflict(keyField())
             .doUpdate()
             .set(excluded(fields));
     }
@@ -121,7 +121,7 @@ public class PostgresRepository<T> extends org.flow.jdbc.AbstractJdbcRepository<
         if (deserializer != null) {
             return deserializer.apply(record);
         } else {
-            return this.deserialize(record.get("value", JSONB.class).data());
+            return this.deserialize(record.get(valueField()).data());
         }
     }
 

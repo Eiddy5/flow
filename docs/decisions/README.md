@@ -1,7 +1,14 @@
 # Flow 架构决策索引
 
+当前存储查询以 [ADR 0128](0128-use-generated-tables-directly.md) 为准：直接使用生成表和字段，移除元数据复制与未知表兜底。
+
+当前数据库对象以 [ADR 0127](0127-use-generated-database-objects.md) 为准：
+gen 使用 CSES 同款内部生成器与 JooqPojo，数据库适配器统一消费生成对象；允许
+生成对象和内部 Bean 装配必要的 PaaS/Pulsar 依赖，修订 ADR 0126 的无 PaaS 和官方
+jOOQ 条款，保持 Java 21 与 JDBC 队列，生产依赖排除 HTTP Server Netty 和 codegen。
+jdbc 为内部 DB 事件和消费者提供最低优先级关闭默认值，宿主显式配置可覆盖。
 当前 Micronaut 来源以 [ADR 0126](0126-use-internal-micronaut.md) 为准：
-按 main 的内部仓库与 BOM 方式接入，保持 Java 21 下限，不引入其他 PaaS 模块；
+按 main 的内部仓库与 BOM 方式接入，保持 Java 21 下限；
 修订 ADR 0123、0124 中保留官方 Micronaut 来源的条款。
 当前 Java 版本选择以 [ADR 0125](0125-use-build-selected-java-version.md) 为准：
 不固定 Java 25，遵循所属构建的标准 Java 配置和构建 JDK；保留实际字节码兼容性要求。
@@ -36,7 +43,11 @@ JDBC，实现共用可配置 `datasources.flow`。旧 Pulsar、DataSourceEngine/
 
 ## Core 组件与依赖方向
 
-- [`ADR 0126`](0126-use-internal-micronaut.md)：**Accepted**，仅接入内部 Micronaut，保留 TOML、按模块声明和 Java 21 下限；实际验证状态见依赖管理指南。
+- [0128：存储查询直接使用生成表和字段](0128-use-generated-tables-directly.md)：移除元数据复制与手写字段兜底，统一生成类型、表配置和查询别名。
+
+- [`ADR 0127`](0127-use-generated-database-objects.md)：**Accepted**，引入 gen 与内部 jOOQ 生成器/JooqPojo，允许必要 PaaS 依赖，保留原生 SQL、JSONB 和 JDBC 队列协议；验证见生成指南。
+
+- [`ADR 0126`](0126-use-internal-micronaut.md)：**Accepted**，内部 Micronaut、TOML、按模块声明与 Java 21 下限；无 PaaS 和官方 jOOQ 条款已由 ADR 0127 修订。
 
 - [`ADR 0125`](0125-use-build-selected-java-version.md)：**Accepted**，移除固定 Java 25，编译、测试和工具任务使用构建选择的 JDK，不改写真实目标版本元数据。
 

@@ -9,6 +9,7 @@ import org.jooq.*;
 import org.jooq.impl.DSL;
 import org.slf4j.event.Level;
 
+import org.flow.gen.flow.Tables;
 import org.flow.core.contexts.configuration.SystemFlowsConfiguration;
 import org.flow.core.exceptions.InvalidQueryFiltersException;
 import org.flow.core.models.QueryFilter;
@@ -32,10 +33,23 @@ import jakarta.inject.Inject;
 import lombok.Getter;
 
 public abstract class AbstractJdbcRepository {
-    public static final Field<Boolean> DELETED_FIELD = field("deleted", Boolean.class);
-    public static final Field<String> TENANT_ID_FIELD = field("tenant_id", String.class);
-    public static final Field<String> KEY_FIELD = field("key", String.class);
-    public static final Field<Object> VALUE_FIELD = field("value", Object.class);
+    protected abstract Table<?> table();
+
+    protected Field<String> keyField() {
+        return Objects.requireNonNull(table().field(Tables.FLOWS.KEY));
+    }
+
+    protected Field<JSONB> valueField() {
+        return Objects.requireNonNull(table().field(Tables.FLOWS.VALUE));
+    }
+
+    protected Field<String> tenantIdField() {
+        return Objects.requireNonNull(table().field(Tables.FLOWS.TENANT_ID));
+    }
+
+    protected Field<Boolean> deletedField() {
+        return Objects.requireNonNull(table().field(Tables.FLOWS.DELETED));
+    }
 
     protected static final int FETCH_SIZE = 100;
 
@@ -62,11 +76,11 @@ public abstract class AbstractJdbcRepository {
     }
 
     protected Condition defaultFilter() {
-        return DELETED_FIELD.eq(false);
+        return deletedField().eq(false);
     }
 
     protected Condition defaultFilter(Boolean allowDeleted) {
-        return allowDeleted ? DELETED_FIELD.in(true, false) : DELETED_FIELD.eq(false);
+        return allowDeleted ? deletedField().in(true, false) : deletedField().eq(false);
     }
 
     protected Condition defaultFilter(String tenantId) {
@@ -77,7 +91,7 @@ public abstract class AbstractJdbcRepository {
         var tenant = buildTenantCondition(tenantId);
 
         // Always include `deleted` in the query filters as most database optimizers can only use and index if the leftmost columns are used in the query
-        return allowDeleted ? tenant.and(DELETED_FIELD.in(true, false)) : tenant.and(DELETED_FIELD.eq(false));
+        return allowDeleted ? tenant.and(deletedField().in(true, false)) : tenant.and(deletedField().eq(false));
     }
 
     protected Condition defaultFilterWithNoACL(String tenantId) {
@@ -88,11 +102,11 @@ public abstract class AbstractJdbcRepository {
         var tenant = buildTenantCondition(tenantId);
 
         // Always include `deleted` in the query filters as most database optimizers can only use and index if the leftmost columns are used in the query
-        return deleted ? tenant.and(DELETED_FIELD.in(true, false)) : tenant.and(DELETED_FIELD.eq(false));
+        return deleted ? tenant.and(deletedField().in(true, false)) : tenant.and(deletedField().eq(false));
     }
 
     protected Condition aclCondition(Resource resource) {
-        return aclCondition(resource, "namespace");
+        return aclCondition(resource, table().field(Tables.FLOWS.NAMESPACE));
     }
 
     /**
@@ -103,9 +117,9 @@ public abstract class AbstractJdbcRepository {
      *
      * @param namespaceColumn the column holding the namespace, which is not always named {@code namespace}.
      */
-    protected Condition aclCondition(Resource resource, String namespaceColumn) {
+    protected Condition aclCondition(Resource resource, Field<String> namespaceColumn) {
         AccessScope scope = namespaceAccessControl().namespaceScope(resource);
-        Field<String> column = field(namespaceColumn, String.class);
+        Field<String> column = namespaceColumn;
         return switch (scope.kind()) {
             case GLOBAL -> DSL.noCondition();
             case DENY_ALL -> DSL.falseCondition();
@@ -121,7 +135,7 @@ public abstract class AbstractJdbcRepository {
     }
 
     protected Condition buildTenantCondition(String tenantId) {
-        return tenantId == null ? TENANT_ID_FIELD.isNull() : TENANT_ID_FIELD.eq(tenantId);
+        return tenantId == null ? tenantIdField().isNull() : tenantIdField().eq(tenantId);
     }
 
     /**
@@ -132,14 +146,6 @@ public abstract class AbstractJdbcRepository {
     // Used in EE
     protected <T> Condition eqOrIsNull(Field<T> field, T value) {
         return value == null ? field.isNull() : field.eq(value);
-    }
-
-    public static Field<Object> field(String name) {
-        return DSL.field(DSL.quotedName(name));
-    }
-
-    public static <T> Field<T> field(String name, Class<T> cls) {
-        return DSL.field(DSL.quotedName(name), cls);
     }
 
     protected List<Field<?>> groupByFields(Duration duration) {
@@ -162,16 +168,16 @@ public abstract class AbstractJdbcRepository {
      * stores {@code TIMESTAMPTZ}; its metric repository overrides this expression to normalize
      * the session timezone to UTC before extracting date parts.
      */
-    protected Field<Timestamp> groupByTimestampField(String dateField) {
-        return DSL.timestamp(field(dateField, Date.class));
+    protected Field<Timestamp> groupByTimestampField(Field<?> dateField) {
+        return dateField.cast(Timestamp.class);
     }
 
-    protected List<Field<?>> groupByFields(Duration duration, @Nullable String dateField, @Nullable DateUtils.GroupType groupBy) {
+    protected List<Field<?>> groupByFields(Duration duration, @Nullable Field<?> dateField, @Nullable DateUtils.GroupType groupBy) {
         return groupByFields(duration, dateField, groupBy, true);
     }
 
-    protected List<Field<?>> groupByFields(Duration duration, @Nullable String dateField, @Nullable DateUtils.GroupType groupBy, boolean withAs) {
-        String field = dateField != null ? dateField : "timestamp";
+    protected List<Field<?>> groupByFields(Duration duration, @Nullable Field<?> dateField, @Nullable DateUtils.GroupType groupBy, boolean withAs) {
+        Field<?> field = dateField != null ? dateField : Objects.requireNonNull(table().field(Tables.METRICS.TIMESTAMP));
         Field<Timestamp> timestamp = groupByTimestampField(field);
         Field<Integer> month = withAs ? DSL.month(timestamp).as("month") : DSL.month(timestamp);
         Field<Integer> year = withAs ? DSL.year(timestamp).as("year") : DSL.year(timestamp);
@@ -195,7 +201,7 @@ public abstract class AbstractJdbcRepository {
 
     protected Condition filter(
         List<QueryFilter> filters,
-        String dateColumn,
+        Field<?> dateColumn,
         Resource resource) {
         if (filters == null || filters.isEmpty()) {
             return DSL.noCondition();
@@ -204,19 +210,19 @@ public abstract class AbstractJdbcRepository {
         return andOf(filters, dateColumn);
     }
 
-    private Condition andOf(List<QueryFilter> items, String dateColumn) {
+    private Condition andOf(List<QueryFilter> items, Field<?> dateColumn) {
         return items.stream()
             .map(f -> toCondition(f, dateColumn))
             .reduce(DSL.noCondition(), Condition::and);
     }
 
-    private Condition orOf(List<QueryFilter> items, String dateColumn) {
+    private Condition orOf(List<QueryFilter> items, Field<?> dateColumn) {
         return items.stream()
             .map(f -> toCondition(f, dateColumn))
             .reduce(DSL.noCondition(), Condition::or);
     }
 
-    private Condition toCondition(QueryFilter filter, String dateColumn) {
+    private Condition toCondition(QueryFilter filter, Field<?> dateColumn) {
         if (filter.isLeaf()) {
             return getConditionOnField(filter.field(), filter.value(), filter.operation(), dateColumn);
         }
@@ -234,7 +240,7 @@ public abstract class AbstractJdbcRepository {
         QueryFilter.Field field,
         Object value,
         QueryFilter.Op operation,
-        @Nullable String dateColumn) {
+        @Nullable Field<?> dateColumn) {
         if (field.equals(QueryFilter.Field.QUERY)) {
             return handleQuery(value, operation);
         }
@@ -297,7 +303,7 @@ public abstract class AbstractJdbcRepository {
         }
 
         if (field == QueryFilter.Field.EXPIRATION_DATE) {
-            return getDateCondition(value, operation, QueryFilter.Field.EXPIRATION_DATE.name().toLowerCase());
+            return getDateCondition(value, operation, getColumnField(QueryFilter.Field.EXPIRATION_DATE));
         }
 
         if (field == QueryFilter.Field.SCOPE) {
@@ -372,63 +378,65 @@ public abstract class AbstractJdbcRepository {
         QueryFilter.Field field,
         Object value,
         QueryFilter.Op operation) {
-        // Convert the field name to lowercase and quote it
-        Name columnName = getColumnName(field);
+        return defaultHandlers(getColumnField(field), value, operation);
+    }
+
+    private <T> Condition defaultHandlers(Field<T> column, Object value, QueryFilter.Op operation) {
 
         // Default handling for other fields
         return switch (operation) {
             case EQUALS -> {
                 Object v = primitiveOrToString(value);
-                yield v == null ? DSL.field(columnName).isNull() : DSL.field(columnName).eq(v);
+                yield v == null ? column.isNull() : column.eq(column.getDataType().convert(v));
             }
             case NOT_EQUALS -> {
                 Object v = primitiveOrToString(value);
-                yield v == null ? DSL.field(columnName).isNotNull() : DSL.field(columnName).ne(v);
+                yield v == null ? column.isNotNull() : column.ne(column.getDataType().convert(v));
             }
             case GREATER_THAN -> {
                 if (value == null) {
                     throw new InvalidQueryFiltersException("GREATER_THAN operation requires a non-null value");
                 }
-                yield DSL.field(columnName).greaterThan(value);
+                yield column.greaterThan(column.getDataType().convert(value));
             }
             case LESS_THAN -> {
                 if (value == null) {
                     throw new InvalidQueryFiltersException("LESS_THAN operation requires a non-null value");
                 }
-                yield DSL.field(columnName).lessThan(value);
+                yield column.lessThan(column.getDataType().convert(value));
             }
             case IN -> {
                 if (value == null) {
                     throw new InvalidQueryFiltersException("IN operation requires a non-null value");
                 }
-                yield DSL.field(columnName).in(ListUtils.convertToListString(value));
+                yield column.in(ListUtils.convertToListString(value).stream().map(column.getDataType()::convert).toList());
             }
             case NOT_IN -> {
                 if (value == null) {
                     throw new InvalidQueryFiltersException("NOT_IN operation requires a non-null value");
                 }
-                yield DSL.field(columnName).notIn(ListUtils.convertToListString(value));
+                yield column.notIn(ListUtils.convertToListString(value).stream().map(column.getDataType()::convert).toList());
             }
             case STARTS_WITH -> {
                 String s = requireStringValue(value, "STARTS_WITH");
-                yield DSL.field(columnName).startsWith(s);
+                yield column.startsWith(column.getDataType().convert(s));
             }
             case ENDS_WITH -> {
                 String s = requireStringValue(value, "ENDS_WITH");
-                yield DSL.field(columnName).endsWith(s);
+                yield column.endsWith(column.getDataType().convert(s));
             }
             case CONTAINS -> {
                 String s = requireStringValue(value, "CONTAINS");
-                yield DSL.field(columnName).contains(s);
+                yield column.contains(column.getDataType().convert(s));
             }
             case REGEX -> {
                 String s = requireStringValue(value, "REGEX");
-                yield DSL.field(columnName).likeRegex(s);
+                yield column.likeRegex(s);
             }
             case PREFIX -> {
                 String s = requireStringValue(value, "PREFIX");
-                yield DSL.field(columnName).eq(s)
-                    .or(DSL.field(columnName).startsWith(s + "."));
+                yield column.eq(column.getDataType().convert(s))
+                    .or(column.startsWith(column.getDataType().convert(s + ".")));
             }
             default -> throw new InvalidQueryFiltersException("Unsupported operation: " + operation);
         };
@@ -444,7 +452,7 @@ public abstract class AbstractJdbcRepository {
         return primitiveOrToString(value).toString();
     }
 
-    private Condition getDateCondition(Object value, Op operation, String dateColumn) {
+    private Condition getDateCondition(Object value, Op operation, Field<?> dateColumn) {
         OffsetDateTime dateTime = TypeConverter.toZonedDateTime(value).toOffsetDateTime();
         return applyDateCondition(dateTime, operation, dateColumn);
     }
@@ -465,8 +473,12 @@ public abstract class AbstractJdbcRepository {
         return o.toString();
     }
 
-    protected Name getColumnName(QueryFilter.Field field) {
-        return DSL.quotedName(field.name().toLowerCase());
+    protected Field<?> getColumnField(QueryFilter.Field field) {
+        Field<?> column = table().field(DSL.name(field.name().toLowerCase()));
+        if (column == null) {
+            throw new InvalidQueryFiltersException("Unsupported field: " + field);
+        }
+        return column;
     }
 
     protected Condition findQueryCondition(String query) {
@@ -532,7 +544,7 @@ public abstract class AbstractJdbcRepository {
         throw new InvalidQueryFiltersException("Unsupported field: TIME_RANGE");
     }
 
-    protected Condition createdCondition(Object value, QueryFilter.Op operation, @Nullable String dateColumn) {
+    protected Condition createdCondition(Object value, QueryFilter.Op operation, @Nullable Field<?> dateColumn) {
         if (dateColumn == null) {
             throw new InvalidQueryFiltersException("When filtering on CREATED, dateColumn is required but was null");
         }
@@ -564,8 +576,8 @@ public abstract class AbstractJdbcRepository {
     }
 
     protected Condition statesFilter(List<State.Type> state) {
-        return field("state_current")
-            .in(state.stream().map(Enum::name).toList());
+        return table().field(Tables.EXECUTIONS.STATE_CURRENT)
+            .in(state.stream().map(item -> org.flow.gen.flow.enums.StateType.valueOf(item.name())).toList());
     }
 
     private Condition handleQuery(Object value, QueryFilter.Op operation) {
@@ -583,8 +595,8 @@ public abstract class AbstractJdbcRepository {
         ChildFilter childFilter = (value instanceof String val) ? ChildFilter.valueOf(val) : (ChildFilter) value;
 
         return switch (operation) {
-            case EQUALS -> childFilter.equals(ChildFilter.CHILD) ? field("trigger_execution_id").isNotNull() : field("trigger_execution_id").isNull();
-            case NOT_EQUALS -> childFilter.equals(ChildFilter.CHILD) ? field("trigger_execution_id").isNull() : field("trigger_execution_id").isNotNull();
+            case EQUALS -> childFilter.equals(ChildFilter.CHILD) ? table().field(Tables.EXECUTIONS.TRIGGER_EXECUTION_ID).isNotNull() : table().field(Tables.EXECUTIONS.TRIGGER_EXECUTION_ID).isNull();
+            case NOT_EQUALS -> childFilter.equals(ChildFilter.CHILD) ? table().field(Tables.EXECUTIONS.TRIGGER_EXECUTION_ID).isNull() : table().field(Tables.EXECUTIONS.TRIGGER_EXECUTION_ID).isNotNull();
             default -> throw new InvalidQueryFiltersException("Unsupported operation for child filter field: " + operation);
         };
     }
@@ -613,20 +625,20 @@ public abstract class AbstractJdbcRepository {
     }
 
     protected Condition levelsCondition(List<Level> levels) {
-        return field("level").in(levels.stream().map(level -> level.name()).toList());
+        return table().field(Tables.LOGS.LEVEL).in(levels.stream().map(level -> org.flow.gen.flow.enums.LogLevel.valueOf(level.name())).toList());
     }
 
     protected Condition notLevelsCondition(List<Level> levels) {
-        return field("level").notIn(levels.stream().map(level -> level.name()).toList());
+        return table().field(Tables.LOGS.LEVEL).notIn(levels.stream().map(level -> org.flow.gen.flow.enums.LogLevel.valueOf(level.name())).toList());
     }
 
     protected Condition handleAttemptNumberField(Object value, QueryFilter.Op operation) {
-        Name columnName = getColumnName(QueryFilter.Field.ATTEMPT_NUMBER);
+        Field<Integer> column = Objects.requireNonNull(table().field(Tables.LOGS.ATTEMPT_NUMBER));
         return switch (operation) {
-            case EQUALS -> DSL.field(columnName).eq(TypeConverter.toInteger(value));
-            case NOT_EQUALS -> DSL.field(columnName).ne(TypeConverter.toInteger(value));
-            case IN -> DSL.field(columnName).in(toIntegerList(value));
-            case NOT_IN -> DSL.field(columnName).notIn(toIntegerList(value));
+            case EQUALS -> column.eq(TypeConverter.toInteger(value));
+            case NOT_EQUALS -> column.ne(TypeConverter.toInteger(value));
+            case IN -> column.in(toIntegerList(value));
+            case NOT_IN -> column.notIn(toIntegerList(value));
             default -> throw new InvalidQueryFiltersException(
                 "Unsupported operation for ATTEMPT_NUMBER: " + operation
             );
@@ -640,17 +652,17 @@ public abstract class AbstractJdbcRepository {
         return List.of(TypeConverter.toInteger(value));
     }
 
-    Condition applyDateCondition(OffsetDateTime dateTime, QueryFilter.Op operation, String fieldName) {
-        return switch (operation) {
-            case LESS_THAN -> field(fieldName).lessThan(dateTime);
-            case LESS_THAN_OR_EQUAL_TO -> field(fieldName).lessOrEqual(dateTime);
-            case GREATER_THAN -> field(fieldName).greaterThan(dateTime);
-            case GREATER_THAN_OR_EQUAL_TO -> field(fieldName).greaterOrEqual(dateTime);
-            case EQUALS -> field(fieldName).eq(dateTime);
-            case NOT_EQUALS -> field(fieldName).ne(dateTime);
-            default ->
-                throw new InvalidQueryFiltersException("Unsupported operation for date condition: " + operation);
+    Condition applyDateCondition(OffsetDateTime dateTime, QueryFilter.Op operation, Field<?> dateField) {
+        String operator = switch (operation) {
+            case LESS_THAN -> "<";
+            case LESS_THAN_OR_EQUAL_TO -> "<=";
+            case GREATER_THAN -> ">";
+            case GREATER_THAN_OR_EQUAL_TO -> ">=";
+            case EQUALS -> "=";
+            case NOT_EQUALS -> "<>";
+            default -> throw new InvalidQueryFiltersException("Unsupported operation for date condition: " + operation);
         };
+        return DSL.condition("{0} " + operator + " {1}", dateField, DSL.val(dateTime));
     }
 
     private Condition applyScopeCondition(Object value, QueryFilter.Op operation) {
@@ -664,8 +676,8 @@ public abstract class AbstractJdbcRepository {
                 }
                 FlowScope scope = flowScopes.getFirst();
                 yield switch (operation) {
-                    case EQUALS -> FlowScope.USER.equals(scope) ? field("namespace").ne(systemNamespace) : field("namespace").eq(systemNamespace);
-                    case NOT_EQUALS -> FlowScope.USER.equals(scope) ? field("namespace").eq(systemNamespace) : field("namespace").ne(systemNamespace);
+                    case EQUALS -> FlowScope.USER.equals(scope) ? table().field(Tables.FLOWS.NAMESPACE).ne(systemNamespace) : table().field(Tables.FLOWS.NAMESPACE).eq(systemNamespace);
+                    case NOT_EQUALS -> FlowScope.USER.equals(scope) ? table().field(Tables.FLOWS.NAMESPACE).eq(systemNamespace) : table().field(Tables.FLOWS.NAMESPACE).ne(systemNamespace);
                     default -> throw new InvalidQueryFiltersException("Unreachable");
                 };
             }
@@ -675,9 +687,9 @@ public abstract class AbstractJdbcRepository {
                 if (includesUser && includesSystem)
                     yield DSL.noCondition();
                 else if (includesUser)
-                    yield field("namespace").ne(systemNamespace);
+                    yield table().field(Tables.FLOWS.NAMESPACE).ne(systemNamespace);
                 else
-                    yield field("namespace").eq(systemNamespace);
+                    yield table().field(Tables.FLOWS.NAMESPACE).eq(systemNamespace);
             }
             case NOT_IN -> {
                 boolean excludesUser = flowScopes.contains(FlowScope.USER);
@@ -685,9 +697,9 @@ public abstract class AbstractJdbcRepository {
                 if (excludesUser && excludesSystem)
                     yield DSL.falseCondition();
                 else if (excludesUser)
-                    yield field("namespace").eq(systemNamespace);
+                    yield table().field(Tables.FLOWS.NAMESPACE).eq(systemNamespace);
                 else
-                    yield field("namespace").ne(systemNamespace);
+                    yield table().field(Tables.FLOWS.NAMESPACE).ne(systemNamespace);
             }
             default -> throw new InvalidQueryFiltersException("Unsupported operation for SCOPE: " + operation);
         };
@@ -705,8 +717,8 @@ public abstract class AbstractJdbcRepository {
         }
         // A trigger is off for the user when either its runtime flag or its flow definition disables it,
         // so both have to be read here: `disabled` holds only the runtime one.
-        Condition disabled = field("disabled", Boolean.class).isTrue()
-            .or(field("source_disabled", Boolean.class).isTrue());
+        Condition disabled = table().field(Tables.TRIGGERS.DISABLED).isTrue()
+            .or(table().field(Tables.TRIGGERS.SOURCE_DISABLED).isTrue());
 
         boolean matchesDisabled = switch (operation) {
             case EQUALS -> isDisabled;

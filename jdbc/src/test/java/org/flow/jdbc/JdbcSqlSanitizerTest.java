@@ -102,7 +102,7 @@ class JdbcSqlSanitizerTest {
     @Test
     void shouldCollapseInListWhenSqlIsLowercaseWithInlinedLiterals() {
         // Given
-        // mirrors jdbc-postgres's PostgresLogRepositoryService, which builds this shape by hand:
+        // mirrors jdbc-postgres's PostgreSQL enum casts, which builds this shape by hand:
         // lowercase keyword, inlined (not bound) literals, proving the literals' internal commas
         // and casts don't desync the paren-depth scan
         String in = pg().select().from(table("logs"))

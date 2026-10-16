@@ -13,6 +13,9 @@ import org.slf4j.event.Level;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.enums.LogLevel;
+import org.flow.gen.flow.tables.LogsTable;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.models.QueryFilter.Resource;
 import org.flow.core.models.annotations.PluginProperty;
@@ -39,8 +42,14 @@ import reactor.core.publisher.Flux;
 
 public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepository<LogEntry> implements LogDataStoreInterface {
 
-    private static final Condition NORMAL_KIND_CONDITION = field("execution_kind").isNull().or(field("execution_kind").eq(ExecutionKind.NORMAL.name()));
-    private static final String DATE_COLUMN = "timestamp";
+    @Override
+    protected LogsTable table() {
+        return jdbcRepository.getTable(Tables.LOGS);
+    }
+
+    private Condition normalKindCondition() {
+        return table().EXECUTION_KIND.isNull().or(table().EXECUTION_KIND.eq(ExecutionKind.NORMAL.name()));
+    }
 
     @Schema(title = "JDBC URL of a dedicated logs database; leave unset to keep logs in the main backend.")
     @PluginProperty
@@ -127,9 +136,9 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     public Page<LogEntry> find(Pageable pageable, @Nullable String tenantId, @Nullable List<QueryFilter> filters) {
         // Default to NORMAL kind only; an explicit KIND filter overrides that and selects the requested kind(s).
         // The only exception is when a filter specifies an executionId; in this case we should not restrict to any kind so the logs of that execution are always returned.
-        var condition = this.filter(filters, DATE_COLUMN, Resource.LOG);
+        var condition = this.filter(filters, table().TIMESTAMP, Resource.LOG);
         if (!QueryFilter.hasField(filters, QueryFilter.Field.KIND) && !QueryFilter.hasField(filters, QueryFilter.Field.EXECUTION_ID)) {
-            condition = NORMAL_KIND_CONDITION.and(condition);
+            condition = normalKindCondition().and(condition);
         }
         return toOffsetPage(findPage(pageable, tenantId, condition), pageable);
     }
@@ -153,25 +162,25 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
      * Override the mapping for those; the rest of the column names match.
      */
     @Override
-    protected Name getColumnName(QueryFilter.Field field) {
+    protected Field<?> getColumnField(QueryFilter.Field field) {
         if (field == QueryFilter.Field.TASK_RUN_ID) {
-            return DSL.quotedName("taskrun_id");
+            return table().TASKRUN_ID;
         }
         if (field == QueryFilter.Field.KIND) {
-            return DSL.quotedName("execution_kind");
+            return table().EXECUTION_KIND;
         }
-        return super.getColumnName(field);
+        return super.getColumnField(field);
     }
 
     @Override
     public Flux<LogEntry> findAsync(@Nullable String tenantId, List<QueryFilter> filters) {
         // Default to NORMAL kind only; an explicit KIND filter overrides that and selects the requested kind(s).
         // The only exception is when a filter specifies an executionId; in this case we should not restrict to any kind so the logs of that execution are always returned.
-        var condition = this.filter(filters, DATE_COLUMN, Resource.LOG);
+        var condition = this.filter(filters, table().TIMESTAMP, Resource.LOG);
         if (!QueryFilter.hasField(filters, QueryFilter.Field.KIND) && !QueryFilter.hasField(filters, QueryFilter.Field.EXECUTION_ID)) {
-            condition = NORMAL_KIND_CONDITION.and(condition);
+            condition = normalKindCondition().and(condition);
         }
-        return findAsync(tenantId, condition, field(DATE_COLUMN).asc());
+        return findAsync(tenantId, condition, table().TIMESTAMP.asc());
     }
 
     @Override
@@ -182,31 +191,31 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
         @Nullable String afterKey,
         int pageSize) {
         // Same default-kind rule as findAsync: NORMAL only unless a KIND or executionId filter is present.
-        var condition = this.filter(filters, DATE_COLUMN, Resource.LOG);
+        var condition = this.filter(filters, table().TIMESTAMP, Resource.LOG);
         if (!QueryFilter.hasField(filters, QueryFilter.Field.KIND) && !QueryFilter.hasField(filters, QueryFilter.Field.EXECUTION_ID)) {
-            condition = NORMAL_KIND_CONDITION.and(condition);
+            condition = normalKindCondition().and(condition);
         }
 
         // With a key, seek strictly after the (timestamp, key) row; without one (first run or a legacy date-only
         // offset), fall back to a strict timestamp lower bound (which matches the previous START_DATE behaviour).
-        Field<OffsetDateTime> dateField = field(DATE_COLUMN, OffsetDateTime.class);
+        Field<OffsetDateTime> dateField = table().TIMESTAMP;
         OffsetDateTime after = afterTimestamp.atOffset(ZoneOffset.UTC);
         Condition seek = afterKey == null
             ? dateField.gt(after)
-            : DSL.row(dateField, KEY_FIELD).gt(DSL.row(DSL.val(after), DSL.val(afterKey)));
+            : DSL.row(dateField, table().KEY).gt(DSL.row(DSL.val(after), DSL.val(afterKey)));
 
         final Condition finalCondition = condition;
         return this.jdbcRepository.getDslContextWrapper().transactionResult(configuration ->
             DSL.using(configuration)
-                .select(KEY_FIELD, VALUE_FIELD)
-                .from(this.jdbcRepository.getTable())
+                .select(table().KEY, table().VALUE)
+                .from(table())
                 .where(this.defaultFilter(tenantId))
                 .and(finalCondition)
                 .and(seek)
-                .orderBy(dateField.asc(), KEY_FIELD.asc())
+                .orderBy(dateField.asc(), table().KEY.asc())
                 .limit(pageSize)
                 .fetch()
-                .map(record -> new KeyedLog(record.get(KEY_FIELD), this.jdbcRepository.map(record)))
+                .map(record -> new KeyedLog(record.get(table().KEY), this.jdbcRepository.map(record)))
         );
     }
 
@@ -221,17 +230,17 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     }
 
     private List<LogEntry> findByExecutionId(String tenantId, String executionId, Level minLevel, boolean withAccessControl) {
-        return this.query(tenantId, field("execution_id").eq(executionId), minLevel, withAccessControl);
+        return this.query(tenantId, table().EXECUTION_ID.eq(executionId), minLevel, withAccessControl);
     }
 
     @Override
     public Page<LogEntry> findByExecutionId(String tenantId, String executionId, Level minLevel, Pageable pageable) {
-        return toOffsetPage(this.query(tenantId, field("execution_id").eq(executionId), minLevel, pageable), pageable);
+        return toOffsetPage(this.query(tenantId, table().EXECUTION_ID.eq(executionId), minLevel, pageable), pageable);
     }
 
     @Override
     public List<LogEntry> findByExecutionId(String tenantId, String namespace, String flowId, String executionId, Level minLevel) {
-        return this.query(tenantId, field("execution_id").eq(executionId).and(field("namespace").eq(namespace)).and(field("flow_id").eq(flowId)), minLevel, true);
+        return this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().NAMESPACE.eq(namespace)).and(table().FLOW_ID.eq(flowId)), minLevel, true);
     }
 
     @Override
@@ -245,18 +254,18 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     }
 
     private List<LogEntry> findByExecutionIdAndTaskId(String tenantId, String executionId, String taskId, Level minLevel, boolean withAccessControl) {
-        return this.query(tenantId, field("execution_id").eq(executionId).and(field("task_id").eq(taskId)), minLevel, withAccessControl);
+        return this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().TASK_ID.eq(taskId)), minLevel, withAccessControl);
     }
 
     @Override
     public Page<LogEntry> findByExecutionIdAndTaskId(String tenantId, String executionId, String taskId, Level minLevel, Pageable pageable) {
-        return toOffsetPage(this.query(tenantId, field("execution_id").eq(executionId).and(field("task_id").eq(taskId)), minLevel, pageable), pageable);
+        return toOffsetPage(this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().TASK_ID.eq(taskId)), minLevel, pageable), pageable);
     }
 
     @Override
     public List<LogEntry> findByExecutionIdAndTaskId(String tenantId, String namespace, String flowId, String executionId, String taskId, Level minLevel) {
         return this
-            .query(tenantId, field("execution_id").eq(executionId).and(field("namespace").eq(namespace)).and(field("flow_id").eq(flowId)).and(field("task_id").eq(taskId)), minLevel, true);
+            .query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().NAMESPACE.eq(namespace)).and(table().FLOW_ID.eq(flowId)).and(table().TASK_ID.eq(taskId)), minLevel, true);
     }
 
     @Override
@@ -270,12 +279,12 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     }
 
     private List<LogEntry> findByExecutionIdAndTaskRunId(String tenantId, String executionId, String taskRunId, Level minLevel, boolean withAccessControl) {
-        return this.query(tenantId, field("execution_id").eq(executionId).and(field("taskrun_id").eq(taskRunId)), minLevel, withAccessControl);
+        return this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().TASKRUN_ID.eq(taskRunId)), minLevel, withAccessControl);
     }
 
     @Override
     public Page<LogEntry> findByExecutionIdAndTaskRunId(String tenantId, String executionId, String taskRunId, Level minLevel, Pageable pageable) {
-        return toOffsetPage(this.query(tenantId, field("execution_id").eq(executionId).and(field("taskrun_id").eq(taskRunId)), minLevel, pageable), pageable);
+        return toOffsetPage(this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().TASKRUN_ID.eq(taskRunId)), minLevel, pageable), pageable);
     }
 
     @Override
@@ -289,13 +298,13 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     }
 
     private List<LogEntry> findByExecutionIdAndTaskRunIdAndAttempt(String tenantId, String executionId, String taskRunId, Level minLevel, Integer attempt, boolean withAccessControl) {
-        return this.query(tenantId, field("execution_id").eq(executionId).and(field("taskrun_id").eq(taskRunId)).and(field("attempt_number").eq(attempt)), minLevel, withAccessControl);
+        return this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().TASKRUN_ID.eq(taskRunId)).and(table().ATTEMPT_NUMBER.eq(attempt)), minLevel, withAccessControl);
     }
 
     @Override
     public Page<LogEntry> findByExecutionIdAndTaskRunIdAndAttempt(String tenantId, String executionId, String taskRunId, Level minLevel, Integer attempt, Pageable pageable) {
         return toOffsetPage(
-            this.query(tenantId, field("execution_id").eq(executionId).and(field("taskrun_id").eq(taskRunId)).and(field("attempt_number").eq(attempt)), minLevel, pageable), pageable
+            this.query(tenantId, table().EXECUTION_ID.eq(executionId).and(table().TASKRUN_ID.eq(taskRunId)).and(table().ATTEMPT_NUMBER.eq(attempt)), minLevel, pageable), pageable
         );
     }
 
@@ -307,7 +316,7 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
         if (!canPurge()) {
             return 0;
         }
-        return purge(DSL.noCondition(), field("execution_id", String.class).eq(execution.getId()));
+        return purge(DSL.noCondition(), table().EXECUTION_ID.eq(execution.getId()));
     }
 
     @Override
@@ -315,7 +324,7 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
         if (!canPurge()) {
             return 0;
         }
-        return purge(DSL.noCondition(), field("execution_id", String.class).in(executions.stream().map(Execution::getId).toList()));
+        return purge(DSL.noCondition(), table().EXECUTION_ID.in(executions.stream().map(Execution::getId).toList()));
     }
 
     @Override
@@ -329,14 +338,14 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
         {
             DSLContext context = DSL.using(configuration);
 
-            var delete = context.delete(this.jdbcRepository.getTable()).where(this.defaultFilter(tenantId)).and(field("execution_id").eq(executionId));
+            var delete = context.delete(table()).where(this.defaultFilter(tenantId)).and(table().EXECUTION_ID.eq(executionId));
 
             if (taskId != null) {
-                delete = delete.and(field("task_id").eq(taskId));
+                delete = delete.and(table().TASK_ID.eq(taskId));
             }
 
             if (taskRunId != null) {
-                delete = delete.and(field("taskrun_id").eq(taskRunId));
+                delete = delete.and(table().TASKRUN_ID.eq(taskRunId));
             }
 
             if (minLevel != null) {
@@ -344,7 +353,7 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
             }
 
             if (attempt != null) {
-                delete = delete.and(field("attempt_number").eq(attempt));
+                delete = delete.and(table().ATTEMPT_NUMBER.eq(attempt));
             }
 
             delete.execute();
@@ -360,10 +369,10 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
         {
             DSLContext context = DSL.using(configuration);
 
-            var delete = context.delete(this.jdbcRepository.getTable()).where(this.defaultFilter(tenantId)).and(field("namespace").eq(namespace)).and(field("flow_id").eq(flowId));
+            var delete = context.delete(table()).where(this.defaultFilter(tenantId)).and(table().NAMESPACE.eq(namespace)).and(table().FLOW_ID.eq(flowId));
 
             if (triggerId != null) {
-                delete = delete.and(field("trigger_id").eq(triggerId));
+                delete = delete.and(table().TRIGGER_ID.eq(triggerId));
             }
 
             delete.execute();
@@ -380,41 +389,41 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
 
         return this.jdbcRepository.getDslContextWrapper().transactionResult(configuration ->
         {
-            return DSL.using(configuration).delete(this.jdbcRepository.getTable()).where(condition).execute();
+            return DSL.using(configuration).delete(table()).where(condition).execute();
         });
     }
 
     private Condition buildDeleteCondition(String tenantId, String namespace, String flowId, String executionId, List<Level> logLevels, ZonedDateTime startDate, ZonedDateTime endDate,
         boolean purgeExecutionLogs, boolean purgeNonExecutionLogs) {
         Condition condition = this.defaultFilter(tenantId)
-            .and(field(DATE_COLUMN).lessOrEqual(endDate.toOffsetDateTime()));
+            .and(table().TIMESTAMP.lessOrEqual(endDate.toOffsetDateTime()));
 
         if (startDate != null) {
-            condition = condition.and(field(DATE_COLUMN).greaterOrEqual(startDate.toOffsetDateTime()));
+            condition = condition.and(table().TIMESTAMP.greaterOrEqual(startDate.toOffsetDateTime()));
         }
         if (namespace != null) {
             // Without a flowId, the namespace is a prefix: it matches the namespace itself and all
             // its descendants, consistent with the documented behavior and PurgeExecutions. With a
             // flowId, it targets that flow's exact namespace.
             if (flowId != null) {
-                condition = condition.and(field("namespace").eq(namespace));
+                condition = condition.and(table().NAMESPACE.eq(namespace));
             } else {
-                condition = condition.and(field("namespace").eq(namespace).or(field("namespace").startsWith(namespace + ".")));
+                condition = condition.and(table().NAMESPACE.eq(namespace).or(table().NAMESPACE.startsWith(namespace + ".")));
             }
         }
         if (flowId != null) {
-            condition = condition.and(field("flow_id").eq(flowId));
+            condition = condition.and(table().FLOW_ID.eq(flowId));
         }
         if (executionId != null) {
-            condition = condition.and(field("execution_id").eq(executionId));
+            condition = condition.and(table().EXECUTION_ID.eq(executionId));
         }
         if (logLevels != null) {
             condition = condition.and(levelsCondition(logLevels));
         }
         if (purgeExecutionLogs && !purgeNonExecutionLogs) {
-            condition = condition.and(field("execution_id").isNotNull());
+            condition = condition.and(table().EXECUTION_ID.isNotNull());
         } else if (purgeNonExecutionLogs && !purgeExecutionLogs) {
-            condition = condition.and(field("execution_id").isNull());
+            condition = condition.and(table().EXECUTION_ID.isNull());
         }
 
         return condition;
@@ -429,8 +438,8 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
         {
             DSLContext context = DSL.using(configuration);
 
-            var delete = context.delete(this.jdbcRepository.getTable()).where(this.defaultFilter(tenantId));
-            delete = delete.and(this.filter(filters, DATE_COLUMN, Resource.LOG));
+            var delete = context.delete(table()).where(this.defaultFilter(tenantId));
+            delete = delete.and(this.filter(filters, table().TIMESTAMP, Resource.LOG));
 
             return delete.execute();
         });
@@ -444,7 +453,7 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     private List<LogEntry> query(String tenantId, Condition condition, Level minLevel, boolean withAccessControl) {
         var defaultFilter = withAccessControl ? this.defaultFilter(tenantId) : this.defaultFilterWithNoACL(tenantId);
         var theCondition = minLevel != null ? condition.and(minLevel(minLevel)) : condition;
-        return find(defaultFilter, theCondition, field(DATE_COLUMN).sort(SortOrder.ASC));
+        return find(defaultFilter, theCondition, table().TIMESTAMP.sort(SortOrder.ASC));
     }
 
     private Condition minLevel(Level minLevel) {
@@ -452,11 +461,11 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
     }
 
     protected Condition levelsCondition(List<Level> levels) {
-        return field("level").in(levels.stream().map(level -> level.name()).toList());
+        return table().LEVEL.in(levels.stream().map(level -> LogLevel.valueOf(level.name())).toList());
     }
 
     protected Condition notLevelsCondition(List<Level> levels) {
-        return field("level").notIn(levels.stream().map(level -> level.name()).toList());
+        return table().LEVEL.notIn(levels.stream().map(level -> LogLevel.valueOf(level.name())).toList());
     }
 
     @Override
@@ -482,8 +491,8 @@ public abstract class AbstractJdbcLogDataStore extends AbstractJdbcCrudRepositor
             case NAMESPACES -> {
                 List<Condition> ors = new ArrayList<>();
                 for (String namespace : scope.namespaces()) {
-                    ors.add(field("namespace").eq(namespace));
-                    ors.add(field("namespace").startsWith(namespace + "."));
+                    ors.add(table().NAMESPACE.eq(namespace));
+                    ors.add(table().NAMESPACE.startsWith(namespace + "."));
                 }
                 yield DSL.or(ors);
             }

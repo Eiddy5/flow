@@ -7,6 +7,8 @@ import java.util.Optional;
 import org.jooq.Field;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.ConcurrencyLimitTable;
 import org.flow.core.repositories.ConcurrencyLimitRepositoryInterface;
 import org.flow.core.runners.ConcurrencyLimit;
 
@@ -18,6 +20,11 @@ public class AbstractJdbcConcurrencyLimitRepository extends AbstractJdbcReposito
     }
 
     @Override
+    protected ConcurrencyLimitTable table() {
+        return jdbcRepository.getTable(Tables.CONCURRENCY_LIMIT);
+    }
+
+    @Override
     public List<ConcurrencyLimit> find(String tenantId) {
         return this.jdbcRepository
             .getDslContextWrapper()
@@ -25,8 +32,8 @@ public class AbstractJdbcConcurrencyLimitRepository extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(field("value"))
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.buildTenantCondition(tenantId));
 
                 return this.jdbcRepository.fetch(select);
@@ -35,7 +42,7 @@ public class AbstractJdbcConcurrencyLimitRepository extends AbstractJdbcReposito
 
     @Override
     public ConcurrencyLimit update(ConcurrencyLimit concurrencyLimit) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(concurrencyLimit);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(concurrencyLimit);
         this.jdbcRepository.persist(concurrencyLimit, fields);
 
         return concurrencyLimit;
@@ -55,11 +62,11 @@ public class AbstractJdbcConcurrencyLimitRepository extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(field("value"))
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.buildTenantCondition(tenantId))
-                    .and(field("namespace").eq(namespace))
-                    .and(field("flow_id").eq(flowId));
+                    .and(table().NAMESPACE.eq(namespace))
+                    .and(table().FLOW_ID.eq(flowId));
                 return this.jdbcRepository.fetchOne(select);
             });
     }

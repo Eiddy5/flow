@@ -14,9 +14,10 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.flow.gen.flow.Tables.METRICS;
 
 /**
- * Pins the UTC semantics of {@link PostgresRepositoryUtils#utcTimestampField(String)}.
+ * Pins the UTC semantics of {@link PostgresRepositoryUtils#utcTimestampField(Field)}.
  * <p>
  * Postgres date columns are {@code TIMESTAMPTZ}. A plain {@code cast(... as timestamp)} resolves in
  * the session timezone, which pgjdbc sets from the JVM default — so date parts extracted that way
@@ -54,10 +55,11 @@ class PostgresUtcTimestampFieldTest {
                     context.execute("INSERT INTO utc_timestamp_field_test VALUES ({0}::timestamptz)", DSL.val(INSTANT.toString()));
 
                     // When extracting date parts the way groupByFields does
-                    Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField("timestamp");
+                    var table = METRICS.rename("utc_timestamp_field_test");
+                    Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField(table.TIMESTAMP);
                     Record2<Integer, Integer> parts = context
                         .select(DSL.day(timestamp), DSL.hour(timestamp))
-                        .from(DSL.table(DSL.name("utc_timestamp_field_test")))
+                        .from(table)
                         .fetchSingle();
 
                     // Then they are the UTC wall-clock parts, not the session-zone ones
@@ -75,7 +77,7 @@ class PostgresUtcTimestampFieldTest {
     @Test
     void shouldRenderAtTimeZoneUtcRatherThanAPlainCast() {
         // Given the grouping timestamp expression for Postgres
-        Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField("timestamp");
+        Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField(METRICS.TIMESTAMP);
 
         // When rendering it
         String sql = DSL.using(SQLDialect.POSTGRES).render(DSL.hour(timestamp));

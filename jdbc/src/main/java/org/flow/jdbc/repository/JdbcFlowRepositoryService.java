@@ -1,68 +1,40 @@
 package org.flow.jdbc.repository;
 
-import java.util.ArrayList;
-import java.util.List;
-
-import org.jooq.*;
+import org.flow.core.models.flows.FlowInterface;
+import org.flow.gen.flow.Tables;
+import org.flow.jdbc.AbstractJdbcRepository;
+import org.jooq.Field;
 import org.jooq.Record;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 
-import org.flow.core.models.flows.FlowInterface;
-import org.flow.jdbc.AbstractJdbcRepository;
-
-import static org.flow.jdbc.repository.AbstractJdbcRepository.field;
-
 public abstract class JdbcFlowRepositoryService {
-    public static Table<Record> lastRevision(AbstractJdbcRepository<? extends FlowInterface> jdbcRepository, boolean asterisk) {
-        return lastRevision(jdbcRepository, asterisk, false);
+    public static Table<Record> lastRevision(AbstractJdbcRepository<? extends FlowInterface> repository) {
+        return lastRevision(repository, false);
     }
 
-    /**
-     * Same shape as {@link #lastRevision(AbstractJdbcRepository, boolean)} but, when
-     * {@code excludeDraft} is true, ignores draft revisions before computing the row number.
-     * A flow whose latest revision is a draft therefore resolves to its most recent non-draft
-     * revision, and a flow with only draft revisions returns no row at all. This is the lookup
-     * used when starting a new execution without an explicit revision.
-     */
-    public static Table<Record> lastNonDraftRevision(AbstractJdbcRepository<? extends FlowInterface> jdbcRepository, boolean asterisk) {
-        return lastRevision(jdbcRepository, asterisk, true);
+    /** 在计算最新版本前排除草稿，只有草稿的流程不会返回。 */
+    public static Table<Record> lastNonDraftRevision(AbstractJdbcRepository<? extends FlowInterface> repository) {
+        return lastRevision(repository, true);
     }
 
-    private static Table<Record> lastRevision(AbstractJdbcRepository<? extends FlowInterface> jdbcRepository, boolean asterisk, boolean excludeDraft) {
-        List<SelectFieldOrAsterisk> fields = new ArrayList<>();
-        if (asterisk) {
-            fields.add(jdbcRepository.getTable().asterisk());
-        } else {
-            fields.add(field("key", String.class));
-            fields.add(field("revision", Integer.class));
-        }
-
-        fields.add(
-            DSL.rowNumber()
-                .over()
-                .partitionBy(List.of(field("tenant_id"), field("namespace"), field("id")))
-                .orderBy(field("revision").desc())
-                .as("revision_rows")
-        );
-
-        return jdbcRepository
-            .getDslContextWrapper()
-            .transactionResult(configuration ->
-            {
-                DSLContext context = DSL.using(configuration);
-
-                var inner = context.select(fields)
-                    .from(jdbcRepository.getTable());
-
-                var innerQuery = excludeDraft
-                    ? inner.where(field("draft", Boolean.class).isFalse())
-                    : inner;
-
-                return context.select(DSL.asterisk())
-                    .from(innerQuery.asTable("rev_ord"))
-                    .where(field("revision_rows").eq(1))
-                    .asTable("rev");
-            });
+    /** 将最新版本键关联回生成表，外层查询始终使用同一组生成字段。 */
+    private static Table<Record> lastRevision(AbstractJdbcRepository<? extends FlowInterface> repository, boolean excludeDraft) {
+        var flows = repository.getTable(Tables.FLOWS);
+        Field<Integer> rowNumber = DSL.rowNumber().over()
+            .partitionBy(flows.TENANT_ID, flows.NAMESPACE, flows.ID)
+            .orderBy(flows.REVISION.desc())
+            .as("revision_rows");
+        var ranked = DSL.select(flows.KEY, flows.REVISION, rowNumber)
+            .from(flows)
+            .where(excludeDraft ? flows.DRAFT.isFalse() : DSL.noCondition())
+            .asTable("ranked_flows");
+        var latest = DSL.select(ranked.field(flows.KEY), ranked.field(flows.REVISION))
+            .from(ranked)
+            .where(ranked.field(rowNumber).eq(1))
+            .asTable("latest_flows");
+        return flows.join(latest)
+            .on(flows.KEY.eq(latest.field(flows.KEY)))
+            .and(flows.REVISION.eq(latest.field(flows.REVISION)));
     }
-
 }

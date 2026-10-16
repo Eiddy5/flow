@@ -19,6 +19,7 @@ import org.jooq.impl.DSL;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.flow.gen.flow.Tables;
 import org.flow.core.exceptions.DeserializationException;
 import org.flow.core.models.HasUID;
 import org.flow.core.models.executions.metrics.MetricAggregation;
@@ -35,7 +36,7 @@ import lombok.Setter;
 import lombok.SneakyThrows;
 
 import static org.flow.core.utils.CaseUtils.camelToSnake;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.*;
+
 
 public abstract class AbstractJdbcRepository<T> {
     protected static final ObjectMapper MAPPER = JacksonMapper.ofJson();
@@ -60,8 +61,6 @@ public abstract class AbstractJdbcRepository<T> {
     @Getter
     protected Table<Record> table;
 
-    /** Lazily loaded and cached by {@link #sortableColumns()}: the schema does not change at runtime. */
-    private volatile Map<String, String> sortableColumns;
 
     @SuppressWarnings("unchecked")
     public AbstractJdbcRepository(
@@ -69,10 +68,27 @@ public abstract class AbstractJdbcRepository<T> {
         JooqDSLContextWrapper dslContextWrapper) {
         this.cls = (Class<T>) tableConfig.cls();
         this.dslContextWrapper = dslContextWrapper;
-        this.table = DSL.table(tableConfig.table());
+        this.table = tableConfig.jooqTable();
     }
 
-    abstract public Condition fullTextCondition(List<String> fields, String query);
+    /** Returns the configured instance of the requested generated table type. */
+    @SuppressWarnings("unchecked")
+    public <TABLE extends Table<?>> TABLE getTable(TABLE generatedTable) {
+        if (!generatedTable.getClass().isInstance(table)) {
+            throw new IllegalArgumentException("Repository table is not " + generatedTable.getName());
+        }
+        return (TABLE) table;
+    }
+
+    public Field<String> keyField() {
+        return java.util.Objects.requireNonNull(table.field(Tables.FLOWS.KEY));
+    }
+
+    public Field<JSONB> valueField() {
+        return java.util.Objects.requireNonNull(table.field(Tables.FLOWS.VALUE));
+    }
+
+    abstract public Condition fullTextCondition(List<? extends Field<?>> fields, String query);
 
     public String key(T entity) {
         String key = entity instanceof HasUID hasUID ? hasUID.uid() : null;
@@ -85,9 +101,9 @@ public abstract class AbstractJdbcRepository<T> {
     }
 
     @SneakyThrows
-    public Map<Field<Object>, Object> persistFields(T entity) {
-        Map<Field<Object>, Object> fields = HashMap.newHashMap(1);
-        fields.put(VALUE_FIELD, MAPPER.writeValueAsString(entity));
+    public Map<Field<?>, Object> persistFields(T entity) {
+        Map<Field<?>, Object> fields = HashMap.newHashMap(1);
+        fields.put(valueField(), JSONB.valueOf(MAPPER.writeValueAsString(entity)));
         return fields;
     }
 
@@ -100,7 +116,7 @@ public abstract class AbstractJdbcRepository<T> {
         {
             T entity = defaultEntity.get();
             dslContext.insertInto(this.getTable())
-                .set(KEY_FIELD, this.key(entity))
+                .set(keyField(), this.key(entity))
                 .set(this.persistFields(entity))
                 .onDuplicateKeyIgnore()
                 .execute();
@@ -145,7 +161,7 @@ public abstract class AbstractJdbcRepository<T> {
      * @see #update(T, Map)
      * @see #update(T, DSLContext, Map)
      */
-    public void persist(T entity, Map<Field<Object>, Object> fields) {
+    public void persist(T entity, Map<Field<?>, Object> fields) {
         dslContextWrapper.transaction(
             configuration -> this.persist(entity, DSL.using(configuration), fields)
         );
@@ -161,12 +177,12 @@ public abstract class AbstractJdbcRepository<T> {
      * @see #update(T, Map)
      * @see #update(T, DSLContext, Map)
      */
-    public void persist(T entity, DSLContext dslContext, Map<Field<Object>, Object> fields) {
-        Map<Field<Object>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
+    public void persist(T entity, DSLContext dslContext, Map<Field<?>, Object> fields) {
+        Map<Field<?>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
 
         dslContext
             .insertInto(table)
-            .set(KEY_FIELD, key(entity))
+            .set(keyField(), key(entity))
             .set(finalFields)
             .onDuplicateKeyUpdate()
             .set(excluded(finalFields))
@@ -179,8 +195,8 @@ public abstract class AbstractJdbcRepository<T> {
      * binding the (potentially large) value a second time. jOOQ renders this per-dialect: the
      * {@code EXCLUDED} pseudo-table on PostgreSQL.
      */
-    protected static Map<Field<Object>, Object> excluded(Map<Field<Object>, Object> fields) {
-        Map<Field<Object>, Object> excluded = HashMap.newHashMap(fields.size());
+    protected static Map<Field<?>, Object> excluded(Map<Field<?>, Object> fields) {
+        Map<Field<?>, Object> excluded = HashMap.newHashMap(fields.size());
         fields.keySet().forEach(field -> excluded.put(field, DSL.excluded(field)));
         return excluded;
     }
@@ -209,7 +225,7 @@ public abstract class AbstractJdbcRepository<T> {
      * @see #persist(Object, Map)
      * @see #persist(Object, DSLContext, Map)
      */
-    public void update(T entity, Map<Field<Object>, Object> fields) {
+    public void update(T entity, Map<Field<?>, Object> fields) {
         dslContextWrapper.transaction(
             configuration -> this.persist(entity, DSL.using(configuration), fields)
         );
@@ -225,13 +241,13 @@ public abstract class AbstractJdbcRepository<T> {
      * @see #persist(Object, Map)
      * @see #persist(Object, DSLContext, Map)
      */
-    public void update(T entity, DSLContext dslContext, Map<Field<Object>, Object> fields) {
-        Map<Field<Object>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
+    public void update(T entity, DSLContext dslContext, Map<Field<?>, Object> fields) {
+        Map<Field<?>, Object> finalFields = fields == null ? this.persistFields(entity) : fields;
 
         dslContext
             .update(table)
             .set(finalFields)
-            .where(KEY_FIELD.eq(key(entity)))
+            .where(keyField().eq(key(entity)))
             .execute();
     }
 
@@ -247,7 +263,7 @@ public abstract class AbstractJdbcRepository<T> {
         });
     }
 
-    public int persistBatch(Map<T, Map<Field<Object>, Object>> itemWithFields) {
+    public int persistBatch(Map<T, Map<Field<?>, Object>> itemWithFields) {
         return dslContextWrapper.transactionResult(configuration ->
         {
             DSLContext dslContext = DSL.using(configuration);
@@ -259,12 +275,12 @@ public abstract class AbstractJdbcRepository<T> {
         });
     }
 
-    protected InsertOnDuplicateSetMoreStep<Record> buildInsertRequest(T entity, Map<Field<Object>, Object> fields,
+    protected InsertOnDuplicateSetMoreStep<Record> buildInsertRequest(T entity, Map<Field<?>, Object> fields,
         DSLContext dslContext) {
 
         return dslContext
             .insertInto(table)
-            .set(KEY_FIELD, key(entity))
+            .set(keyField(), key(entity))
             .set(fields)
             .onDuplicateKeyUpdate()
             .set(excluded(fields));
@@ -280,7 +296,7 @@ public abstract class AbstractJdbcRepository<T> {
     public int delete(DSLContext dslContext, T entity) {
         DeleteConditionStep<Record> key = dslContext
             .delete(table)
-            .where(KEY_FIELD.eq(key(entity)));
+            .where(keyField().eq(key(entity)));
 
         return key.execute();
     }
@@ -289,7 +305,7 @@ public abstract class AbstractJdbcRepository<T> {
         if (deserializer != null) {
             return deserializer.apply(record);
         } else {
-            return this.deserialize(record.get("value", String.class));
+            return this.deserialize(record.get(valueField()).data());
         }
     }
 
@@ -297,8 +313,8 @@ public abstract class AbstractJdbcRepository<T> {
         Instant date = getDate(record, groupByType);
         return MetricAggregation
             .builder()
-            .name(record.get("metric_name", String.class))
-            .value(record.get("metric_value", Double.class))
+            .name(record.get(Tables.METRICS.METRIC_NAME))
+            .value(record.get(Tables.METRICS.METRIC_VALUE, Double.class))
             .date(date)
             .build();
 
@@ -386,7 +402,7 @@ public abstract class AbstractJdbcRepository<T> {
 
     public <R extends Record> SelectConditionStep<R> sort(SelectConditionStep<R> select, Pageable pageable) {
         if (pageable != null && pageable.getSort().isSorted()) {
-            Map<String, String> sortableColumns = this.sortableColumns();
+            Map<String, Field<?>> sortableColumns = this.sortableColumns();
 
             pageable
                 .getSort()
@@ -398,7 +414,7 @@ public abstract class AbstractJdbcRepository<T> {
                         throw new IllegalArgumentException("Invalid sort field");
                     }
 
-                    String column = sortableColumns.get(camelToSnake(property).toLowerCase());
+                    Field<?> column = sortableColumns.get(camelToSnake(property).toLowerCase());
                     if (column == null) {
                         column = sortableColumns.get(property.toLowerCase());
                     }
@@ -406,9 +422,7 @@ public abstract class AbstractJdbcRepository<T> {
                         throw new IllegalArgumentException("The sort field '%s' does not exist on this resource.".formatted(property));
                     }
 
-                    Field<Object> field = DSL.field(DSL.name(column));
-
-                    select.orderBy(order.getDirection() == Sort.Order.Direction.ASC ? field.asc().nullsFirst() : field.desc().nullsLast());
+                    select.orderBy(order.getDirection() == Sort.Order.Direction.ASC ? column.asc().nullsFirst() : column.desc().nullsLast());
                 });
         }
 
@@ -418,41 +432,14 @@ public abstract class AbstractJdbcRepository<T> {
     /**
      * The columns of {@link #table} that a client may sort on, keyed by their lowercased name, excluding {@link #NON_SORTABLE_COLUMNS}.
      */
-    private Map<String, String> sortableColumns() {
-        Map<String, String> columns = this.sortableColumns;
-        if (columns == null) {
-            synchronized (this) {
-                columns = this.sortableColumns;
-                if (columns == null) {
-                    columns = this.sortableColumns = this.loadSortableColumns();
-                }
+    private Map<String, Field<?>> sortableColumns() {
+        Map<String, Field<?>> columns = new HashMap<>();
+        for (Field<?> field : table.fields()) {
+            if (!NON_SORTABLE_COLUMNS.contains(field.getName().toLowerCase())) {
+                columns.put(field.getName().toLowerCase(), field);
             }
         }
-
         return columns;
-    }
-
-    private Map<String, String> loadSortableColumns() {
-        return this.dslContextWrapper.transactionResult(configuration ->
-        {
-            DSLContext context = DSL.using(configuration);
-            // Resolve the same relation PostgreSQL uses for the query, including search_path
-            // and an explicit schema. Enumerating all schemas mixes unrelated same-name tables
-            // and makes metadata lookup grow with every schema in the database.
-            List<String> names = context.fetch("""
-                SELECT attname
-                FROM pg_catalog.pg_attribute
-                WHERE attrelid = pg_catalog.to_regclass(?)
-                  AND attnum > 0 AND NOT attisdropped
-                """, context.render(this.table)).getValues("attname", String.class);
-            Map<String, String> columns = new HashMap<>();
-            for (String name : names) {
-                if (!NON_SORTABLE_COLUMNS.contains(name.toLowerCase())) {
-                    columns.put(name.toLowerCase(), name);
-                }
-            }
-            return columns;
-        });
     }
 
     protected <R extends Record> Select<R> limit(SelectConditionStep<R> select, Pageable pageable) {

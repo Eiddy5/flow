@@ -59,9 +59,9 @@ public abstract class AbstractJdbcDeserializationIssuesTest {
 
     private void sendToQueue(DeserializationIssuesCaseTest.QueueMessage queueMessage) {
 
-        Table<Record> table = DSL.table(jdbcTableConfigs.tableConfig("queues").table());
+        var table = jdbcTableConfigs.tableConfig("queues").jooqTable();
 
-        Map<Field<Object>, Object> fields = fields(queueMessage);
+        Map<Field<?>, Object> fields = fields(queueMessage);
 
         dslContextWrapper.transaction(configuration ->
         {
@@ -74,13 +74,14 @@ public abstract class AbstractJdbcDeserializationIssuesTest {
         });
     }
 
-    protected Map<Field<Object>, Object> fields(DeserializationIssuesCaseTest.QueueMessage queueMessage) {
+    protected Map<Field<?>, Object> fields(DeserializationIssuesCaseTest.QueueMessage queueMessage) {
+        var table = (org.flow.gen.flow.tables.QueuesTable) (Object) jdbcTableConfigs.tableConfig("queues").jooqTable();
         String queueName = CaseFormat.UPPER_CAMEL.to(CaseFormat.LOWER_UNDERSCORE, queueMessage.type().getSimpleName());
-        Map<Field<Object>, Object> fields = new HashMap<>();
-        fields.put(AbstractJdbcRepository.field("type"), queueName);
-        fields.put(AbstractJdbcRepository.field("key"), queueMessage.key() != null ? queueMessage.key() : IdUtils.create());
-        fields.put(AbstractJdbcRepository.field("value"), JSONB.valueOf(queueMessage.value()));
-        fields.put(AbstractJdbcRepository.field("created"), LocalDateTime.now());
+        Map<Field<?>, Object> fields = new HashMap<>();
+        fields.put(table.TYPE, queueName);
+        fields.put(table.KEY, queueMessage.key() != null ? queueMessage.key() : IdUtils.create());
+        fields.put(table.VALUE, JSONB.valueOf(queueMessage.value()));
+        fields.put(table.CREATED, java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC));
         return fields;
     }
 

@@ -49,12 +49,17 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
         this.jdbcRepository = jdbcRepository;
     }
 
+    @Override
+    protected Table<?> table() {
+        return jdbcRepository.getTable();
+    }
+
     /**
      * Creates an item: persist it inside the database and return it.
      * It uses an insert on conflict update to avoid concurrent write issues.
      */
     public T create(T item) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(item);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(item);
         this.jdbcRepository.persist(item, fields);
 
         return item;
@@ -65,7 +70,7 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
      * It uses an insert on conflict update to avoid concurrent write issues.
      */
     public T save(T item) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(item);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(item);
         this.jdbcRepository.persist(item, fields);
 
         return item;
@@ -76,7 +81,7 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
      * It uses an insert on conflict update to avoid concurrent write issues.
      */
     public T save(DSLContext context, T item) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(item);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(item);
         this.jdbcRepository.persist(item, context, fields);
 
         return item;
@@ -110,9 +115,9 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
             .transactionResult(configuration ->
             {
                 DSL.using(configuration)
-                    .update(this.jdbcRepository.getTable())
+                    .update(table())
                     .set(this.jdbcRepository.persistFields((current)))
-                    .where(KEY_FIELD.eq(uid))
+                    .where(keyField().eq(uid))
                     .execute();
 
                 return current;
@@ -179,7 +184,7 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
             .getDslContextWrapper()
             .transactionResult(
                 configuration -> DSL.using(configuration)
-                    .delete(this.jdbcRepository.getTable())
+                    .delete(table())
                     .where(defaultFilter)
                     .and(condition)
                     .execute()
@@ -229,8 +234,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(valueField())
+                    .from(table())
                     .where(defaultFilter)
                     .and(condition);
 
@@ -281,8 +286,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(valueField())
+                    .from(table())
                     .where(defaultFilter)
                     .and(condition);
 
@@ -336,8 +341,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
                     DSLContext context = DSL.using(configuration);
 
                     var select = context
-                        .select(VALUE_FIELD)
-                        .from(this.jdbcRepository.getTable())
+                        .select(valueField())
+                        .from(table())
                         .where(defaultFilter)
                         .and(condition);
 
@@ -394,8 +399,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
                 DSLContext context = DSL.using(configuration);
 
                 var select = context
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(valueField())
+                    .from(table())
                     .where(defaultFilter)
                     .and(condition);
 
@@ -428,8 +433,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(valueField())
+                    .from(table())
                     .where(defaultFilter);
 
                 return this.jdbcRepository.fetch(select);
@@ -461,8 +466,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
                     DSLContext context = DSL.using(configuration);
 
                     var select = context
-                        .select(VALUE_FIELD)
-                        .from(this.jdbcRepository.getTable())
+                        .select(valueField())
+                        .from(table())
                         .where(defaultFilter);
 
                     try (var stream = select.fetchSize(FETCH_SIZE).stream()) {
@@ -487,8 +492,8 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(valueField())
+                    .from(table())
                     .where(this.defaultFilter());
 
                 return this.jdbcRepository.fetch(select);
@@ -498,9 +503,9 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
     /**
      * Returns distinct values of {@code field}, optionally narrowed by {@code filters}.
      * <p>
-     * Filters are routed through {@link #filter(List, String, QueryFilter.Resource)} which validates
+     * Filters are routed through {@link #filter(List, Field, QueryFilter.Resource)} which validates
      * them against {@code resource} and combines each filter's condition via
-     * {@link #getConditionOnField}. Per-repository {@link #getColumnName} overrides (e.g.
+     * {@link #getConditionOnField}. Per-repository {@link #getColumnField} overrides (e.g.
      * FLOW_ID → {@code id} on flows, → {@code detail_flow_id} on audit logs) are therefore
      * honored. Pass {@code null} or an empty filter list to fetch the full distinct set under
      * the tenant default filter.
@@ -513,7 +518,7 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
         List<QueryFilter> filters,
         Pageable pageable,
         QueryFilter.Resource resource) {
-        Field<String> column = DSL.field(getColumnName(field), String.class);
+        Field<?> column = getColumnField(field);
         Condition where = defaultFilter(tenantId).and(filter(filters, null, resource));
 
         return this.jdbcRepository
@@ -522,11 +527,11 @@ public abstract class AbstractJdbcCrudRepository<T> extends AbstractJdbcReposito
                 configuration -> DSL
                     .using(configuration)
                     .selectDistinct(column)
-                    .from(this.jdbcRepository.getTable())
+                    .from(table())
                     .where(where)
                     .orderBy(column.asc())
                     .limit(pageable.getSize())
-                    .fetch(column)
+                    .fetch(column, String.class)
             );
     }
 

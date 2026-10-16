@@ -7,15 +7,22 @@ import java.util.Optional;
 import org.jooq.Field;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.LocksTable;
 import org.flow.core.lock.Lock;
 import org.flow.core.repositories.LockRepositoryInterface;
 import org.flow.core.utils.IdUtils;
 
 public class AbstractJdbcLockRepository extends AbstractJdbcRepository implements LockRepositoryInterface {
-    private final org.flow.jdbc.AbstractJdbcRepository<Lock> jdbcRepository;
+    private org.flow.jdbc.AbstractJdbcRepository<Lock> jdbcRepository;
 
     public AbstractJdbcLockRepository(org.flow.jdbc.AbstractJdbcRepository<Lock> jdbcRepository) {
         this.jdbcRepository = jdbcRepository;
+    }
+
+    @Override
+    protected LocksTable table() {
+        return jdbcRepository.getTable(Tables.LOCKS);
     }
 
     @Override
@@ -25,20 +32,20 @@ public class AbstractJdbcLockRepository extends AbstractJdbcRepository implement
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
-                    .where(KEY_FIELD.eq(IdUtils.fromParts(category, id)));
+                    .select(table().VALUE)
+                    .from(table())
+                    .where(table().KEY.eq(IdUtils.fromParts(category, id)));
                 return this.jdbcRepository.fetchOne(select);
             });
     }
 
     @Override
     public boolean create(Lock newLock) {
-        Map<Field<Object>, Object> finalFields = this.jdbcRepository.persistFields(newLock);
+        Map<Field<?>, Object> finalFields = this.jdbcRepository.persistFields(newLock);
         return jdbcRepository.getDslContextWrapper()
             .transactionResult(configuration -> DSL.using(configuration)
-                .insertInto(this.jdbcRepository.getTable())
-                .set(KEY_FIELD, newLock.uid())
+                .insertInto(table())
+                .set(table().KEY, newLock.uid())
                 .set(finalFields)
                 .onDuplicateKeyIgnore()
                 .execute() > 0);
@@ -49,8 +56,8 @@ public class AbstractJdbcLockRepository extends AbstractJdbcRepository implement
         this.jdbcRepository.getDslContextWrapper()
             .transaction(
                 configuration -> DSL.using(configuration)
-                    .delete(this.jdbcRepository.getTable())
-                    .where(KEY_FIELD.eq(IdUtils.fromParts(category, id)))
+                    .delete(table())
+                    .where(table().KEY.eq(IdUtils.fromParts(category, id)))
                     .execute()
             );
     }
@@ -62,13 +69,13 @@ public class AbstractJdbcLockRepository extends AbstractJdbcRepository implement
             {
                 var dslContext = DSL.using(configuration);
                 var select = dslContext
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
-                    .where(field("owner").eq(owner));
+                    .select(table().VALUE)
+                    .from(table())
+                    .where(table().OWNER.eq(owner));
                 var locks = this.jdbcRepository.fetch(select);
                 dslContext
-                    .delete(this.jdbcRepository.getTable())
-                    .where(field("owner").eq(owner))
+                    .delete(table())
+                    .where(table().OWNER.eq(owner))
                     .execute();
                 return locks;
             }

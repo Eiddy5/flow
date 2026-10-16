@@ -19,6 +19,8 @@ import org.jooq.Field;
 import org.jooq.SelectConditionStep;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.ExecutionStatisticsTable;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.models.executions.statistics.DailyExecutionStatistics;
 import org.flow.core.models.executions.statistics.ExecutionStatistic;
@@ -37,10 +39,11 @@ import io.micronaut.core.annotation.Nullable;
  * <p>
  */
 public abstract class AbstractJdbcExecutionStatisticsRepository extends AbstractJdbcCrudRepository<ExecutionStatistic> implements ExecutionStatisticsRepositoryInterface {
-    // Package-private: referenced by ExecutionStatisticsCompactor, which shares this table but isn't part of this class's hierarchy.
-    static final Field<String> NAMESPACE_FIELD = field("namespace", String.class);
-    static final Field<String> FLOW_ID_FIELD = field("flow_id", String.class);
-    static final Field<Object> DATE_FIELD = field("date");
+
+    @Override
+    protected ExecutionStatisticsTable table() {
+        return jdbcRepository.getTable(Tables.EXECUTION_STATISTICS);
+    }
 
     public AbstractJdbcExecutionStatisticsRepository(org.flow.jdbc.AbstractJdbcRepository<ExecutionStatistic> jdbcRepository) {
         super(jdbcRepository);
@@ -76,18 +79,18 @@ public abstract class AbstractJdbcExecutionStatisticsRepository extends Abstract
                 DSLContext context = DSL.using(configuration);
 
                 SelectConditionStep<?> select = context
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.defaultFilter(tenantId))
-                    .and(DATE_FIELD.greaterOrEqual(bindableDate(startDate)))
-                    .and(DATE_FIELD.lessOrEqual(bindableDate(endDate)));
+                    .and(table().DATE.greaterOrEqual(bindableDate(startDate)))
+                    .and(table().DATE.lessOrEqual(bindableDate(endDate)));
 
                 if (namespace != null) {
-                    select = select.and(NAMESPACE_FIELD.eq(namespace));
+                    select = select.and(table().NAMESPACE.eq(namespace));
                 }
 
                 if (flowId != null) {
-                    select = select.and(FLOW_ID_FIELD.eq(flowId));
+                    select = select.and(table().FLOW_ID.eq(flowId));
                 }
 
                 return this.jdbcRepository.fetch(select);
@@ -111,10 +114,10 @@ public abstract class AbstractJdbcExecutionStatisticsRepository extends Abstract
                 DSLContext context = DSL.using(configuration);
 
                 SelectConditionStep<?> select = context
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
-                    .where(DATE_FIELD.greaterOrEqual(bindableDate(startDate)))
-                    .and(DATE_FIELD.lessOrEqual(bindableDate(endDate)));
+                    .select(table().VALUE)
+                    .from(table())
+                    .where(table().DATE.greaterOrEqual(bindableDate(startDate)))
+                    .and(table().DATE.lessOrEqual(bindableDate(endDate)));
 
                 return this.jdbcRepository.fetch(select);
             });
@@ -141,8 +144,8 @@ public abstract class AbstractJdbcExecutionStatisticsRepository extends Abstract
     /**
      * Tenant-null-safe equality condition on {@code tenant_id}.
      */
-    static Condition tenantCondition(String tenantId) {
-        return tenantId == null ? TENANT_ID_FIELD.isNull() : TENANT_ID_FIELD.eq(tenantId);
+    private Condition tenantCondition(String tenantId) {
+        return tenantId == null ? table().TENANT_ID.isNull() : table().TENANT_ID.eq(tenantId);
     }
 
     /**

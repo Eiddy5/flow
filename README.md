@@ -17,8 +17,12 @@
 聚合，需连同依赖使用；单独复制根 JAR 不会包含所有模块。目前没有发布新 Maven 制品。
 
 Micronaut 按 main 的内部仓库与 BOM 方式接入，依赖统一由 TOML 管理，各模块继续
-按实际需要声明框架组件，不引入其他 PaaS 模块。调用工程需自行配置内部 Micronaut
-仓库，配置方式和版本边界见 [依赖管理](docs/harness/dependency-management.md#内部-micronaut-与消费方仓库)。
+按实际需要声明框架组件。数据库对象由 gen 使用 CSES 同款内部 jOOQ 生成器和
+`JooqPojo` 生成，数据库存储直接使用生成表及字段；保留生成对象和内部 Bean 装配必要的 PaaS/Pulsar 依赖；Flow 队列仍
+使用 JDBC，内部 DB 事件与消费者默认关闭，宿主显式配置可覆盖。生产依赖排除
+HTTP Server Netty 和生成工具。调用工程需自行
+配置内部仓库，框架规则见 [依赖管理](docs/harness/dependency-management.md#内部-micronaut-与消费方仓库)，
+jOOQ/PaaS 依赖边界和生成命令见 [生成指南](docs/harness/jooq-generation.md)。
 
 ## 构建与验证
 
@@ -35,6 +39,9 @@ python3 verify-upstream.py
 bash docs/harness/verify-flow.sh
 bash docs/harness/verify-flow.sh --full-regression
 ```
+
+普通编译使用已提交的数据库生成对象，不连接数据库；结构变更后显式运行
+`bash docs/harness/generate-jooq.sh`，在临时 PostgreSQL 中重新生成并审查差异。
 
 验证脚本通过 Docker 创建并清理一次性 PostgreSQL，隔离 flow、对照库、上游测试库
 和独立日志测试库。根 `src/test` 验证直接 Java 使用及跨模块技术链路；模块自身测试

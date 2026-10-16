@@ -1,14 +1,17 @@
 package org.flow.jdbc.repository;
 
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.jooq.*;
-import org.jooq.Record;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.KvMetadataTable;
 import org.flow.core.models.FetchVersion;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.models.TenantAndNamespace;
@@ -27,15 +30,20 @@ public abstract class AbstractJdbcKvMetadataRepository extends AbstractJdbcCrudR
     }
 
     @Override
+    protected KvMetadataTable table() {
+        return jdbcRepository.getTable(Tables.KV_METADATA);
+    }
+
+    @Override
     protected Condition defaultFilter(String tenantId, boolean allowDeleted) {
         return super.defaultFilter(tenantId, allowDeleted).and(aclCondition(QueryFilter.Resource.KV_METADATA));
     }
 
-    private static Condition lastCondition(boolean isLast) {
-        return field("last").eq(isLast);
+    private Condition lastCondition(boolean isLast) {
+        return table().LAST.eq(isLast);
     }
 
-    private static Condition lastCondition() {
+    private Condition lastCondition() {
         return lastCondition(true);
     }
 
@@ -54,21 +62,21 @@ public abstract class AbstractJdbcKvMetadataRepository extends AbstractJdbcCrudR
                 configuration -> new HashSet<>(
                     DSL
                         .using(configuration)
-                        .select(field("namespace"))
-                        .from(this.jdbcRepository.getTable())
+                        .select(table().NAMESPACE)
+                        .from(table())
                         .where(this.defaultFilter(tenantId, false))
                         .and(lastCondition())
-                        .groupBy(field("namespace"))
+                        .groupBy(table().NAMESPACE)
                         .fetch()
-                        .map(record -> record.getValue("namespace", String.class))
+                        .map(record -> record.get(table().NAMESPACE))
                 )
             );
     }
 
     @Override
     public Optional<PersistedKvMetadata> findByName(String tenantId, String namespace, String name) {
-        var condition = field("namespace").eq(namespace)
-            .and(field("name").eq(name))
+        var condition = table().NAMESPACE.eq(namespace)
+            .and(table().NAME.eq(name))
             .and(lastCondition());
         return findOne(tenantId, condition, true);
     }
@@ -79,11 +87,11 @@ public abstract class AbstractJdbcKvMetadataRepository extends AbstractJdbcCrudR
         FetchVersion fetchBehavior) {
         var condition = allowExpired ? DSL.noCondition()
             : DSL.or(
-                field("expiration_date").greaterThan(Instant.now()),
-                field("expiration_date").isNull()
+                table().EXPIRATION_DATE.greaterThan(OffsetDateTime.now(ZoneOffset.UTC)),
+                table().EXPIRATION_DATE.isNull()
             );
 
-        condition = condition.and(this.filter(filters, "updated", QueryFilter.Resource.KV_METADATA));
+        condition = condition.and(this.filter(filters, table().UPDATED, QueryFilter.Resource.KV_METADATA));
 
         switch (fetchBehavior) {
             case LATEST -> condition = condition.and(lastCondition());
@@ -122,19 +130,19 @@ public abstract class AbstractJdbcKvMetadataRepository extends AbstractJdbcCrudR
 
                 return byTenantNamespace.entrySet().stream().reduce(0, (totalForTenantNamespace, e) ->
                 {
-                    DeleteConditionStep<Record> deleteCondition = context.delete(this.jdbcRepository.getTable())
+                    var deleteCondition = context.delete(table())
                         .where(this.defaultFilter(e.getKey().tenantId(), true))
-                        .and(field("namespace").eq(e.getKey().namespace()))
-                        .and(field("last").in(true, false));
+                        .and(table().NAMESPACE.eq(e.getKey().namespace()))
+                        .and(table().LAST.in(true, false));
                     if (e.getValue().getFirst().getRevision() == null) {
-                        deleteCondition = deleteCondition.and(field("name").in(persistedKvsMetadata.stream().map(PersistedKvMetadata::getName).toList()));
+                        deleteCondition = deleteCondition.and(table().NAME.in(persistedKvsMetadata.stream().map(PersistedKvMetadata::getName).toList()));
                     } else {
                         deleteCondition = deleteCondition.and(
                             DSL.or(
                                 e.getValue().stream().map(
                                     kvMetadata -> DSL.and(
-                                        field("name").eq(kvMetadata.getName()),
-                                        field("version").eq(
+                                        table().NAME.eq(kvMetadata.getName()),
+                                        table().VERSION.eq(
                                             kvMetadata.getRevision()
                                         )
                                     )
@@ -173,12 +181,12 @@ public abstract class AbstractJdbcKvMetadataRepository extends AbstractJdbcCrudR
             } else {
                 // We mark the previous as not last
                 PersistedKvMetadata previousAsNotLast = previous.toBuilder().last(false).build();
-                Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(previousAsNotLast);
+                Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(previousAsNotLast);
                 this.jdbcRepository.persist(previousAsNotLast, context, fields);
             }
         }
 
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(kvMetadataToPersist);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(kvMetadataToPersist);
         this.jdbcRepository.persist(kvMetadataToPersist, context, fields);
         return kvMetadataToPersist;
     }

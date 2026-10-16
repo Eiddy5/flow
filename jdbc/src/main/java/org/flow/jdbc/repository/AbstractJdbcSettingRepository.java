@@ -7,6 +7,8 @@ import java.util.Optional;
 import org.jooq.*;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.SettingsTable;
 import org.flow.core.events.CrudEvent;
 import org.flow.core.events.CrudEventType;
 import org.flow.core.models.Setting;
@@ -16,7 +18,7 @@ import io.micronaut.context.event.ApplicationEventPublisher;
 import lombok.SneakyThrows;
 
 public abstract class AbstractJdbcSettingRepository extends AbstractJdbcCrudRepository<Setting> implements SettingRepositoryInterface {
-    private final ApplicationEventPublisher<CrudEvent<Setting>> eventPublisher;
+    private ApplicationEventPublisher<CrudEvent<Setting>> eventPublisher;
 
     @SuppressWarnings("unchecked")
     public AbstractJdbcSettingRepository(
@@ -31,8 +33,13 @@ public abstract class AbstractJdbcSettingRepository extends AbstractJdbcCrudRepo
     }
 
     @Override
+    protected SettingsTable table() {
+        return jdbcRepository.getTable(Tables.SETTINGS);
+    }
+
+    @Override
     public Optional<Setting> findByKey(String key) {
-        return findOne(DSL.noCondition(), KEY_FIELD.eq(key));
+        return findOne(DSL.noCondition(), table().KEY.eq(key));
     }
 
     @Override
@@ -49,7 +56,7 @@ public abstract class AbstractJdbcSettingRepository extends AbstractJdbcCrudRepo
 
     @Override
     public Setting internalSave(Setting setting) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(setting);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(setting);
         this.jdbcRepository.persist(setting, fields);
 
         return setting;

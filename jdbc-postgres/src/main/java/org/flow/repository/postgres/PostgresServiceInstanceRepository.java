@@ -19,8 +19,14 @@ public class PostgresServiceInstanceRepository extends AbstractJdbcServiceInstan
         super(repository);
     }
 
+    /**
+     * 使用服务实例生成表的全文字段构造筛选。
+     *
+     * @param query 全文查询文字
+     * @return 服务实例全文筛选条件
+     */
     @Override
     protected Condition findQueryCondition(String query) {
-        return jdbcRepository.fullTextCondition(List.of("fulltext"), query);
+        return jdbcRepository.fullTextCondition(List.of(table().FULLTEXT), query);
     }
 }

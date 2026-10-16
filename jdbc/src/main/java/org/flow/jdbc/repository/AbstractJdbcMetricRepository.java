@@ -13,6 +13,8 @@ import java.util.function.Function;
 import org.jooq.*;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.MetricsTable;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.ExecutionKind;
@@ -27,7 +29,14 @@ import io.micrometer.common.lang.Nullable;
 import io.micronaut.data.model.Pageable;
 
 public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepository<MetricEntry> implements MetricRepositoryInterface {
-    private static final Condition NORMAL_KIND_CONDITION = field("execution_kind").isNull().or(field("execution_kind").eq(ExecutionKind.NORMAL.name()));
+
+    @Override
+    protected MetricsTable table() {
+        return jdbcRepository.getTable(Tables.METRICS);
+    }
+    private Condition normalKindCondition() {
+        return table().EXECUTION_KIND.isNull().or(table().EXECUTION_KIND.eq(ExecutionKind.NORMAL.name()));
+    }
 
     public AbstractJdbcMetricRepository(org.flow.jdbc.AbstractJdbcRepository<MetricEntry> jdbcRepository) {
         super(jdbcRepository);
@@ -39,7 +48,7 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         return this.findPage(
             pageable,
             tenantId,
-            field("execution_id").eq(executionId)
+            table().EXECUTION_ID.eq(executionId)
         );
     }
 
@@ -48,8 +57,8 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         return this.findPage(
             pageable,
             tenantId,
-            field("execution_id").eq(executionId)
-                .and(field("task_id").eq(taskId))
+            table().EXECUTION_ID.eq(executionId)
+                .and(table().TASK_ID.eq(taskId))
         );
     }
 
@@ -58,8 +67,8 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         return this.findPage(
             pageable,
             tenantId,
-            field("execution_id").eq(executionId)
-                .and(field("taskrun_id").eq(taskRunId))
+            table().EXECUTION_ID.eq(executionId)
+                .and(table().TASKRUN_ID.eq(taskRunId))
         );
     }
 
@@ -70,10 +79,10 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         String flowId) {
         return this.queryDistinct(
             tenantId,
-            field("flow_id").eq(flowId)
-                .and(field("namespace").eq(namespace))
-                .and(NORMAL_KIND_CONDITION),
-            "metric_name"
+            table().FLOW_ID.eq(flowId)
+                .and(table().NAMESPACE.eq(namespace))
+                .and(normalKindCondition()),
+            table().METRIC_NAME
         );
     }
 
@@ -85,11 +94,11 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         String taskId) {
         return this.queryDistinct(
             tenantId,
-            field("flow_id").eq(flowId)
-                .and(field("namespace").eq(namespace))
-                .and(field("task_id").eq(taskId))
-                .and(NORMAL_KIND_CONDITION),
-            "metric_name"
+            table().FLOW_ID.eq(flowId)
+                .and(table().NAMESPACE.eq(namespace))
+                .and(table().TASK_ID.eq(taskId))
+                .and(normalKindCondition()),
+            table().METRIC_NAME
         );
     }
 
@@ -100,10 +109,10 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         String flowId) {
         return this.queryDistinct(
             tenantId,
-            field("flow_id").eq(flowId)
-                .and(field("namespace").eq(namespace))
-                .and(NORMAL_KIND_CONDITION),
-            "task_id"
+            table().FLOW_ID.eq(flowId)
+                .and(table().NAMESPACE.eq(namespace))
+                .and(normalKindCondition()),
+            table().TASK_ID
         );
     }
 
@@ -117,12 +126,12 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         ZonedDateTime startDate,
         ZonedDateTime endDate,
         String aggregation) {
-        Condition conditions = field("flow_id").eq(flowId)
-            .and(field("namespace").eq(namespace))
-            .and(field("metric_name").eq(metric))
-            .and(NORMAL_KIND_CONDITION);
+        Condition conditions = table().FLOW_ID.eq(flowId)
+            .and(table().NAMESPACE.eq(namespace))
+            .and(table().METRIC_NAME.eq(metric))
+            .and(normalKindCondition());
         if (taskId != null) {
-            conditions = conditions.and(field("task_id").eq(taskId));
+            conditions = conditions.and(table().TASK_ID.eq(taskId));
         }
         return MetricAggregations
             .builder()
@@ -141,12 +150,12 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
 
     @Override
     public Integer purge(Execution execution) {
-        return purge(DSL.noCondition(), field("execution_id", String.class).eq(execution.getId()));
+        return purge(DSL.noCondition(), table().EXECUTION_ID.eq(execution.getId()));
     }
 
     @Override
     public Integer purge(List<Execution> executions) {
-        return purge(DSL.noCondition(), field("execution_id", String.class).in(executions.stream().map(Execution::getId).toList()));
+        return purge(DSL.noCondition(), table().EXECUTION_ID.in(executions.stream().map(Execution::getId).toList()));
     }
 
     @Override
@@ -159,20 +168,20 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
         return DSL.trueCondition();
     }
 
-    private List<String> queryDistinct(String tenantId, Condition condition, String field) {
+    private List<String> queryDistinct(String tenantId, Condition condition, Field<String> field) {
         return this.jdbcRepository
             .getDslContextWrapper()
             .transactionResult(configuration ->
             {
                 DSLContext context = DSL.using(configuration);
-                SelectConditionStep<Record1<Object>> select = context
-                    .selectDistinct(field(field))
-                    .from(this.jdbcRepository.getTable())
+                SelectConditionStep<Record1<String>> select = context
+                    .selectDistinct(field)
+                    .from(table())
                     .where(this.defaultFilter(tenantId));
 
                 select = select.and(condition);
 
-                return select.fetch().map(record -> record.get(field, String.class));
+                return select.fetch().map(record -> record.get(field));
             });
     }
 
@@ -191,26 +200,26 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
                     .using(configuration)
                     .select(dateFields)
                     .select(
-                        field("metric_name"),
+                        table().METRIC_NAME,
                         aggregate(aggregation)
                     )
-                    .from(this.jdbcRepository.getTable())
+                    .from(table())
                     .where(this.defaultFilter(tenantId));
 
                 select = select.and(condition);
 
                 if (startDate != null) {
-                    select = select.and(field("timestamp").greaterOrEqual(startDate.toOffsetDateTime()));
+                    select = select.and(table().TIMESTAMP.greaterOrEqual(startDate.toOffsetDateTime()));
                 }
 
                 if (endDate != null) {
-                    select = select.and(field("timestamp").lessOrEqual(endDate.toOffsetDateTime()));
+                    select = select.and(table().TIMESTAMP.lessOrEqual(endDate.toOffsetDateTime()));
                 }
 
-                dateFields.add(field("metric_name"));
+                dateFields.add(table().METRIC_NAME);
 
                 List<Field<?>> groupByFields = new ArrayList<>(groupByFields(Duration.between(startDate, endDate)));
-                groupByFields.add(field("metric_name"));
+                groupByFields.add(table().METRIC_NAME);
                 var selectGroup = select.groupBy(groupByFields);
 
                 List<MetricAggregation> result = this.jdbcRepository
@@ -224,10 +233,10 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
 
     private Field<?> aggregate(String aggregation) {
         return switch (aggregation) {
-            case "avg" -> DSL.avg(field("metric_value", Double.class)).as("metric_value");
-            case "sum" -> DSL.sum(field("metric_value", Double.class)).as("metric_value");
-            case "min" -> DSL.min(field("metric_value", Double.class)).as("metric_value");
-            case "max" -> DSL.max(field("metric_value", Double.class)).as("metric_value");
+            case "avg" -> DSL.avg(table().METRIC_VALUE).as("metric_value");
+            case "sum" -> DSL.sum(table().METRIC_VALUE).as("metric_value");
+            case "min" -> DSL.min(table().METRIC_VALUE).as("metric_value");
+            case "max" -> DSL.max(table().METRIC_VALUE).as("metric_value");
             default -> throw new IllegalArgumentException("Invalid aggregation: " + aggregation);
         };
     }
@@ -283,14 +292,14 @@ public abstract class AbstractJdbcMetricRepository extends AbstractJdbcCrudRepos
     @Override
     public Function<String, String> sortMapping() throws IllegalArgumentException {
         Map<String, String> mapper = Map.of(
-            "namespace", "namespace",
-            "flowId", "flow_id",
-            "taskId", "task_id",
-            "executionId", "execution_id",
-            "taskRunId", "taskrun_id",
-            "name", "metric_name",
-            "timestamp", "timestamp",
-            "value", "metric_value"
+            "namespace", table().NAMESPACE.getName(),
+            "flowId", table().FLOW_ID.getName(),
+            "taskId", table().TASK_ID.getName(),
+            "executionId", table().EXECUTION_ID.getName(),
+            "taskRunId", table().TASKRUN_ID.getName(),
+            "name", table().METRIC_NAME.getName(),
+            "timestamp", table().TIMESTAMP.getName(),
+            "value", table().METRIC_VALUE.getName()
         );
 
         return mapper::get;

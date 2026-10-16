@@ -1,5 +1,31 @@
 # JOOQ 生成类与 Entry 使用规范
 
+## 当前原生模块适用边界
+
+当前生成对象依据 [ADR 0127](../decisions/0127-use-generated-database-objects.md)，
+生成步骤见 [生成指南](../harness/jooq-generation.md)。使用内部生成器和 `JooqPojo`
+统一 Table、Field、Record、POJO，生成目录仍为 `gen/src/main/java/org/flow/gen/flow/`。
+生成文件不可手改；数据库结构唯一来源是 jdbc-postgres 中的原生迁移，不恢复旧
+`gen/sql` 基线。普通编译不连接数据库，显式生成使用独立测试库。
+
+以下原有条款保留旧 Flow 的 Entry/DataSourceEngine 约定，不能覆盖当前原生
+Repository、JSONB 序列化、事务与队列协议。当前不要求为每张原生表建立旧式 Entry，
+也不因生成 POJO 具有快捷方法就改用全列 Map 写入；`GENERATED ALWAYS` 列必须
+交由 PostgreSQL 计算。配置的表名、别名、schema、`search_path` 和独立日志库继续有效。
+生成类型仅进入 gen、数据库适配器及其测试，不泄漏到 Core Domain 和服务契约。
+必要 PaaS 依赖包括生成对象支持与内部 Bean 装配需要的 Pulsar 类型，不代表切换到
+PaaS JSON、DataSourceEngine 或 Pulsar 队列。HTTP Server Netty 在依赖边排除，
+Flow 队列仍采用 JDBC。jdbc 以最低优先级属性源默认关闭内部 DB 事件和消费者，
+允许宿主显式配置覆盖；配置边界与验证状态见生成指南。
+生成器和 jOOQ meta 留在 codegen classpath，不进入根生产运行产物。
+
+依据 [ADR 0128](../decisions/0128-use-generated-tables-directly.md)，原生存储直接使用
+实际生成表及其字段。禁止复制生成表元数据、将物理字段重建为 `Field<Object>` 或
+为未知表提供字符串兜底。配置改名使用生成 `rename(Name)`，查询别名使用 `as(...)`；
+排序与通用过滤只能解析当前生成表已有字段。JSON、全文、UTC、聚合和窗口等计算
+表达式可以使用 SQL 模板，但物理字段必须以生成 QueryPart 传入。
+枚举、时间及游标差异在读写值边界转换，保留生成字段原始类型。
+
 ## 适用范围
 
 本规范适用于 Flow 项目中所有使用 JOOQ 生成类进行查询、插入、更新、删除和领域

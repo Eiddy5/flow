@@ -1,5 +1,6 @@
 package org.flow.jdbc;
 
+import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -10,6 +11,7 @@ import java.util.TimeZone;
 
 import org.jooq.Condition;
 import org.jooq.DSLContext;
+import org.jooq.DatePart;
 import org.jooq.Field;
 import org.jooq.Record;
 import org.jooq.RecordMapper;
@@ -19,6 +21,7 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
 import org.flow.core.repositories.ArrayListTotal;
+import org.flow.gen.flow.Tables;
 import io.micronaut.data.model.Pageable;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -26,9 +29,9 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 class AbstractJdbcRepositoryTest {
     /** Zones with a non-zero, and deliberately non-integral, offset from UTC. */
-    private static final List<String> NON_UTC_ZONES = List.of("Asia/Kolkata", "Europe/Berlin", "America/Los_Angeles");
+    private static List<String> NON_UTC_ZONES = List.of("Asia/Kolkata", "Europe/Berlin", "America/Los_Angeles");
 
-    private final TestJdbcRepository repository = new TestJdbcRepository();
+    private TestJdbcRepository repository = new TestJdbcRepository();
 
     private static Record weekRecord(int year, int week) {
         Field<Integer> yearField = DSL.field(DSL.name("year"), Integer.class);
@@ -131,13 +134,41 @@ class AbstractJdbcRepositoryTest {
         );
     }
 
-    private static final class TestJdbcRepository extends AbstractJdbcRepository<Object> {
+    @Test
+    void shouldMapDecimalMetricAggregatesToDomainDoubles() {
+        List<Field<BigDecimal>> aggregates = List.of(
+            DSL.avg(Tables.METRICS.METRIC_VALUE).as("metric_value"),
+            DSL.sum(Tables.METRICS.METRIC_VALUE).as("metric_value")
+        );
+        Field<Integer> year = DSL.extract(Tables.METRICS.TIMESTAMP, DatePart.YEAR).as("year");
+        Field<Integer> month = DSL.extract(Tables.METRICS.TIMESTAMP, DatePart.MONTH).as("month");
+        Field<Integer> day = DSL.extract(Tables.METRICS.TIMESTAMP, DatePart.DAY).as("day");
+
+        for (Field<BigDecimal> aggregate : aggregates) {
+            var record = DSL.using(SQLDialect.POSTGRES)
+                .newRecord(Tables.METRICS.METRIC_NAME, aggregate, year, month, day);
+            record.set(Tables.METRICS.METRIC_NAME, "latency");
+            record.set(aggregate, new BigDecimal("12.75"));
+            record.set(year, 2026);
+            record.set(month, 10);
+            record.set(day, 16);
+
+            assertThat(record.get(aggregate)).isInstanceOf(BigDecimal.class);
+            var mapped = repository.mapMetricAggregation(record, "day");
+
+            assertThat(mapped.name).isEqualTo("latency");
+            assertThat(mapped.value).as("Domain value for %s", aggregate).isEqualTo(12.75d);
+            assertThat(mapped.date).isEqualTo(Instant.parse("2026-10-16T00:00:00Z"));
+        }
+    }
+
+    private static class TestJdbcRepository extends AbstractJdbcRepository<Object> {
         private TestJdbcRepository() {
-            super(new JdbcTableConfig("test", Object.class, "test"), null);
+            super(new JdbcTableConfig("metrics", Object.class, Tables.METRICS), null);
         }
 
         @Override
-        public Condition fullTextCondition(List<String> fields, String query) {
+        public Condition fullTextCondition(List<? extends Field<?>> fields, String query) {
             return DSL.noCondition();
         }
 

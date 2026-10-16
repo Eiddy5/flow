@@ -1,100 +1,122 @@
 package org.flow.jdbc.repository;
 
-import java.util.Arrays;
 import java.util.List;
-import java.util.function.Predicate;
+import java.util.Map;
 
-import org.jooq.Name;
+import org.jooq.Field;
+import org.jooq.Table;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
 import org.flow.core.exceptions.InvalidQueryFiltersException;
 import org.flow.core.models.QueryFilter;
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.enums.StateType;
+import org.flow.gen.flow.tables.ExecutionsTable;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AbstractJdbcRepositoryTest extends AbstractJdbcRepository {
-    private static final List<QueryFilter.Field> fieldsWithSpecificConditions = List.of(
-        QueryFilter.Field.QUERY,
-        QueryFilter.Field.STATE,
-        QueryFilter.Field.CHILD_FILTER,
-        QueryFilter.Field.LEVEL,
-        QueryFilter.Field.START_DATE,
-        QueryFilter.Field.END_DATE,
-        QueryFilter.Field.UPDATED,
-        QueryFilter.Field.CREATED,
-        QueryFilter.Field.EXPIRATION_DATE,
-        QueryFilter.Field.SCOPE,
-        QueryFilter.Field.LABELS,
-        QueryFilter.Field.TRIGGER_STATE,
-        QueryFilter.Field.METADATA,
-        QueryFilter.Field.GROUP,
-        QueryFilter.Field.NAME,
-        QueryFilter.Field.TAGS,
-        QueryFilter.Field.ATTEMPT_NUMBER,
-        QueryFilter.Field.INSTANCE_OWNER,
-        QueryFilter.Field.LOCKED,
-        QueryFilter.Field.LAST_TRIGGERED_DATE,
-        QueryFilter.Field.NEXT_EXECUTION_DATE,
-        QueryFilter.Field.TIME_RANGE
-    );
+    private Table<?> generatedTable = Tables.EXECUTIONS;
+
+    @Override
+    protected Table<?> table() {
+        return generatedTable;
+    }
 
     @Test
     void defaultConditions() {
-        Arrays.stream(QueryFilter.Field.values()).filter(Predicate.not(fieldsWithSpecificConditions::contains)).forEach(field ->
-        {
+        Map<QueryFilter.Field, Field<String>> columns = Map.of(
+            QueryFilter.Field.NAMESPACE, Tables.EXECUTIONS.NAMESPACE,
+            QueryFilter.Field.FLOW_ID, Tables.EXECUTIONS.FLOW_ID,
+            QueryFilter.Field.ID, Tables.EXECUTIONS.ID,
+            QueryFilter.Field.KIND, Tables.EXECUTIONS.KIND,
+            QueryFilter.Field.PARENT_ID, Tables.EXECUTIONS.PARENT_ID,
+            QueryFilter.Field.TRIGGER_EXECUTION_ID, Tables.EXECUTIONS.TRIGGER_EXECUTION_ID,
+            QueryFilter.Field.TRIGGER_ID, Tables.EXECUTIONS.TRIGGER_ID
+        );
+        columns.forEach((field, column) -> {
             String assertValue = "anyValue";
-            Name columnName = DSL.quotedName(field.name().toLowerCase());
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.EQUALS, null)).isEqualTo(
-                DSL.field(columnName).eq(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.NOT_EQUALS, null)).isEqualTo(
-                DSL.field(columnName).ne(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.GREATER_THAN, null)).isEqualTo(
-                DSL.field(columnName).greaterThan(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.LESS_THAN, null)).isEqualTo(
-                DSL.field(columnName).lessThan(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, List.of(assertValue), QueryFilter.Op.IN, null)).isEqualTo(
-                DSL.field(columnName).in(List.of(assertValue))
-            );
-            assertThat(this.getConditionOnField(field, List.of(assertValue), QueryFilter.Op.NOT_IN, null)).isEqualTo(
-                DSL.field(columnName).notIn(List.of(assertValue))
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.STARTS_WITH, null)).isEqualTo(
-                DSL.field(columnName).startsWith(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.ENDS_WITH, null)).isEqualTo(
-                DSL.field(columnName).endsWith(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.CONTAINS, null)).isEqualTo(
-                DSL.field(columnName).contains(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.REGEX, null)).isEqualTo(
-                DSL.field(columnName).likeRegex(assertValue)
-            );
-            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.PREFIX, null)).isEqualTo(
-                DSL.field(columnName).eq(assertValue)
-                    .or(DSL.field(columnName).startsWith(assertValue + "."))
-            );
+            assertThat(this.getColumnField(field)).isSameAs(column);
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.EQUALS, null))
+                .isEqualTo(column.eq(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.NOT_EQUALS, null))
+                .isEqualTo(column.ne(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.GREATER_THAN, null))
+                .isEqualTo(column.greaterThan(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.LESS_THAN, null))
+                .isEqualTo(column.lessThan(assertValue));
+            assertThat(this.getConditionOnField(field, List.of(assertValue), QueryFilter.Op.IN, null))
+                .isEqualTo(column.in(List.of(assertValue)));
+            assertThat(this.getConditionOnField(field, List.of(assertValue), QueryFilter.Op.NOT_IN, null))
+                .isEqualTo(column.notIn(List.of(assertValue)));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.STARTS_WITH, null))
+                .isEqualTo(column.startsWith(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.ENDS_WITH, null))
+                .isEqualTo(column.endsWith(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.CONTAINS, null))
+                .isEqualTo(column.contains(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.REGEX, null))
+                .isEqualTo(column.likeRegex(assertValue));
+            assertThat(this.getConditionOnField(field, assertValue, QueryFilter.Op.PREFIX, null))
+                .isEqualTo(column.eq(assertValue).or(column.startsWith(assertValue + ".")));
         });
+    }
+
+    @Test
+    void shouldKeepConfiguredGeneratedFieldIdentity() {
+        ExecutionsTable configuredTable = Tables.EXECUTIONS.rename(DSL.name("flow_schema", "Execution Rows"));
+        generatedTable = configuredTable;
+
+        assertThat(getColumnField(QueryFilter.Field.NAMESPACE)).isSameAs(configuredTable.NAMESPACE);
+        assertThat(keyField()).isSameAs(configuredTable.KEY);
+        assertThat(valueField()).isSameAs(configuredTable.VALUE);
+        assertThat(tenantIdField()).isSameAs(configuredTable.TENANT_ID);
+        assertThat(deletedField()).isSameAs(configuredTable.DELETED);
+        assertThat(getConditionOnField(QueryFilter.Field.NAMESPACE, "team", QueryFilter.Op.EQUALS, null))
+            .isEqualTo(configuredTable.NAMESPACE.eq("team"));
+    }
+
+    @Test
+    void shouldBindNumericFiltersUsingGeneratedColumnType() {
+        generatedTable = Tables.KV_METADATA;
+
+        assertThat(getColumnField(QueryFilter.Field.VERSION)).isSameAs(Tables.KV_METADATA.VERSION);
+        assertThat(getConditionOnField(QueryFilter.Field.VERSION, "2", QueryFilter.Op.EQUALS, null))
+            .isEqualTo(Tables.KV_METADATA.VERSION.eq(2));
+        assertThat(getConditionOnField(QueryFilter.Field.VERSION, List.of("1", "2"), QueryFilter.Op.IN, null))
+            .isEqualTo(Tables.KV_METADATA.VERSION.in(1, 2));
+    }
+
+    @Test
+    void shouldBindStateUsingGeneratedEnum() {
+        assertThat(getConditionOnField(QueryFilter.Field.STATE, "SUCCESS", QueryFilter.Op.EQUALS, null))
+            .isEqualTo(Tables.EXECUTIONS.STATE_CURRENT.in(StateType.SUCCESS));
+    }
+
+    @Test
+    void shouldRejectFieldsAbsentFromGeneratedTable() {
+        assertThatThrownBy(() -> getColumnField(QueryFilter.Field.ASSET_ID))
+            .isInstanceOf(InvalidQueryFiltersException.class)
+            .hasMessageContaining("Unsupported field: ASSET_ID");
+        assertThatThrownBy(() -> getConditionOnField(QueryFilter.Field.TAGS, List.of("my-tag"), QueryFilter.Op.IN, null))
+            .isInstanceOf(InvalidQueryFiltersException.class)
+            .hasMessageContaining("Unsupported field: TAGS");
     }
 
     @Test
     void shouldUseIsNullWhenEqualsValueIsNull() {
         // Given
-        Name columnName = DSL.quotedName(QueryFilter.Field.NAMESPACE.name().toLowerCase());
+        Field<String> column = Tables.EXECUTIONS.NAMESPACE;
 
         // When / Then — EQUALS null must generate IS NULL, not col = NULL
         assertThat(this.getConditionOnField(QueryFilter.Field.NAMESPACE, null, QueryFilter.Op.EQUALS, null))
-            .isEqualTo(DSL.field(columnName).isNull());
+            .isEqualTo(column.isNull());
 
         // When / Then — NOT_EQUALS null must generate IS NOT NULL
         assertThat(this.getConditionOnField(QueryFilter.Field.NAMESPACE, null, QueryFilter.Op.NOT_EQUALS, null))
-            .isEqualTo(DSL.field(columnName).isNotNull());
+            .isEqualTo(column.isNotNull());
     }
 
     @Test
@@ -142,35 +164,19 @@ class AbstractJdbcRepositoryTest extends AbstractJdbcRepository {
         // Given — a value containing SQL LIKE metacharacters
         String wildcardValue = "%";
         String underscoreValue = "_";
-        Name columnName = DSL.quotedName(QueryFilter.Field.NAMESPACE.name().toLowerCase());
+        Field<String> column = Tables.EXECUTIONS.NAMESPACE;
 
         // When / Then — CONTAINS: metacharacter must be escaped, not treated as a wildcard
         assertThat(this.getConditionOnField(QueryFilter.Field.NAMESPACE, wildcardValue, QueryFilter.Op.CONTAINS, null))
-            .isEqualTo(DSL.field(columnName).contains(wildcardValue));
+            .isEqualTo(column.contains(wildcardValue));
 
         // When / Then — STARTS_WITH: % in value must not produce an open-ended match
         assertThat(this.getConditionOnField(QueryFilter.Field.NAMESPACE, wildcardValue, QueryFilter.Op.STARTS_WITH, null))
-            .isEqualTo(DSL.field(columnName).startsWith(wildcardValue));
+            .isEqualTo(column.startsWith(wildcardValue));
 
         // When / Then — ENDS_WITH: _ in value must not act as a single-char wildcard
         assertThat(this.getConditionOnField(QueryFilter.Field.NAMESPACE, underscoreValue, QueryFilter.Op.ENDS_WITH, null))
-            .isEqualTo(DSL.field(columnName).endsWith(underscoreValue));
+            .isEqualTo(column.endsWith(underscoreValue));
     }
 
-    @Test
-    void tagsConditionShouldDelegateToDefaultHandlers() {
-        String assertValue = "my-tag";
-        Name columnName = DSL.quotedName(QueryFilter.Field.TAGS.name().toLowerCase());
-
-        assertThat(
-            this.getConditionOnField(
-                QueryFilter.Field.TAGS,
-                List.of(assertValue),
-                QueryFilter.Op.IN,
-                null
-            )
-        ).isEqualTo(
-            DSL.field(columnName).in(List.of(assertValue))
-        );
-    }
 }

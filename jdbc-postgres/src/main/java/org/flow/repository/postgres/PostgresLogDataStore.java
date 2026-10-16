@@ -1,10 +1,8 @@
 package org.flow.repository.postgres;
 
-import java.util.Collections;
 import java.util.List;
 
 import org.jooq.Condition;
-import org.slf4j.event.Level;
 
 import org.flow.core.models.annotations.Plugin;
 import org.flow.core.plugins.ApplicationContextInitializable;
@@ -33,19 +31,15 @@ public class PostgresLogDataStore extends AbstractJdbcLogDataStore implements Ap
         initFrom(applicationContext, (tableConfig, wrapper) -> new PostgresRepository<>(tableConfig, wrapper));
     }
 
+    /**
+     * 使用当前日志库生成表的全文字段，包含独立日志库配置的表名。
+     *
+     * @param query 全文查询文字
+     * @return 日志全文筛选条件
+     */
     @Override
     protected Condition findCondition(String query) {
-        return this.jdbcRepository.fullTextCondition(Collections.singletonList("fulltext"), query);
-    }
-
-    @Override
-    protected Condition levelsCondition(List<Level> levels) {
-        return PostgresLogRepositoryService.levelsCondition(levels);
-    }
-
-    @Override
-    protected Condition notLevelsCondition(List<Level> levels) {
-        return PostgresLogRepositoryService.notLevelsCondition(levels);
+        return this.jdbcRepository.fullTextCondition(List.of(table().FULLTEXT), query);
     }
 
 }

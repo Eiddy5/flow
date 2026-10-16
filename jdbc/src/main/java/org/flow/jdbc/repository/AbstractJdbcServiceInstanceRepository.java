@@ -2,6 +2,7 @@ package org.flow.jdbc.repository;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
@@ -15,13 +16,13 @@ import org.jooq.Condition;
 import org.jooq.Configuration;
 import org.jooq.DSLContext;
 import org.jooq.Field;
-import org.jooq.Name;
-import org.jooq.Record;
+import org.jooq.JSONB;
 import org.jooq.Record1;
 import org.jooq.SelectConditionStep;
-import org.jooq.Table;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.ServiceInstanceTable;
 import org.flow.core.exceptions.TypeConversionException;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.repositories.ArrayListTotal;
@@ -40,18 +41,12 @@ import jakarta.annotation.Nullable;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
-import static org.jooq.impl.DSL.quotedName;
 import static org.jooq.impl.DSL.using;
 
 @Getter
 @Slf4j
 public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbcRepository implements ServiceInstanceRepositoryInterface, ServiceLivenessStore {
 
-    private static final Field<Object> STATE = field("state");
-    private static final Field<Object> TYPE = field("service_type");
-    private static final Field<Instant> UPDATED_AT = field("updated_at", Instant.class);
-    private static final Field<Instant> CREATED_AT = field("created_at", Instant.class);
-    private static final Field<Object> SERVICE_ID = field("service_id");
 
     protected org.flow.jdbc.AbstractJdbcRepository<ServiceInstance> jdbcRepository;
 
@@ -73,10 +68,10 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
         final DSLContext dslContext,
         final boolean isForUpdate) {
 
-        SelectConditionStep<Record1<Object>> query = dslContext
-            .select(VALUE_FIELD)
+        SelectConditionStep<Record1<JSONB>> query = dslContext
+            .select(table().VALUE)
             .from(table())
-            .where(SERVICE_ID.eq(id));
+            .where(table().SERVICE_ID.eq(id));
 
         return isForUpdate ? this.jdbcRepository.fetchOne(query.forUpdate()) : this.jdbcRepository.fetchOne(query);
     }
@@ -99,9 +94,9 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
             .transactionResult(configuration ->
             {
                 var query = using(configuration)
-                    .select(VALUE_FIELD)
+                    .select(table().VALUE)
                     .from(table())
-                    .where(STATE.eq(state.name()));
+                    .where(table().STATE.eq(state.name()));
                 return this.jdbcRepository.fetch(query);
             });
     }
@@ -113,12 +108,12 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
     public List<ServiceInstance> findAllInstancesBetween(final ServiceType type, final Instant from, final Instant to) {
         return jdbcRepository.getDslContextWrapper().transactionResult(configuration ->
         {
-            SelectConditionStep<Record1<Object>> query = using(configuration)
-                .select(VALUE_FIELD)
+            SelectConditionStep<Record1<JSONB>> query = using(configuration)
+                .select(table().VALUE)
                 .from(table())
-                .where(TYPE.eq(type.name()))
-                .and(CREATED_AT.lt(to))
-                .and(UPDATED_AT.ge(from));
+                .where(table().SERVICE_TYPE.eq(type.name()))
+                .and(table().CREATED_AT.lt(to.atOffset(ZoneOffset.UTC)))
+                .and(table().UPDATED_AT.ge(from.atOffset(ZoneOffset.UTC)));
 
             return this.jdbcRepository.fetch(query);
         });
@@ -127,10 +122,10 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
     public List<ServiceInstance> findAllInstancesInStates(final Configuration configuration,
         final Set<Service.ServiceState> states,
         final boolean isForUpdate) {
-        SelectConditionStep<Record1<Object>> query = using(configuration)
-            .select(VALUE_FIELD)
+        SelectConditionStep<Record1<JSONB>> query = using(configuration)
+            .select(table().VALUE)
             .from(table())
-            .where(STATE.in(states.stream().map(Enum::name).toList()));
+            .where(table().STATE.in(states.stream().map(Enum::name).toList()));
 
         return isForUpdate ? this.jdbcRepository.fetch(query.forUpdate().skipLocked()) : this.jdbcRepository.fetch(query);
     }
@@ -141,9 +136,9 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
         {
             var dslContext = DSL.using(configuration);
             var query = dslContext
-                .select(VALUE_FIELD)
+                .select(table().VALUE)
                 .from(table())
-                .where(STATE.notIn(Service.ServiceState.CREATED.name(), Service.ServiceState.RUNNING.name(), Service.ServiceState.INACTIVE.name()));
+                .where(table().STATE.notIn(Service.ServiceState.CREATED.name(), Service.ServiceState.RUNNING.name(), Service.ServiceState.INACTIVE.name()));
 
             var txContext = new JdbcTransactionContext(dslContext);
             this.jdbcRepository.fetch(query.forUpdate().skipLocked()).forEach(instance -> consumer.accept(txContext, instance));
@@ -156,9 +151,9 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
         {
             var dslContext = DSL.using(configuration);
             var query = dslContext
-                .select(VALUE_FIELD)
+                .select(table().VALUE)
                 .from(table())
-                .where(STATE.in(states.stream().map(Enum::name).toList()));
+                .where(table().STATE.in(states.stream().map(Enum::name).toList()));
 
             var txContext = new JdbcTransactionContext(dslContext);
             this.jdbcRepository.fetch(query.forUpdate().skipLocked()).forEach(instance -> consumer.accept(txContext, instance));
@@ -183,10 +178,10 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
      */
     public List<ServiceInstance> findAllInstancesInNotRunningState(final Configuration configuration,
         final boolean isForUpdate) {
-        SelectConditionStep<Record1<Object>> query = using(configuration)
-            .select(VALUE_FIELD)
+        SelectConditionStep<Record1<JSONB>> query = using(configuration)
+            .select(table().VALUE)
             .from(table())
-            .where(STATE.eq(Service.ServiceState.NOT_RUNNING.name()));
+            .where(table().STATE.eq(Service.ServiceState.NOT_RUNNING.name()));
 
         return isForUpdate ? this.jdbcRepository.fetch(query.forUpdate().skipLocked()) : this.jdbcRepository.fetch(query);
     }
@@ -195,8 +190,8 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
     public int purgeEmptyInstances(Instant until) {
         return jdbcRepository.getDslContextWrapper().transactionResult(
             configuration -> using(configuration).delete(table())
-                .where(STATE.in(Service.ServiceState.INACTIVE.name(), "EMPTY"))
-                .and(UPDATED_AT.lessOrEqual(until))
+                .where(table().STATE.in(Service.ServiceState.INACTIVE.name(), "EMPTY"))
+                .and(table().UPDATED_AT.lessOrEqual(until.atOffset(ZoneOffset.UTC)))
                 .execute()
         );
     }
@@ -231,7 +226,7 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
             .getDslContextWrapper()
             .transactionResult(
                 configuration -> this.jdbcRepository.fetch(
-                    using(configuration).select(VALUE_FIELD).from(table())
+                    using(configuration).select(table().VALUE).from(table())
                 )
             );
     }
@@ -247,10 +242,10 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
             .transactionResult(configuration ->
             {
                 DSLContext context = using(configuration);
-                SelectConditionStep<Record1<Object>> select = context.select(VALUE_FIELD).from(table()).where("1=1");
+                SelectConditionStep<Record1<JSONB>> select = context.select(table().VALUE).from(table()).where("1=1");
                 if (filters != null && !filters.isEmpty()) {
                     select = select.and(
-                        this.filter(filters, CREATED_AT.getName(), QueryFilter.Resource.SERVICE_INSTANCE)
+                        this.filter(filters, table().CREATED_AT, QueryFilter.Resource.SERVICE_INSTANCE)
                     );
                 }
                 return this.jdbcRepository.fetchPage(context, select, pageable);
@@ -259,24 +254,24 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
 
     /** {@inheritDoc} **/
     @Override
-    protected Condition filter(List<QueryFilter> filters, String dateColumn, QueryFilter.Resource resource) {
+    protected Condition filter(List<QueryFilter> filters, Field<?> dateColumn, QueryFilter.Resource resource) {
         return super.filter(ServiceInstanceRepositoryInterface.expandStateNamesForFilterQueryBackwardCompat(filters), dateColumn, resource);
     }
 
     /** {@inheritDoc} **/
     @Override
-    protected Name getColumnName(QueryFilter.Field field) {
+    protected Field<?> getColumnField(QueryFilter.Field field) {
         if (field == QueryFilter.Field.TYPE) {
             // The service type column is named "service_type", not "type"
-            return quotedName("service_type");
+            return table().SERVICE_TYPE;
         }
-        return super.getColumnName(field);
+        return super.getColumnField(field);
     }
 
     /** {@inheritDoc} **/
     @Override
-    protected Condition createdCondition(Object value, QueryFilter.Op operation, @Nullable String dateColumn) {
-        String column = dateColumn != null ? dateColumn : CREATED_AT.getName();
+    protected Condition createdCondition(Object value, QueryFilter.Op operation, @Nullable Field<?> dateColumn) {
+        Field<?> column = dateColumn != null ? dateColumn : table().CREATED_AT;
         // Accept ISO-8601 durations (e.g. PT5M) as a "now minus duration" threshold;
         // the supplied operation is applied against that threshold.
         try {
@@ -298,7 +293,7 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
                 "Field 'state' requires a String or List<String> value for service instances"
             );
         };
-        Field<String> stateField = DSL.field(org.jooq.impl.DSL.quotedName("state"), String.class);
+        Field<String> stateField = table().STATE;
         return switch (operation) {
             case EQUALS, IN -> stateField.in(stateNames);
             case NOT_EQUALS, NOT_IN -> stateField.notIn(stateNames);
@@ -361,17 +356,18 @@ public abstract class AbstractJdbcServiceInstanceRepository extends AbstractJdbc
         return new ImmutablePair<>(before, null);
     }
 
-    private Table<Record> table() {
-        return this.jdbcRepository.getTable();
+    @Override
+    protected ServiceInstanceTable table() {
+        return jdbcRepository.getTable(Tables.SERVICE_INSTANCE);
     }
 
     /** {@inheritDoc} **/
     @Override
     public Function<String, String> sortMapping() {
         Map<String, String> mapper = Map.of(
-            "createdAt", CREATED_AT.getName(),
-            "updatedAt", UPDATED_AT.getName(),
-            "serviceId", SERVICE_ID.getName()
+            "createdAt", table().CREATED_AT.getName(),
+            "updatedAt", table().UPDATED_AT.getName(),
+            "serviceId", table().SERVICE_ID.getName()
         );
         return mapper::get;
     }

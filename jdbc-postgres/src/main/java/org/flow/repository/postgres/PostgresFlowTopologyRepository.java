@@ -1,13 +1,13 @@
 package org.flow.repository.postgres;
 
+import static org.flow.gen.flow.Tables.FLOW_TOPOLOGIES;
+
 import org.jooq.DMLQuery;
 import org.jooq.DSLContext;
-import org.jooq.Record;
 
 import org.flow.core.models.topologies.FlowTopology;
 import org.flow.core.repositories.RepositoryBean;
 import org.flow.jdbc.repository.AbstractJdbcFlowTopologyRepository;
-import org.flow.jdbc.repository.AbstractJdbcRepository;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
@@ -20,12 +20,20 @@ public class PostgresFlowTopologyRepository extends AbstractJdbcFlowTopologyRepo
         super(repository);
     }
 
+    /**
+     * 使用当前生成表及其主键字段保存流程拓扑，保持已有冲突更新边界。
+     *
+     * @param context 当前事务的 jOOQ 上下文
+     * @param flowTopology 待保存的拓扑，不修改该对象
+     * @return 尚未执行的插入或更新语句
+     */
     @Override
-    protected DMLQuery<Record> buildMergeStatement(DSLContext context, FlowTopology flowTopology) {
-        return context.insertInto(this.jdbcRepository.getTable())
-            .set(AbstractJdbcRepository.field("key"), this.jdbcRepository.key(flowTopology))
+    protected DMLQuery<?> buildMergeStatement(DSLContext context, FlowTopology flowTopology) {
+        var table = this.jdbcRepository.getTable(FLOW_TOPOLOGIES);
+        return context.insertInto(table)
+            .set(table.KEY, this.jdbcRepository.key(flowTopology))
             .set(this.jdbcRepository.persistFields(flowTopology))
-            .onConflict(AbstractJdbcRepository.field("key"))
+            .onConflict(table.KEY)
             .doUpdate()
             .set(this.jdbcRepository.persistFields(flowTopology));
     }

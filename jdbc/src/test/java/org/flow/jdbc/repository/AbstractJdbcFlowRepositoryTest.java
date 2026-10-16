@@ -21,7 +21,7 @@ import io.micronaut.data.model.Sort;
 import jakarta.inject.Inject;
 
 import static org.flow.core.tenant.TenantService.MAIN_TENANT;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.field;
+import static org.flow.gen.flow.Tables.FLOWS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -41,10 +41,10 @@ public abstract class AbstractJdbcFlowRepositoryTest extends org.flow.core.repos
             DSLContext context = DSL.using(configuration);
 
             context.insertInto(flowRepository.jdbcRepository.getTable())
-                .set(field("key"), "org.flow.unittest_invalid")
-                .set(field("source_code"), "")
+                .set(flowRepository.table().KEY, "org.flow.unittest_invalid")
+                .set(flowRepository.table().SOURCE_CODE, "")
                 .set(
-                    field("value"), JacksonMapper.ofJson().writeValueAsString(
+                    flowRepository.table().VALUE, org.jooq.JSONB.valueOf(JacksonMapper.ofJson().writeValueAsString(
                         Map.of(
                             "id", "invalid",
                             "namespace", "org.flow.unittest",
@@ -58,7 +58,7 @@ public abstract class AbstractJdbcFlowRepositoryTest extends org.flow.core.repos
                             ),
                             "deleted", false
                         )
-                    )
+                    ))
                 )
                 .execute();
         });

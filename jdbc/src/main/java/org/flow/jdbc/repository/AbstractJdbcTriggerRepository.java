@@ -9,6 +9,8 @@ import java.util.function.Function;
 import org.jooq.*;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.TriggersTable;
 import org.flow.core.exceptions.InvalidQueryFiltersException;
 import org.flow.core.exceptions.TypeConversionException;
 import org.flow.core.models.QueryFilter;
@@ -25,23 +27,18 @@ import reactor.core.publisher.Flux;
 
 public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepository<TriggerState> implements TriggerRepositoryInterface, TriggerStateStore {
 
-    private static final Field<Object> NAMESPACE_FIELD = field("namespace");
-    private static final Field<Long> NEXT_EVALUATION_EPOCH_FIELD = field("next_evaluation_epoch", Long.class);
-    private static final Field<Boolean> LOCKED_FIELD = field("locked", Boolean.class);
-    private static final Field<Integer> VNODE_FIELD = field("vnode", Integer.class);
-    private static final Field<Object> FLOW_ID_FIELD = field("flow_id");
-    private static final Field<Object> WORKER_ID_FIELD = field("worker_id");
-    private static final Field<Object> VALUE_FIELD = field("value");
-    private static final String NEXT_EVALUATION_DATE_COLUMN = "next_evaluation_date";
-    private static final String LAST_TRIGGERED_DATE_COLUMN = "last_triggered_date";
-    private static final Field<Object> KEY_FIELD = DSL.field(DSL.quotedName("key"));
     public AbstractJdbcTriggerRepository(org.flow.jdbc.AbstractJdbcRepository<TriggerState> jdbcRepository) {
         super(jdbcRepository);
     }
 
     @Override
+    protected TriggersTable table() {
+        return jdbcRepository.getTable(Tables.TRIGGERS);
+    }
+
+    @Override
     public Optional<TriggerState> findByIdWithoutAcl(TriggerId trigger) {
-        return findOne(DSL.noCondition(), KEY_FIELD.eq(trigger.uid()));
+        return findOne(DSL.noCondition(), table().KEY.eq(trigger.uid()));
     }
 
     @Override
@@ -52,8 +49,8 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.defaultFilter(tenantId));
 
                 return this.jdbcRepository.fetch(select);
@@ -66,10 +63,10 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
             .getDslContextWrapper()
             .transactionResult(configuration ->
             {
-                SelectJoinStep<Record1<Object>> select = DSL
+                SelectJoinStep<Record1<JSONB>> select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable());
+                    .select(table().VALUE)
+                    .from(table());
 
                 return this.jdbcRepository.fetch(select);
             });
@@ -82,8 +79,8 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
             .transactionResult(configuration ->
             {
                 DSL.using(configuration)
-                    .insertInto(this.jdbcRepository.getTable())
-                    .set(KEY_FIELD, trigger.uid())
+                    .insertInto(table())
+                    .set(table().KEY, trigger.uid())
                     .set(this.jdbcRepository.persistFields(trigger))
                     .execute();
 
@@ -98,8 +95,8 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
             .transaction(configuration ->
             {
                 DSL.using(configuration)
-                    .delete(this.jdbcRepository.getTable())
-                    .where(KEY_FIELD.eq(trigger.uid()))
+                    .delete(table())
+                    .where(table().KEY.eq(trigger.uid()))
                     .execute();
             });
     }
@@ -115,15 +112,15 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
         var condition = this.fullTextCondition(query).and(this.defaultFilter());
 
         if (namespace != null) {
-            condition = condition.and(DSL.or(NAMESPACE_FIELD.eq(namespace), NAMESPACE_FIELD.startsWith(namespace + ".")));
+            condition = condition.and(DSL.or(table().NAMESPACE.eq(namespace), table().NAMESPACE.startsWith(namespace + ".")));
         }
 
         if (flowId != null) {
-            condition = condition.and(FLOW_ID_FIELD.eq(flowId));
+            condition = condition.and(table().FLOW_ID.eq(flowId));
         }
 
         if (workerId != null) {
-            condition = condition.and(WORKER_ID_FIELD.eq(workerId));
+            condition = condition.and(table().WORKER_ID.eq(workerId));
         }
 
         return findPage(pageable, tenantId, condition);
@@ -136,7 +133,7 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
     }
 
     protected Condition fullTextCondition(String query) {
-        return query == null ? DSL.noCondition() : jdbcRepository.fullTextCondition(List.of("fulltext"), query);
+        return query == null ? DSL.noCondition() : jdbcRepository.fullTextCondition(List.of(table().FULLTEXT), query);
     }
 
     @Override
@@ -157,7 +154,7 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
     @Override
     public Function<String, String> sortMapping() throws IllegalArgumentException {
         // nextExecutionDate needs remapping, since its real column is next_evaluation_date.
-        Map<String, String> mapper = Map.of("nextExecutionDate", NEXT_EVALUATION_DATE_COLUMN);
+        Map<String, String> mapper = Map.of("nextExecutionDate", table().NEXT_EVALUATION_DATE.getName());
 
         return s -> mapper.getOrDefault(s, s);
     }
@@ -171,12 +168,12 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
             .getDslContextWrapper()
             .transactionResult(
                 configuration -> DSL.using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
-                    .where(VNODE_FIELD.in(vNodes))
+                    .select(table().VALUE)
+                    .from(table())
+                    .where(table().VNODE.in(vNodes))
                     .fetch()
             )
-            .map(r -> this.jdbcRepository.deserialize(r.get("value", String.class)));
+            .map(r -> this.jdbcRepository.deserialize(r.get(table().VALUE).data()));
     }
 
     /**
@@ -189,45 +186,45 @@ public abstract class AbstractJdbcTriggerRepository extends AbstractJdbcCrudRepo
             .getDslContextWrapper()
             .transactionResult(
                 configuration -> DSL.using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
-                    .where(NEXT_EVALUATION_EPOCH_FIELD.le(epochMilli).or(NEXT_EVALUATION_EPOCH_FIELD.isNull()))
-                    .and(LOCKED_FIELD.isNull().or(LOCKED_FIELD.eq(locked)))
-                    .and(VNODE_FIELD.in(vNodes))
-                    .orderBy(NEXT_EVALUATION_EPOCH_FIELD.asc())
+                    .select(table().VALUE)
+                    .from(table())
+                    .where(table().NEXT_EVALUATION_EPOCH.le(epochMilli).or(table().NEXT_EVALUATION_EPOCH.isNull()))
+                    .and(table().LOCKED.isNull().or(table().LOCKED.eq(locked)))
+                    .and(table().VNODE.in(vNodes))
+                    .orderBy(table().NEXT_EVALUATION_EPOCH.asc())
                     .fetch()
             )
-            .map(r -> this.jdbcRepository.deserialize(r.get("value", String.class)));
+            .map(r -> this.jdbcRepository.deserialize(r.get(table().VALUE).data()));
     }
 
     @Override
-    protected Name getColumnName(QueryFilter.Field field) {
+    protected Field<?> getColumnField(QueryFilter.Field field) {
         if (field == QueryFilter.Field.SOURCE) {
-            return DSL.quotedName("type");
+            return table().TYPE;
         }
-        return super.getColumnName(field);
+        return super.getColumnField(field);
     }
 
     @Override
     protected Condition lockedCondition(Object value, QueryFilter.Op operation) {
         boolean lockedValue = TypeConverter.toBoolean(value);
         return switch (operation) {
-            case EQUALS -> DSL.field(DSL.quotedName("locked")).eq(lockedValue);
+            case EQUALS -> table().LOCKED.eq(lockedValue);
             default -> throw new InvalidQueryFiltersException("Unsupported operation for LOCKED: " + operation);
         };
     }
 
     @Override
     protected Condition lastTriggeredDateCondition(Object value, QueryFilter.Op operation) {
-        return triggerDateFieldCondition(value, operation, LAST_TRIGGERED_DATE_COLUMN, QueryFilter.Field.LAST_TRIGGERED_DATE);
+        return triggerDateFieldCondition(value, operation, table().LAST_TRIGGERED_DATE, QueryFilter.Field.LAST_TRIGGERED_DATE);
     }
 
     @Override
     protected Condition nextExecutionDateCondition(Object value, QueryFilter.Op operation) {
-        return triggerDateFieldCondition(value, operation, NEXT_EVALUATION_DATE_COLUMN, QueryFilter.Field.NEXT_EXECUTION_DATE);
+        return triggerDateFieldCondition(value, operation, table().NEXT_EVALUATION_DATE, QueryFilter.Field.NEXT_EXECUTION_DATE);
     }
 
-    private Condition triggerDateFieldCondition(Object value, QueryFilter.Op operation, String column, QueryFilter.Field field) {
+    private Condition triggerDateFieldCondition(Object value, QueryFilter.Op operation, Field<OffsetDateTime> column, QueryFilter.Field field) {
         // Accept ISO-8601 durations (e.g. PT24H) as "last N hours" — same semantics as TIME_RANGE
         try {
             Duration duration = TypeConverter.toDuration(value);

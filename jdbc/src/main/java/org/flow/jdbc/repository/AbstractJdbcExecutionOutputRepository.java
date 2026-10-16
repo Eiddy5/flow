@@ -8,26 +8,32 @@ import java.util.Optional;
 import org.jooq.Field;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.ExecutionOutputsTable;
+import org.flow.gen.flow.records.ExecutionOutputsRecord;
 import org.flow.core.models.executions.ExecutionOutput;
 import org.flow.core.repositories.ExecutionOutputRepositoryInterface;
 import org.flow.jdbc.AbstractJdbcRepository;
 
 public class AbstractJdbcExecutionOutputRepository extends org.flow.jdbc.repository.AbstractJdbcRepository implements ExecutionOutputRepositoryInterface {
-    public static final Field<byte[]> VALUE_FIELD = field("value", byte[].class);
-    public static final Field<String> URI_ID_FIELD = field("uri", String.class);
 
-    private final AbstractJdbcRepository<ExecutionOutput> jdbcRepository;
+    private AbstractJdbcRepository<ExecutionOutput> jdbcRepository;
 
     public AbstractJdbcExecutionOutputRepository(AbstractJdbcRepository<ExecutionOutput> jdbcRepository) {
         this.jdbcRepository = jdbcRepository;
     }
 
     @Override
+    protected ExecutionOutputsTable table() {
+        return jdbcRepository.getTable(Tables.EXECUTION_OUTPUTS);
+    }
+
+    @Override
     public ExecutionOutput save(ExecutionOutput executionOutput) {
-        Map<Field<Object>, Object> fields = HashMap.newHashMap(3);
-        fields.put(field("tenant_id"), executionOutput.tenantId());
-        fields.put(org.flow.jdbc.repository.AbstractJdbcRepository.VALUE_FIELD, executionOutput.value());
-        fields.put(field("uri"), executionOutput.uri());
+        Map<Field<?>, Object> fields = HashMap.newHashMap(3);
+        fields.put(table().TENANT_ID, executionOutput.tenantId());
+        fields.put(table().VALUE, executionOutput.value());
+        fields.put(table().URI, executionOutput.uri());
         jdbcRepository.persist(executionOutput, fields);
         return executionOutput;
     }
@@ -40,10 +46,9 @@ public class AbstractJdbcExecutionOutputRepository extends org.flow.jdbc.reposit
             {
                 var select = DSL
                     .using(configuration)
-                    .select()
-                    .from(this.jdbcRepository.getTable())
+                    .selectFrom(table())
                     .where(buildTenantCondition(tenantId))
-                    .and(KEY_FIELD.eq(executionId))
+                    .and(table().KEY.eq(executionId))
                     .limit(1);
 
                 return Optional.ofNullable(select.fetchAny()).map(record -> map(record));
@@ -58,14 +63,14 @@ public class AbstractJdbcExecutionOutputRepository extends org.flow.jdbc.reposit
             {
                 var delete = DSL
                     .using(configuration)
-                    .delete(this.jdbcRepository.getTable())
-                    .where(KEY_FIELD.in(executionIds));
+                    .delete(table())
+                    .where(table().KEY.in(executionIds));
 
                 return delete.execute();
             });
     }
 
-    private static ExecutionOutput map(org.jooq.Record record) {
-        return new ExecutionOutput(record.get(KEY_FIELD), record.get(TENANT_ID_FIELD), record.get(VALUE_FIELD), record.get(URI_ID_FIELD));
+    private ExecutionOutput map(ExecutionOutputsRecord record) {
+        return new ExecutionOutput(record.get(table().KEY), record.get(table().TENANT_ID), record.get(table().VALUE), record.get(table().URI));
     }
 }

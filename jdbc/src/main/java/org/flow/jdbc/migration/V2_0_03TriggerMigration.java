@@ -6,9 +6,11 @@ import java.time.ZonedDateTime;
 import java.util.List;
 
 import org.jooq.Cursor;
-import org.jooq.Field;
+import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.DSL;
+
+import static org.flow.gen.flow.Tables.TRIGGERS;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
@@ -41,8 +43,6 @@ import lombok.extern.slf4j.Slf4j;
 @JdbcRepositoryEnabled
 public class V2_0_03TriggerMigration implements MigrationScript {
 
-    private static final Field<Object> KEY_FIELD = DSL.field(DSL.quotedName("key"));
-    private static final Field<Object> VALUE_FIELD = DSL.field(DSL.quotedName("value"));
 
     private final JooqDSLContextWrapper dslContextWrapper;
     private final int vnodes;
@@ -70,6 +70,11 @@ public class V2_0_03TriggerMigration implements MigrationScript {
         return null;
     }
 
+    /**
+     * 只读取生成触发器表的 key 和 value 列，将旧版 JSON 转为 TriggerState 后原位写回。
+     *
+     * @throws Exception 当迁移读取或写入失败时抛出
+     */
     @Override
     public void migrate() throws Exception {
         dslContextWrapper.transaction(configuration ->
@@ -78,16 +83,16 @@ public class V2_0_03TriggerMigration implements MigrationScript {
             int skipped = 0;
 
             try (
-                Cursor<Record2<Object, Object>> cursor = DSL.using(configuration)
-                    .select(KEY_FIELD, VALUE_FIELD)
-                    .from(DSL.table("triggers"))
+                Cursor<Record2<String, JSONB>> cursor = DSL.using(configuration)
+                    .select(TRIGGERS.KEY, TRIGGERS.VALUE)
+                    .from(TRIGGERS)
                     .fetchLazy()
             ) {
 
                 while (cursor.hasNext()) {
-                    Record2<Object, Object> row = cursor.fetchNext();
-                    String key = row.get(KEY_FIELD, String.class);
-                    String json = row.get(VALUE_FIELD, String.class);
+                    Record2<String, JSONB> row = cursor.fetchNext();
+                    String key = row.get(TRIGGERS.KEY);
+                    String json = row.get(TRIGGERS.VALUE).data();
 
                     try {
                         V1Trigger v1 = JacksonMapper.ofJson().readValue(json, V1Trigger.class);
@@ -101,9 +106,9 @@ public class V2_0_03TriggerMigration implements MigrationScript {
                         String newJson = JacksonMapper.ofJson().writeValueAsString(state);
 
                         DSL.using(configuration)
-                            .update(DSL.table("triggers"))
-                            .set(VALUE_FIELD, (Object) JdbcJsonbUtils.valueOf(newJson))
-                            .where(KEY_FIELD.eq(key))
+                            .update(TRIGGERS)
+                            .set(TRIGGERS.VALUE, JdbcJsonbUtils.valueOf(newJson))
+                            .where(TRIGGERS.KEY.eq(key))
                             .execute();
 
                         migrated++;

@@ -7,7 +7,9 @@
 版本管理按 [ADR 0123](decisions/0123-manage-dependencies-with-version-catalog.md)，
 Micronaut 依赖归属按 [ADR 0124](decisions/0124-scope-micronaut-dependencies-by-module.md)，
 Java 版本选择按 [ADR 0125](decisions/0125-use-build-selected-java-version.md)，
-内部 Micronaut 来源按 [ADR 0126](decisions/0126-use-internal-micronaut.md)。
+内部 Micronaut 来源按 [ADR 0126](decisions/0126-use-internal-micronaut.md)，
+数据库生成对象与必要 PaaS 依赖按 [ADR 0127](decisions/0127-use-generated-database-objects.md)，
+存储直接消费生成表和字段按 [ADR 0128](decisions/0128-use-generated-tables-directly.md)。
 [ADR 0117](decisions/0117-prune-kestra-product-entrypoints.md)、
 [0118](decisions/0118-prune-kestra-core-product-features.md)、
 [0119](decisions/0119-use-postgresql-only.md)、
@@ -15,9 +17,10 @@ Java 版本选择按 [ADR 0125](decisions/0125-use-build-selected-java-version.m
 
 ## 当前模块
 
-根 `flow` 是直接可消费的 Java Library，聚合 16 个注册子模块中的运行依赖。
+根 `flow` 是直接可消费的 Java Library，聚合 17 个注册子模块中的运行依赖。
 项目代码使用 `org.flow` 包，职责在所属模块内实现。旧 Flow 的 `org.cses.flow.core`、
-Pulsar、gen、server、buildSrc 及本轮退出的 embedded 均不参与当前构建；旧项目恢复见
+Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前 gen 为原生数据库
+结构重新生成，不恢复旧 gen 的 Schema 或领域模型；旧项目恢复见
 [备份记录](harness/kestra-source-backup.md)。
 
 | 位置 | 职责与入口 |
@@ -25,9 +28,10 @@ Pulsar、gen、server、buildSrc 及本轮退出的 embedded 均不参与当前�
 | 根 `build.gradle`、`src/test` | Java 依赖聚合、生产依赖隔离，以及直接 Java 使用的跨模块技术测试和强杀探针；根无生产适配实现 |
 | `gradle/libs.versions.toml` | 外部依赖坐标、版本和第三方 BOM；所有模块共享，独立 platform 模块已移除 |
 | `model`、`processor` | 基础插件契约、注解与编译期插件注册资源生成 |
+| `gen` | PostgreSQL 生成对象及独立 codegen 入口；运行生成类型供数据库适配器使用，普通编译不连接数据库 |
 | `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；公开入口为 FlowEngine、FlowService、Repository Interface、PluginExportService；不含 AI/MCP、Dashboard、匿名上报和自动安装 |
 | `queue`、`queue-jdbc` | 队列协议与原生 JDBC Dispatch/Broadcast 实现 |
-| `jdbc`、`jdbc-postgres` | 原生 Repository/状态存储、事务、PostgreSQL 迁移 SQL 与迁移器；直接绑定 datasources.flow |
+| `jdbc`、`jdbc-postgres` | 原生 Repository/状态存储、事务、PostgreSQL 迁移 SQL 与迁移器；直接绑定 datasources.flow；jdbc 提供宿主可覆盖的内部 DB 事件和消费者默认配置 |
 | `executor` | 原生执行状态推进与命令消费 |
 | `worker` | Task/Trigger 执行、直接队列领取与结果发布、PG 心跳和恢复；普通和 SystemWorker 独立线程池 |
 | `scheduler` | 原生触发器、时间调度与调度状态 |
@@ -46,9 +50,13 @@ Pulsar、gen、server、buildSrc 及本轮退出的 embedded 均不参与当前�
 `model/processor` 支撑模型和扩展编译，自身不使用 Micronaut。外部依赖通过 TOML
 目录管理，根保留通用依赖及约束；内部 Micronaut BOM 与公开框架 API 由 core 导出，
 模块显式声明自身使用的库、生成处理器和测试依赖，不再继承整组框架配置。
-内部发布的 Micronaut 组件通过限定范围的内部仓库解析；其余官方组件仍使用
-Maven Central，不引入 PaaS 模块。外部调用工程也需配置内部仓库，仓库配置不随
-依赖发布元数据传递；具体规则见 [依赖管理](harness/dependency-management.md)。
+内部发布的 Micronaut、jOOQ 及生成对象必要的 PaaS 组件通过限定范围的内部仓库解析；
+其余官方组件仍使用 Maven Central。PaaS 范围包括 common、json、sql、exception，
+以及内部 Bean 装配所需的 paas-pulsar 和必要客户端，不引入 PaaS 聚合包、AuthX 或
+CSES 业务模块。
+外部调用工程也需配置内部仓库，仓库配置不随依赖发布元数据传递；框架规则见
+[依赖管理](harness/dependency-management.md)，jOOQ/PaaS 增量规则见
+[生成指南](harness/jooq-generation.md)。
 运行实现依赖 core 中的角色契约；
 FlowEngine 在 core 中通过这些契约协调五类运行服务，core 不反向依赖具体运行模块。
 根依赖聚合不包含第二套引擎、Context 或数据源。调用应用在自己的同一 Context 内
@@ -60,6 +68,11 @@ core、queue、queue-jdbc、jdbc、jdbc-postgres、executor、worker、scheduler
 集成测试仍需容器；它们通过 core 间接依赖框架。tooling 运行时读取 Bean 元数据，
 tests 提供框架测试支持，plugin-fixture 使用插件 SPI；三者均不进入根生产依赖。
 具体作用域及验证方法见 [依赖管理](harness/dependency-management.md)。
+
+gen 不依赖 Flow 运行模块，`jdbc`、`jdbc-postgres`、`queue-jdbc` 消费其 Table、Field、
+Record 和 `JooqPojo` 子类；Core Domain 和服务契约不依赖生成类型。生成器在独立
+codegen source set 中，普通编译使用已提交代码。Schema 仍由 jdbc-postgres 的原生
+迁移维护，生成脚本只在临时 PostgreSQL 上执行；gen 不维护第二份 SQL 基线。
 
 事务、队列、默认日志和迁移绑定 flow 数据源，不回退 default。原生独立日志扩展仍
 保留，但不是默认装配。迁移默认显式执行；自动迁移需明确开启 flow.migration.auto。
@@ -73,13 +86,17 @@ Controller、gRPC、Protobuf RPC 或远程存储代理。多进程 Worker 需共
 测试或生产的普通 classpath。插件目录由原生 Registry 工厂加载；聚合 Schema 保留
 Flow、Task、Trigger 三个根。Task 文档/Schema/图标导出属于 core 的 PluginExportService。
 
-CLI、Web、MySQL、H2、memory 和 embedded 已退出。HTTP Server Netty 仅为测试
-依赖，根生产依赖和 tooling 的隔离检查禁止引入。普通日志继续通过 Dispatch/Indexer
+CLI、Web、MySQL、H2、memory 和 embedded 已退出。gen 所需依赖局部排除 HTTP
+Server Netty；根生产隔离同时禁止 jOOQ codegen/meta。内部 Bean 装配保留必要
+Pulsar 类型，Flow 队列仍是 JDBC。jdbc 的 `FlowDatabaseContextConfigurer` 注册
+最低优先级 PropertySource，默认关闭内部 DB 事件、数据库 Pulsar 监听和消费者，
+宿主显式配置可以覆盖；配置键与实际验证结果见生成指南。
+普通日志继续通过 Dispatch/Indexer
 入库，Webhook 继续使用执行事件流。历史迁移 SQL 及原文 checksum 保留；当前迁移历史表为 flow_migration_history。
 
 ## 构建、来源和产物
 
-- `build.gradle`、`settings.gradle`：唯一根构建；根 Java Library 与 16 个子模块。
+- `build.gradle`、`settings.gradle`：唯一根构建；根 Java Library 与 17 个子模块。
 - `gradle/libs.versions.toml`：唯一外部依赖版本目录；维护与比较方法见 [依赖管理](harness/dependency-management.md)。
 - `gradle/`、`gradlew*`：固定 Wrapper 9.7.1；Java 版本由标准 Gradle Java 配置或构建 JDK 决定，不固定 toolchain、source、target 或 release。
 - `lombok.config`：原生构造器元数据协议，不能遗漏。
@@ -90,6 +107,7 @@ CLI、Web、MySQL、H2、memory 和 embedded 已退出。HTTP Server Netty 仅�
 - `build/test-results/test/`、`build/reports/tests/test/`：根跨模块技术验证结果。
 - `docs/harness/verify-flow.sh`：自动创建和清理临时 PG 的目标验证及完整回归入口。
 - `docs/harness/capture-dependency-versions.init.gradle`：按配置导出解析组件和制品，用于依赖调整前后比较。
+- `gen/src/codegen/java/`、`docs/harness/generate-jooq.sh`：显式生成入口及临时 PostgreSQL 建库、生成与清理脚本；产物提交到 gen 的主源码目录。
 
 ## 文档与 Agent
 

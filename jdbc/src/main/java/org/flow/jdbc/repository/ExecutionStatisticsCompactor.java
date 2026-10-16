@@ -7,9 +7,11 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.jooq.DSLContext;
-import org.jooq.Field;
+import org.jooq.Condition;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.ExecutionStatisticsTable;
 import org.flow.core.metrics.MetricRegistry;
 import org.flow.core.models.executions.statistics.ExecutionStatistic;
 import org.flow.core.models.flows.State;
@@ -25,15 +27,7 @@ import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
-import static org.flow.jdbc.repository.AbstractJdbcExecutionStatisticsRepository.DATE_FIELD;
-import static org.flow.jdbc.repository.AbstractJdbcExecutionStatisticsRepository.FLOW_ID_FIELD;
-import static org.flow.jdbc.repository.AbstractJdbcExecutionStatisticsRepository.NAMESPACE_FIELD;
 import static org.flow.jdbc.repository.AbstractJdbcExecutionStatisticsRepository.bindableDate;
-import static org.flow.jdbc.repository.AbstractJdbcExecutionStatisticsRepository.tenantCondition;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.KEY_FIELD;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.TENANT_ID_FIELD;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.VALUE_FIELD;
-import static org.flow.jdbc.repository.AbstractJdbcRepository.field;
 
 /**
  * Periodically compacts the {@code execution_statistics} table.
@@ -51,15 +45,17 @@ import static org.flow.jdbc.repository.AbstractJdbcRepository.field;
 @Requires(property = "flow.server-type", pattern = "(STANDALONE|WEBSERVER|INDEXER)")
 @Slf4j
 public class ExecutionStatisticsCompactor {
+
+    private ExecutionStatisticsTable table() {
+        return jdbcRepository.getTable(Tables.EXECUTION_STATISTICS);
+    }
+
     // Safety cap on the number of findKeysWithRawRows() batches drained within a single tick, so
     // that a key which can never be compacted (e.g. a persistently corrupt row) can't keep the
     // batch full forever and block this thread indefinitely; the remainder is simply picked up on
     // the next tick. Not user-configurable: it exists purely to bound worst-case behavior, not to
     // be tuned.
     private static final int MAX_BATCHES_PER_TICK = 50;
-
-    private static final Field<String> STATE_FIELD = field("state", String.class);
-    private static final Field<String> EXECUTION_ID_FIELD = field("execution_id", String.class);
 
     private final org.flow.jdbc.AbstractJdbcRepository<ExecutionStatistic> jdbcRepository;
     private final JooqDSLContextWrapper dslContextWrapper;
@@ -124,21 +120,25 @@ public class ExecutionStatisticsCompactor {
         }
     }
 
+    private Condition tenantCondition(String tenantId) {
+        return tenantId == null ? table().TENANT_ID.isNull() : table().TENANT_ID.eq(tenantId);
+    }
+
     private List<BucketGroupKey> findKeysWithRawRows(Instant closedBefore) {
         return dslContextWrapper.transactionResult(
             configuration -> DSL
                 .using(configuration)
-                .selectDistinct(TENANT_ID_FIELD, NAMESPACE_FIELD, FLOW_ID_FIELD, STATE_FIELD)
-                .from(jdbcRepository.getTable())
-                .where(EXECUTION_ID_FIELD.isNotNull())
-                .and(DATE_FIELD.lessThan(bindableDate(closedBefore)))
+                .selectDistinct(table().TENANT_ID, table().NAMESPACE, table().FLOW_ID, table().STATE)
+                .from(table())
+                .where(table().EXECUTION_ID.isNotNull())
+                .and(table().DATE.lessThan(bindableDate(closedBefore)))
                 .limit(maxKeysPerRun)
                 .fetch(
                     record -> new BucketGroupKey(
-                        record.get(TENANT_ID_FIELD),
-                        record.get(NAMESPACE_FIELD),
-                        record.get(FLOW_ID_FIELD),
-                        record.get(STATE_FIELD)
+                        record.get(table().TENANT_ID),
+                        record.get(table().NAMESPACE),
+                        record.get(table().FLOW_ID),
+                        record.get(table().STATE)
                     )
                 )
         );
@@ -150,14 +150,14 @@ public class ExecutionStatisticsCompactor {
             DSLContext context = DSL.using(configuration);
 
             List<ExecutionStatistic> rawRows = jdbcRepository.fetch(
-                context.select(VALUE_FIELD)
-                    .from(jdbcRepository.getTable())
+                context.select(table().VALUE)
+                    .from(table())
                     .where(tenantCondition(key.tenantId()))
-                    .and(NAMESPACE_FIELD.eq(key.namespace()))
-                    .and(FLOW_ID_FIELD.eq(key.flowId()))
-                    .and(STATE_FIELD.eq(key.state()))
-                    .and(EXECUTION_ID_FIELD.isNotNull())
-                    .and(DATE_FIELD.lessThan(bindableDate(closedBefore)))
+                    .and(table().NAMESPACE.eq(key.namespace()))
+                    .and(table().FLOW_ID.eq(key.flowId()))
+                    .and(table().STATE.eq(key.state()))
+                    .and(table().EXECUTION_ID.isNotNull())
+                    .and(table().DATE.lessThan(bindableDate(closedBefore)))
                     .forUpdate()
                     .skipLocked()
             );
@@ -172,8 +172,8 @@ public class ExecutionStatisticsCompactor {
 
             byBucket.forEach((bucketDate, bucketRows) -> mergeBucket(context, key, bucketDate, bucketRows));
 
-            context.deleteFrom(jdbcRepository.getTable())
-                .where(KEY_FIELD.in(rawRows.stream().map(ExecutionStatistic::executionId).toList()))
+            context.deleteFrom(table())
+                .where(table().KEY.in(rawRows.stream().map(ExecutionStatistic::executionId).toList()))
                 .execute();
 
             log.debug("Compacted {} execution statistics for {} into {} bucket(s)", rawRows.size(), key, byBucket.size());
@@ -195,9 +195,9 @@ public class ExecutionStatisticsCompactor {
         ExecutionStatistic existing = jdbcRepository.getOrInsert(
             context,
             () -> jdbcRepository.fetchOne(
-                context.select(VALUE_FIELD)
-                    .from(jdbcRepository.getTable())
-                    .where(KEY_FIELD.eq(zero.uid()))
+                context.select(table().VALUE)
+                    .from(table())
+                    .where(table().KEY.eq(zero.uid()))
                     .forUpdate()
             ),
             () -> zero

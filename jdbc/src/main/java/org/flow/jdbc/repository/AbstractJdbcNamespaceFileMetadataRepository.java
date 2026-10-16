@@ -10,9 +10,10 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.jooq.*;
-import org.jooq.Record;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.NamespaceFileMetadataTable;
 import org.flow.core.models.FetchVersion;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.models.TenantAndNamespace;
@@ -24,7 +25,7 @@ import io.micronaut.data.model.Pageable;
 import jakarta.annotation.Nullable;
 
 public abstract class AbstractJdbcNamespaceFileMetadataRepository extends AbstractJdbcRepository implements NamespaceFileMetadataRepositoryInterface {
-    protected final org.flow.jdbc.AbstractJdbcRepository<NamespaceFileMetadata> jdbcRepository;
+    protected org.flow.jdbc.AbstractJdbcRepository<NamespaceFileMetadata> jdbcRepository;
 
     public AbstractJdbcNamespaceFileMetadataRepository(
         org.flow.jdbc.AbstractJdbcRepository<NamespaceFileMetadata> jdbcRepository) {
@@ -32,15 +33,20 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
     }
 
     @Override
+    protected NamespaceFileMetadataTable table() {
+        return jdbcRepository.getTable(Tables.NAMESPACE_FILE_METADATA);
+    }
+
+    @Override
     protected Condition defaultFilter(String tenantId, boolean allowDeleted) {
         return super.defaultFilter(tenantId, allowDeleted).and(aclCondition(QueryFilter.Resource.NAMESPACE_FILE_METADATA));
     }
 
-    private static Condition lastCondition(boolean isLast) {
-        return field("last").eq(isLast);
+    private Condition lastCondition(boolean isLast) {
+        return table().LAST.eq(isLast);
     }
 
-    private static Condition lastCondition() {
+    private Condition lastCondition() {
         return lastCondition(true);
     }
 
@@ -59,13 +65,13 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
                 configuration -> new HashSet<>(
                     DSL
                         .using(configuration)
-                        .select(field("namespace"))
-                        .from(this.jdbcRepository.getTable())
+                        .select(table().NAMESPACE)
+                        .from(table())
                         .where(this.defaultFilter(tenantId, false))
                         .and(lastCondition())
-                        .groupBy(field("namespace"))
+                        .groupBy(table().NAMESPACE)
                         .fetch()
-                        .map(record -> record.getValue("namespace", String.class))
+                        .map(record -> record.get(table().NAMESPACE))
                 )
             );
     }
@@ -76,34 +82,34 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
             .getDslContextWrapper()
             .transactionResult(configuration ->
             {
-                Select<Record1<Object>> from = DSL
+                Select<Record1<JSONB>> from = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.defaultFilter(tenantId, true))
-                    .and(field("namespace").eq(namespace))
+                    .and(table().NAMESPACE.eq(namespace))
                     .and(pathCondition(path))
                     .and(lastCondition());
                 return this.jdbcRepository.fetchOne(from);
             });
     }
 
-    private SelectConditionStep<Record1<Object>> findSelect(
+    private SelectConditionStep<Record1<JSONB>> findSelect(
         DSLContext context,
         @Nullable String tenantId,
         @Nullable List<QueryFilter> filters,
         boolean allowDeleted,
         FetchVersion fetchBehavior) {
-        SelectConditionStep<Record1<Object>> condition = context
-            .select(VALUE_FIELD)
-            .from(this.jdbcRepository.getTable())
+        SelectConditionStep<Record1<JSONB>> condition = context
+            .select(table().VALUE)
+            .from(table())
             .where(this.defaultFilter(tenantId, allowDeleted))
-            .and(this.filter(filters, "updated", QueryFilter.Resource.NAMESPACE_FILE_METADATA));
+            .and(this.filter(filters, table().UPDATED, QueryFilter.Resource.NAMESPACE_FILE_METADATA));
 
         switch (fetchBehavior) {
             case LATEST -> condition = condition.and(lastCondition());
             case OLD -> condition = condition.and(lastCondition(false));
-            case ALL -> condition = condition.and(field("last").in(true, false));
+            case ALL -> condition = condition.and(table().LAST.in(true, false));
         }
 
         return condition;
@@ -117,7 +123,7 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
             {
                 DSLContext context = DSL.using(configuration);
 
-                SelectConditionStep<Record1<Object>> select = this.findSelect(
+                SelectConditionStep<Record1<JSONB>> select = this.findSelect(
                     context,
                     tenantId,
                     filters,
@@ -147,13 +153,13 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
 
                 return byTenantNamespace.entrySet().stream().reduce(0, (totalForTenantNamespace, e) ->
                 {
-                    DeleteConditionStep<Record> deleteCondition = context.delete(this.jdbcRepository.getTable())
+                    var deleteCondition = context.delete(table())
                         .where(this.defaultFilter(e.getKey().tenantId(), true))
-                        .and(field("namespace").eq(e.getKey().namespace()))
-                        .and(field("last").in(true, false));
+                        .and(table().NAMESPACE.eq(e.getKey().namespace()))
+                        .and(table().LAST.in(true, false));
                     if (e.getValue().getFirst().getRevision() == null) {
                         deleteCondition = deleteCondition.and(
-                            field("path").in(
+                            table().PATH.in(
                                 namespaceFilesMetadata.stream()
                                     .flatMap(namespaceFileMetadata -> Stream.of(namespaceFileMetadata.path(false), namespaceFileMetadata.path(true)))
                                     .toList()
@@ -165,7 +171,7 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
                                 e.getValue().stream().map(
                                     namespaceFileMetadata -> DSL.and(
                                         pathCondition(namespaceFileMetadata.getPath()),
-                                        field("version").eq(
+                                        table().VERSION.eq(
                                             namespaceFileMetadata.getRevision()
                                         )
                                     )
@@ -181,8 +187,8 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
             });
     }
 
-    private static Condition pathCondition(String path) {
-        return field("path").in(List.of(NamespaceFileMetadata.path(path, false), NamespaceFileMetadata.path(path, true)));
+    private Condition pathCondition(String path) {
+        return table().PATH.in(List.of(NamespaceFileMetadata.path(path, false), NamespaceFileMetadata.path(path, true)));
     }
 
     @Override
@@ -211,12 +217,12 @@ public abstract class AbstractJdbcNamespaceFileMetadataRepository extends Abstra
                     } else {
                         // We mark the previous as not last
                         NamespaceFileMetadata previousAsNotLast = previous.toBuilder().last(false).build();
-                        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(previousAsNotLast);
+                        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(previousAsNotLast);
                         this.jdbcRepository.persist(previousAsNotLast, context, fields);
                     }
                 }
 
-                Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(nsFileMetadataToPersist);
+                Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(nsFileMetadataToPersist);
                 this.jdbcRepository.persist(nsFileMetadataToPersist, context, fields);
 
                 return nsFileMetadataToPersist;

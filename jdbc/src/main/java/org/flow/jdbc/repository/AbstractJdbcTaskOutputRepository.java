@@ -8,46 +8,49 @@ import java.util.Optional;
 import org.jooq.Field;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.TaskOutputsTable;
+import org.flow.gen.flow.records.TaskOutputsRecord;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.TaskOutput;
 import org.flow.core.repositories.TaskOutputRepositoryInterface;
 import org.flow.jdbc.AbstractJdbcRepository;
 
 public class AbstractJdbcTaskOutputRepository extends org.flow.jdbc.repository.AbstractJdbcRepository implements TaskOutputRepositoryInterface {
-    public static final Field<String> TASK_RUN_ID_FIELD = field("task_run_id", String.class);
-    public static final Field<String> EXECUTION_ID_FIELD = field("execution_id", String.class);
-    public static final Field<byte[]> VALUE_FIELD = field("value", byte[].class);
-    public static final Field<String> URI_ID_FIELD = field("uri", String.class);
 
-    private final AbstractJdbcRepository<TaskOutput> jdbcRepository;
+    private AbstractJdbcRepository<TaskOutput> jdbcRepository;
 
     public AbstractJdbcTaskOutputRepository(AbstractJdbcRepository<TaskOutput> jdbcRepository) {
         this.jdbcRepository = jdbcRepository;
     }
 
     @Override
+    protected TaskOutputsTable table() {
+        return jdbcRepository.getTable(Tables.TASK_OUTPUTS);
+    }
+
+    @Override
     public TaskOutput save(TaskOutput taskOutput) {
-        Map<Field<Object>, Object> fields = HashMap.newHashMap(5);
-        fields.put(field("task_run_id"), taskOutput.taskRunId());
-        fields.put(field("tenant_id"), taskOutput.tenantId());
-        fields.put(field("execution_id"), taskOutput.executionId());
-        fields.put(org.flow.jdbc.repository.AbstractJdbcRepository.VALUE_FIELD, taskOutput.value());
-        fields.put(field("uri"), taskOutput.uri());
+        Map<Field<?>, Object> fields = HashMap.newHashMap(5);
+        fields.put(table().TASK_RUN_ID, taskOutput.taskRunId());
+        fields.put(table().TENANT_ID, taskOutput.tenantId());
+        fields.put(table().EXECUTION_ID, taskOutput.executionId());
+        fields.put(table().VALUE, taskOutput.value());
+        fields.put(table().URI, taskOutput.uri());
         jdbcRepository.persist(taskOutput, fields);
         return taskOutput;
     }
 
     @Override
     public Optional<TaskOutput> findById(String tenantId, String taskRunId) {
-        var condition = TASK_RUN_ID_FIELD.eq(taskRunId);
+        var condition = table().TASK_RUN_ID.eq(taskRunId);
         return this.jdbcRepository
             .getDslContextWrapper()
             .transactionResult(configuration ->
             {
                 var select = DSL
                     .using(configuration)
-                    .select()
-                    .from(this.jdbcRepository.getTable())
+                    .selectFrom(table())
                     .where(buildTenantCondition(tenantId))
                     .and(condition)
                     .limit(1);
@@ -58,15 +61,14 @@ public class AbstractJdbcTaskOutputRepository extends org.flow.jdbc.repository.A
 
     @Override
     public List<TaskOutput> findByExecution(Execution execution) {
-        var condition = EXECUTION_ID_FIELD.eq(execution.getId());
+        var condition = table().EXECUTION_ID.eq(execution.getId());
         return this.jdbcRepository
             .getDslContextWrapper()
             .transactionResult(configuration ->
             {
                 var select = DSL
                     .using(configuration)
-                    .select()
-                    .from(this.jdbcRepository.getTable())
+                    .selectFrom(table())
                     .where(buildTenantCondition(execution.getTenantId()))
                     .and(condition);
 
@@ -82,14 +84,14 @@ public class AbstractJdbcTaskOutputRepository extends org.flow.jdbc.repository.A
             {
                 var delete = DSL
                     .using(configuration)
-                    .delete(this.jdbcRepository.getTable())
-                    .where(EXECUTION_ID_FIELD.in(executionIds));
+                    .delete(table())
+                    .where(table().EXECUTION_ID.in(executionIds));
 
                 return delete.execute();
             });
     }
 
-    private static TaskOutput map(org.jooq.Record record) {
-        return new TaskOutput(record.get(TASK_RUN_ID_FIELD), record.get(TENANT_ID_FIELD), record.get(EXECUTION_ID_FIELD), record.get(VALUE_FIELD), record.get(URI_ID_FIELD));
+    private TaskOutput map(TaskOutputsRecord record) {
+        return new TaskOutput(record.get(table().TASK_RUN_ID), record.get(table().TENANT_ID), record.get(table().EXECUTION_ID), record.get(table().VALUE), record.get(table().URI));
     }
 }

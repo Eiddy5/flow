@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.jooq.Cursor;
-import org.jooq.Field;
+import org.jooq.JSONB;
 import org.jooq.Record2;
 import org.jooq.impl.DSL;
+
+import static org.flow.gen.flow.Tables.WORKER_JOB_RUNNING;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -51,8 +53,6 @@ import lombok.extern.slf4j.Slf4j;
 @JdbcRepositoryEnabled
 public class V2_0_26PurgeLegacyWorkerJobRunningMigration implements MigrationScript {
 
-    private static final Field<Object> KEY_FIELD = DSL.field(DSL.quotedName("key"));
-    private static final Field<Object> VALUE_FIELD = DSL.field(DSL.quotedName("value"));
 
     private final JooqDSLContextWrapper dslContextWrapper;
 
@@ -76,6 +76,11 @@ public class V2_0_26PurgeLegacyWorkerJobRunningMigration implements MigrationScr
         return null;
     }
 
+    /**
+     * 只读取生成工作任务表的 key 和 value 列，删除无法读取或缺少新版 data 的旧归属记录。
+     *
+     * @throws Exception 当迁移读取或写入失败时抛出
+     */
     @Override
     public void migrate() throws Exception {
         dslContextWrapper.transaction(configuration ->
@@ -86,15 +91,15 @@ public class V2_0_26PurgeLegacyWorkerJobRunningMigration implements MigrationScr
             List<String> legacyKeys = new ArrayList<>();
 
             try (
-                Cursor<Record2<Object, Object>> cursor = DSL.using(configuration)
-                    .select(KEY_FIELD, VALUE_FIELD)
-                    .from(DSL.table("worker_job_running"))
+                Cursor<Record2<String, JSONB>> cursor = DSL.using(configuration)
+                    .select(WORKER_JOB_RUNNING.KEY, WORKER_JOB_RUNNING.VALUE)
+                    .from(WORKER_JOB_RUNNING)
                     .fetchLazy()
             ) {
                 while (cursor.hasNext()) {
-                    Record2<Object, Object> row = cursor.fetchNext();
-                    String key = row.get(KEY_FIELD, String.class);
-                    String json = row.get(VALUE_FIELD, String.class);
+                    Record2<String, JSONB> row = cursor.fetchNext();
+                    String key = row.get(WORKER_JOB_RUNNING.KEY);
+                    String json = row.get(WORKER_JOB_RUNNING.VALUE).data();
 
                     JsonNode node;
                     try {
@@ -127,8 +132,8 @@ public class V2_0_26PurgeLegacyWorkerJobRunningMigration implements MigrationScr
             }
 
             int purged = DSL.using(configuration)
-                .deleteFrom(DSL.table("worker_job_running"))
-                .where(KEY_FIELD.in(legacyKeys))
+                .deleteFrom(WORKER_JOB_RUNNING)
+                .where(WORKER_JOB_RUNNING.KEY.in(legacyKeys))
                 .execute();
 
             log.info("Purged {} pre-2.0 worker job running entry(ies).", purged);

@@ -7,9 +7,12 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 
 import org.apache.commons.lang3.tuple.Pair;
-import org.jooq.*;
+import org.jooq.DSLContext;
+import org.jooq.Field;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.tables.ConcurrencyLimitTable;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.runners.ConcurrencyLimit;
@@ -24,9 +27,17 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class AbstractJdbcConcurrencyLimitStateStore extends AbstractJdbcRepository implements ConcurrencyLimitStateStore {
-    public static final Field<Object> NAMESPACE_FIELD = field("namespace");
-    public static final Field<Object> FLOW_ID_FIELD = field("flow_id");
     protected org.flow.jdbc.AbstractJdbcRepository<ConcurrencyLimit> jdbcRepository;
+
+    /**
+     * 返回当前存储使用的生成表，保留配置的物理名称和字段类型。
+     *
+     * @return 与当前 JDBC Repository 绑定的生成表
+     */
+    @Override
+    protected ConcurrencyLimitTable table() {
+        return jdbcRepository.getTable(Tables.CONCURRENCY_LIMIT);
+    }
 
     public AbstractJdbcConcurrencyLimitStateStore(org.flow.jdbc.AbstractJdbcRepository<ConcurrencyLimit> jdbcRepository) {
         this.jdbcRepository = jdbcRepository;
@@ -142,7 +153,10 @@ public class AbstractJdbcConcurrencyLimitStateStore extends AbstractJdbcReposito
     }
 
     /**
-     * Returns all concurrency limits from the database
+     * 按租户读取全部并发计数状态。
+     *
+     * @param tenantId 租户标识；null 表示无租户记录
+     * @return 匹配的状态列表；无记录时为空
      */
     public List<ConcurrencyLimit> find(String tenantId) {
         return this.jdbcRepository
@@ -151,8 +165,8 @@ public class AbstractJdbcConcurrencyLimitStateStore extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.buildTenantCondition(tenantId));
 
                 return this.jdbcRepository.fetch(select);
@@ -160,35 +174,53 @@ public class AbstractJdbcConcurrencyLimitStateStore extends AbstractJdbcReposito
     }
 
     /**
-     * Update a concurrency limit
-     * WARNING: this is inherently unsafe and must only be used for administration purpose
+     * 保存给定并发计数状态；调用方负责并发安全，带 DSLContext 的重载复用该事务。
+     *
+     * @param concurrencyLimit 需要保存的并发计数状态；不能为 null
+     * @return 保存的状态对象，与输入共享实例
      */
     public ConcurrencyLimit update(ConcurrencyLimit concurrencyLimit) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(concurrencyLimit);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(concurrencyLimit);
         this.jdbcRepository.persist(concurrencyLimit, fields);
 
         return concurrencyLimit;
     }
 
     /**
-     * Fetch the concurrency limit row of the given flow and lock it for the current transaction.
-     * <p>
-     * The row is looked up by primary key on purpose, so this is a unique-index lookup locking exactly one row.
+     * 按流程唯一键读取并锁定并发计数，锁保持到当前事务结束。
+     *
+     * @param dslContext 当前事务使用的 DSLContext；不能为 null
+     * @param flow 携带租户、命名空间和标识的流程；不能为 null
+     * @return 匹配状态；未找到时为空
      */
     private Optional<ConcurrencyLimit> fetchOne(DSLContext dslContext, FlowInterface flow) {
         var select = dslContext
             .select()
-            .from(this.jdbcRepository.getTable())
-            .where(KEY_FIELD.eq(IdUtils.fromPartsAndSeparator('|', flow.getTenantId(), flow.getNamespace(), flow.getId())));
+            .from(table())
+            .where(table().KEY.eq(IdUtils.fromPartsAndSeparator('|', flow.getTenantId(), flow.getNamespace(), flow.getId())));
 
         return this.jdbcRepository.fetchOne(select.forUpdate());
     }
 
+    /**
+     * 保存给定并发计数状态；调用方负责并发安全，带 DSLContext 的重载复用该事务。
+     *
+     * @param dslContext 当前事务使用的 DSLContext；不能为 null
+     * @param concurrencyLimit 需要保存的并发计数状态；不能为 null
+     */
     private void update(DSLContext dslContext, ConcurrencyLimit concurrencyLimit) {
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(concurrencyLimit);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(concurrencyLimit);
         this.jdbcRepository.persist(concurrencyLimit, dslContext, fields);
     }
 
+    /**
+     * 按租户、命名空间和流程标识读取并发计数。
+     *
+     * @param tenantId 租户标识；null 表示无租户记录
+     * @param namespace 需要匹配的命名空间；不能为 null
+     * @param flowId 需要匹配的流程标识；不能为 null
+     * @return 匹配状态；未找到时为空
+     */
     public Optional<ConcurrencyLimit> findById(String tenantId, String namespace, String flowId) {
         return jdbcRepository
             .getDslContextWrapper()
@@ -196,11 +228,11 @@ public class AbstractJdbcConcurrencyLimitStateStore extends AbstractJdbcReposito
             {
                 var select = DSL
                     .using(configuration)
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
+                    .select(table().VALUE)
+                    .from(table())
                     .where(this.buildTenantCondition(tenantId))
-                    .and(NAMESPACE_FIELD.eq(namespace))
-                    .and(FLOW_ID_FIELD.eq(flowId));
+                    .and(table().NAMESPACE.eq(namespace))
+                    .and(table().FLOW_ID.eq(flowId));
                 return this.jdbcRepository.fetchOne(select);
             });
     }

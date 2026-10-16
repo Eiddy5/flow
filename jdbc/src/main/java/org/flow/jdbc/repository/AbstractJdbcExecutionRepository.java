@@ -8,6 +8,9 @@ import org.jooq.*;
 import org.jooq.Record;
 import org.jooq.impl.DSL;
 
+import org.flow.gen.flow.Tables;
+import org.flow.gen.flow.enums.StateType;
+import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.core.contexts.configuration.SystemFlowsConfiguration;
 import org.flow.core.events.CrudEvent;
 import org.flow.core.models.QueryFilter;
@@ -32,11 +35,17 @@ import reactor.core.publisher.Flux;
 import reactor.core.publisher.FluxSink;
 
 public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRepository<Execution> implements ExecutionRepositoryInterface, ExecutionStateStore {
+
+    @Override
+    protected ExecutionsTable table() {
+        return jdbcRepository.getTable(Tables.EXECUTIONS);
+    }
+
     private static final int FETCH_SIZE = 100;
-    private static final Field<String> STATE_CURRENT_FIELD = field("state_current", String.class);
-    private static final Field<String> NAMESPACE_FIELD = field("namespace", String.class);
-    private static final Field<Object> START_DATE_FIELD = field("start_date");
-    private static final Condition NORMAL_KIND_CONDITION = field("kind").isNull().or(field("kind").eq(ExecutionKind.NORMAL.name()));
+
+    private Condition normalKindCondition() {
+        return table().KIND.isNull().or(table().KIND.eq(ExecutionKind.NORMAL.name()));
+    }
 
     private final ApplicationEventPublisher<CrudEvent<Execution>> eventPublisher;
     private final SystemFlowsConfiguration systemFlowsConfiguration;
@@ -62,7 +71,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
     @Override
     public Flux<Execution> findAllByTriggerExecutionId(String tenantId,
         String triggerExecutionId) {
-        var condition = field("trigger_execution_id").eq(triggerExecutionId);
+        var condition = table().TRIGGER_EXECUTION_ID.eq(triggerExecutionId);
         return findAsync(tenantId, condition);
     }
 
@@ -71,7 +80,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
      **/
     @Override
     public Flux<Execution> findAllByTrigger(TriggerId trigger) {
-        var condition = field("trigger_id").eq(trigger.uid());
+        var condition = table().TRIGGER_ID.eq(trigger.uid());
         return findAsync(trigger.getTenantId(), condition);
     }
 
@@ -80,18 +89,18 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
      **/
     @Override
     public Optional<Execution> findLatestForStates(String tenantId, String namespace, String flowId, List<State.Type> states) {
-        var condition = field("namespace").eq(namespace)
-            .and(field("flow_id").eq(flowId))
+        var condition = table().NAMESPACE.eq(namespace)
+            .and(table().FLOW_ID.eq(flowId))
             .and(this.statesFilter(states));
-        return findOne(tenantId, condition, field("start_date").desc());
+        return findOne(tenantId, condition, table().START_DATE.desc());
     }
 
     @Override
     public Optional<Execution> findLatestForStatesWithoutAcl(String tenantId, String namespace, String flowId, List<State.Type> states) {
-        var condition = field("namespace").eq(namespace)
-            .and(field("flow_id").eq(flowId))
+        var condition = table().NAMESPACE.eq(namespace)
+            .and(table().FLOW_ID.eq(flowId))
             .and(this.statesFilter(states));
-        return findOne(this.defaultFilterWithNoACL(tenantId), condition, field("start_date").desc());
+        return findOne(this.defaultFilterWithNoACL(tenantId), condition, table().START_DATE.desc());
     }
 
     @Override
@@ -111,12 +120,12 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
 
     @Override
     public Execution findByIdWithoutAcl(String id) {
-        return findOne(DSL.noCondition(), KEY_FIELD.eq(id)).orElse(null);
+        return findOne(DSL.noCondition(), table().KEY.eq(id)).orElse(null);
     }
 
     public Optional<Execution> findById(String tenantId, String id, boolean allowDeleted, boolean withAccessControl) {
         Condition defaultFilter = withAccessControl ? this.defaultFilter(tenantId, allowDeleted) : this.defaultFilterWithNoACL(tenantId, allowDeleted);
-        Condition condition = KEY_FIELD.eq(id);
+        Condition condition = table().KEY.eq(id);
         return findOne(defaultFilter, condition);
     }
 
@@ -129,8 +138,8 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
     abstract public Condition findLabelCondition(Either<Map<?, ?>, String> value, QueryFilter.Op operation);
 
     protected Condition statesFilter(List<State.Type> state) {
-        return field("state_current")
-            .in(state.stream().map(Enum::name).toList());
+        return table().STATE_CURRENT
+            .in(state.stream().map(value -> StateType.valueOf(value.name())).toList());
     }
 
     @Override
@@ -172,7 +181,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
                 {
                     DSLContext context = DSL.using(configuration);
 
-                    SelectConditionStep<Record1<Object>> select = this.findSelect(
+                    SelectConditionStep<Record1<JSONB>> select = this.findSelect(
                         context,
                         query,
                         tenantId,
@@ -202,7 +211,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
     private Condition computeFindCondition(@Nullable List<QueryFilter> filters, @Nullable DateFilter dateFilter) {
         boolean hasKindFilter = filters != null && filters.stream().anyMatch(AbstractJdbcExecutionRepository::containsLeafForKind);
         Condition dateFilterCondition = buildDateFilterCondition(filters, dateFilter);
-        return hasKindFilter ? dateFilterCondition : dateFilterCondition.and(NORMAL_KIND_CONDITION);
+        return hasKindFilter ? dateFilterCondition : dateFilterCondition.and(normalKindCondition());
     }
 
     private static boolean containsLeafForKind(QueryFilter filter) {
@@ -213,11 +222,11 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
     }
 
     @Override
-    protected Name getColumnName(QueryFilter.Field field) {
+    protected Field<?> getColumnField(QueryFilter.Field field) {
         if (field == QueryFilter.Field.TASK_ID) {
-            return DSL.quotedName("loop_run_task_id");
+            return table().LOOP_RUN_TASK_ID;
         }
-        return super.getColumnName(field);
+        return super.getColumnField(field);
     }
 
     private Condition buildDateFilterCondition(@Nullable List<QueryFilter> filters, @Nullable DateFilter dateFilter) {
@@ -229,19 +238,19 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
                 .filter(f -> f.field() != QueryFilter.Field.START_DATE && f.field() != QueryFilter.Field.END_DATE)
                 .toList();
 
-            Condition onStartDate = this.filter(dateBoundaryFilters, "start_date", Resource.EXECUTION);
-            Condition onEndDate = this.filter(dateBoundaryFilters, "end_date", Resource.EXECUTION);
+            Condition onStartDate = this.filter(dateBoundaryFilters, table().START_DATE, Resource.EXECUTION);
+            Condition onEndDate = this.filter(dateBoundaryFilters, table().END_DATE, Resource.EXECUTION);
             Condition dateOrCondition = dateBoundaryFilters.isEmpty() ? DSL.noCondition() : onStartDate.or(onEndDate);
-            return dateOrCondition.and(this.filter(otherFilters, "start_date", Resource.EXECUTION));
+            return dateOrCondition.and(this.filter(otherFilters, table().START_DATE, Resource.EXECUTION));
         }
 
-        String dateColumn = dateFilter == DateFilter.END_DATE
-            ? "end_date"
-            : "start_date";
+        Field<?> dateColumn = dateFilter == DateFilter.END_DATE
+            ? table().END_DATE
+            : table().START_DATE;
         return this.filter(filters, dateColumn, Resource.EXECUTION);
     }
 
-    private SelectConditionStep<Record1<Object>> findSelect(
+    private SelectConditionStep<Record1<JSONB>> findSelect(
         DSLContext context,
         @Nullable String query,
         @Nullable String tenantId,
@@ -256,19 +265,19 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
         boolean deleted) {
         var select = context
             .select(
-                VALUE_FIELD
+                table().VALUE
             )
-            .from(this.jdbcRepository.getTable())
+            .from(table())
             .where(this.defaultFilter(tenantId, deleted));
 
         select = filteringQuery(select, scope, namespace, flowId, null, query, labels, triggerExecutionId);
 
         if (startDate != null) {
-            select = select.and(START_DATE_FIELD.greaterOrEqual(startDate.toOffsetDateTime()));
+            select = select.and(DSL.condition("{0} >= {1}", table().START_DATE, DSL.val(startDate.toOffsetDateTime())));
         }
 
         if (endDate != null) {
-            select = select.and(field("end_date").lessOrEqual(endDate.toOffsetDateTime()));
+            select = select.and(DSL.condition("{0} <= {1}", table().END_DATE, DSL.val(endDate.toOffsetDateTime())));
         }
 
         if (state != null) {
@@ -280,7 +289,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
 
     @Override
     public ArrayListTotal<Execution> findByFlowId(String tenantId, String namespace, String id, Pageable pageable) {
-        var condition = field("namespace").eq(namespace).and(field("flow_id").eq(id));
+        var condition = table().NAMESPACE.eq(namespace).and(table().FLOW_ID.eq(id));
         return findPage(pageable, tenantId, condition);
     }
 
@@ -301,22 +310,22 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
         @Nullable String triggerExecutionId) {
         if (scope != null && !scope.containsAll(Arrays.stream(FlowScope.values()).toList())) {
             if (scope.contains(FlowScope.USER)) {
-                select = select.and(field("namespace").ne(systemFlowsConfiguration.namespace()));
+                select = select.and(table().NAMESPACE.ne(systemFlowsConfiguration.namespace()));
             } else if (scope.contains(FlowScope.SYSTEM)) {
-                select = select.and(field("namespace").eq(systemFlowsConfiguration.namespace()));
+                select = select.and(table().NAMESPACE.eq(systemFlowsConfiguration.namespace()));
             }
         }
 
         if (namespace != null) {
             if (flowId != null) {
-                select = select.and(field("namespace").eq(namespace));
+                select = select.and(table().NAMESPACE.eq(namespace));
             } else {
-                select = select.and(DSL.or(field("namespace").eq(namespace), field("namespace").startsWith(namespace + ".")));
+                select = select.and(DSL.or(table().NAMESPACE.eq(namespace), table().NAMESPACE.startsWith(namespace + ".")));
             }
         }
 
         if (flowId != null) {
-            select = select.and(DSL.or(field("flow_id").eq(flowId)));
+            select = select.and(DSL.or(table().FLOW_ID.eq(flowId)));
         }
 
         if (query != null || labels != null) {
@@ -324,7 +333,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
         }
 
         if (triggerExecutionId != null) {
-            select = select.and(field("trigger_execution_id").eq(triggerExecutionId));
+            select = select.and(table().TRIGGER_EXECUTION_ID.eq(triggerExecutionId));
         }
 
         if (flows != null) {
@@ -333,8 +342,8 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
                     flows
                         .stream()
                         .map(
-                            e -> field("namespace").eq(e.getNamespace())
-                                .and(field("flow_id").eq(e.getId()))
+                            e -> table().NAMESPACE.eq(e.getNamespace())
+                                .and(table().FLOW_ID.eq(e.getId()))
                         )
                         .toList()
                 )
@@ -354,19 +363,19 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
             {
                 DSLContext context = DSL.using(configuration);
 
-                Select<Record2<Object, Integer>> subquery = context
+                Select<Record2<JSONB, Integer>> subquery = context
                     .select(
-                        VALUE_FIELD,
+                        table().VALUE,
                         DSL.rowNumber().over(
                             DSL.partitionBy(
-                                field("namespace"),
-                                field("flow_id")
-                            ).orderBy(DSL.coalesce(field("end_date"), field("start_date")).desc())
+                                table().NAMESPACE,
+                                table().FLOW_ID
+                            ).orderBy(DSL.coalesce(table().END_DATE, table().START_DATE).desc())
                         ).as("row_num")
                     )
-                    .from(this.jdbcRepository.getTable())
+                    .from(table())
                     .where(this.defaultFilter(tenantId))
-                    .and(NORMAL_KIND_CONDITION)
+                    .and(normalKindCondition())
                     .and(
                         DSL.or(
                             ListUtils.emptyOnNull(flows).isEmpty() ? DSL.noCondition()
@@ -374,8 +383,8 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
                                     flows.stream()
                                         .map(
                                             flow -> DSL.and(
-                                                field("namespace").eq(flow.getNamespace()),
-                                                field("flow_id").eq(flow.getId())
+                                                table().NAMESPACE.eq(flow.getNamespace()),
+                                                table().FLOW_ID.eq(flow.getId())
                                             )
                                         )
                                         .toList()
@@ -383,12 +392,12 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
                         )
                     );
 
-                Table<Record2<Object, Integer>> cte = subquery.asTable("cte");
+                Table<Record2<JSONB, Integer>> cte = subquery.asTable("cte");
 
                 SelectConditionStep<? extends Record1<?>> mainQuery = context
-                    .select(cte.field("value"))
+                    .select(cte.field(table().VALUE))
                     .from(cte)
-                    .where(field("row_num").eq(1));
+                    .where(cte.field("row_num", Integer.class).eq(1));
                 return mainQuery.fetch().map(this.jdbcRepository::map);
             });
     }
@@ -403,7 +412,7 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
 
         Execution deleted = execution.toDeleted();
 
-        Map<Field<Object>, Object> fields = this.jdbcRepository.persistFields(deleted);
+        Map<Field<?>, Object> fields = this.jdbcRepository.persistFields(deleted);
         this.jdbcRepository.persist(deleted, fields);
 
         eventPublisher.publishEvent(CrudEvent.delete(deleted));
@@ -429,8 +438,8 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
                 // we send the event before to be sure that if sending the event crash, we would not delete the exec
                 executions.forEach(execution -> eventPublisher.publishEvent(CrudEvent.delete(execution)));
 
-                return context.delete(this.jdbcRepository.getTable())
-                    .where(KEY_FIELD.in(executions.stream().map(Execution::getId).toList()))
+                return context.delete(table())
+                    .where(table().KEY.in(executions.stream().map(Execution::getId).toList()))
                     .execute();
             });
     }
@@ -443,10 +452,10 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
             {
                 DSLContext context = DSL.using(configuration);
 
-                SelectForUpdateOfStep<Record1<Object>> from = context
-                    .select(VALUE_FIELD)
-                    .from(this.jdbcRepository.getTable())
-                    .where(KEY_FIELD.eq(executionId))
+                SelectForUpdateOfStep<Record1<JSONB>> from = context
+                    .select(table().VALUE)
+                    .from(table())
+                    .where(table().KEY.eq(executionId))
                     .and(this.defaultFilter())
                     .forUpdate();
 
@@ -477,14 +486,14 @@ public abstract class AbstractJdbcExecutionRepository extends AbstractJdbcCrudRe
     @Override
     public Function<String, String> sortMapping() throws IllegalArgumentException {
         Map<String, String> mapper = Map.of(
-            "id", "id",
-            Execution.STATE_START_DATE_FIELD, "start_date",
-            Execution.STATE_END_DATE_FIELD, "end_date",
-            "state.duration", "state_duration",
-            "namespace", "namespace",
-            "flowId", "flow_id",
-            "state.current", "state_current",
-            "loopRunIndex", "loop_run_index"
+            "id", table().ID.getName(),
+            Execution.STATE_START_DATE_FIELD, table().START_DATE.getName(),
+            Execution.STATE_END_DATE_FIELD, table().END_DATE.getName(),
+            "state.duration", table().STATE_DURATION.getName(),
+            "namespace", table().NAMESPACE.getName(),
+            "flowId", table().FLOW_ID.getName(),
+            "state.current", table().STATE_CURRENT.getName(),
+            "loopRunIndex", table().LOOP_RUN_INDEX.getName()
         );
 
         return mapper::get;
