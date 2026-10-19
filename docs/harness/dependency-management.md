@@ -390,3 +390,33 @@ Micronaut 5 自身使用 Jackson 3；Flow 的原生队列、数据库 JSON 和�
 Jackson 2，并由独立 ObjectMapper 工厂提供，不再替换框架的 Jackson 3 工厂。
 上传资源按 Micronaut 5 CompletedFileUpload.closeAsync 协议释放；Swagger 注解统一为
 2.2.50，删除旧版本 defaultValue 哨兵修正。Schema 导出纳入本次回归。
+
+## IDEA 模块同步与源码标红排查
+
+模块删除、更名或本地 PaaS 分支切换后，先使用当前依赖所需的 Java 25 执行
+`./gradlew clean classes testClasses :gen:codegenClasses --no-build-cache`，区分源码
+错误与 IDE 模型问题。`Session`、`SessionUser` 使用处必须导入 `org.paas.session`
+中的类型；不要用旧依赖或通配泛型掩盖缺少导入的编译错误。
+
+若命令行通过而 IDEA 仍无法解析 `org.flow.plugin.api.Plugin` 或 PaaS Session，
+检查 Gradle 同步日志和模块依赖。当前 core 必须依赖 plugin-api 及本地 paas-session；
+旧 model、tests、storage-local、plugin-fixture、queue-jdbc、jdbc-postgres 不应残留。
+
+本机曾出现 `removeContentEntry: removed content entry url .../gen/build/generated/
+sources/annotationProcessor/java/test still exists after removing`，导致同步中断，
+IDE 保留旧模块图。仅修改源码或重复点击同步不能清除已加载的旧记录。处理顺序：
+
+1. 关闭 Flow 工程，保留其他工程；备份本工程的 IDEA 模块元数据与缓存。
+2. 清理本工程 `.idea/modules.xml`、`.idea/modules/`、`.idea/compiler.xml`，以及
+   IDEA 缓存目录中本工程标识下的 `external_build_system` 和 `project-model-cache`。
+   保留 `.idea/gradle.xml`、编辑器偏好、运行配置和其他项目缓存。
+3. 重新打开工程，使用 Java 25 从 Gradle 重建模块、注解处理路径与依赖；等待索引结束，
+   确认同步日志成功且不再出现上述错误，再核对原先标红的位置。
+
+这些是本机可重建的 IDE 数据，不提交到仓库，也不通过手写模块依赖替代 Gradle 模型。
+
+2026-10-19 验证：补齐 FlowService 的两个 Session 导入后，干净构建覆盖所有生产、
+测试及 codegen 源码并通过；IDE 项目模型重建成功，用户确认 Plugin 导入和 Session
+方法两处标红均消失。隔离 PostgreSQL 17 完整回归 2454 项，2453 通过、1 项既有
+跳过、0 失败，JAR、运行依赖隔离和 Schema 导出通过。日志与结果汇总保存在本机
+忽略目录 `build/ide-validation/`。
