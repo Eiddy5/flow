@@ -2,7 +2,7 @@ package org.flow.plugin.core.preview;
 
 import java.util.Set;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.preview.FilePreview;
 
 import io.swagger.v3.oas.annotations.media.Schema;

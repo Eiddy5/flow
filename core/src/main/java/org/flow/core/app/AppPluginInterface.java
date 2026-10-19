@@ -2,7 +2,7 @@ package org.flow.core.app;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -16,7 +16,7 @@ import static org.flow.core.utils.RegexPatterns.JAVA_IDENTIFIER_REGEX;
  */
 @Plugin
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "type", visible = true, include = JsonTypeInfo.As.PROPERTY)
-public interface AppPluginInterface extends org.flow.core.models.Plugin {
+public interface AppPluginInterface extends org.flow.plugin.api.Plugin {
     @Schema(
         title = "The type of the app."
     )

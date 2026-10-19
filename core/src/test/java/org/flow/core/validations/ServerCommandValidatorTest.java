@@ -34,13 +34,14 @@ class ServerCommandValidatorTest {
         }
     }
 
+    /** 验证完整服务配置可启动，缺少必需配置时报告配置错误。 */
     @Test
     void serverCommandIssued() {
         try (ApplicationContext context = ApplicationContext.builder()
             .deduceEnvironment(false)
             .environments("test")
             .properties(Map.of("flow.server-type", "webserver", "flow.queue.type", "postgres",
-                "flow.repository.type", "postgres", "flow.storage.type", "local"))
+                "flow.repository.type", "postgres", "flow.storage.type", "external"))
             .start()) {
             assertThat(context.getBean(ServerCommandValidator.class)).isNotNull();
         }

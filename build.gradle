@@ -99,8 +99,6 @@ ext.testHeapSizes = [
     'executor'         : '768m',
     'scheduler'        : '768m',
     'worker'           : '768m',
-    'jdbc-postgres'    : '1024m',
-    'tests'            : '1024m',
     'core'             : '2560m',
 ]
 
@@ -109,18 +107,6 @@ allprojects {
 
     configurations {
         mockitoAgent
-        // Exposes this project's compiled test classes/resources to other projects, replacing the
-        // Gradle 9.5-incompatible `project(':x').sourceSets.test.output` cross-project script access.
-        testArtifacts {
-            canBeConsumed = true
-            canBeResolved = false
-        }
-    }
-
-    artifacts {
-        sourceSets.test.output.files.each { dir ->
-            testArtifacts(dir) { builtBy tasks.named('testClasses') }
-        }
     }
 
     dependencies {
@@ -129,10 +115,9 @@ allprojects {
         testCompileOnly rootProject.libs.lombok
 
         testImplementation platform(rootProject.libs.junit.bom)
-        // Keep the existing test harness API when internal platform imports offer Testcontainers 2.
-        testImplementation enforcedPlatform(rootProject.libs.testcontainers.bom)
         testImplementation rootProject.libs.junit.jupiter.engine
         testImplementation rootProject.libs.junit.jupiter.params
+        testRuntimeOnly rootProject.libs.junit.platform.launcher
         testImplementation rootProject.libs.junit.pioneer
         testImplementation rootProject.libs.mockito.junit.jupiter
         mockitoAgent(rootProject.libs.mockito.core) {
@@ -292,44 +277,16 @@ allprojects {
     }
 }
 
-// 本项目直接聚合原生运行模块和跨模块技术验证。
+// 根 Java Library 仅聚合原生运行模块。
 dependencies {
     api project(':core')
     implementation project(':jdbc')
-    implementation project(':jdbc-postgres')
-    runtimeOnly project(':queue-jdbc')
+    runtimeOnly project(':queue')
     implementation project(':executor')
     implementation project(':worker')
     runtimeOnly project(':scheduler')
     runtimeOnly project(':indexer')
-    runtimeOnly project(':storage-local')
     runtimeOnly project(':script')
-    testAnnotationProcessor(platform(libs.micronaut.platform)) {
-        exclude group: 'org.paas'
-        exclude group: 'org.paas.nlp'
-        exclude group: 'org.paas.service'
-        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
-    }
-    testAnnotationProcessor libs.micronaut.inject.java
-    testImplementation libs.micronaut.test.junit5
-    testRuntimeOnly rootProject.libs.junit.platform.launcher
-    testImplementation project(':queue-jdbc')
-    testImplementation project(':gen')
-    testImplementation rootProject.libs.postgresql
-    testImplementation rootProject.libs.micronaut.data.connection.jdbc
-}
-
-tasks.named('test') {
-    // 真实数据库和强杀验收必须执行，不能由旧测试报告或远程构建缓存替代。
-    outputs.upToDateWhen { false }
-    outputs.cacheIf { false }
-    dependsOn ':plugin-fixture:stagePlugin', ':tooling:exportPluginSchemas'
-    systemProperty 'fixture.plugins', project(':plugin-fixture').layout.buildDirectory.dir('plugin-release').get().asFile.absolutePath
-    systemProperty 'flow.plugins.path', project(':plugin-fixture').layout.buildDirectory.dir('plugin-release').get().asFile.absolutePath
-    systemProperty 'flow.schema-bundle', rootProject.layout.buildDirectory.file('exports/plugins-schema.json').get().asFile.absolutePath
-    systemProperty 'flow.test-classpath', sourceSets.test.runtimeClasspath.asPath
-    environment 'FLOW_TEST_URL', providers.environmentVariable('FLOW_TEST_URL').getOrElse('')
-    environment 'FLOW_CONTROL_URL', providers.environmentVariable('FLOW_CONTROL_URL').getOrElse('')
 }
 
 tasks.register('verifyRuntimeIsolation') {
@@ -350,7 +307,7 @@ tasks.register('verifyRuntimeIsolation') {
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
                 (id.group == 'org.cses.flow' && ['core', 'scheduler', 'flow', 'embedded'].contains(id.name)) ||
                 (id.group == 'org.flow.fixture') ||
-                (id.group == 'org.flow' && ['embedded', 'tooling', 'tests', 'cli', 'webserver', 'jdbc-h2', 'jdbc-mysql', 'runner-memory', 'repository-memory'].contains(id.name))
+                (id.group == 'org.flow' && ['embedded', 'tooling', 'tests', 'storage-local', 'cli', 'webserver', 'jdbc-h2', 'jdbc-mysql', 'jdbc-postgres', 'queue-jdbc', 'runner-memory', 'repository-memory'].contains(id.name))
         }
         if (!forbidden.isEmpty()) {
             throw new GradleException("项目运行时包含禁止的依赖：${forbidden*.moduleVersion*.id}")

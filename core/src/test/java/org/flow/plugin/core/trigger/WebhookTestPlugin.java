@@ -3,7 +3,7 @@ package org.flow.plugin.core.trigger;
 import java.util.Optional;
 
 import org.flow.core.http.HttpResponse;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.tasks.common.EncryptedString;
 import org.flow.core.models.triggers.TriggerOutput;

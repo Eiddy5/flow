@@ -22,7 +22,7 @@ import com.google.common.annotations.VisibleForTesting;
 import org.flow.core.contexts.FlowContext;
 import org.flow.core.exceptions.FlowProcessingException;
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.flows.*;
 import org.flow.core.models.flows.check.Check;

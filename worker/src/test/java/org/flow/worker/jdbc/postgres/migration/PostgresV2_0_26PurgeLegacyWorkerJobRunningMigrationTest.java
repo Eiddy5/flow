@@ -1,0 +1,6 @@
+package org.flow.worker.jdbc.postgres.migration;
+
+import org.flow.worker.jdbc.migration.AbstractV2_0_26PurgeLegacyWorkerJobRunningMigrationTest;
+
+class PostgresV2_0_26PurgeLegacyWorkerJobRunningMigrationTest extends AbstractV2_0_26PurgeLegacyWorkerJobRunningMigrationTest {
+}

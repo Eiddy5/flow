@@ -5,7 +5,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.triggers.AbstractTrigger;

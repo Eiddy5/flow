@@ -2,7 +2,7 @@ package org.flow.core.plugins.serdes;
 
 import com.fasterxml.jackson.databind.JsonDeserializer;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.assets.Asset;
 import org.flow.core.models.assets.Custom;
 import org.flow.core.models.assets.External;

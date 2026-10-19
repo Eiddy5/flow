@@ -1,4 +1,7 @@
 dependencies {
+    implementation project(':jdbc')
+    implementation project(':gen')
+
     // Micronaut bean metadata is generated only in modules that own beans.
     annotationProcessor(platform(libs.micronaut.platform)) {
         exclude group: 'org.paas'
@@ -19,19 +22,12 @@ dependencies {
     }
     testAnnotationProcessor libs.micronaut.inject.java
     testImplementation libs.micronaut.test.junit5
+    testImplementation libs.assertj.core.pinned
 
     annotationProcessor project(':processor')
     implementation project(":core")
 
     // test
     testAnnotationProcessor project(':processor')
-    testImplementation project(path: ':core', configuration: 'testArtifacts')
-    testImplementation project(':storage-local')
-    testImplementation project(':worker')
 
-    testImplementation project(':tests')
-    testImplementation project(':jdbc')
-    testImplementation project(':jdbc-postgres')
-    testImplementation project(':indexer')
-    testImplementation project(':gen')
 }

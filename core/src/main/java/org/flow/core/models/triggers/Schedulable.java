@@ -4,7 +4,7 @@ import java.time.ZonedDateTime;
 import java.util.Map;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.runners.RunContext;
 import org.flow.core.validations.TimezoneId;

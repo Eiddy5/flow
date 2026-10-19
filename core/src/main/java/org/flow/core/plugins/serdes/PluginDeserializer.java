@@ -10,7 +10,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import org.flow.core.contexts.FlowContext;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.plugins.DefaultPluginRegistry;
 import org.flow.core.plugins.PluginRegistry;
 

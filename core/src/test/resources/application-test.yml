@@ -11,20 +11,19 @@ micronaut:
         enabled: false
 
 flow:
+  server-type: STANDALONE
+  storage:
+    # 仅供配置校验；剩余测试不装配或调用存储后端。
+    type: external
   migration:
     auto: true
   encryption:
     secret-key: I6EGNzRESu3X3pKZidrqCGOHQFUFC0yK
   url: https://mysuperhost.com/subpath
-  server-type: STANDALONE
   repository:
     type: postgres
   queue:
     type: postgres
-  storage:
-    type: local
-    local:
-      base-path: /tmp/unittest
   local-files:
     # relative to the Gradle test working directory (the module directory)
     allowed-paths:

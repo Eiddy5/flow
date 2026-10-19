@@ -2,7 +2,7 @@ package org.flow.core.runners.test;
 
 import java.util.Arrays;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.tasks.RunnableTask;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.runners.RunContext;

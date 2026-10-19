@@ -1,6 +1,6 @@
 package org.flow.core.plugins;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +11,7 @@ import lombok.experimental.SuperBuilder;
 
 import static org.flow.core.utils.RegexPatterns.JAVA_IDENTIFIER_REGEX;
 
-@org.flow.core.models.annotations.Plugin
+@org.flow.plugin.api.annotations.Plugin
 @SuperBuilder(toBuilder = true)
 @Getter
 @NoArgsConstructor

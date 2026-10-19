@@ -4,8 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.Output;
 import org.flow.core.models.tasks.RunnableTask;

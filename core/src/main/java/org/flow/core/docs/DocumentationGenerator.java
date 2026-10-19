@@ -13,7 +13,7 @@ import com.google.common.collect.ImmutableMap;
 
 import org.flow.core.app.AppBlockInterface;
 import org.flow.core.app.AppPluginInterface;
-import org.flow.core.models.annotations.PluginSubGroup;
+import org.flow.plugin.api.annotations.PluginSubGroup;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.models.tasks.logs.LogExporter;
 import org.flow.core.models.tasks.runners.TaskRunner;

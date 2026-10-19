@@ -4,10 +4,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Metric;
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Metric;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.executions.metrics.Counter;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.RunnableTask;

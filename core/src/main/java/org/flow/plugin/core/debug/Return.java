@@ -5,9 +5,9 @@ import java.util.Optional;
 
 import org.slf4j.Logger;
 
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Metric;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Metric;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.executions.metrics.Counter;
 import org.flow.core.models.executions.metrics.Timer;
 import org.flow.core.models.property.Property;

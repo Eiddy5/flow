@@ -13,7 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.CollectionType;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.runners.RunContext;
 import org.flow.core.serializers.FileSerde;
 import org.flow.core.serializers.JacksonMapper;

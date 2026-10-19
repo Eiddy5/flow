@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;

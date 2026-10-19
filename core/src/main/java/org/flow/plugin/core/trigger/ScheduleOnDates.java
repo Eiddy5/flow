@@ -11,8 +11,8 @@ import java.util.function.Predicate;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
 import org.flow.core.exceptions.InvalidTriggerConfigurationException;
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.VoidOutput;

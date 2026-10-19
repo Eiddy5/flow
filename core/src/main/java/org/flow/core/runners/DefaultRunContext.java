@@ -22,7 +22,7 @@ import org.flow.core.assets.AssetManagerFactory;
 import org.flow.core.encryption.EncryptionConfig;
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
 import org.flow.core.metrics.MetricRegistry;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.executions.AbstractMetricEntry;
 import org.flow.core.models.executions.TaskRun;
 import org.flow.core.models.property.Property;

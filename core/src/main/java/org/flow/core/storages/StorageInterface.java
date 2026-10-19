@@ -10,7 +10,7 @@ import java.util.List;
 import org.apache.commons.lang3.RandomStringUtils;
 
 import org.flow.core.annotations.Retryable;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.utils.FileUtils;
 

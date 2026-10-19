@@ -6,7 +6,7 @@ import java.time.ZonedDateTime;
 import java.util.Optional;
 
 import org.flow.core.exceptions.InvalidTriggerConfigurationException;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.scheduler.SchedulerClock;

@@ -1,4 +1,17 @@
 dependencies {
+    implementation project(':jdbc')
+    implementation project(':gen')
+    implementation libs.micronaut.data.tx.jdbc
+    testImplementation libs.micronaut.test.junit5
+    testImplementation libs.assertj.core.pinned
+    testAnnotationProcessor(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
+    testAnnotationProcessor libs.micronaut.inject.java
+
     // Micronaut bean metadata is generated only in modules that own beans.
     annotationProcessor(platform(libs.micronaut.platform)) {
         exclude group: 'org.paas'

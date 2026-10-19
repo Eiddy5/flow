@@ -6,7 +6,7 @@ import java.util.Map;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.tasks.Output;
 import org.flow.core.models.tasks.runners.TaskRunnerDetailResult;
 

@@ -4,7 +4,7 @@ import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.property.Property;
 
 /**

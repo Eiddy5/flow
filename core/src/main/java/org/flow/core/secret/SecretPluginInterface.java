@@ -1,8 +1,8 @@
 package org.flow.core.secret;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 
 @Plugin
-public interface SecretPluginInterface extends org.flow.core.models.Plugin {
+public interface SecretPluginInterface extends org.flow.plugin.api.Plugin {
 
 }

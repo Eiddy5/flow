@@ -9,9 +9,9 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.executions.metrics.Counter;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.RunnableTask;

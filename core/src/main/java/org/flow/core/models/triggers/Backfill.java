@@ -9,7 +9,7 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 
 import org.flow.core.models.Label;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.serializers.ListOrMapOfLabelDeserializer;
 import org.flow.core.serializers.ListOrMapOfLabelSerializer;
 import org.flow.core.validations.NoSystemLabelValidation;

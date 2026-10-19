@@ -2,7 +2,7 @@ package org.flow.core.tasks.test;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.tasks.RunnableTask;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.runners.RunContext;

@@ -3,8 +3,8 @@ package org.flow.core.tasks.test;
 import java.util.Map;
 import java.util.Optional;
 
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.TaskRun;
 import org.flow.core.models.flows.FlowInterface;

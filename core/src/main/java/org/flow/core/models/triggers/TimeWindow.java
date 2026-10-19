@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit;
 
 import org.apache.commons.lang3.tuple.Pair;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.validations.DurationMax;
 
 import org.hibernate.validator.constraints.time.DurationMin;

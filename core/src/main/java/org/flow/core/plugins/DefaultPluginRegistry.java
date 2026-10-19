@@ -20,7 +20,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotNull;

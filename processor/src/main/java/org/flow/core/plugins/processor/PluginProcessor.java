@@ -29,7 +29,7 @@ import javax.tools.Diagnostic;
 import javax.tools.FileObject;
 import javax.tools.StandardLocation;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 
 import lombok.NoArgsConstructor;
 
@@ -48,13 +48,13 @@ import static com.google.common.base.Throwables.getStackTraceAsString;
 @SupportedOptions({ "debug", "verify" })
 public class PluginProcessor extends AbstractProcessor {
 
-    public static final String PLUGIN_RESOURCE_FILE = ServicesFiles.getPath(org.flow.core.models.Plugin.class.getCanonicalName());
+    public static final String PLUGIN_RESOURCE_FILE = ServicesFiles.getPath(org.flow.plugin.api.Plugin.class.getCanonicalName());
 
     private final List<String> exceptionStacks = Collections.synchronizedList(new ArrayList<>());
 
     /**
      * Contains all the class names of the concrete classes which implement the
-     * {@link org.flow.core.models.Plugin} interface.
+     * {@link org.flow.plugin.api.Plugin} interface.
      */
     private final Set<String> plugins = new HashSet<>();
     private javax.lang.model.util.Elements elementUtils;
@@ -79,7 +79,7 @@ public class PluginProcessor extends AbstractProcessor {
      * <ol>
      * <li>For each class annotated with {@link Plugin}
      * <ul>
-     * <li>Verify the class is not abstract and implement the {@link org.flow.core.models.Plugin} interface.
+     * <li>Verify the class is not abstract and implement the {@link org.flow.plugin.api.Plugin} interface.
      * </ul>
      *
      * <li>Create a file named {@code META-INF/services/org.flow.core.plugins.processor.Plugin}
@@ -118,7 +118,7 @@ public class PluginProcessor extends AbstractProcessor {
         log(annotations.toString());
         log(elements.toString());
 
-        Element pluginInterface = elementUtils.getTypeElement(org.flow.core.models.Plugin.class.getCanonicalName());
+        Element pluginInterface = elementUtils.getTypeElement(org.flow.plugin.api.Plugin.class.getCanonicalName());
 
         for (Element e : elements) {
             TypeElement pluginType = asTypeElement(e);

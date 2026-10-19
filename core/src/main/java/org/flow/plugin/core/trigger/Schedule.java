@@ -14,9 +14,9 @@ import com.cronutils.parser.CronParser;
 import com.google.common.annotations.VisibleForTesting;
 
 import org.flow.core.exceptions.InternalException;
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.models.flows.State;
 import org.flow.core.models.triggers.*;

@@ -1,6 +1,6 @@
 package org.flow.core.models.tasks;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 

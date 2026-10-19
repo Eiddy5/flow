@@ -3,7 +3,7 @@ package org.flow.core.tasks.test;
 import java.time.Duration;
 import java.util.Optional;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.triggers.AbstractTrigger;

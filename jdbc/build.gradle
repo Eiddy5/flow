@@ -1,5 +1,12 @@
 dependencies {
     api project(':gen')
+    api(platform(libs.micronaut.platform)) {
+        exclude group: 'org.paas'
+        exclude group: 'org.paas.nlp'
+        exclude group: 'org.paas.service'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    }
+    implementation platform(libs.micrometer.bom)
     // Micronaut bean metadata is generated only in modules that own beans.
     annotationProcessor(platform(libs.micronaut.platform)) {
         exclude group: 'org.paas'
@@ -12,7 +19,9 @@ dependencies {
 
     implementation libs.micronaut.context
     implementation libs.micronaut.validation.runtime
+    implementation libs.micronaut.micrometer.core
     implementation libs.micrometer.core
+    implementation libs.failsafe
 
     testAnnotationProcessor(platform(libs.micronaut.platform)) {
         exclude group: 'org.paas'
@@ -22,11 +31,7 @@ dependencies {
     }
     testAnnotationProcessor libs.micronaut.inject.java
     testImplementation libs.micronaut.test.junit5
-
-    implementation project(":core")
-    implementation project(":scheduler")
-    implementation project(":executor")
-    implementation project(":worker")
+    testImplementation libs.assertj.core.pinned
 
     implementation(libs.micronaut.data.tx.jdbc)
     implementation(libs.micronaut.jdbc.hikari)
@@ -36,11 +41,5 @@ dependencies {
     // see https://github.com/jOOQ/jOOQ/issues/14865
     compileOnly (libs.jakarta.xml.bind.api)
 
-    testImplementation(libs.postgresql)
-    testImplementation project(':tests')
-    testImplementation project(':queue')
-    testImplementation project(':queue-jdbc')
-    testImplementation project(path: ':core', configuration: 'testArtifacts')
-    testImplementation project(path: ':executor', configuration: 'testArtifacts')
-    testImplementation project(path: ':queue', configuration: 'testArtifacts')
+    runtimeOnly(libs.postgresql)
 }

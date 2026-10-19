@@ -1,5 +1,24 @@
 # Flow 架构决策索引
 
+按 [ADR 0132](0132-rename-model-to-plugin-api.md)，原 model 更名为 plugin-api，
+公共接口、注解与枚举统一归 org.flow.plugin.api 包及其子包。
+
+当前模块共 12 个，按 [ADR 0131](0131-remove-plugin-fixture.md) 移除 plugin-fixture；
+离线 Schema 导出须显式指定已有插件目录。
+
+持久化归属以
+[ADR 0130](0130-co-locate-persistence-with-owning-modules.md) 为准：
+jdbc 仅提供不依赖 core 的数据库底层；删除 queue-jdbc、jdbc-postgres，专属持久化
+和表配置归 core、queue、executor、worker、scheduler、indexer。core 依赖 jdbc/gen，
+生产依赖不反向引用运行角色；混合基线 SQL 暂留 core，专属迁移资源归所属模块且保持原协议。
+tooling 经 core 获得数据库
+依赖，仍保持不启动 Context 的离线导出。
+
+当前测试支持和存储实现边界以
+[ADR 0129](0129-remove-tests-and-local-storage-modules.md) 为准：删除独立 tests 与
+storage-local 模块及依赖它们的测试和专用资源，保留不依赖二者的普通测试和数据库技术测试；
+生产存储实现由宿主提供。
+
 当前存储查询以 [ADR 0128](0128-use-generated-tables-directly.md) 为准：直接使用生成表和字段，移除元数据复制与未知表兜底。
 
 当前数据库对象以 [ADR 0127](0127-use-generated-database-objects.md) 为准：
@@ -42,6 +61,11 @@ JDBC，实现共用可配置 `datasources.flow`。旧 Pulsar、DataSourceEngine/
 读取这些历史引用时，使用本索引定位当前 ADR，不回写历史报告。
 
 ## Core 组件与依赖方向
+
+- [ADR 0132](0132-rename-model-to-plugin-api.md)：model 更名为 plugin-api，统一插件 API 包名与 SPI 注册路径。
+- [ADR 0131](0131-remove-plugin-fixture.md)：移除 plugin-fixture，Schema 导出显式指定插件目录。
+- [`ADR 0130`](0130-co-locate-persistence-with-owning-modules.md)：**Accepted**，保留无 core 依赖的 jdbc 底层，专属持久化归所属能力模块；删除 queue-jdbc、jdbc-postgres，保留 script，迁移协议和 gen 直接使用规则不变。
+- [`ADR 0129`](0129-remove-tests-and-local-storage-modules.md)：**Accepted**，移除 tests、storage-local 及依赖它们的测试，不迁移测试支持；保留存储 SPI，由宿主提供生产存储实现。
 
 - [0128：存储查询直接使用生成表和字段](0128-use-generated-tables-directly.md)：移除元数据复制与手写字段兜底，统一生成类型、表配置和查询别名。
 

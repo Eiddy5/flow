@@ -1,45 +1,21 @@
-micronaut:
-  router:
-    static-resources:
-      ui:
-        paths: classpath:ui
-        mapping: /ui/**
-
-  http:
-    client:
-      read-idle-timeout: 60s
-      connect-timeout: 30s
-      read-timeout: 60s
-      http-version: HTTP_1_1
-    services:
-      api:
-        url: http://localhost:28181
-  server:
-    cors:
-      enabled: true
-      configurations:
-        all:
-          allowedOrigins:
-            - http://bad-origin
-jackson:
-  serialization:
-    writeDatesAsTimestamps: false
-    writeDurationsAsTimestamps: false
-  serialization-inclusion: non_null
-  deserialization:
-    FAIL_ON_UNKNOWN_PROPERTIES: false
-
 flow:
   migration:
     auto: true
-  url: http://localhost:8081
-  encryption:
-    secret-key: I6EGNzRESu3X3pKZidrqCGOHQFUFC0yK
-  server-type: STANDALONE
-  storage:
-    type: local
-    local:
-      base-path: /tmp/unittest
+  queue:
+    type: postgres
+    message-protection:
+      enabled: true
+      limit: 1048576
+  repository:
+    type: postgres
+  jdbc:
+    queues:
+      min-poll-interval: 10ms
+      max-poll-interval: 100ms
+      poll-switch-interval: 5s
+  tasks:
+    subflow:
+      allow-parameter-outputs: true
   server:
     liveness:
       enabled: false
@@ -49,10 +25,6 @@ flow:
         initial-delay: 1h
         fixed-delay: 1d
         retention: 30d
-  queue:
-    type: postgres
-  repository:
-    type: postgres
 logger:
   levels:
     "org.flow.core.migration": WARN
@@ -65,3 +37,9 @@ datasources:
     password: ${FLOW_UPSTREAM_TEST_PASSWORD:flow}
     dialect: POSTGRES
     schema: test_${random.uuid}
+
+micronaut:
+  metrics:
+    export:
+      otlp:
+        enabled: false

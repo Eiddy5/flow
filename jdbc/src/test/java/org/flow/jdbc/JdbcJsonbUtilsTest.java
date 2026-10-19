@@ -8,12 +8,11 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.flow.core.serializers.JacksonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JdbcJsonbUtilsTest {
-    private static final ObjectMapper MAPPER = JacksonMapper.ofJson(false);
+    private static ObjectMapper MAPPER = new ObjectMapper();
     private static final String NULL_CHAR = String.valueOf((char) 0);
 
     @Test

@@ -1,37 +1,37 @@
 package org.flow.jdbc;
 
-import io.micronaut.context.annotation.EachProperty;
-import io.micronaut.context.annotation.Parameter;
 import io.micronaut.core.annotation.Nullable;
-import jakarta.validation.constraints.NotNull;
-import jakarta.inject.Inject;
+import io.micronaut.core.value.PropertyResolver;
 import org.jooq.Record;
 import org.jooq.SQLDialect;
 import org.jooq.Table;
 import org.jooq.impl.DSL;
 
 
-@EachProperty("flow.jdbc.tables")
 public class JdbcTableConfig {
     private String name;
     private Class<?> cls;
     private String table;
     private Table<Record> jooqTable;
 
-    @Inject
-    public JdbcTableConfig(
-        @Parameter String name,
-        @Nullable Class<?> cls,
-        @NotNull String table) {
-        this(name, cls, table, JdbcTableConfigsFactory.generatedTable(name));
-    }
-
-    /** Uses the generated relation shape without pinning its generation-time schema. */
+    /**
+     * 使用所属模块显式提供的生成表建立默认绑定。
+     * @param name 表配置名称；不能为 null
+     * @param cls 领域类型；可为 null
+     * @param generatedTable gen 生成表；不能为 null
+     */
     public JdbcTableConfig(String name, @Nullable Class<?> cls, Table<?> generatedTable) {
         this(name, cls, generatedTable.getName(), generatedTable);
     }
 
-    /** Applies physical-name configuration through the generated table's own rename operation. */
+    /**
+     * 使用生成表的 rename 操作应用物理表名，保留全部字段类型。
+     * @param name 表配置名称；不能为 null
+     * @param cls 领域类型；可为 null
+     * @param table 物理表名，可含 schema；不能为 null
+     * @param generatedTable gen 生成表；不能为 null
+     * @throws IllegalArgumentException 未提供生成表时抛出
+     */
     @SuppressWarnings("unchecked")
     public JdbcTableConfig(String name, @Nullable Class<?> cls, String table, Table<?> generatedTable) {
         if (generatedTable == null) {
@@ -43,6 +43,21 @@ public class JdbcTableConfig {
         var physicalName = DSL.using(SQLDialect.POSTGRES).parser().parseName(table);
         this.jooqTable = (Table<Record>) (generatedTable.getQualifiedName().equals(physicalName)
             ? generatedTable : ((org.jooq.impl.TableImpl<?>) generatedTable).rename(physicalName));
+    }
+
+    /**
+     * 读取单张表的可选物理名称，未配置时使用模块提供的生成表名称。
+     * @param name 表配置名称；不能为 null
+     * @param cls 所属领域类型；可为 null
+     * @param generatedTable 所属模块的生成表；不能为 null
+     * @param properties 宿主配置；不能为 null
+     * @return 绑定生成表类型的配置，不创建或查询数据库
+     */
+    public static JdbcTableConfig configured(String name, @Nullable Class<?> cls,
+        Table<?> generatedTable, PropertyResolver properties) {
+        String table = properties.getProperty("flow.jdbc.tables." + name + ".table", String.class)
+            .orElse(generatedTable.getName());
+        return new JdbcTableConfig(name, cls, table, generatedTable);
     }
 
     public Table<Record> jooqTable() {

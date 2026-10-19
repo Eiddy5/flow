@@ -14,7 +14,7 @@ import org.apache.commons.lang3.ObjectUtils;
 
 import org.flow.core.app.AppBlockInterface;
 import org.flow.core.app.AppPluginInterface;
-import org.flow.core.models.annotations.PluginSubGroup;
+import org.flow.plugin.api.annotations.PluginSubGroup;
 import org.flow.core.models.assets.Asset;
 import org.flow.core.models.assets.AssetExporter;
 import org.flow.core.models.policies.RulePluginInterface;

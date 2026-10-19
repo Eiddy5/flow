@@ -2,7 +2,7 @@ package org.flow.core.models.tasks;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.PluginVersioning;
 
 import io.swagger.v3.oas.annotations.media.Schema;

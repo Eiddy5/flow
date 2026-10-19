@@ -1,6 +1,6 @@
 package org.flow.core.models.assets;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.tasks.Output;
 import org.flow.core.runners.RunContext;
 
@@ -18,7 +18,7 @@ import static org.flow.core.utils.RegexPatterns.JAVA_IDENTIFIER_REGEX;
 @SuperBuilder(toBuilder = true)
 @Getter
 @NoArgsConstructor
-public abstract class AssetExporter<T extends Output> implements org.flow.core.models.Plugin {
+public abstract class AssetExporter<T extends Output> implements org.flow.plugin.api.Plugin {
     @NotNull
     @NotBlank
     @Pattern(regexp = "^[a-zA-Z0-9][a-zA-Z0-9_-]*")

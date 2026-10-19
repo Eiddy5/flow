@@ -6,7 +6,7 @@ import java.util.List;
 
 import org.slf4j.event.Level;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.QueryFilter;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.LogEntry;

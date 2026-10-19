@@ -16,9 +16,9 @@ import java.util.zip.ZipOutputStream;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.NextTaskRun;
 import org.flow.core.models.executions.TaskRun;

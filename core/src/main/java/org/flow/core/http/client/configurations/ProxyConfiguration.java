@@ -2,7 +2,7 @@ package org.flow.core.http.client.configurations;
 
 import java.net.Proxy;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.property.Property;
 
 import io.swagger.v3.oas.annotations.media.Schema;

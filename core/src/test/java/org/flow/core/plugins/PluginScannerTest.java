@@ -6,6 +6,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Objects;
 
+import org.flow.plugin.api.Plugin;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,6 +26,12 @@ class PluginScannerTest {
             .findFirst()
             .orElseThrow();
         assertThat(templatePlugin.getManifest().getMainAttributes().getValue("X-Flow-Group")).isEqualTo("org.flow.plugin.templates");
+        assertThat(templatePlugin.allClass()).extracting(Class::getName)
+            .containsExactly("org.flow.plugin.templates.ExampleTask");
+        for (RegisteredPlugin plugin : scan) {
+            assertThat(plugin.allClass()).isNotEmpty().allSatisfy(type ->
+                assertThat(Plugin.class.isAssignableFrom(type)).isTrue());
+        }
     }
 
     @Test

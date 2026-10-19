@@ -6,7 +6,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.retrys.AbstractRetry;
 import org.flow.core.models.tasks.retrys.Exponential;

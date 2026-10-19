@@ -41,34 +41,31 @@ public class LocalPluginManager implements PluginManager {
     private final Path localRepositoryPath;
 
     /**
-     * Creates a new {@link LocalPluginManager} instance.
+     * 使用默认插件仓库创建管理器，不自动向插件注册表注册已安装制品。
      *
-     * @param mavenPluginDownloader The {@link MavenPluginDownloader}.
+     * @param mavenPluginDownloader 下载和解析插件的组件，不能为 {@code null}
+     * @throws RuntimeException 默认插件仓库目录无法创建时抛出
      */
     public LocalPluginManager(final MavenPluginDownloader mavenPluginDownloader) {
-        this(null, mavenPluginDownloader, null, null);
+        this(null, mavenPluginDownloader, null);
     }
 
     /**
-     * Creates a new {@link LocalPluginManager} instance.
+     * 使用显式插件仓库创建管理器；路径为空时使用临时目录下的默认插件仓库。
+     * 构造时创建缺失的目录，插件仓库不再从文件存储配置推导。
      *
-     * @param pluginRegistryProvider The {@link PluginRegistry}.
-     * @param mavenPluginDownloader The {@link MavenPluginDownloader}.
-     * @param localRepositoryPath The local repository path used to stored plugins.
-     * @param localStorageBasePath The local-filesystem internal storage base path, if configured.
+     * @param pluginRegistryProvider 插件注册表提供者；为 {@code null} 时不自动注册制品
+     * @param mavenPluginDownloader 下载和解析插件的组件，不能为 {@code null}
+     * @param localRepositoryPath 插件仓库路径；为 {@code null} 时使用默认临时目录
+     * @throws RuntimeException 插件仓库目录无法创建时抛出
      */
     @Inject
     public LocalPluginManager(final Provider<PluginRegistry> pluginRegistryProvider,
         final MavenPluginDownloader mavenPluginDownloader,
-        @Nullable @Value("${flow.plugins.management.localRepositoryPath}") final String localRepositoryPath,
-        @Nullable @Value("${flow.storage.local.base-path}") final String localStorageBasePath) {
+        @Nullable @Value("${flow.plugins.management.localRepositoryPath}") final String localRepositoryPath) {
         this.pluginRegistryProvider = pluginRegistryProvider;
         this.mavenPluginDownloader = mavenPluginDownloader;
-        // Precedence: explicit repository path, then <storage.local.base-path>/plugins — so a local
-        // instance keeps a single folder to manage/persist — then the temp-dir fallback.
-        this.localRepositoryPath = localRepositoryPath == null && localStorageBasePath != null
-            ? PluginManager.createLocalRepositoryIfNotExist(Path.of(localStorageBasePath).resolve("plugins"))
-            : PluginManager.getLocalManagedRepositoryPathOrDefault(localRepositoryPath);
+        this.localRepositoryPath = PluginManager.getLocalManagedRepositoryPathOrDefault(localRepositoryPath);
     }
 
     /**

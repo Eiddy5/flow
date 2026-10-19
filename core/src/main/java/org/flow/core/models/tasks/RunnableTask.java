@@ -1,6 +1,6 @@
 package org.flow.core.models.tasks;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.WorkerJobLifecycle;
 import org.flow.core.runners.RunContext;
 

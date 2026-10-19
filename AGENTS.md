@@ -16,7 +16,7 @@ Use the Gradle wrapper for all local commands:
 
 ```bash
 ./gradlew classes jar verifyRuntimeIsolation
-./gradlew :tooling:exportPluginSchemas
+./gradlew :tooling:exportPluginSchemas -PschemaPlugins=/absolute/path/plugins
 python3 verify-upstream.py
 bash docs/harness/verify-flow.sh
 ```

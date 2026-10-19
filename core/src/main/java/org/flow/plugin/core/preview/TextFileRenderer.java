@@ -9,7 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.Set;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.preview.FilePreview;
 import org.flow.core.preview.FileRenderer;
 import org.flow.core.serializers.FileSerde;

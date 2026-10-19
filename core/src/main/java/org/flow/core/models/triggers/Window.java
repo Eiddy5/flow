@@ -3,7 +3,7 @@ package org.flow.core.models.triggers;
 import java.time.Duration;
 import java.time.LocalTime;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.validations.TimezoneId;
 import org.flow.core.validations.WindowValidation;
 

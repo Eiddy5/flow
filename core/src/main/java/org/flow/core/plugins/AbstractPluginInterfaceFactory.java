@@ -11,7 +11,7 @@ import java.util.stream.Stream;
 import org.apache.commons.lang3.tuple.Pair;
 
 import org.flow.core.exceptions.FlowRuntimeException;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.serializers.JacksonMapper;
 
 import jakarta.validation.ConstraintViolation;
@@ -23,7 +23,7 @@ import jakarta.validation.Validator;
  * property and instantiated from a configuration map.
  * <p>
  * Centralizes the shared mechanism — parse a {@code <id>:<version>} identifier, look up the plugin
- * class by {@link org.flow.core.models.annotations.Plugin.Id} across the {@link PluginRegistry}, deserialize the configuration via
+ * class by {@link org.flow.plugin.api.annotations.Plugin.Id} across the {@link PluginRegistry}, deserialize the configuration via
  * {@link JacksonMapper}, and validate it — so it lives (and is fixed) in a single place. Concrete
  * factories provide the four seams below and add their own post-deserialization step (init,
  * decorators, …) in their own {@code make(...)} method.

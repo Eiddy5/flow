@@ -3,7 +3,7 @@ package org.flow.plugin.core.trigger;
 import java.util.Map;
 
 import org.flow.core.http.HttpResponse;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.triggers.AbstractTrigger;
 
 import io.swagger.v3.oas.annotations.media.Schema;

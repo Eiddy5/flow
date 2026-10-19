@@ -5,7 +5,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Collections;
 import java.util.Optional;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.conditions.ConditionContext;
 import org.flow.core.models.triggers.*;
 

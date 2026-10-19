@@ -3,8 +3,8 @@ package org.flow.plugin.core.storage;
 import java.net.URI;
 import java.util.List;
 
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.tasks.RunnableTask;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.runners.RunContext;

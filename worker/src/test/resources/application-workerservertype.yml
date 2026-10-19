@@ -1,5 +1,0 @@
-# Layered on top of the `test` environment to mirror a distributed worker: the full server
-# configuration is present, but `flow.server-type` is WORKER — what WorkerCommand.propertiesOverrides()
-# sets — so no repository bean is registered.
-flow:
-  server-type: WORKER

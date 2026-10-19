@@ -1,4 +1,4 @@
 dependencies {
     // Flow
-    api project(':model')
+    api project(':plugin-api')
 }

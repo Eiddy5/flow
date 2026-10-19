@@ -1,7 +1,6 @@
 dependencies {
     implementation libs.micronaut.context
     implementation project(':core')
-    runtimeOnly project(':storage-local')
     runtimeOnly project(':script')
     testImplementation libs.assertj.core.pinned
 }
@@ -10,34 +9,44 @@ dependencies {
     tasks.register(taskName, JavaExec) {
         group = 'documentation'
         description = "离线导出 ${kind} Schema，不启动 ApplicationContext 或服务器"
-        def plugins = providers.gradleProperty('schemaPlugins').orElse(
-            project(':plugin-fixture').layout.buildDirectory.dir('plugin-release').map { it.asFile.absolutePath })
+        def plugins = providers.gradleProperty('schemaPlugins')
         def output = providers.gradleProperty('schemaOutput').orElse(
             rootProject.layout.buildDirectory.file("exports/${kind}-schema.json").map { it.asFile.absolutePath })
-        if (!providers.gradleProperty('schemaPlugins').isPresent()) {
-            dependsOn ':plugin-fixture:stagePlugin'
-        }
         classpath = sourceSets.main.runtimeClasspath
         mainClass = 'org.flow.tooling.schema.SchemaExports'
         inputs.property('kind', kind)
-        inputs.dir(plugins)
+        inputs.property('pluginsDirectory', plugins.orElse(''))
+        inputs.dir(plugins).optional()
         outputs.file(output)
-        args kind, plugins.get(), output.get()
+        doFirst {
+            if (!plugins.isPresent() || plugins.get().isBlank()) {
+                throw new GradleException('请通过 -PschemaPlugins=/absolute/path/plugins 指定已有插件目录；空目录表示仅导出内置插件')
+            }
+            setArgs([kind, file(plugins.get()).absolutePath, output.get()])
+        }
     }
 }
 
 tasks.register('verifyRuntimeIsolation') {
     group = 'verification'
-    description = '验证离线工具不依赖产品入口、宿主运行模块和数据库后端'
+    description = '验证离线工具不依赖产品入口和宿主运行角色'
     doLast {
+        def generatedObjectLibraries = ['paas-common', 'paas-json', 'paas-sql', 'paas-exception', 'paas-pulsar']
+        def pulsarClientLibraries = ['bouncy-castle-bc', 'pulsar-client-admin-api', 'pulsar-client-api',
+                                    'pulsar-client-original', 'pulsar-common']
         def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
             def id = artifact.moduleVersion.id
-            id.group.startsWith('org.paas') || id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
+            (id.group.startsWith('org.paas') && !(id.group == 'org.paas' && id.name in generatedObjectLibraries)) ||
+                (id.group == 'org.jooq' && !(id.name in ['jooq', 'jooq-paas'])) ||
+                ((id.group.contains('pulsar') || id.name.contains('pulsar')) &&
+                    !(id.group == 'org.paas' && id.name == 'paas-pulsar') &&
+                    !(id.group == 'org.apache.pulsar' && id.name in pulsarClientLibraries)) ||
+                id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
                 id.group == 'com.github.docker-java' ||
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
-                (id.group == 'org.flow' && ['cli', 'webserver', 'jdbc', 'jdbc-postgres', 'jdbc-mysql', 'jdbc-h2',
+                (id.group == 'org.flow' && ['cli', 'webserver', 'jdbc-postgres', 'jdbc-mysql', 'jdbc-h2',
                 'queue-jdbc', 'worker', 'executor', 'scheduler', 'indexer',
-                'repository-memory', 'runner-memory'].contains(id.name)) ||
+                'repository-memory', 'runner-memory', 'tests', 'storage-local'].contains(id.name)) ||
                 (id.group in ['org.cses.flow', 'org.flow'] && id.name in ['flow', 'embedded'])
         }
         if (!forbidden.isEmpty()) {

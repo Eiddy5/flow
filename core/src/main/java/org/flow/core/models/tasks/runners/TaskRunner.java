@@ -13,10 +13,10 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
 import org.flow.core.exceptions.KilledException;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.PluginVersioning;
 import org.flow.core.models.WorkerJobLifecycle;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.runners.RunContext;
 import org.flow.plugin.core.runner.Process;
 
@@ -34,7 +34,7 @@ import static org.flow.core.utils.WindowsUtils.windowsToUnixPath;
 /**
  * Base class for all task runners.
  */
-@org.flow.core.models.annotations.Plugin
+@org.flow.plugin.api.annotations.Plugin
 @SuperBuilder(toBuilder = true)
 @Getter
 @NoArgsConstructor

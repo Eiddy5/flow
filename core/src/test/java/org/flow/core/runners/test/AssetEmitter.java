@@ -1,7 +1,7 @@
 package org.flow.core.runners.test;
 
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.tasks.*;
 import org.flow.core.runners.AssetEmit;
 import org.flow.core.runners.RunContext;

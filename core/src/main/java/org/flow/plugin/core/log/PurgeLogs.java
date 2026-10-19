@@ -4,8 +4,8 @@ import java.util.List;
 
 import org.slf4j.event.Level;
 
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.RunnableTask;
 import org.flow.core.models.tasks.SystemTask;

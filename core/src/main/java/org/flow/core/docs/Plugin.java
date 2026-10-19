@@ -4,7 +4,7 @@ import java.util.*;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
-import org.flow.core.models.annotations.PluginSubGroup;
+import org.flow.plugin.api.annotations.PluginSubGroup;
 import org.flow.core.plugins.RegisteredPlugin;
 
 import io.micronaut.core.annotation.Nullable;
@@ -148,7 +148,7 @@ public class Plugin {
     private static List<PluginElementMetadata> filterAndGetTypeWithMetadata(final List<? extends Class<?>> list, Predicate<Class<?>> clazzFilter, Map<Class<?>, List<String>> aliasesByClass) {
         return list
             .stream()
-            .filter(not(org.flow.core.models.Plugin::isInternal))
+            .filter(not(org.flow.plugin.api.Plugin::isInternal))
             .filter(clazzFilter)
             .map(c ->
             {
@@ -156,7 +156,7 @@ public class Plugin {
 
                 var title = Optional.ofNullable(schema).map(Schema::title).filter(t -> !t.isEmpty()).orElse(null);
                 var description = Optional.ofNullable(schema).map(Schema::description).filter(d -> !d.isEmpty()).orElse(null);
-                var deprecated = org.flow.core.models.Plugin.isDeprecated(c) ? true : null;
+                var deprecated = org.flow.plugin.api.Plugin.isDeprecated(c) ? true : null;
                 List<String> aliases = aliasesByClass.get(c);
 
                 return new PluginElementMetadata(c.getName(), deprecated, title, description, (aliases == null || aliases.isEmpty()) ? null : aliases);

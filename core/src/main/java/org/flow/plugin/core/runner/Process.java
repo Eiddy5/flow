@@ -10,8 +10,8 @@ import java.util.Map;
 
 import org.slf4j.Logger;
 
-import org.flow.core.models.annotations.Example;
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Example;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.tasks.runners.*;
 import org.flow.core.runners.RunContext;
 

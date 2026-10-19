@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.NextTaskRun;
 import org.flow.core.models.executions.TaskRun;

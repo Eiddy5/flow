@@ -5,4 +5,4 @@
 )
 package org.flow.plugin.core.kv;
 
-import org.flow.core.models.annotations.PluginSubGroup;
+import org.flow.plugin.api.annotations.PluginSubGroup;

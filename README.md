@@ -34,7 +34,7 @@ jOOQ/PaaS 依赖边界和生成命令见 [生成指南](docs/harness/jooq-genera
 
 ```bash
 ./gradlew classes jar verifyRuntimeIsolation
-./gradlew :tooling:exportPluginSchemas
+./gradlew :tooling:exportPluginSchemas -PschemaPlugins=/absolute/path/plugins
 python3 verify-upstream.py
 bash docs/harness/verify-flow.sh
 bash docs/harness/verify-flow.sh --full-regression

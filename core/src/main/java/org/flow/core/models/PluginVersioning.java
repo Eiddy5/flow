@@ -1,5 +1,7 @@
 package org.flow.core.models;
 
+import org.flow.plugin.api.Plugin;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 /**

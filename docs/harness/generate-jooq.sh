@@ -3,16 +3,16 @@ set -euo pipefail
 
 # 只使用本脚本创建的空数据库；不读取业务连接，不随普通编译自动运行。
 flow_gen_root="$(cd "$(dirname "$0")/../.." && pwd)"
-flow_gen_migrations="$flow_gen_root/jdbc-postgres/src/main/resources/migrations"
+flow_gen_migrations="$flow_gen_root"
 flow_gen_scripts=(
-    baseline-postgres.sql
-    baseline-queue-postgres.sql
-    2.0.01-schema-postgres.sql
-    2.0.02-queue-postgres.sql
-    2.0.06-widen-logs-postgres.sql
-    2.0.09-execution-outputs-postgres.sql
-    2.0.12-fix-state-duration-postgres.sql
-    2.1.02-trigger-source-disabled-postgres.sql
+    core/src/main/resources/migrations/baseline-postgres.sql
+    queue/src/main/resources/migrations/baseline-queue-postgres.sql
+    core/src/main/resources/migrations/2.0.01-schema-postgres.sql
+    queue/src/main/resources/migrations/2.0.02-queue-postgres.sql
+    indexer/src/main/resources/migrations/2.0.06-widen-logs-postgres.sql
+    core/src/main/resources/migrations/2.0.09-execution-outputs-postgres.sql
+    executor/src/main/resources/migrations/2.0.12-fix-state-duration-postgres.sql
+    scheduler/src/main/resources/migrations/2.1.02-trigger-source-disabled-postgres.sql
 )
 for flow_gen_script in "${flow_gen_scripts[@]}"; do
     if [[ ! -f "$flow_gen_migrations/$flow_gen_script" ]]; then
@@ -92,8 +92,8 @@ SQL
 # 部分 SQL 包含 CONCURRENTLY，不能用 psql -1 包进单一事务。
 for flow_gen_script in "${flow_gen_scripts[@]}"; do
     flow_gen_input="$flow_gen_migrations/$flow_gen_script"
-    if [[ "$flow_gen_script" == "2.0.06-widen-logs-postgres.sql" ]]; then
-        flow_gen_input="$flow_gen_run_dir/$flow_gen_script"
+    if [[ "${flow_gen_script##*/}" == "2.0.06-widen-logs-postgres.sql" ]]; then
+        flow_gen_input="$flow_gen_run_dir/${flow_gen_script##*/}"
         sed 's/${table}/logs/g' "$flow_gen_migrations/$flow_gen_script" >"$flow_gen_input"
     fi
     printf 'Applying %s\n' "$flow_gen_script" | tee -a "$flow_gen_run_dir/schema.log"

@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import org.flow.core.models.annotations.Plugin;
+import org.flow.plugin.api.annotations.Plugin;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.ExecutionTrigger;
 import org.flow.core.models.flows.FlowWithSource;

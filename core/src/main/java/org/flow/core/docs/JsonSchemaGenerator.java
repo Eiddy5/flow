@@ -32,12 +32,12 @@ import com.github.victools.jsonschema.module.jakarta.validation.JakartaValidatio
 import com.github.victools.jsonschema.module.swagger2.Swagger2Module;
 import com.google.common.collect.ImmutableMap;
 
-import org.flow.core.models.annotations.Plugin;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.Plugin;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.assets.Asset;
 import org.flow.core.models.assets.AssetExporter;
 import org.flow.core.models.assets.Custom;
-import org.flow.core.models.enums.MonacoLanguages;
+import org.flow.plugin.api.enums.MonacoLanguages;
 import org.flow.core.models.property.Data;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.Output;
@@ -988,7 +988,7 @@ public class JsonSchemaGenerator {
                     allowedTypeValues.add(pluginType.getName());
 
                     try {
-                        Set<String> annotationAliases = org.flow.core.models.Plugin.getAliases(pluginType);
+                        Set<String> annotationAliases = org.flow.plugin.api.Plugin.getAliases(pluginType);
                         if (annotationAliases != null) {
                             allowedTypeValues.addAll(annotationAliases.stream().filter(Objects::nonNull).toList());
                         }
@@ -1096,7 +1096,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getTasks().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .flatMap(clz -> safelyResolveSubtype(declaredType, clz, typeContext).stream())
                 .toList();
         } else if (declaredType.getErasedType() == AbstractTrigger.class) {
@@ -1104,7 +1104,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getTriggers().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .flatMap(clz -> safelyResolveSubtype(declaredType, clz, typeContext).stream())
                 .toList();
         } else if (declaredType.getErasedType() == TaskRunner.class) {
@@ -1112,7 +1112,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getTaskRunners().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .map(typeContext::resolve)
                 .toList();
         } else if (declaredType.getErasedType() == LogExporter.class) {
@@ -1120,7 +1120,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getLogExporters().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .map(typeContext::resolve)
                 .toList();
         } else if (AdditionalPlugin.class.isAssignableFrom(declaredType.getErasedType())) { // base type for additional plugin is not AdditionalPlugin but a subtype of AdditionalPlugin.
@@ -1131,7 +1131,7 @@ public class JsonSchemaGenerator {
                 .filter(cls -> declaredType.getErasedType().isAssignableFrom(cls))
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
                 .filter(cls -> cls != declaredType.getErasedType())
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .map(typeContext::resolve)
                 .toList();
         } else if (declaredType.getErasedType() == FileRenderer.class) {
@@ -1139,7 +1139,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getFileRenderers().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .map(typeContext::resolve)
                 .toList();
         } else if (declaredType.getErasedType() == Asset.class) {
@@ -1149,7 +1149,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getAssets().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal));
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal));
             return Stream.concat(registeredAssets, Stream.of(Custom.class))
                 .map(typeContext::resolve)
                 .toList();
@@ -1158,7 +1158,7 @@ public class JsonSchemaGenerator {
                 .stream()
                 .flatMap(registeredPlugin -> registeredPlugin.getAssetExporters().stream())
                 .filter(p -> allowedPluginTypes.isEmpty() || allowedPluginTypes.contains(p.getName()))
-                .filter(Predicate.not(org.flow.core.models.Plugin::isInternal))
+                .filter(Predicate.not(org.flow.plugin.api.Plugin::isInternal))
                 .map(typeContext::resolve)
                 .toList();
         } else if (declaredType.getErasedType() == org.flow.core.models.flows.Input.class) {

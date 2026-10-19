@@ -19,7 +19,7 @@ import org.flow.core.models.QueryFilter.Resource;
 import org.flow.core.serializers.JacksonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.Assert.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 public class QueryFilterTest {

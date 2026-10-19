@@ -8,7 +8,7 @@ import org.apache.commons.lang3.ObjectUtils;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 
 import org.flow.core.models.HasUID;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.SoftDeletable;
 import org.flow.core.utils.IdUtils;
 import org.flow.core.utils.MapUtils;

@@ -9,10 +9,8 @@ junit = "5.14.0"
 logback = "1.5.37"
 opentelemetry = "1.54.1"
 swagger = "2.2.46"
-archunit-junit5 = "1.4.2"
 assertj = "3.27.7"
 awaitility = "4.3.0"
-bouncycastle = "1.85"
 caffeine = "3.2.4"
 commons-compress = "1.28.0"
 commons-io = "2.22.0"
@@ -56,17 +54,12 @@ pebble = "4.1.2"
 plexus-utils = "4.1.0"
 postgresql = "42.7.13"
 slf4j = "2.0.18"
-testcontainers = "1.21.4"
-wiremock-jetty12 = "3.13.2"
 
 [libraries]
-testcontainers-bom = { module = "org.testcontainers:testcontainers-bom", version.ref = "testcontainers" }
-archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit-junit5" }
 # Preserve the previous shared test version and the explicit tests/tooling override.
 assertj-core-managed = { module = "org.assertj:assertj-core", version.ref = "assertj-managed" }
 assertj-core-pinned = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 awaitility = { module = "org.awaitility:awaitility", version.ref = "awaitility" }
-bcpkix-jdk18on = { module = "org.bouncycastle:bcpkix-jdk18on", version.ref = "bouncycastle" }
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 commons-compress = { module = "org.apache.commons:commons-compress", version.ref = "commons-compress" }
 commons-io = { module = "commons-io:commons-io", version.ref = "commons-io" }
@@ -136,8 +129,6 @@ micrometer-java21 = { module = "io.micrometer:micrometer-java21" }
 micronaut-context = { module = "io.micronaut:micronaut-context" }
 micronaut-data-model = { module = "io.micronaut.data:micronaut-data-model" }
 micronaut-hibernate-validator = { module = "io.micronaut.beanvalidation:micronaut-hibernate-validator" }
-micronaut-http-client = { module = "io.micronaut:micronaut-http-client" }
-micronaut-http-server-netty = { module = "io.micronaut:micronaut-http-server-netty" }
 micronaut-inject-core = { module = "io.micronaut:micronaut-inject" }
 micronaut-inject-java = { module = "io.micronaut:micronaut-inject-java" }
 micronaut-jackson-databind = { module = "io.micronaut:micronaut-jackson-databind" }
@@ -162,14 +153,10 @@ postgresql = { module = "org.postgresql:postgresql", version.ref = "postgresql" 
 reactor-core = { module = "io.projectreactor:reactor-core" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version.ref = "swagger" }
-testcontainers-core = { module = "org.testcontainers:testcontainers", version.ref = "testcontainers" }
-testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
-wiremock-jetty12 = { module = "org.wiremock:wiremock-jetty12", version.ref = "wiremock-jetty12" }
 
 micronaut-http = { module = "io.micronaut:micronaut-http" }
 micronaut-micrometer-core = { module = "io.micronaut.micrometer:micronaut-micrometer-core" }
 micronaut-tracing-opentelemetry = { module = "io.micronaut.tracing:micronaut-tracing-opentelemetry" }
-micronaut-data-connection-jdbc = { module = "io.micronaut.data:micronaut-data-connection-jdbc" }
 micronaut-jdbc = { module = "io.micronaut.sql:micronaut-jdbc" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
 micronaut-reactor = { module = "io.micronaut.reactor:micronaut-reactor" }

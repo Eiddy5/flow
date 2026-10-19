@@ -3,7 +3,7 @@ package org.flow.core.tasks.test;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.tasks.RunnableTask;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.runners.RunContext;

@@ -14,7 +14,7 @@ import com.fasterxml.jackson.databind.introspect.JacksonAnnotationIntrospector;
 
 import org.flow.core.exceptions.InternalException;
 import org.flow.core.models.HasUID;
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.flows.check.Check;
 import org.flow.core.models.flows.quota.Quota;
 import org.flow.core.models.flows.sla.SLA;

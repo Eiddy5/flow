@@ -8,7 +8,7 @@ import java.util.function.Predicate;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 
 /**
  * Registry for managing all Flow's {@link Plugin}.

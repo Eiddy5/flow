@@ -28,7 +28,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.plugins.PluginRegistry;
 import org.flow.core.plugins.RegisteredPlugin;
 
@@ -45,7 +45,7 @@ final class ConfigurationSchemaGenerator {
     private static final ObjectMapper MAPPER = new ObjectMapper()
         .enable(SerializationFeature.INDENT_OUTPUT);
 
-    private static final String PLUGIN_PROPERTY_ANNOTATION = "org.flow.core.models.annotations.PluginProperty";
+    private static final String PLUGIN_PROPERTY_ANNOTATION = "org.flow.plugin.api.annotations.PluginProperty";
     private static final String SCHEMA_ANNOTATION = "io.swagger.v3.oas.annotations.media.Schema";
     private static final String BINDABLE_ANNOTATION = "io.micronaut.core.bind.annotation.Bindable";
 

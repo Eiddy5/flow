@@ -5,8 +5,12 @@
 当前生成对象依据 [ADR 0127](../decisions/0127-use-generated-database-objects.md)，
 生成步骤见 [生成指南](../harness/jooq-generation.md)。使用内部生成器和 `JooqPojo`
 统一 Table、Field、Record、POJO，生成目录仍为 `gen/src/main/java/org/flow/gen/flow/`。
-生成文件不可手改；数据库结构唯一来源是 jdbc-postgres 中的原生迁移，不恢复旧
+生成文件不可手改；数据库结构唯一来源是 core、queue、executor、scheduler、indexer
+各自 `src/main/resources/migrations/` 中的原生迁移，混合基线留在 core；不恢复旧
 `gen/sql` 基线。普通编译不连接数据库，显式生成使用独立测试库。
+按 [ADR 0130](../decisions/0130-co-locate-persistence-with-owning-modules.md)，数据库
+底层位于 jdbc，能力专属实现位于所属模块的 `org.flow.<owner>.jdbc` 包；core 模块
+中的数据库实现可以消费 gen，Core Domain 和服务契约仍不使用生成类型。
 
 以下原有条款保留旧 Flow 的 Entry/DataSourceEngine 约定，不能覆盖当前原生
 Repository、JSONB 序列化、事务与队列协议。当前不要求为每张原生表建立旧式 Entry，

@@ -6,9 +6,9 @@ import java.nio.charset.Charset;
 import java.util.Optional;
 import java.util.Set;
 
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 
-@org.flow.core.models.annotations.Plugin
+@org.flow.plugin.api.annotations.Plugin
 public interface FileRenderer extends Plugin {
     boolean supports(String extension);
 

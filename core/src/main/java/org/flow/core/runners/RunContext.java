@@ -15,7 +15,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import org.flow.core.encryption.EncryptionService;
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
-import org.flow.core.models.Plugin;
+import org.flow.plugin.api.Plugin;
 import org.flow.core.models.executions.AbstractMetricEntry;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.property.PropertyContext;

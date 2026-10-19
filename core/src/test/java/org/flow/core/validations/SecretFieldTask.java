@@ -1,6 +1,6 @@
 package org.flow.core.validations;
 
-import org.flow.core.models.annotations.PluginProperty;
+import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.tasks.Task;
 
 import lombok.Getter;

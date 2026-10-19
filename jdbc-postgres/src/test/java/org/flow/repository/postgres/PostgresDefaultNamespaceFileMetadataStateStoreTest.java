@@ -1,6 +1,0 @@
-package org.flow.repository.postgres;
-
-import org.flow.core.namespace.AbstractDefaultNamespaceFileMetadataStateStoreTest;
-
-public class PostgresDefaultNamespaceFileMetadataStateStoreTest extends AbstractDefaultNamespaceFileMetadataStateStoreTest {
-}
