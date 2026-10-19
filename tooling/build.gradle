@@ -31,7 +31,7 @@ tasks.register('verifyRuntimeIsolation') {
     group = 'verification'
     description = '验证离线工具不依赖产品入口和宿主运行角色'
     doLast {
-        def generatedObjectLibraries = ['paas-common', 'paas-json', 'paas-sql', 'paas-exception', 'paas-pulsar']
+        def generatedObjectLibraries = ['paas-common', 'paas-json', 'paas-sql', 'paas-exception', 'paas-pulsar', 'paas-session']
         def pulsarClientLibraries = ['bouncy-castle-bc', 'pulsar-client-admin-api', 'pulsar-client-api',
                                     'pulsar-client-original', 'pulsar-common']
         def forbidden = configurations.runtimeClasspath.resolvedConfiguration.resolvedArtifacts.findAll { artifact ->
@@ -41,7 +41,7 @@ tasks.register('verifyRuntimeIsolation') {
                 ((id.group.contains('pulsar') || id.name.contains('pulsar')) &&
                     !(id.group == 'org.paas' && id.name == 'paas-pulsar') &&
                     !(id.group == 'org.apache.pulsar' && id.name in pulsarClientLibraries)) ||
-                id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
+                id.group == 'org.redisson' || id.group.startsWith('org.pass') || id.group.startsWith('io.kestra') || id.group in ['com.h2database', 'com.mysql', 'mysql', 'org.mariadb.jdbc'] ||
                 id.group == 'com.github.docker-java' ||
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
                 (id.group == 'org.flow' && ['cli', 'webserver', 'jdbc-postgres', 'jdbc-mysql', 'jdbc-h2',

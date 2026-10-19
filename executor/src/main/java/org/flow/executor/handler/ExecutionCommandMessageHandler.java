@@ -1,6 +1,9 @@
 package org.flow.executor.handler;
 
 import java.util.Optional;
+import java.util.Objects;
+
+import org.flow.core.services.executions.SessionCommandContext;
 
 import org.flow.core.async.AsyncOperationProcessedEvent;
 import org.flow.core.async.AsyncOperationService;
@@ -44,6 +47,9 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
     private final KillSwitchService killSwitchService;
     private final KillSwitchActionService killSwitchActionService;
 
+    private SessionCommandContext sessionCommandContext;
+
+    /** 注入原生执行链路及宿主 Session 身份恢复器。 */
     @Inject
     public ExecutionCommandMessageHandler(
         ExecutionService executionService,
@@ -54,7 +60,8 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
         AsyncOperationService asyncOperationService,
         ExecutionEventMessageHandler executionEventMessageHandler,
         KillSwitchService killSwitchService,
-        KillSwitchActionService killSwitchActionService) {
+        KillSwitchActionService killSwitchActionService,
+        SessionCommandContext sessionCommandContext) {
         this.executionService = executionService;
         this.executionStateStore = executionStateStore;
         this.flowMetaStore = flowMetaStore;
@@ -64,10 +71,25 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
         this.executionEventMessageHandler = executionEventMessageHandler;
         this.killSwitchService = killSwitchService;
         this.killSwitchActionService = killSwitchActionService;
+        this.sessionCommandContext = sessionCommandContext;
     }
 
+    /** 消费原生或带 Session 身份的命令；身份恢复失败时记录异步失败。 */
     @Override
     public Optional<ExecutorContext> handle(ExecutionCommand message) {
+        if (message instanceof SessionCommand scoped) {
+            try {
+                var actor = sessionCommandContext.restore(scoped);
+                log.info("Processing execution command {} for tenant {} by actor {}, eventId {}",
+                    scoped.command().type(), scoped.tenantId(), actor.id(), scoped.eventId());
+            } catch (Exception exception) {
+                log.error("Unable to restore Session for command {}", scoped.eventId(), exception);
+                asyncOperationService.emitProcessedIfAsync(scoped, scoped.tenantId(), scoped.executionId(),
+                    AsyncOperationProcessedEvent.Outcome.FAILED, exception.getMessage());
+                return Optional.empty();
+            }
+            return handle(scoped.command());
+        }
         // Create and Replay bootstrap a new execution — they cannot go through executionStateStore.lock()
         // because the execution doesn't exist yet. All other commands mutate an existing execution via lock.
         if (message instanceof Create createCommand) {
@@ -81,7 +103,7 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
         EvaluationType evaluationType = killSwitchService.evaluate(message);
         if (evaluationType != EvaluationType.PASS) {
             var execution = executionStateStore.findByIdWithoutAcl(message.executionId());
-            if (execution != null && evaluationType.isKillSwitched(execution)) {
+            if (execution != null && matchesTarget(message, execution) && evaluationType.isKillSwitched(execution)) {
                 killSwitchActionService.handle(evaluationType, execution.getTenantId(), execution.getId());
                 return Optional.empty();
             }
@@ -92,6 +114,7 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
             AsyncOperationProcessedEvent.Outcome outcome = AsyncOperationProcessedEvent.Outcome.SUCCEEDED;
             String error = null;
             try {
+                requireTarget(message, execution);
                 var flow = flowMetaStore.findByExecutionForRuntime(execution).orElseThrow(() -> new FlowNotFoundException(execution));
                 var executorContext = new ExecutorContext(execution, flow);
                 var newExecution = switch (message) {
@@ -129,6 +152,20 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
                 asyncOperationService.emitProcessedIfAsync(message, message.tenantId(), message.executionId(), outcome, error);
             }
         });
+    }
+
+    /** 验证租户和流程一致，禁止仅凭执行 ID 修改其他租户状态。 */
+    private boolean matchesTarget(ExecutionCommand command, Execution execution) {
+        return Objects.equals(command.tenantId(), execution.getTenantId())
+            && Objects.equals(command.namespace(), execution.getNamespace())
+            && Objects.equals(command.flowId(), execution.getFlowId());
+    }
+
+    /** 在读取重放来源或持有执行锁时再次校验命令目标。 */
+    private void requireTarget(ExecutionCommand command, Execution execution) {
+        if (execution == null || !matchesTarget(command, execution)) {
+            throw new IllegalArgumentException("命令目标不属于指定租户和流程");
+        }
     }
 
     private Optional<ExecutorContext> handleCreate(Create command) {
@@ -176,6 +213,8 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
             if (raw == null) {
                 throw new IllegalStateException("Source execution not found: " + command.sourceExecutionId());
             }
+
+            requireTarget(command, raw);
 
             // Apply inputs override if the controller merged new inputs before emitting the command
             final var sourceExecution = command.inputs() != null ? raw.withInputs(command.inputs()) : raw;

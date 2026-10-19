@@ -155,6 +155,35 @@ class JdbcQueuePersistenceTest {
         });
     }
 
+    /** 身份信封通过真实 PostgreSQL 保存、领取后仍保留租户、操作者和原生命令。 */
+    @Test
+    void persistsAndRestoresSessionCommandIdentity() throws Exception {
+        var session = org.mockito.Mockito.mock(org.paas.session.Session.class);
+        var user = org.mockito.Mockito.mock(org.paas.session.SessionUser.class);
+        org.mockito.Mockito.when(session.getCompanyId()).thenReturn("tenant-session");
+        org.mockito.Mockito.when(session.getUser()).thenReturn(user);
+        org.mockito.Mockito.when(user.getId()).thenReturn("actor-session");
+        var create = org.flow.core.executor.command.Create.of(
+            org.flow.core.models.flows.FlowId.of("tenant-session", "test", "flow-session", 1));
+        var command = org.flow.core.executor.command.SessionCommand.from(session, create);
+        client.publish(queueName, null, command.key(), JacksonMapper.ofJson().writeValueAsString(command));
+        List<org.flow.core.executor.command.ExecutionCommand> received = new ArrayList<>();
+        client.subscribeDispatch(queueName, null, bytes -> {
+            try {
+                received.add(JacksonMapper.ofJson().readValue(bytes, org.flow.core.executor.command.ExecutionCommand.class));
+            } catch (java.io.IOException exception) {
+                throw new IllegalStateException(exception);
+            }
+        });
+        assertThat(received).hasSize(1);
+        var restored = (org.flow.core.executor.command.SessionCommand) received.getFirst();
+        assertThat(restored.actorId()).isEqualTo("actor-session");
+        assertThat(restored.tenantId()).isEqualTo("tenant-session");
+        assertThat(restored.executionId()).isEqualTo(create.executionId());
+        assertThat(restored.command()).isInstanceOf(org.flow.core.executor.command.Create.class);
+        assertThat(remainingMessages()).isZero();
+    }
+
     /**
      * 从提交后的新事务读取当前用例尚未确认的消息数量。
      * @return 当前队列的已提交消息数

@@ -1,5 +1,7 @@
 # ADR 0125：由构建选择 Java 版本
 
+> Java 21 下限已由 [ADR 0133](0133-session-aware-public-services.md) 的 Java 25 / 本地 PaaS 联合构建修订；标准 Java 配置选择原则继续保留。
+
 ## 状态
 
 Accepted（2026-10-14）。用户确认最低支持 Java 21，取消项目固定的 Java 版本，

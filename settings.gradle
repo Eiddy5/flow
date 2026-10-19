@@ -11,3 +11,14 @@ include 'scheduler'
 include 'indexer'
 include 'script'
 include 'tooling'
+
+// The SessionUser contract is currently available from the local PaaS neworg sources.
+// Keep the source path configurable for CI and composite-build consumers.
+def paasSourcePath = providers.gradleProperty('paasSourcePath')
+    .orElse(providers.environmentVariable('FLOW_PAAS_SOURCE_PATH'))
+    .getOrElse('../paas')
+def paasSourceDirectory = file(paasSourcePath)
+if (!new File(paasSourceDirectory, 'session/src/main/java/org/paas/session/SessionUser.java').isFile()) {
+    throw new GradleException('需要包含 SessionUser 的本地 PaaS pass-2.0-neworg 源码；请设置 -PpaasSourcePath 或 FLOW_PAAS_SOURCE_PATH。')
+}
+includeBuild(paasSourceDirectory)

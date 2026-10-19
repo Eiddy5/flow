@@ -8,7 +8,7 @@ jsr305 = "3.0.2"
 junit = "5.14.0"
 logback = "1.5.37"
 opentelemetry = "1.54.1"
-swagger = "2.2.46"
+swagger = "2.2.50"
 assertj = "3.27.7"
 awaitility = "4.3.0"
 caffeine = "3.2.4"
@@ -32,10 +32,10 @@ jakarta-xml-bind-api = "4.0.5"
 janino = "3.1.12"
 jansi = "2.4.3"
 java-uuid-generator = "5.2.0"
-jetty = "12.0.31"
+jetty = "12.1.8"
 jollyday = "2.19.0"
 jooq = "3.21.4.1"
-paas = "1.0.0.161"
+paas = "2.5.0.29"
 json-patch = "1.13"
 json-schema-validator = "3.0.6"
 jsonschema = "4.38.0"
@@ -46,7 +46,7 @@ logback-ecs-encoder = "1.8.0"
 lombok = "1.18.46"
 maven-resolver = "2.0.10"
 micrometer = "1.15.12"
-micronaut-platform = "4.10.6.335"
+micronaut-platform = "5.0.3.29"
 mockito = "5.23.0"
 mockito-junit = "5.20.0"
 netty = "4.2.18.Final"
@@ -100,6 +100,9 @@ jooq = { module = "org.jooq:jooq", version.ref = "jooq" }
 jooq-bom = { module = "org.jooq:jooq-bom", version.ref = "jooq" }
 jooq-paas = { module = "org.jooq:jooq-paas", version.ref = "jooq" }
 jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension", version.ref = "jooq" }
+paas-common = { module = "org.paas:paas-common" }
+paas-json = { module = "org.paas:paas-json" }
+paas-session = { module = "org.paas:paas-session" }
 paas-bom = { module = "org.paas:paas-bom", version.ref = "paas" }
 json-patch = { module = "com.github.java-json-tools:json-patch", version.ref = "json-patch" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
@@ -154,6 +157,7 @@ reactor-core = { module = "io.projectreactor:reactor-core" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", version.ref = "swagger" }
 
+micronaut-json-core = { module = "io.micronaut:micronaut-json-core" }
 micronaut-http = { module = "io.micronaut:micronaut-http" }
 micronaut-micrometer-core = { module = "io.micronaut.micrometer:micronaut-micrometer-core" }
 micronaut-tracing-opentelemetry = { module = "io.micronaut.tracing:micronaut-tracing-opentelemetry" }

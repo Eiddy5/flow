@@ -169,6 +169,7 @@ public class FlowInputOutput {
         return readData(inputs, execution, data, true).map(inputData -> this.readExecutionInputs(inputs, flow, execution, inputData));
     }
 
+    /** 在阻塞友好线程读取上传资源，按输入定义解析并释放被跳过或失败的上传。 */
     private Mono<Map<String, Object>> readData(List<Input<?>> rawInputs, Execution execution, Publisher<CompletedPart> data, boolean uploadFiles) {
         // Inline reusable-inputs references, then flatten FORMs so FILE part matching works against dotted leaf ids.
         final List<Input<?>> inputs = Input.expandToLeaves(reusableInputsExpander.expand(execution.getTenantId(), execution.getNamespace(), rawInputs));
@@ -202,7 +203,7 @@ public class FlowInputOutput {
                                 .forInput(execution, inputId, fileName)
                                 .getContextStorageURI()
                         );
-                        fileUpload.discard();
+                        fileUpload.closeAsync(Runnable::run);
                         sink.next(Map.entry(inputId, new UploadedFile(from.toString())));
                     } else {
                         try {
@@ -223,7 +224,7 @@ public class FlowInputOutput {
                                 }
                             }
                         } catch (IOException e) {
-                            fileUpload.discard();
+                            fileUpload.closeAsync(Runnable::run);
                             sink.error(e);
                         }
                     }

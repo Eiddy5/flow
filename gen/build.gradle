@@ -8,13 +8,13 @@ sourceSets {
 
 dependencies {
     // Internal jOOQ 3.21 uses Micronaut 5/PaaS 2 in its published defaults.
-    // Keep its complete family aligned while using the Java 21-compatible host libraries.
+    // Keep its complete family aligned with the local PaaS Java 25 composite build.
     ['api', 'codegenImplementation'].each { configuration ->
         add(configuration, platform(libs.micronaut.platform)) {
             exclude group: 'org.paas'
             exclude group: 'org.paas.nlp'
             exclude group: 'org.paas.service'
-            exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+            exclude group: 'org.redisson', module: 'redisson-micronaut-50'
             exclude group: 'com.fasterxml.jackson', module: 'jackson-bom'
         }
         add(configuration, enforcedPlatform(libs.jooq.bom))
@@ -22,22 +22,32 @@ dependencies {
     }
     api(libs.jooq) {
         exclude group: 'io.micronaut', module: 'micronaut-http-server-netty'
+        exclude group: 'org.apache.pulsar', module: 'pulsar-client-admin-original'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-50'
     }
     api(libs.jooq.paas) {
         exclude group: 'io.micronaut.sql', module: 'micronaut-jooq'
         exclude group: 'io.micronaut', module: 'micronaut-http-server-netty'
+        exclude group: 'org.apache.pulsar', module: 'pulsar-client-admin-original'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-50'
     }
     implementation(libs.micronaut.jooq) {
         exclude group: 'io.micronaut', module: 'micronaut-http-server-netty'
+        exclude group: 'org.apache.pulsar', module: 'pulsar-client-admin-original'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-50'
     }
     implementation libs.micronaut.data.model
 
     codegenImplementation(libs.jooq.codegen.extension) {
         exclude group: 'io.micronaut.sql', module: 'micronaut-jooq'
         exclude group: 'io.micronaut', module: 'micronaut-http-server-netty'
+        exclude group: 'org.apache.pulsar', module: 'pulsar-client-admin-original'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-50'
     }
     codegenRuntimeOnly(libs.micronaut.jooq) {
         exclude group: 'io.micronaut', module: 'micronaut-http-server-netty'
+        exclude group: 'org.apache.pulsar', module: 'pulsar-client-admin-original'
+        exclude group: 'org.redisson', module: 'redisson-micronaut-50'
     }
     codegenRuntimeOnly libs.postgresql
     codegenRuntimeOnly libs.micronaut.data.model

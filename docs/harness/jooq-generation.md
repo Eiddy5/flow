@@ -4,6 +4,9 @@
 同款内部 `ExtJavaGenerator`、`ExtJavaGeneratorStrategy` 和 `JooqPojo`。生成代码
 统一位于 `gen/src/main/java/org/flow/gen/flow/`，包括 22 张表的 Table、Field、
 Record、POJO，以及枚举、主键和索引；其中 21 张为运行表，另一张为迁移历史表。
+持久化归属按 [ADR 0130](../decisions/0130-co-locate-persistence-with-owning-modules.md)：
+数据库底层为 jdbc，各能力在自身模块直接使用生成表和字段；混合基线留在 core，
+专属迁移资源归对应能力模块。
 
 ## CSES 参照方式
 
@@ -35,8 +38,24 @@ schema，并使用随机本地端口。它不读取业务连接，退出时清�
 在 `build/gen-validation/run.*/`，包括 Schema、生成器和 PostgreSQL 日志；清理错误
 直接输出到终端，即使构建日志目录被删除也会尝试清理容器。
 
-脚本直接使用 `jdbc-postgres/src/main/resources/migrations/` 中的八份新库 SQL，
+脚本按原顺序读取 core、queue、indexer、executor、scheduler 的
+`src/main/resources/migrations/` 中八份新库 SQL，
 先创建与运行迁移器一致的 `flow_migration_history` 结构，不写入虚假的迁移记录。
+
+| 执行顺序 | 所属模块 | SQL 文件 |
+| --- | --- | --- |
+| 1 | core | `baseline-postgres.sql` |
+| 2 | queue | `baseline-queue-postgres.sql` |
+| 3 | core | `2.0.01-schema-postgres.sql` |
+| 4 | queue | `2.0.02-queue-postgres.sql` |
+| 5 | indexer | `2.0.06-widen-logs-postgres.sql` |
+| 6 | core | `2.0.09-execution-outputs-postgres.sql` |
+| 7 | executor | `2.0.12-fix-state-duration-postgres.sql` |
+| 8 | scheduler | `2.1.02-trigger-source-disabled-postgres.sql` |
+
+其他迁移资源仍按既有用途保留：queue 的 `2.0.02-queue-drop-legacy-postgres.sql`
+用于旧队列表清理，indexer 的 `logs-postgres.sql` 用于日志库；不加入本入口的新库
+生成顺序。所有资源继续使用原 `/migrations/...` classpath 路径，内容与迁移身份不变。
 日志扩宽脚本的表名占位符只在临时副本中替换；已有 SQL 及 checksum 不变。
 空库不执行旧数据搬迁或旧表删除。新增迁移后应同步检查脚本的迁移列表和生成器
 对象清单，再生成并审查差异，不直接修改生成代码。
@@ -76,21 +95,22 @@ bash docs/harness/generate-jooq.sh --offline --console=plain
 
 `gen/build.gradle` 将 `JooqFlowGenerator` 放在独立 codegen source set，调用内部
 生成器；正常运行使用 gen 的 Table、Record 和 `JooqPojo` 子类。gen 不依赖 Flow
-运行模块；`jdbc`、`jdbc-postgres`、`queue-jdbc` 依赖 gen，Core Domain 和服务契约
-不依赖这些数据库类型。
+运行模块；core、queue、executor、worker、scheduler、indexer 中的持久化直接依赖
+gen，数据库底层 jdbc 不依赖 core。各能力数据库包为 `org.flow.<owner>.jdbc`，
+Core Domain 和服务契约不使用这些数据库类型。
 
 显式版本统一在 `gradle/libs.versions.toml` 中维护，框架子组件由配套平台管理：
 
 | 组件 | 当前版本 |
 | --- | --- |
 | 内部 jOOQ、jooq-paas、codegen extension 及 BOM | `3.21.4.1` |
-| PaaS BOM | `1.0.0.161` |
-| Micronaut 平台 / 平台管理的核心 / SQL 集成 | `4.10.6.335` / `4.10.12.23` / `6.3.2.13` |
+| PaaS BOM / 本地源码 | `2.5.0.29` / `pass-2.0-neworg` |
+| Micronaut 平台 | `5.0.3.29`，与本地 PaaS 联合构建对齐 |
 
 gen 的生成和运行 classpath 均使用普通 Micronaut platform 与 enforced jOOQ/PaaS
 BOM，避免内部制品默认的 PaaS 2.5/Micronaut 5 提高 JDK 下限。jooq-paas 固定引入
 的 Micronaut JOOQ 7.x 在依赖边界排除，再显式声明平台管理的 6.x；生成器的依赖边
-执行相同处理。最低支持 Java 21，继续由环境或标准 Java 配置选择 JDK。
+执行相同处理。本次 Session 接入已改用 Java 25，继续由环境或标准 Java 配置选择 JDK；见 ADR 0133。
 
 使用内部生成器和 `JooqPojo` 需要 PaaS common、json、sql、exception，以及内部
 Bean 装配需要的 paas-pulsar 和必要客户端。这是用户对 ADR 0126 范围的明确修订；
@@ -117,7 +137,11 @@ jdbc 的 `FlowDatabaseContextConfigurer` 使用 `@ContextConfigurer` 注册名�
 
 这些都是低优先级默认值；宿主 YAML、环境变量、系统属性或 builder 显式配置可
 覆盖它们。Flow 自身不使用 Pulsar 工作队列，保留客户端类型不等于连接消息服务。
-配置默认值与宿主覆盖的 5 项专项测试已通过；完整回归结果见下文。
+配置默认值与宿主覆盖的既有专项结果见下文日期记录；模块迁移后的结果需单独验证。
+
+core 获得数据库依赖后，tooling 也会经 core 传递包含 jdbc、gen 及相关数据库库。
+工具依然不启动 Context、不连接数据库；其隔离检查允许这些库，继续禁止实际运行
+角色及 jOOQ codegen/meta。生成器始终只存在于 gen 的独立 codegen classpath。
 
 外部消费工程仍需自行配置内部仓库，完整规则见
 [依赖管理](dependency-management.md#内部-micronaut-与消费方仓库)。除内部 Micronaut
@@ -147,7 +171,13 @@ context.select(executions.VALUE)
 `getTable(Tables.X)` 返回当前配置的真实生成表实例，保留其枚举、JSONB、二进制与
 时间字段类型。配置物理表名称使用该生成类型的 `rename(Name)`，查询别名使用
 `.as(...)` 后的字段。不要用 `getName()` 再创建物理 Field，也不要复制生成表字段。
-不存在生成映射的逻辑表配置会明确失败。API 筛选和排序只允许当前生成表已有字段。
+API 筛选和排序只允许当前生成表已有字段。
+
+`JdbcTableConfig` 的构造入口要求显式提供生成表，不再通过中央表名 switch 推断
+元数据。core、queue、executor、worker、scheduler、indexer 各自的
+`<Owner>JdbcTableConfigsFactory` 负责本模块表绑定，通过 `configured(...)` 逐表
+读取 `flow.jdbc.tables.<name>.table`，缺省使用该生成表名称。只覆盖其中一张表的
+物理名称时，其他表继续采用各自默认值；不能仅添加陌生配置键来生成新的物理表模型。
 
 `FlowJavaGenerator` 继承内部 `ExtJavaGenerator`，通过正式生成扩展点输出按限定
 表名解析的 `getSchema()`；默认表不固定 schema，别名不加 schema。修订生成规则后，

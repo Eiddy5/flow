@@ -19,6 +19,10 @@ import org.flow.core.exceptions.FlowProcessingException;
 import org.flow.core.exceptions.InternalException;
 import org.flow.core.executor.command.Create;
 import org.flow.core.executor.command.ExecutionCommand;
+import org.flow.core.executor.command.Replay;
+import org.flow.core.executor.command.Restart;
+import org.flow.core.executor.command.Resume;
+import org.flow.core.executor.command.SessionCommand;
 import org.flow.core.models.Label;
 import org.flow.core.models.executions.*;
 import org.flow.core.models.flows.Flow;
@@ -34,6 +38,8 @@ import org.flow.core.models.tasks.Task;
 import org.flow.core.models.tasks.retrys.AbstractRetry;
 import org.flow.core.queues.BroadcastQueueInterface;
 import org.flow.core.queues.DispatchQueueInterface;
+import org.flow.core.queues.QueueException;
+import org.flow.core.repositories.ArrayListTotal;
 import org.flow.core.repositories.ExecutionRepositoryInterface;
 import org.flow.core.repositories.LogDataStoreInterface;
 import org.flow.core.repositories.MetricRepositoryInterface;
@@ -45,19 +51,22 @@ import org.flow.core.utils.Await;
 import org.flow.core.utils.GraphUtils;
 import org.flow.core.utils.IdUtils;
 import org.flow.core.utils.ListUtils;
+import org.flow.core.utils.SessionUtil;
 import org.flow.plugin.core.flow.Loop;
 import org.flow.plugin.core.flow.LoopUntil;
 import org.flow.plugin.core.flow.Pause;
 import org.flow.plugin.core.flow.WorkingDirectory;
+import org.paas.session.Session;
+import org.paas.session.SessionUser;
 
 import io.micronaut.context.event.ApplicationEventPublisher;
+import io.micronaut.data.model.Pageable;
 import io.micronaut.http.multipart.CompletedPart;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.context.propagation.ContextPropagators;
 import jakarta.annotation.Nullable;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import jakarta.validation.constraints.NotNull;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.experimental.SuperBuilder;
@@ -67,28 +76,53 @@ import reactor.core.publisher.Mono;
 
 import static org.flow.core.utils.Rethrow.*;
 
+/** 执行服务；宿主业务直接传入 Session，执行器使用已解析的流程、执行和命令推进状态。 */
 @Singleton
 @Slf4j
 public class ExecutionService {
-    private final StorageInterface storageInterface;
-    private final ExecutionRepositoryInterface executionRepository;
-    private final LogDataStoreInterface logRepository;
-    private final MetricRepositoryInterface metricRepository;
-    private final FlowInputOutput flowInputOutput;
-    private final ApplicationEventPublisher<CrudEvent<Execution>> eventPublisher;
-    private final ConcurrencyLimitService concurrencyLimitService;
-    private final FlowParsingService flowParsingService;
-    private final TaskOutputService taskOutputService;
-    private final ExecutionOutputService executionOutputService;
-    private final DispatchQueueInterface<ExecutionCommand> executionCommandQueue;
-    private final BroadcastQueueInterface<ExecutionKilled> killQueue;
-    private final DispatchQueueInterface<LoopExecutionEvent> loopExecutionEventQueue;
-    private final AsyncOperationWaiter asyncOperationWaiter;
-    private final AsyncOperationsConfiguration asyncOperationsConfiguration;
-    private final Optional<OpenTelemetry> openTelemetry;
+    private FlowService flowService;
+    private StorageInterface storageInterface;
+    private ExecutionRepositoryInterface executionRepository;
+    private LogDataStoreInterface logRepository;
+    private MetricRepositoryInterface metricRepository;
+    private FlowInputOutput flowInputOutput;
+    private ApplicationEventPublisher<CrudEvent<Execution>> eventPublisher;
+    private ConcurrencyLimitService concurrencyLimitService;
+    private FlowParsingService flowParsingService;
+    private TaskOutputService taskOutputService;
+    private ExecutionOutputService executionOutputService;
+    private DispatchQueueInterface<ExecutionCommand> executionCommandQueue;
+    private BroadcastQueueInterface<ExecutionKilled> killQueue;
+    private DispatchQueueInterface<LoopExecutionEvent> loopExecutionEventQueue;
+    private AsyncOperationWaiter asyncOperationWaiter;
+    private AsyncOperationsConfiguration asyncOperationsConfiguration;
+    private Optional<OpenTelemetry> openTelemetry;
 
+    /**
+     * 使用宿主提供的存储及运行组件创建执行服务；构造时保留组件引用，不启动执行或发送命令。
+     *
+     * @param flowService 按会话租户读取并校验流程的服务，不能为 null
+     * @param storageInterface 读取和清理执行文件的宿主存储，不能为 null
+     * @param executionRepository 查询、写入及清理执行的仓储，不能为 null
+     * @param logRepository 清理执行日志的仓储，不能为 null
+     * @param metricRepository 清理执行指标的仓储，不能为 null
+     * @param flowInputOutput 解析和校验执行输入输出的组件，不能为 null
+     * @param eventPublisher 发布执行变更事件的发布器，不能为 null
+     * @param concurrencyLimitService 解析执行并发限制的服务，不能为 null
+     * @param flowParsingService 解析运行时流程的服务，不能为 null
+     * @param taskOutputService 读取、复制及清理任务输出的服务，不能为 null
+     * @param executionOutputService 读取及清理执行输出的服务，不能为 null
+     * @param executionCommandQueue 持久化执行命令的队列，不能为 null
+     * @param killQueue 发布执行终止事件的广播队列，不能为 null
+     * @param loopExecutionEventQueue 发布循环执行事件的队列，不能为 null
+     * @param asyncOperationWaiter 等待异步执行操作完成的组件，不能为 null
+     * @param asyncOperationsConfiguration 异步操作的等待配置，不能为 null
+     * @param openTelemetry 运行链路追踪组件；不能为 null，空 Optional 表示不启用链路追踪
+     * @throws NullPointerException 任一组件参数为 null 时抛出；宿主应补齐对应组件
+     */
     @Inject
     public ExecutionService(
+        FlowService flowService,
         StorageInterface storageInterface,
         ExecutionRepositoryInterface executionRepository,
         LogDataStoreInterface logRepository,
@@ -105,6 +139,7 @@ public class ExecutionService {
         AsyncOperationWaiter asyncOperationWaiter,
         AsyncOperationsConfiguration asyncOperationsConfiguration,
         Optional<OpenTelemetry> openTelemetry) {
+        this.flowService = Objects.requireNonNull(flowService);
         this.storageInterface = Objects.requireNonNull(storageInterface);
         this.executionRepository = Objects.requireNonNull(executionRepository);
         this.logRepository = Objects.requireNonNull(logRepository);
@@ -123,8 +158,187 @@ public class ExecutionService {
         this.openTelemetry = Objects.requireNonNull(openTelemetry);
     }
 
-    public Execution getExecutionIfPause(final String tenant, final @NotNull String executionId, boolean withACL) {
-        Execution execution = getExecution(tenant, executionId, withACL);
+    /**
+     * 校验当前租户流程可执行后异步创建实例；返回值表示命令已入队，不表示实例已运行成功。
+     * revision 为 null 时采用最新可执行版本，inputs 使用原生执行输入解析链路。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param namespace 流程所属命名空间，不能为 null
+     * @param flowId 当前租户内的流程标识，不能为 null
+     * @param revision 指定流程版本；null 表示选择最新非草稿版本
+     * @param inputs 执行输入；允许 null，不修改或复制该映射，返回命令沿用该引用
+     * @return 已提交的创建命令，包含新执行标识和异步操作标识；执行结果需另行查询
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业或操作者标识为空时抛出，命令不会入队
+     * @throws NoSuchElementException 当前租户内流程或指定版本不存在、已删除时抛出
+     * @throws IllegalStateException 流程已禁用或无法解析时抛出；调用方应先修正流程
+     * @throws jakarta.validation.ConstraintViolationException 流程不满足运行约束时抛出
+     * @throws QueueException 命令持久化失败时抛出；调用方应检查队列状态
+     */
+    public <S extends Session<U>, U extends SessionUser> Create create(
+        S session, String namespace, String flowId, Integer revision, Map<String, Object> inputs) throws QueueException {
+        SessionUtil.user(session);
+        var flow = flowService.getFlowIfExecutableOrThrow(session, namespace, flowId, Optional.ofNullable(revision));
+        flowService.validateForExecution(flow).ifPresent(error -> { throw error; });
+        var command = Create.of(flow).withInputs(inputs).withOperationId(IdUtils.create());
+        emit(session, command);
+        return command;
+    }
+
+    /**
+     * 使用会话企业查询执行；其他租户的执行与不存在的执行都返回空 Optional，不修改查询结果。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 执行标识，不能为 null 或空白；查询前去除两端空白
+     * @return 仓储返回的执行，不复制该对象；未找到本企业执行时返回空 Optional
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或执行标识为空时抛出，不访问仓储
+     */
+    public <S extends Session<U>, U extends SessionUser> Optional<Execution> findById(S session, String executionId) {
+        SessionUtil.user(session);
+        return executionRepository.findById(SessionUtil.company(session), SessionUtil.required(executionId, "executionId"));
+    }
+
+    /**
+     * 分页查询当前租户指定流程的执行，直接返回仓储提供的分页结果，不修改结果集合。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param namespace 流程所属命名空间，不能为 null
+     * @param flowId 当前租户内的流程标识，不能为 null
+     * @param pageable 分页及排序条件，不能为 null；只读取，不修改
+     * @return 执行列表及匹配总数；没有匹配项时列表为空，集合和元素不额外复制
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业或操作者标识为空时抛出，不访问仓储
+     */
+    public <S extends Session<U>, U extends SessionUser> ArrayListTotal<Execution> findByFlowId(
+        S session, String namespace, String flowId, Pageable pageable) {
+        SessionUtil.user(session);
+        return executionRepository.findByFlowId(SessionUtil.company(session), namespace, flowId, pageable);
+    }
+
+    /**
+     * 查找当前租户的执行并提交暂停命令；执行器消费时在锁内校验状态，不保证提交时立即暂停。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 待暂停的执行标识，不能为 null 或空白
+     * @return 已提交的暂停命令，包含目标执行及异步操作标识，不共享会话对象
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或执行标识为空时抛出
+     * @throws NoSuchElementException 当前租户中没有目标执行时抛出，不发送命令
+     * @throws QueueException 命令持久化失败时抛出；调用方应检查队列状态
+     */
+    public <S extends Session<U>, U extends SessionUser> org.flow.core.executor.command.Pause pause(
+        S session, String executionId) throws QueueException {
+        var command = org.flow.core.executor.command.Pause.from(getExecution(session, executionId)).withOperationId(IdUtils.create());
+        emit(session, command);
+        return command;
+    }
+
+    /**
+     * 查找当前租户的执行并提交恢复命令，将会话操作者写入 Pause 恢复信息；恢复结果由执行器异步处理。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 待恢复的执行标识，不能为 null 或空白
+     * @param inputs 恢复时提交的输入；允许 null，不修改或复制该映射，返回命令沿用该引用
+     * @return 已提交的恢复命令，包含操作者和异步操作标识，不共享会话对象
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或执行标识为空时抛出
+     * @throws NoSuchElementException 当前租户中没有目标执行时抛出，不发送命令
+     * @throws QueueException 命令持久化失败时抛出；调用方应检查队列状态
+     */
+    public <S extends Session<U>, U extends SessionUser> Resume resume(
+        S session, String executionId, Map<String, Object> inputs) throws QueueException {
+        var execution = getExecution(session, executionId);
+        var resumed = Pause.Resumed.now(SessionUtil.user(session).id());
+        var command = Resume.from(execution, resumed, inputs).withOperationId(IdUtils.create());
+        emit(session, command);
+        return command;
+    }
+
+    /**
+     * 查找当前租户的执行并提交重启命令，重启同一执行的状态由执行器异步校验和推进。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 待重启的执行标识，不能为 null 或空白
+     * @param revision 重启使用的流程版本；null 表示沿用执行中的流程版本
+     * @return 已提交的重启命令，包含目标执行及异步操作标识，不共享会话对象
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或执行标识为空时抛出
+     * @throws NoSuchElementException 当前租户中没有目标执行时抛出，不发送命令
+     * @throws QueueException 命令持久化失败时抛出；调用方应检查队列状态
+     */
+    public <S extends Session<U>, U extends SessionUser> Restart restart(
+        S session, String executionId, Integer revision) throws QueueException {
+        var command = Restart.from(getExecution(session, executionId), revision).withOperationId(IdUtils.create());
+        emit(session, command);
+        return command;
+    }
+
+    /**
+     * 从当前租户已有执行提交重放命令，预先生成新实例标识；执行器异步校验来源并创建新实例。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 来源执行标识，不能为 null 或空白
+     * @param taskRunId 重放起点的任务运行标识；null 表示从流程开头重放
+     * @param revision 重放使用的流程版本；null 表示沿用来源执行中的版本
+     * @return 已提交的重放命令；executionId 是新实例标识，输入映射沿用来源执行中的引用
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或来源执行标识为空时抛出
+     * @throws NoSuchElementException 当前租户中没有来源执行时抛出，不发送命令
+     * @throws QueueException 命令持久化失败时抛出；调用方应检查队列状态
+     */
+    public <S extends Session<U>, U extends SessionUser> Replay replay(
+        S session, String executionId, String taskRunId, Integer revision) throws QueueException {
+        var command = Replay.from(getExecution(session, executionId), IdUtils.create(), taskRunId, revision, null)
+            .withOperationId(IdUtils.create());
+        emit(session, command);
+        return command;
+    }
+
+    /**
+     * 校验命令与会话属于同一租户后持久化身份信封；只保存操作者标识，不保存会话或凭证。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param command 待发送的原生命令，不能为 null 或已有身份信封；不修改该命令
+     * @throws NullPointerException 会话、会话用户或命令为 null 时抛出
+     * @throws IllegalArgumentException 身份缺失、命令租户不匹配或信封嵌套时抛出，不发送消息
+     * @throws QueueException 命令持久化失败时抛出；调用方应检查队列状态
+     */
+    private <S extends Session<U>, U extends SessionUser> void emit(S session, ExecutionCommand command) throws QueueException {
+        executionCommandQueue.emit(SessionCommand.from(session, command));
+    }
+
+    /**
+     * 查询当前租户的执行并要求其处于暂停状态；不修改执行，也不发送恢复命令。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 执行标识，不能为 null 或空白
+     * @return 仓储读取的暂停执行，不额外复制该对象
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或执行标识为空时抛出
+     * @throws NoSuchElementException 当前租户中没有目标执行时抛出
+     * @throws IllegalStateException 目标执行未暂停时抛出；调用方应重新确认执行状态
+     */
+    public <S extends Session<U>, U extends SessionUser> Execution getExecutionIfPause(S session, String executionId) {
+        Execution execution = getExecution(session, executionId);
 
         if (!execution.getState().isPaused()) {
             throw new IllegalStateException("Execution '" + executionId + "' is not paused, can't resume it");
@@ -133,10 +347,20 @@ public class ExecutionService {
         return execution;
     }
 
-    public Execution getExecution(final String tenant, final @NotNull String executionId, boolean withACL) {
-        Optional<Execution> maybeExecution = withACL ? executionRepository.findById(tenant, executionId) : executionRepository.findByIdWithoutAcl(tenant, executionId);
-
-        return maybeExecution
+    /**
+     * 查询当前租户的执行；不存在或属于其他租户时统一抛出异常，不修改执行。
+     *
+     * @param <S> 宿主的具体会话类型
+     * @param <U> 会话绑定的用户类型
+     * @param session 提供企业及操作者身份的宿主会话，不能为 null；只读取，不修改
+     * @param executionId 执行标识，不能为 null 或空白
+     * @return 仓储读取的执行，不额外复制该对象
+     * @throws NullPointerException 会话或会话用户为 null 时抛出；调用方应提供完整会话
+     * @throws IllegalArgumentException 企业、操作者或执行标识为空时抛出
+     * @throws NoSuchElementException 当前租户中没有目标执行时抛出
+     */
+    public <S extends Session<U>, U extends SessionUser> Execution getExecution(S session, String executionId) {
+        return findById(session, executionId)
             .orElseThrow(() -> new NoSuchElementException("Execution '" + executionId + "' not found."));
     }
 

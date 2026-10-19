@@ -59,7 +59,10 @@ import org.flow.core.utils.ExecutorsUtils;
 import org.flow.core.utils.ListUtils;
 import org.flow.core.utils.PebbleUtil;
 import org.flow.core.utils.SecretUtils;
+import org.flow.core.utils.SessionUtil;
 import org.flow.plugin.core.flow.Pause;
+import org.paas.session.Session;
+import org.paas.session.SessionUser;
 
 import io.micronaut.core.annotation.Nullable;
 import jakarta.annotation.PreDestroy;
@@ -70,13 +73,13 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Provides business logic for manipulating flow objects.
+ * 直接接收宿主 Session 的流程服务，同时承担流程校验、持久化和运行通知。
  */
 @Singleton
 @Slf4j
 public class FlowService {
     @Inject
-    protected FlowRepositoryInterface flowRepository; // Used in EE
+    protected FlowRepositoryInterface flowRepository;
 
     @Inject
     private FlowParsingService flowParsingService;
@@ -108,7 +111,7 @@ public class FlowService {
     @Inject
     private FlowMetaStoreInterface flowMetaStore;
 
-    private final ExecutorService executorService;
+    private ExecutorService executorService;
 
     @Inject
     public FlowService(ExecutorsUtils executorsUtils) {
@@ -125,15 +128,16 @@ public class FlowService {
     }
 
     /**
-     * Validates and creates the given flow.
-     * <p>
-     * The validation of the flow is done from the source, as it will run: the governance applied at runtime is
-     * applied first, so a flow whose required properties are supplied by governance stays valid.
-     *
-     * @param flow The flow.
-     * @return The created {@link FlowWithSource}.
+     * 校验并创建当前会话租户的流程，保存后更新拓扑、触发器和运行缓存。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param flow 带 YAML 源码的流程定义，租户必须与会话一致；保留 draft 标志
+     * @return 已保存并分配版本的流程
+     * @throws IllegalArgumentException 流程租户不匹配或源码为空
+     * @throws FlowProcessingException 定义解析或校验失败
+     * @throws QueueException 保存后的运行通知入队失败
      */
-    public FlowWithSource create(GenericFlow flow) throws FlowProcessingException, QueueException {
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource create(S session, GenericFlow flow) throws FlowProcessingException, QueueException {
+        requireFlowTenant(session, flow);
         // FIXME validation is done both here and in the repo
         Objects.requireNonNull(flow, "Cannot create null flow");
         if (flow.getSource() == null || flow.getSource().isBlank()) {
@@ -159,15 +163,19 @@ public class FlowService {
     }
 
     /**
-     * Validates and updates the given flow.
-     * <p>
-     * The validation of the flow is done from the source, as it will run: the governance applied at runtime is
-     * applied first, so a flow whose required properties are supplied by governance stays valid.
-     *
-     * @param flow The flow.
-     * @return The updated {@link FlowWithSource}.
+     * 从会话租户重新加载旧版本并更新流程，保存后发布运行通知。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param flow 待保存定义，租户必须与会话一致；不接受调用方提供旧版本对象
+     * @return 保存后的流程版本
+     * @throws IllegalArgumentException 流程租户不匹配或源码为空
+     * @throws NoSuchElementException 当前租户不存在目标流程
+     * @throws FlowProcessingException 定义解析或校验失败
+     * @throws QueueException 保存后的运行通知入队失败
      */
-    public FlowWithSource update(GenericFlow flow, FlowInterface previous) throws FlowProcessingException, QueueException {
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource update(S session, GenericFlow flow) throws FlowProcessingException, QueueException {
+        requireFlowTenant(session, flow);
+        FlowInterface previous = flowRepository.findById(SessionUtil.company(session), flow.getNamespace(), flow.getId(), Optional.empty())
+            .orElseThrow(() -> new NoSuchElementException("流程不存在"));
         // FIXME validation is done both here and in the repo
         Objects.requireNonNull(flow, "Cannot create null flow");
         if (flow.getSource() == null || flow.getSource().isBlank()) {
@@ -194,9 +202,18 @@ public class FlowService {
     }
 
     /**
-     * Delete a flow.
+     * 删除会话租户的指定流程并通知运行组件；目标在服务内部按租户重新查询。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 流程命名空间，不能为 null
+     * @param id 流程标识，不能为 null
+     * @return 仓储保存的删除版本
+     * @throws NoSuchElementException 当前租户不存在目标流程
+     * @throws RuntimeException 保存后的运行通知失败
      */
-    public FlowWithSource delete(FlowWithSource flow) {
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource delete(S session, String namespace, String id) {
+        SessionUtil.user(session);
+        FlowWithSource flow = flowRepository.findByIdWithSource(SessionUtil.company(session), namespace, id, Optional.empty())
+            .orElseThrow(() -> new NoSuchElementException("流程不存在"));
         FlowWithSource deleted = flowRepository.delete(flow);
 
         // impact downstream consumers: topology, scheduler and flow metastore
@@ -208,6 +225,47 @@ public class FlowService {
         }
 
         return deleted;
+    }
+
+    /**
+     * 使用会话租户解析 YAML 并创建流程，YAML 的 tenantId 不覆盖会话。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param source 待解析的 YAML 源码，不能为 null 或空白
+     * @return 保存后的流程版本
+     * @throws FlowProcessingException YAML 解析或流程校验失败
+     * @throws QueueException 保存后的运行通知入队失败
+     */
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource create(S session, String source) throws FlowProcessingException, QueueException {
+        SessionUtil.user(session);
+        return create(session, GenericFlow.fromYaml(SessionUtil.company(session), source));
+    }
+
+    /**
+     * 使用会话租户解析 YAML 并更新已有流程，旧版本由服务自行加载。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param source 待解析的 YAML 源码，不能为 null 或空白
+     * @return 保存后的流程版本
+     * @throws NoSuchElementException 当前租户不存在目标流程
+     * @throws FlowProcessingException YAML 解析或流程校验失败
+     * @throws QueueException 保存后的运行通知入队失败
+     */
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource update(S session, String source) throws FlowProcessingException, QueueException {
+        SessionUtil.user(session);
+        return update(session, GenericFlow.fromYaml(SessionUtil.company(session), source));
+    }
+
+    /**
+     * 检查会话和流程对象的租户一致性，不修改传入对象。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param flow 待检查流程，不能为 null
+     * @throws IllegalArgumentException 流程租户与会话不一致
+     */
+    private <S extends Session<U>, U extends SessionUser> void requireFlowTenant(S session, GenericFlow flow) {
+        SessionUtil.user(session);
+        Objects.requireNonNull(flow, "flow");
+        if (!SessionUtil.company(session).equals(flow.getTenantId())) {
+            throw new IllegalArgumentException("流程租户与 Session 不一致");
+        }
     }
 
     // overridden in EE
@@ -435,13 +493,14 @@ public class FlowService {
     }
 
     /**
-     * Validates the given flow sources.
-     *
-     * @param tenantId The tenant identifier.
-     * @param flowSources The flow sources to validate.
-     * @return The list of validation constraint violations.
+     * 在会话租户中校验流程源码与依赖，返回每份源码的诊断，不写入仓储。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param flowSources 待校验源码列表，不能为 null；不修改列表
+     * @return 按源码顺序排列的校验结果，输入为空时返回空列表
      */
-    public List<ValidateConstraintViolation> validate(final String tenantId, final List<FlowSource> flowSources) {
+    public <S extends Session<U>, U extends SessionUser> List<ValidateConstraintViolation> validate(S session, List<FlowSource> flowSources) {
+        SessionUtil.user(session);
+        String tenantId = SessionUtil.company(session);
         AtomicInteger index = new AtomicInteger(0);
         List<ValidateConstraintViolation> constraints = new ArrayList<>();
         flowSources.forEach(flowSource ->
@@ -494,11 +553,28 @@ public class FlowService {
         return constraints;
     }
 
-    public FlowWithSource importFlow(String tenantId, String source) throws FlowProcessingException {
-        return this.importFlow(tenantId, source, false);
+    /**
+     * 在会话租户下导入流程，已有定义更新为新版本；YAML 不能改变租户。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param source 待导入 YAML，不能为 null 或空白
+     * @return 导入结果或预览版本
+     * @throws FlowProcessingException 解析、依赖校验或运行通知失败
+     */
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource importFlow(S session, String source) throws FlowProcessingException {
+        return this.importFlow(session, source, false);
     }
 
-    public FlowWithSource importFlow(String tenantId, String source, boolean dryRun) throws FlowProcessingException {
+    /**
+     * 在会话租户下导入流程，已有定义更新为新版本；YAML 不能改变租户。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param source 待导入 YAML，不能为 null 或空白
+     * @param dryRun true 只计算导入结果，false 保存并发布运行通知
+     * @return 导入结果或预览版本
+     * @throws FlowProcessingException 解析、依赖校验或运行通知失败
+     */
+    public <S extends Session<U>, U extends SessionUser> FlowWithSource importFlow(S session, String source, boolean dryRun) throws FlowProcessingException {
+        SessionUtil.user(session);
+        String tenantId = SessionUtil.company(session);
         final GenericFlow flow = GenericFlow.fromYaml(tenantId, source);
 
         Optional<FlowWithSource> maybeExisting = flowRepository.findByIdWithSource(
@@ -532,20 +608,61 @@ public class FlowService {
         }
     }
 
-    public List<FlowWithSource> findByNamespaceWithSource(String tenantId, String namespace) {
-        return flowRepository.findByNamespaceWithSource(tenantId, namespace);
+    /**
+     * 按会话租户查询流程，其他租户的数据不在返回范围内。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 查询选择条件，不能为 null
+     * @return 匹配的流程；无匹配时为空结果
+     */
+    public <S extends Session<U>, U extends SessionUser> List<FlowWithSource> findByNamespaceWithSource(S session, String namespace) {
+        SessionUtil.user(session);
+        return flowRepository.findByNamespaceWithSource(SessionUtil.company(session), namespace);
     }
 
-    public List<Flow> findAll(String tenantId) {
-        return flowRepository.findAll(tenantId);
+    /**
+     * 按会话租户查询流程，其他租户的数据不在返回范围内。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @return 匹配的流程；无匹配时为空结果
+     */
+    public <S extends Session<U>, U extends SessionUser> List<Flow> findAll(S session) {
+        SessionUtil.user(session);
+        return flowRepository.findAll(SessionUtil.company(session));
     }
 
-    public List<Flow> findByNamespace(String tenantId, String namespace) {
-        return flowRepository.findByNamespace(tenantId, namespace);
+    /**
+     * 按会话租户查询流程，其他租户的数据不在返回范围内。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 查询选择条件，不能为 null
+     * @return 匹配的流程；无匹配时为空结果
+     */
+    public <S extends Session<U>, U extends SessionUser> List<Flow> findByNamespace(S session, String namespace) {
+        SessionUtil.user(session);
+        return flowRepository.findByNamespace(SessionUtil.company(session), namespace);
     }
 
-    public Optional<Flow> findById(String tenantId, String namespace, String flowId) {
-        return flowRepository.findById(tenantId, namespace, flowId);
+    /**
+     * 按会话租户查询流程，其他租户的数据不在返回范围内。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 查询选择条件，不能为 null
+     * @param flowId 查询选择条件，不能为 null
+     * @return 匹配的流程；无匹配时为空结果
+     */
+    public <S extends Session<U>, U extends SessionUser> Optional<Flow> findById(S session, String namespace, String flowId) {
+        SessionUtil.user(session);
+        return flowRepository.findById(SessionUtil.company(session), namespace, flowId);
+    }
+
+    /**
+     * 查询会话租户指定流程的版本。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 流程命名空间，不能为 null
+     * @param flowId 流程标识，不能为 null
+     * @param revision 指定版本，null 表示最新版本
+     * @return 匹配流程；当前租户无匹配时为空
+     */
+    public <S extends Session<U>, U extends SessionUser> Optional<Flow> findById(S session, String namespace, String flowId, Integer revision) {
+        SessionUtil.user(session);
+        return flowRepository.findById(SessionUtil.company(session), namespace, flowId, Optional.ofNullable(revision));
     }
 
     public Stream<FlowInterface> keepLastVersion(Stream<FlowInterface> stream) {
@@ -556,7 +673,13 @@ public class FlowService {
         return deprecationTraversal("", flow).toList();
     }
 
-    public List<String> warnings(Flow flow, String tenantId) {
+    /**
+     * 生成流程配置与子流程引用的警告，不修改流程。
+     * @param flow 已按会话租户解析的流程，null 返回空列表
+     * @param tenantId 由会话确定的租户，不能为 null
+     * @return 警告列表，无问题时为空
+     */
+    private List<String> warnings(Flow flow, String tenantId) {
         if (flow == null) {
             return Collections.emptyList();
         }
@@ -628,8 +751,13 @@ public class FlowService {
         }
     }
 
-    // check if subflow is present in given namespace
-    public List<String> checkValidSubflows(Flow flow, String tenantId) {
+    /**
+     * 检查静态子流程引用是否存在且可执行，不解析动态表达式。
+     * @param flow 已按会话租户解析的流程，不能为 null
+     * @param tenantId 由会话确定的租户，不能为 null
+     * @return 引用警告列表，无问题时为空
+     */
+    private List<String> checkValidSubflows(Flow flow, String tenantId) {
         List<org.flow.plugin.core.flow.Subflow> subFlows = ListUtils.emptyOnNull(flow.getTasks()).stream()
             .filter(org.flow.plugin.core.flow.Subflow.class::isInstance)
             .map(org.flow.plugin.core.flow.Subflow.class::cast)
@@ -649,7 +777,7 @@ public class FlowService {
                 // those fields are mandatory so the mandatory validation will apply
                 return;
             }
-            Optional<Flow> optional = findById(tenantId, subflow.getNamespace(), subflow.getFlowId());
+            Optional<Flow> optional = flowRepository.findById(tenantId, subflow.getNamespace(), subflow.getFlowId());
 
             if (optional.isEmpty()) {
                 violations.add("The subflow '" + subflow.getFlowId() + "' not found in namespace '" + subflow.getNamespace() + "'.");
@@ -997,23 +1125,30 @@ public class FlowService {
     }
 
     // Used in Git plugin
-    public List<Flow> findByNamespacePrefix(String tenantId, String namespacePrefix) {
-        return flowRepository.findByNamespacePrefix(tenantId, namespacePrefix);
+    /**
+     * 按会话租户查询流程，其他租户的数据不在返回范围内。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespacePrefix 查询选择条件，不能为 null
+     * @return 匹配的流程；无匹配时为空结果
+     */
+    public <S extends Session<U>, U extends SessionUser> List<Flow> findByNamespacePrefix(S session, String namespacePrefix) {
+        SessionUtil.user(session);
+        return flowRepository.findByNamespacePrefix(SessionUtil.company(session), namespacePrefix);
     }
 
     /**
-     * Gets the executable flow for the given namespace, id, and revision.
-     * Warning: this method bypasses ACL so someone with only execution right can create a flow execution
-     *
-     * @param tenant Rhe tenant ID.
-     * @param namespace The flow's namespace.
-     * @param id The flow's ID.
-     * @param revision The flow's revision.
-     * @return The {@link Flow}.
-     * @throws NoSuchElementException if the requested flow does not exist.
-     * @throws IllegalStateException if the requested flow is not executable.
+     * 在会话租户中选择可执行流程；未指定版本时排除草稿。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 流程命名空间，不能为 null
+     * @param id 流程标识，不能为 null
+     * @param revision 指定版本，empty 表示最新可执行版本，不能为 null
+     * @return 选中的可执行流程
+     * @throws NoSuchElementException 流程不存在或已删除
+     * @throws IllegalStateException 流程禁用或定义无效
      */
-    public Flow getFlowIfExecutableOrThrow(final String tenant, final String namespace, final String id, final Optional<Integer> revision) {
+    public <S extends Session<U>, U extends SessionUser> Flow getFlowIfExecutableOrThrow(S session, String namespace, String id, Optional<Integer> revision) {
+        SessionUtil.user(session);
+        String tenant = SessionUtil.company(session);
         if (revision.isPresent()) {
             // For a specific revision, check if the flow has not been deleted: the deletion will only occur on the last revision.
             Optional<Flow> latest = flowRepository.findByIdWithoutAcl(tenant, namespace, id, Optional.empty());
@@ -1063,11 +1198,31 @@ public class FlowService {
         }
     }
 
-    public Stream<FlowTopology> findDependencies(final String tenant, final String namespace, final String id, boolean destinationOnly, boolean expandAll) {
+    /**
+     * 查询当前会话租户的流程依赖图，递归展开时保持同一租户条件。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param namespace 流程命名空间，不能为 null
+     * @param id 流程标识，不能为 null
+     * @param destinationOnly true 只查询入向依赖，false 查询两个方向
+     * @param expandAll true 递归展开，false 只查询一层
+     * @return 匹配的依赖边流；无匹配时为空
+     */
+    public <S extends Session<U>, U extends SessionUser> Stream<FlowTopology> findDependencies(S session, String namespace, String id, boolean destinationOnly, boolean expandAll) {
+        SessionUtil.user(session);
+        String tenant = SessionUtil.company(session);
         return expandAll ? recursiveFlowTopology(new ArrayList<>(), tenant, namespace, id, destinationOnly)
             : flowTopologyRepository.findByFlow(tenant, namespace, id, destinationOnly).stream();
     }
 
+    /**
+     * 在固定租户中递归收集依赖边，并通过已访问列表避免重复展开。
+     * @param visitedTopologies 已访问边标识，将追加本次遇到的边
+     * @param tenantId 原始会话租户，递归过程中不从关系节点覆盖
+     * @param namespace 当前节点命名空间，不能为 null
+     * @param id 当前流程标识，不能为 null
+     * @param destinationOnly true 只查入向边，false 查两个方向
+     * @return 去重后的依赖边流
+     */
     private Stream<FlowTopology> recursiveFlowTopology(List<String> visitedTopologies, String tenantId, String namespace, String id, boolean destinationOnly) {
         var flowTopologies = flowTopologyRepository.findByFlow(tenantId, namespace, id, destinationOnly);
 
@@ -1087,7 +1242,7 @@ public class FlowService {
                     .flatMap(relationNode ->
                     {
                         visitedNodes.add(relationNode.getId());
-                        return recursiveFlowTopology(visitedTopologies, relationNode.getTenantId(), relationNode.getNamespace(), relationNode.getId(), destinationOnly);
+                        return recursiveFlowTopology(visitedTopologies, tenantId, relationNode.getNamespace(), relationNode.getId(), destinationOnly);
                     });
                 return Stream.concat(Stream.of(topology), subTopologies);
             });

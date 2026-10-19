@@ -10,8 +10,10 @@
 
 调用应用依赖根 `flow` Java Library，在自己的 Micronaut ApplicationContext 中配置
 `datasources.flow`。显式准备数据库后，注入 `org.flow.core.runners.FlowEngine` 并调用
-`start()`；使用 `FlowService` 创建流程，向 `DispatchQueueInterface<ExecutionCommand>`
-提交 `Create`，通过 `ExecutionRepositoryInterface` 查询执行。
+`start()`；通过接收宿主 Session 的 `FlowService` 创建流程、`ExecutionService`
+创建和查询执行、`PluginService` 查询注册插件。三个服务统一位于
+`org.flow.core.services`，由原有 Service 直接接收 Session 并实现业务。业务调用
+统一从 Session 提取租户和操作者。
 
 完整配置与 Java 示例见 [直接使用指南](docs/harness/java-engine.md)。根制品负责依赖
 聚合，需连同依赖使用；单独复制根 JAR 不会包含所有模块。目前没有发布新 Maven 制品。
@@ -28,7 +30,8 @@ jOOQ/PaaS 依赖边界和生成命令见 [生成指南](docs/harness/jooq-genera
 
 使用固定 Gradle Wrapper 9.7.1。项目不固定 Java 版本：编译、测试及工具执行遵循
 所属项目的标准 Gradle Java 配置，未配置 toolchain 时使用 Gradle 运行的 JDK。
-最低支持 Java 21，构建环境仍须满足实际兼容性要求；同一多模块
+当前使用 Java 25 联合构建本地 PaaS `pass-2.0-neworg`，默认源码路径为 `../paas`，
+可通过 `-PpaasSourcePath` 或 `FLOW_PAAS_SOURCE_PATH` 指定；见 [ADR 0133](docs/decisions/0133-session-aware-public-services.md)。同一多模块
 构建可由宿主统一配置 toolchain。独立构建和已发布 JAR 的边界见
 [Java 版本选择](docs/harness/java-engine.md#java-版本选择)。
 

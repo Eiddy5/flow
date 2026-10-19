@@ -172,6 +172,7 @@ public final class ExecutorTestHarness {
         return new ExecutorTestHarness();
     }
 
+    /** 装配同步执行器测试环境；原生执行服务使用流程服务与基础设施测试替身。 */
     private ExecutorTestHarness() {
         this.clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
         this.flowMetaStore = new InMemoryFlowMetaStore();
@@ -268,6 +269,7 @@ public final class ExecutorTestHarness {
         // a spy so tests can stub the methods that reach for other services while the rest stays real
         this.executionService = Mockito.spy(
             new ExecutionService(
+                Mockito.mock(org.flow.core.services.FlowService.class),
                 Mockito.mock(StorageInterface.class),
                 Mockito.mock(ExecutionRepositoryInterface.class),
                 Mockito.mock(LogDataStoreInterface.class),
@@ -349,7 +351,8 @@ public final class ExecutorTestHarness {
             asyncOperationService,
             executionEventMessageHandler,
             killSwitchService,
-            killSwitchActionService
+            killSwitchActionService,
+            org.mockito.Mockito.mock(org.flow.core.services.executions.SessionCommandContext.class)
         );
         this.workerTaskResultMessageHandler = new WorkerTaskResultMessageHandler(
             executionStateStore,

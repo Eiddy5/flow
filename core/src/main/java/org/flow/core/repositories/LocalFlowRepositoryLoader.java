@@ -14,15 +14,11 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.apache.commons.io.FileUtils;
 
 import org.flow.core.exceptions.FlowProcessingException;
-import org.flow.core.models.flows.FlowId;
 import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.GenericFlow;
@@ -30,13 +26,14 @@ import org.flow.core.queues.QueueException;
 import org.flow.core.serializers.YamlParser;
 import org.flow.core.services.FlowService;
 import org.flow.core.utils.Rethrow;
+import org.flow.core.utils.SessionUtil;
+import org.paas.session.Session;
+import org.paas.session.SessionUser;
 
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 
-import static org.flow.core.tenant.TenantService.MAIN_TENANT;
 import static org.flow.core.utils.Rethrow.throwConsumer;
 
 @Singleton
@@ -49,11 +46,16 @@ public class LocalFlowRepositoryLoader {
     @Inject
     private FlowService flowService;
 
-    public List<FlowWithSource> load(URL basePath) throws IOException, URISyntaxException {
-        return load(MAIN_TENANT, basePath);
-    }
-
-    public List<FlowWithSource> load(String tenantId, URL basePath) throws IOException, URISyntaxException {
+    /**
+     * 将 URL 目录中的流程导入会话租户，支持文件和 JAR 内资源。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param basePath YAML 文件或目录 URL，不能为 null
+     * @return 成功保存的流程；单个定义校验失败时记录日志并跳过
+     * @throws IOException 资源读取失败
+     * @throws URISyntaxException URL 不能转换为 URI
+     */
+    public <S extends Session<U>, U extends SessionUser> List<FlowWithSource> load(S session, URL basePath) throws IOException, URISyntaxException {
+        SessionUtil.user(session);
         URI uri = basePath.toURI();
 
         if (uri.getScheme().equals("jar")) {
@@ -76,31 +78,23 @@ public class LocalFlowRepositoryLoader {
                     }
                 }
 
-                return this.load(tenantId, tempDirectory.toFile());
+                return this.load(session, tempDirectory.toFile());
             }
         } else {
-            return this.load(tenantId, Paths.get(uri).toFile());
+            return this.load(session, Paths.get(uri).toFile());
         }
     }
 
-    public List<FlowWithSource> load(File basePath) throws IOException {
-        return load(MAIN_TENANT, basePath);
-    }
-
     /**
-     * Loads every flow found under {@code basePath} (a single file or a directory walked
-     * recursively) into the repository, creating or updating each one.
-     *
-     * @return the persisted flows (with their assigned revision) that were successfully created or
-     *         updated, in encounter order. Flows that fail to load are logged and skipped, so they
-     *         are absent from the returned list.
+     * 将目录中的流程创建或更新到会话租户，逐个保留成功导入的结果。
+     * @param session 具有企业和操作者的宿主会话，不能为 null
+     * @param basePath YAML 文件或目录，不能为 null
+     * @return 按遍历顺序排列的成功保存流程，失败定义记录日志并跳过
+     * @throws IOException 文件遍历或读取失败
      */
-    public List<FlowWithSource> load(String tenantId, File basePath) throws IOException {
-        Map<String, FlowInterface> flowByUidInRepository = flowRepository.findAllForAllTenants()
-            .stream()
-            .filter(flow -> tenantId.equals(flow.getTenantId()))
-            .collect(Collectors.toMap(FlowId::uidWithoutRevision, Function.identity()));
-
+    public <S extends Session<U>, U extends SessionUser> List<FlowWithSource> load(S session, File basePath) throws IOException {
+        SessionUtil.user(session);
+        String tenantId = SessionUtil.company(session);
         List<FlowWithSource> loaded = new ArrayList<>();
         try (Stream<Path> pathStream = Files.walk(basePath.toPath())) {
             pathStream.filter(YamlParser::isValidExtension)
@@ -110,19 +104,19 @@ public class LocalFlowRepositoryLoader {
                         String source = Files.readString(Path.of(file.toFile().getPath()), Charset.defaultCharset());
                         GenericFlow parsed = GenericFlow.fromYaml(tenantId, source);
 
-                        FlowInterface existing = flowByUidInRepository.get(parsed.uidWithoutRevision());
+                        FlowInterface existing = flowRepository.findById(tenantId, parsed.getNamespace(), parsed.getId()).orElse(null);
 
                         FlowWithSource persisted;
                         if (existing == null) {
-                            persisted = flowService.create(parsed);
+                            persisted = flowService.create(session, parsed);
                             log.trace("Created flow {}.{}", parsed.getNamespace(), parsed.getId());
                         } else {
-                            persisted = flowService.update(parsed, existing);
+                            persisted = flowService.update(session, parsed);
                             log.trace("Updated flow {}.{}", parsed.getNamespace(), parsed.getId());
                         }
 
                         loaded.add(persisted);
-                    } catch (FlowProcessingException | ConstraintViolationException | QueueException e) {
+                    } catch (FlowProcessingException | QueueException | RuntimeException e) {
                         log.warn("Unable to create flow {}", file, e);
                     }
                 }));

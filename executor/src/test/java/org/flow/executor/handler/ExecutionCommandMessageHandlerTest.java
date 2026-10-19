@@ -33,12 +33,14 @@ import org.flow.executor.KillSwitchActionService;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -64,6 +66,9 @@ class ExecutionCommandMessageHandlerTest {
     @Mock
     KillSwitchActionService killSwitchActionService;
 
+    @Mock
+    org.flow.core.services.executions.SessionCommandContext sessionCommandContext;
+
     ExecutionCommandMessageHandler handler;
     Create createCommand;
     Execution sourceExecution;
@@ -80,7 +85,8 @@ class ExecutionCommandMessageHandlerTest {
             asyncOperationService,
             executionEventMessageHandler,
             killSwitchService,
-            killSwitchActionService
+            killSwitchActionService,
+            sessionCommandContext
         );
         createCommand = Create.of(new ExecutionId("tenant", "ns", "flow-id", "exec-1", null))
             .withOperationId("op-1");
@@ -211,6 +217,9 @@ class ExecutionCommandMessageHandlerTest {
         // Given — a non-Create/Replay command targeting an existing execution that is IGNORED
         var command = mock(ExecutionCommand.class);
         when(command.executionId()).thenReturn("exec-1");
+        when(command.tenantId()).thenReturn("tenant");
+        when(command.namespace()).thenReturn("ns");
+        when(command.flowId()).thenReturn("flow-id");
         var execution = mockExecution("exec-1", "tenant", "ns", "flow-id");
         when(killSwitchService.evaluate(command)).thenReturn(EvaluationType.IGNORE);
         when(executionStateStore.findByIdWithoutAcl("exec-1")).thenReturn(execution);
@@ -228,6 +237,9 @@ class ExecutionCommandMessageHandlerTest {
         // Given
         var command = mock(ExecutionCommand.class);
         when(command.executionId()).thenReturn("exec-1");
+        when(command.tenantId()).thenReturn("tenant");
+        when(command.namespace()).thenReturn("ns");
+        when(command.flowId()).thenReturn("flow-id");
         var execution = mockExecution("exec-1", "tenant", "ns", "flow-id");
         when(execution.getState().getCurrent()).thenReturn(State.Type.RUNNING);
         when(killSwitchService.evaluate(command)).thenReturn(EvaluationType.KILL);
@@ -246,6 +258,9 @@ class ExecutionCommandMessageHandlerTest {
         // Given
         var command = mock(ExecutionCommand.class);
         when(command.executionId()).thenReturn("exec-1");
+        when(command.tenantId()).thenReturn("tenant");
+        when(command.namespace()).thenReturn("ns");
+        when(command.flowId()).thenReturn("flow-id");
         var execution = mockExecution("exec-1", "tenant", "ns", "flow-id");
         when(execution.getState().getCurrent()).thenReturn(State.Type.RUNNING);
         when(killSwitchService.evaluate(command)).thenReturn(EvaluationType.CANCEL);
@@ -403,6 +418,46 @@ class ExecutionCommandMessageHandlerTest {
         var execution = mock(Execution.class);
         when(execution.getState()).thenReturn(state);
         return execution;
+    }
+
+    /** Session 恢复失败不能创建实例，并向异步操作记录失败结果。 */
+    @Test
+    void rejectsCommandsWhoseSessionCannotBeRestored() throws Exception {
+        var session = org.mockito.Mockito.mock(org.paas.session.Session.class);
+        var user = org.mockito.Mockito.mock(org.paas.session.SessionUser.class);
+        when(session.getCompanyId()).thenReturn("tenant");
+        when(session.getUser()).thenReturn(user);
+        when(user.getId()).thenReturn("actor-1");
+        var scoped = org.flow.core.executor.command.SessionCommand.from(session, createCommand);
+        when(sessionCommandContext.restore(scoped)).thenThrow(new IllegalStateException("宿主工厂不可用"));
+        assertThat(handler.handle(scoped)).isEmpty();
+        verifyNoInteractions(executionService, executionStateStore);
+        verify(asyncOperationService).emitProcessedIfAsync(scoped, "tenant", "exec-1",
+            Outcome.FAILED, "宿主工厂不可用");
+    }
+
+    /** 重放不能借助不带 ACL 的状态仓储读取其他租户的来源执行。 */
+    @Test
+    void rejectsCrossTenantReplaySource() {
+        var otherTenantExecution = mockExecution("source-exec-id", "another-tenant", "ns", "flow-id");
+        when(executionStateStore.findByIdWithoutAcl("source-exec-id")).thenReturn(otherTenantExecution);
+        assertThat(handler.handle(replayCommand)).isEmpty();
+        verifyNoInteractions(executionService, flowMetaStore);
+        verify(asyncOperationService).emitProcessedIfAsync(eq(replayCommand), eq("tenant"), eq("new-exec-id"),
+            eq(Outcome.FAILED), anyString());
+    }
+
+    /** 锁内再次校验租户，拒绝发布后目标发生变化或手工伪造的控制命令。 */
+    @Test
+    void rejectsCrossTenantTargetInsideTheLock() {
+        var pause = org.flow.core.executor.command.Pause.from(sourceExecution);
+        when(killSwitchService.evaluate(pause)).thenReturn(EvaluationType.PASS);
+        when(executionStateStore.lock(eq("source-exec-id"), any())).thenAnswer(invocation -> {
+            java.util.function.Function<Execution, ExecutorContext> action = invocation.getArgument(1);
+            return Optional.ofNullable(action.apply(mockExecution("source-exec-id", "another-tenant", "ns", "flow-id")));
+        });
+        assertThat(handler.handle(pause)).isEmpty();
+        verifyNoInteractions(executionService, flowMetaStore);
     }
 
     private Execution mockExecution(String execId, String tenantId, String namespace, String flowId) {

@@ -8,13 +8,24 @@ Micronaut 按模块声明的边界依据
 依赖依据 [ADR 0127](../decisions/0127-use-generated-database-objects.md)，修订此前
 “只使用内部 Micronaut、不引入 PaaS”的限制。文末历史记录保留各次验证当时的版本
 和范围，不能作为新依赖组合的验收结果。
+独立 `tests`、`storage-local` 模块已按
+[ADR 0129](../decisions/0129-remove-tests-and-local-storage-modules.md) 删除：依赖它们的
+测试和专用资源一并删除，不迁移测试支持；生产存储由宿主提供。
+数据库底层及持久化归属按
+[ADR 0130](../decisions/0130-co-locate-persistence-with-owning-modules.md) 调整：删除
+queue-jdbc、jdbc-postgres；按 ADR 0131 移除 plugin-fixture，当前注册子模块为 12 个，script 保持独立。
 
 ## 维护位置
 
 - `gradle/libs.versions.toml`：外部库的坐标和显式版本；无版本的库由第三方 BOM 管理。
 - 各模块 `build.gradle`：通过 `libs` 声明所需依赖和作用域。
 - `core/build.gradle`：导出 Micronaut BOM 和公开框架 API，声明核心运行装配库；
-  通过官方 Micrometer/Netty BOM 保留这两组第三方组件的既有版本。
+  依赖 jdbc/gen 以提供通用仓储基类、core 自身仓储和迁移适配，通过官方
+  Micrometer/Netty BOM 保留这两组第三方组件的既有版本。
+- `jdbc/build.gradle`：数据库底层的 jOOQ、数据源、事务执行及通用工具依赖；
+  不通过 core 获得依赖或约束，按需显式声明平台与实际组件。
+- queue、executor、worker、scheduler、indexer 的 `build.gradle`：按本模块的
+  持久化和表配置职责依赖 core/jdbc/gen，以及所需处理器和测试库。
 - `gen/build.gradle`：生成对象与独立 codegen source set；为生成和运行 classpath
   声明配套 Micronaut 平台及内部 jOOQ/PaaS BOM，数据库适配器消费该模块。
 - 根 `build.gradle`：通用共享依赖、Jackson/Jetty BOM 和少量传递依赖约束。共享配置中使用
@@ -42,6 +53,7 @@ dependencies {
 引用 BOM 的 Gradle `platform(...)` 语法不表示存在本地 `platform` 子模块。
 gen 使用内部 jOOQ、jooq-paas 和 codegen extension，允许 `JooqPojo` 必要的 PaaS
 common、json、sql、exception，以及内部 Bean 装配所需的 paas-pulsar 和必要客户端。
+core 另以非传递 api 依赖引入 paas-session，只使用会话合同；默认关闭其认证、缓存和消费者。
 不引入 PaaS 聚合包、AuthX 或 CSES 业务。
 PostgreSQL JDBC 驱动仍使用现有官方依赖，Flow 工作队列仍采用 JDBC。
 
@@ -50,15 +62,18 @@ Commons Compress、Gson、jOOQ、Plexus Utils 和 Jakarta Annotation 约束；�
 classpath 还保留 SLF4J 的版本约束。版本只在 TOML 中维护。
 
 AssertJ 有两个别名：`libs.assertj.core.managed` 显式记录原 BOM 选定的版本，
-`libs.assertj.core.pinned` 保留 `tests`、`tooling` 原有的显式版本。升级时应检查两者
-对测试 classpath 中 Byte Buddy 等传递依赖的影响。
+`libs.assertj.core.pinned` 在 core、executor、worker、jdbc、scheduler、queue、indexer
+及 tooling 中显式保留已有版本；indexer 承接日志 PostgreSQL 测试，script 已无对应
+测试，不再声明该依赖。
+升级时应检查两者对测试 classpath 中 Byte Buddy 等传递依赖的影响。
 
 ## 内部 Micronaut 与消费方仓库
 
-当前 TOML 选择 `io.micronaut.platform:micronaut-platform:4.10.6.335`，平台管理内部
-核心 `4.10.12.23` 与 SQL 集成 `6.3.2.13`。沿用的是 main 的仓库和 BOM 接入方式，不复制 main 的平台
-`5.0.3.51`：其内部核心 `5.0.4.2` 已包含 Java 25 字节码，不满足 Java 21 下限。
-版本是否可用仍需检查所用扩展、处理器和运行链路，不能仅凭核心 JAR 判断。
+当前 TOML 选择 `io.micronaut.platform:micronaut-platform:5.0.3.29`，对齐本地 PaaS
+`pass-2.0-neworg`。用户已确认本次采用 Java 25 联合构建，修订此前 Java 21/Micronaut 4
+组合。SessionUser 尚未发布，settings.gradle 默认 includeBuild('../paas')，路径可用
+`-PpaasSourcePath` 或 `FLOW_PAAS_SOURCE_PATH` 覆盖；不向 Maven 旧版接口回退。
+本地 PaaS 的必要模块整体按源码替换，避免 Session 和生成对象依赖的类协议错配。
 
 各处显式 Micronaut BOM 声明均排除其自带的 PaaS BOM，例如 core 的导出声明：
 
@@ -67,17 +82,17 @@ api(platform(libs.micronaut.platform)) {
     exclude group: 'org.paas'
     exclude group: 'org.paas.nlp'
     exclude group: 'org.paas.service'
-    exclude group: 'org.redisson', module: 'redisson-micronaut-40'
+    exclude group: 'org.redisson', module: 'redisson-micronaut-50'
 }
 ```
 
 `annotationProcessor` 和 `testAnnotationProcessor` 的独立 BOM 声明也使用同样
-排除。gen 另外显式引入 PaaS `1.0.0.161` 与 jOOQ `3.21.4.1` BOM，避免由框架
+排除。gen 另外显式引入 PaaS `2.5.0.29` 与 jOOQ `3.21.4.1` BOM，避免由框架
 平台隐式选择业务库版本。gen 的普通依赖和 codegen 依赖都采用普通 Micronaut
 `platform(...)`、jOOQ/PaaS `enforcedPlatform(...)`；排除 jooq-paas 固定引入的
-Micronaut JOOQ 7.x，并显式使用平台管理的 6.x。
+Micronaut JOOQ 版本，并显式使用所选平台管理的版本。
 
-BOM 导入仅产生约束；根生产隔离对实际制品限定五个 PaaS 模块、五个 Apache Pulsar
+BOM 导入仅产生约束；根生产隔离对实际制品限定六个 PaaS 模块、五个 Apache Pulsar
 客户端配套模块以及 jooq/jooq-paas，具体名称见 [生成指南](jooq-generation.md)。
 内部 DBEventSender 及条件 Bean 定义需要 Pulsar 类型，因此保留必要客户端；PaaS
 聚合包、AuthX、CSES 业务、HTTP Server Netty 和 jOOQ codegen/meta 不进入根运行产物。
@@ -89,8 +104,10 @@ BOM 导入仅产生约束；根生产隔离对实际制品限定五个 PaaS 模�
 宿主 YAML、环境变量、系统属性和 builder 显式配置可覆盖这些默认值；5 项默认值与
 覆盖专项测试已通过。Flow 队列保持 JDBC，客户端类存在不等于需要连接消息服务。
 
-内部平台还以 BOM 方式导入 `redisson-micronaut-40`，其父级约束会改变
-Testcontainers 和 AssertJ 版本。本项目没有 Redis 职责，因此一并排除这个导入。
+内部平台还以 BOM 方式导入 `redisson-micronaut-50`，其父级约束会改变
+Testcontainers 和 AssertJ 版本。Flow 直接声明的平台边排除该导入；本地 PaaS 项目导出的平台仍可能解析其 BOM 元数据，
+因此内部仓库规则覆盖该四段版本坐标。根与 tooling 的隔离检查明确禁止任何
+org.redisson 运行制品，解析 BOM 不代表引入 Redis 客户端。
 core 显式导出官方 Micrometer `1.15.12` 和 Netty `4.2.18.Final` BOM，保留切换前
 对应的第三方组件版本；BOM 坐标和版本仍由 TOML 管理。
 
@@ -117,6 +134,7 @@ repositories {
             includeVersionByRegex 'io[.]micronaut([.].*)?', '.*', '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+.*'
             includeVersionByRegex 'org[.]jooq', '.*', '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+.*'
             includeGroupByRegex 'org[.]paas([.].*)?'
+            includeVersionByRegex 'org[.]redisson', 'redisson-micronaut-50', '[0-9]+[.][0-9]+[.][0-9]+[.][0-9]+.*'
         }
     }
 }
@@ -132,7 +150,7 @@ Gradle Module Metadata 保留平台排除，而 Maven POM 的平台 import 不�
 排除。gen 新增 enforced BOM 和运行依赖后，发布元数据与目标消费者还需重新验证，
 不能直接套用此前 Gradle composite build 或探针结果。
 
-最低支持 Java 21，JDK 选择仍按
+当前采用 Java 25，JDK 选择原则仍按
 [ADR 0125](../decisions/0125-use-build-selected-java-version.md)：不固定 toolchain、
 source、target 或 release；发布制品的实际字节码由其构建环境决定。内部 BOM 对
 第三方组件也有约束，调整版本时必须比较全部配置的实际解析结果，区分本次授权的
@@ -142,40 +160,60 @@ source、target 或 release；发布制品的实际字节码由其构建环境�
 
 不在根 `allprojects` 中配置 Micronaut 依赖、处理器或测试框架。各模块分别选择
 `api`、`implementation`、`runtimeOnly`、`annotationProcessor` 和测试作用域。
-core 导出的 BOM 沿正常项目依赖提供版本约束；处理器 classpath 独立于普通编译
-classpath，使用 Micronaut 处理器的配置需显式引用 BOM。
+core 导出的 BOM 沿正常项目依赖提供版本约束；jdbc 不依赖 core，须声明自身所需
+平台与组件。处理器 classpath 独立于普通编译 classpath，使用 Micronaut 处理器的
+配置需显式引用 BOM。
 
 | 模块 | 生产或工具需求 | 处理器与测试需求 |
 | --- | --- | --- |
-| 根 flow | 聚合原生运行模块，无生产源码 | 跨模块集成测试使用测试注入处理器及 Micronaut Test |
-| core | 公开 Context/Data Model/HTTP API；校验、Jackson、重试、指标和运行装配 | 主源码与测试按需生成注入及校验元数据 |
+| 根 flow | 聚合原生运行模块，无生产源码 | 根测试源码已删除 |
+| core | 公开 Context/Data Model/HTTP API；运行装配、通用仓储基类、自身仓储与迁移适配 | 主源码生成注入及校验元数据；保留数据库技术测试按需使用测试处理器及 Micronaut Test |
 | gen | 数据库生成对象与 JooqPojo；Micronaut Data 注解及内部 jOOQ 配套依赖 | 独立 codegen source set 显式连接数据库；普通编译不执行生成，不配置 Micronaut 注入处理器 |
-| queue、queue-jdbc | 队列 Bean、配置、生命周期及定时清理 | 主源码生成所需 Bean/配置元数据 |
-| jdbc、jdbc-postgres | 数据源、事务、jOOQ、条件装配 | 主源码处理器；数据库集成测试使用测试注入处理器及 Micronaut Test |
-| executor、worker、scheduler、indexer | 运行角色、事件、定时任务、指标；端点归 worker/scheduler | 主源码处理器；集成测试使用测试注入处理器及 Micronaut Test |
-| storage-local、script | 无直接 Micronaut 库声明，依赖 core 的协议及运行环境 | 保留插件 SPI 处理器；集成测试使用测试注入处理器及 Micronaut Test |
-| model、processor | 无自身 Micronaut 需求 | 不配置 Micronaut 处理器或 Micronaut Test |
-| plugin-fixture | 编译依赖 core/script，独立制品由宿主加载 | 只使用插件 SPI 处理器，不生成自身 Micronaut Bean |
-| tooling | Context API 用于读取 Bean 元数据，不启动容器 | 无主源码或测试 Micronaut 处理器，单元测试不声明 Micronaut Test |
-| tests | 共享容器测试工具、测试 Bean 和 HTTP 测试客户端 | 主源码注入处理器；自身普通单元测试不配置 Micronaut 测试处理器 |
+| jdbc | 数据源、jOOQ、事务执行和通用数据库工具；不依赖 core | 按底层装配需要生成元数据；测试按实际需求声明 |
+| queue | 队列 Bean、配置、生命周期、持久化及定时清理 | 主源码生成所需 Bean/配置元数据 |
+| executor、worker、scheduler、indexer | 运行角色及各自持久化与表配置；端点归 worker/scheduler | 主源码处理器；测试侧仅声明保留测试实际需要的依赖 |
+| script | 无直接 Micronaut 库声明，依赖 core 的协议及运行环境 | 保留插件 SPI 处理器；依赖已删除模块的集成测试退出 |
+| plugin-api、processor | 无自身 Micronaut 需求 | 不配置 Micronaut 处理器或 Micronaut Test |
+| tooling | Context API 用于读取 Bean 元数据；经 core 带入 jdbc/gen 及数据库库，不启动容器或连接数据库 | 无主源码或测试 Micronaut 处理器，单元测试不声明 Micronaut Test |
 
 主源码没有框架 import 不足以证明某个运行库可以删除。core 保留校验、指标、
 Prometheus、Tracing 和响应式集成所需的自动装配；生产 HTTP 调用使用 Apache
-HttpClient。HTTP 协议类型和通用 Tracing 继续保留，HTTP Client/Server 的测试用途
-显式声明。PaaS 依赖边局部排除 HTTP Server Netty，Pulsar 类型为内部 Bean 装配
-保留；实际制品隔离、默认事件/消费者状态与 Context 启动分别验证。
+HttpClient。HTTP 协议类型和通用 Tracing 继续保留；测试依赖按剩余测试的实际调用
+清理。PaaS 依赖边局部排除 HTTP Server Netty，Pulsar 类型为内部 Bean 装配保留。
+实际制品隔离与 Context 启动是不同验证层次，前者不能证明后者通过。
 
 数据库实现使用 `micronaut-data-tx-jdbc` 提供 jOOQ 事务和 JDBC 连接管理，不引入
-未使用的 `micronaut-data-jdbc` 生成式 Repository/异步层。根技术测试直接需要的
-连接 API 使用 `micronaut-data-connection-jdbc`，不以测试依赖补齐生产事务装配。
+未使用的 `micronaut-data-jdbc` 生成式 Repository/异步层。测试依赖不能补齐缺少的
+生产事务装配。
+
+项目依赖方向为 core → jdbc/gen，各运行能力模块 → core/jdbc/gen。jdbc 不依赖
+core 或运行角色；core 继续通过角色契约协调运行，不反向依赖这些实现模块。各能力
+数据库实现统一位于 `org.flow.<owner>.jdbc`，底层为 `org.flow.jdbc`。
+
+上述方向指生产依赖。core 的数据库技术测试通过 `testRuntimeOnly` 加载 queue、
+executor、worker、scheduler、indexer 的迁移和装配，使真实 PostgreSQL 测试能够
+使用完整 Schema；这些依赖不传递给 core 的生产消费者。
+
+tooling 通过 core 得到数据库 classpath 是本次模块边界调整的取舍。工具运行隔离
+允许 jdbc、gen 及所需数据库库，仍禁止实际运行角色和 jOOQ codegen/meta；导出
+过程仍不创建 ApplicationContext、不连接数据库。依赖库包含 Bean 定义不等于
+工具启动了这些 Bean，需分别验证依赖组成和离线导出行为。
 
 删除直接声明不会消除通过 core 等模块传入的框架依赖，也不会把框架改成可选的
 运行环境。插件 SPI 处理器生成服务注册文件，Micronaut 处理器生成 Bean/配置/校验
 元数据，两者不能互相替代。
 
+`tests` 中的辅助代码和架构测试不迁移到其他模块，不保留本地存储的测试替代实现。
+依赖这两个模块的测试和专用资源一并删除；失去使用方的测试依赖、处理器和配置
+随调用链清理，保留不依赖二者的普通测试和数据库技术测试所需依赖。移除 `storage-local`
+后，宿主存储接入方式见
+[Java 使用指南](java-engine.md#存储实现)。
+
 gen 的结构来源、临时 PostgreSQL 生成入口、可写列与原生 JSONB 边界见
-[生成指南](jooq-generation.md)。数据库适配器依赖 gen，core 的领域和服务契约
-不依赖生成对象；生成器工具不会随普通编译连接数据库。
+[生成指南](jooq-generation.md)。core 和各能力模块中的数据库实现依赖 gen，
+core 的领域和服务契约不使用生成对象。混合基线 SQL 留在 core，专属 SQL 随能力
+归入对应模块的 migrations 资源目录，保持原 classpath 路径和迁移协议。普通编译和
+离线 Schema 导出不会隐式运行迁移或生成器。
 
 ## 比较依赖变更
 
@@ -198,19 +236,22 @@ diff -u build/dependency-before.json build/dependency-after.json
 `--offline`。快照包含各配置的组件坐标，以及实际制品标识和文件名。BOM 是版本元数据，
 应分别比较 `components` 和 `artifacts`；快照不比较依赖边、制品内容或 classpath 顺序。
 
-依赖调整后按影响范围验证编译、独立消费与真实运行：
+依赖调整后验证编译、剩余测试、运行隔离与 Schema：
 
 ```bash
 ./gradlew clean classes testClasses jar verifyRuntimeIsolation \
   :tooling:verifyRuntimeIsolation :tooling:exportPluginSchemas \
-  :tooling:exportConfigurationSchema --offline
-python3 verify-upstream.py
+  :tooling:exportConfigurationSchema -PschemaPlugins=/absolute/path/plugins --offline
 bash docs/harness/verify-flow.sh --full-regression --offline
 ```
 
 修改注解处理器后先执行 `clean`，避免旧的 Bean Definition 或校验元数据残留导致
-假通过。清理后还需完成独立消费者编译/类加载和真实 PostgreSQL 装配验证；仅编译
-或离线 Schema 导出不能证明引擎运行时自动装配仍然完整。
+假通过。完整回归通过脚本创建的独立 PostgreSQL 执行保留测试，其中数据库技术
+测试覆盖相应组件的装配和读写；默认入口选择 core 模块使用模拟角色的
+`FlowEngineTest`，以及已迁入 `org.flow.core.jdbc.postgres` 的
+`PostgresSettingRepositoryTest` 和 `PostgresSortMetadataTest`。这些检查不再覆盖
+已删除的完整引擎和存储集成场景，不能证明宿主存储接入及完整引擎运行已经通过。
+宿主实际接入时需要另外执行真实存储和 PostgreSQL 环境下的运行验证。
 
 ## 2026-10-14 对齐记录
 
@@ -240,7 +281,7 @@ bash docs/harness/verify-flow.sh --full-regression --offline
 - 已比较调整前后 119 个解析配置：所有保留的实际制品版本一致。根运行制品由
   226 个降至 205 个，core 运行制品由 200 个降至 177 个；减少项包括未使用的
   Micronaut HTTP/Netty 和 Data Repository 层，不把 BOM 元数据计入该数量。
-- `model`、`processor` 的主源码处理器依赖由 26 个降至 1 个（仅 Lombok），
+- `model`（现名 `plugin-api`）、`processor` 的主源码处理器依赖由 26 个降至 1 个（仅 Lombok），
   两模块的运行依赖不变，且生产和测试处理器中均不再含 Micronaut。
 - 编译、测试源码编译、JAR、根及 tooling 依赖隔离通过；插件和配置 Schema
   实际重新导出成功。清理编译输出后执行禁用构建缓存的强制回归，避免残留生成物。
@@ -335,3 +376,17 @@ Java 21 的字节码。这项检查不覆盖运行时 API 和行为兼容性。
 完整回归仍保留 4 项失败，不能记为全绿。生成与运行证据及适用边界见
 [生成指南](jooq-generation.md)。此前无 PaaS 的内部 Micronaut 验证记录保留原意，
 不作为本次新依赖组合的通过证据；本轮未发布 Maven 制品。
+
+## 2026-10-19 Session 与本地 PaaS 联合构建
+
+Session 边界见 [ADR 0133](../decisions/0133-session-aware-public-services.md)。core 的
+paas-session 为非传递 api 依赖，并显式导出公共签名涉及的 paas-common、paas-json
+及 micronaut-json-core 类型；默认关闭 paas.session.enabled，宿主显式配置可覆盖。
+与现有 gen 所需的 common/json/sql/exception/pulsar 一起使用本地 neworg 源码。
+未使用的 pulsar-client-admin-original 在 gen 和 jdbc 的相关依赖边排除，保留既有
+Admin API 类型；运行隔离检查继续禁止其实现、Redis、HTTP Server 和其他 PaaS 模块。
+
+Micronaut 5 自身使用 Jackson 3；Flow 的原生队列、数据库 JSON 和插件序列化继续使用
+Jackson 2，并由独立 ObjectMapper 工厂提供，不再替换框架的 Jackson 3 工厂。
+上传资源按 Micronaut 5 CompletedFileUpload.closeAsync 协议释放；Swagger 注解统一为
+2.2.50，删除旧版本 defaultValue 哨兵修正。Schema 导出纳入本次回归。

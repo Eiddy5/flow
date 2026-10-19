@@ -1,5 +1,10 @@
 # Flow 架构决策索引
 
+当前业务入口以 [ADR 0133](0133-session-aware-public-services.md) 为准：原有
+`org.flow.core.services` 下的 FlowService、ExecutionService 和 PluginService
+直接接收宿主 Session，每种服务保留一个实现；采用 Java 25 与本地 PaaS neworg
+联合构建，修订早期 ADR 的 Java 21 下限与 Micronaut 4 组合。
+
 按 [ADR 0132](0132-rename-model-to-plugin-api.md)，原 model 更名为 plugin-api，
 公共接口、注解与枚举统一归 org.flow.plugin.api 包及其子包。
 
@@ -24,13 +29,15 @@ storage-local 模块及依赖它们的测试和专用资源，保留不依赖二
 当前数据库对象以 [ADR 0127](0127-use-generated-database-objects.md) 为准：
 gen 使用 CSES 同款内部生成器与 JooqPojo，数据库适配器统一消费生成对象；允许
 生成对象和内部 Bean 装配必要的 PaaS/Pulsar 依赖，修订 ADR 0126 的无 PaaS 和官方
-jOOQ 条款，保持 Java 21 与 JDBC 队列，生产依赖排除 HTTP Server Netty 和 codegen。
+jOOQ 条款，保持 JDBC 队列，生产依赖排除 HTTP Server Netty 和 codegen；其 Java 21
+组合现由 ADR 0133 的 Java 25 联合构建修订。
 jdbc 为内部 DB 事件和消费者提供最低优先级关闭默认值，宿主显式配置可覆盖。
 当前 Micronaut 来源以 [ADR 0126](0126-use-internal-micronaut.md) 为准：
-按 main 的内部仓库与 BOM 方式接入，保持 Java 21 下限；
+按 main 的内部仓库与 BOM 方式接入；当前平台与 Java 版本由 ADR 0133 对齐本地 PaaS。
 修订 ADR 0123、0124 中保留官方 Micronaut 来源的条款。
 当前 Java 版本选择以 [ADR 0125](0125-use-build-selected-java-version.md) 为准：
-不固定 Java 25，遵循所属构建的标准 Java 配置和构建 JDK；保留实际字节码兼容性要求。
+遵循所属构建的标准 Java 配置和构建 JDK，不在 Flow 内固定 toolchain；当前依赖
+组合按 ADR 0133 要求使用 Java 25 或实际兼容的更高版本，保留字节码兼容性要求。
 当前 Micronaut 依赖归属以 [ADR 0124](0124-scope-micronaut-dependencies-by-module.md) 为准：
 按模块的 API、运行装配和测试需要声明，不再全局加入整组框架及处理器。
 版本管理沿用 [ADR 0123](0123-manage-dependencies-with-version-catalog.md)：
@@ -63,15 +70,19 @@ JDBC，实现共用可配置 `datasources.flow`。旧 Pulsar、DataSourceEngine/
 ## Core 组件与依赖方向
 
 - [ADR 0132](0132-rename-model-to-plugin-api.md)：model 更名为 plugin-api，统一插件 API 包名与 SPI 注册路径。
+- [ADR 0133](0133-session-aware-public-services.md)：原有 Service 直接接收 Session，不增加同名委托层；租户、操作者和异步命令边界，Java 25 与本地 PaaS neworg 联合构建。
+
 - [ADR 0131](0131-remove-plugin-fixture.md)：移除 plugin-fixture，Schema 导出显式指定插件目录。
+
 - [`ADR 0130`](0130-co-locate-persistence-with-owning-modules.md)：**Accepted**，保留无 core 依赖的 jdbc 底层，专属持久化归所属能力模块；删除 queue-jdbc、jdbc-postgres，保留 script，迁移协议和 gen 直接使用规则不变。
+
 - [`ADR 0129`](0129-remove-tests-and-local-storage-modules.md)：**Accepted**，移除 tests、storage-local 及依赖它们的测试，不迁移测试支持；保留存储 SPI，由宿主提供生产存储实现。
 
 - [0128：存储查询直接使用生成表和字段](0128-use-generated-tables-directly.md)：移除元数据复制与手写字段兜底，统一生成类型、表配置和查询别名。
 
 - [`ADR 0127`](0127-use-generated-database-objects.md)：**Accepted**，引入 gen 与内部 jOOQ 生成器/JooqPojo，允许必要 PaaS 依赖，保留原生 SQL、JSONB 和 JDBC 队列协议；验证见生成指南。
 
-- [`ADR 0126`](0126-use-internal-micronaut.md)：**Accepted**，内部 Micronaut、TOML、按模块声明与 Java 21 下限；无 PaaS 和官方 jOOQ 条款已由 ADR 0127 修订。
+- [`ADR 0126`](0126-use-internal-micronaut.md)：**Accepted**，内部 Micronaut、TOML、按模块声明；无 PaaS 和官方 jOOQ 条款已由 ADR 0127 修订，Java 版本与当前平台组合由 ADR 0133 修订。
 
 - [`ADR 0125`](0125-use-build-selected-java-version.md)：**Accepted**，移除固定 Java 25，编译、测试和工具任务使用构建选择的 JDK，不改写真实目标版本元数据。
 

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import org.flow.core.utils.Enums;
 
 public enum ExecutionCommandType {
+    SESSION_COMMAND,
     CREATE,
     REPLAY,
     CHANGE_TASK_RUN_STATE,

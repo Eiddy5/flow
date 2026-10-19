@@ -153,6 +153,12 @@ public abstract class FlowContext {
             FlowContext.setContext(this);
         }
 
+        /** 宿主 Context 销毁后释放静态引用；不清除随后创建的其他 Context。 */
+        @jakarta.annotation.PreDestroy
+        public void releaseContext() {
+            INSTANCE.compareAndSet(this, null);
+        }
+
         /** {@inheritDoc} **/
         @Override
         public ServerType getServerType() {

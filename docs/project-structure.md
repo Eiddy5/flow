@@ -14,6 +14,7 @@ Java 版本选择按 [ADR 0125](decisions/0125-use-build-selected-java-version.m
 数据库底层及持久化归属按 [ADR 0130](decisions/0130-co-locate-persistence-with-owning-modules.md)，
 插件验证模块移除及显式导出目录按 [ADR 0131](decisions/0131-remove-plugin-fixture.md)，
 插件 API 模块和包名按 [ADR 0132](decisions/0132-rename-model-to-plugin-api.md)。
+Session 服务与 Java 25 / 本地 PaaS 联合构建按 [ADR 0133](decisions/0133-session-aware-public-services.md)。
 [ADR 0117](decisions/0117-prune-kestra-product-entrypoints.md)、
 [0118](decisions/0118-prune-kestra-core-product-features.md)、
 [0119](decisions/0119-use-postgresql-only.md)、
@@ -34,7 +35,7 @@ Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前
 | `plugin-api`、`processor` | 基础插件契约、注解与编译期插件注册资源生成 |
 | `gen` | PostgreSQL 生成对象及独立 codegen 入口；运行生成类型供数据库适配器使用，普通编译不连接数据库 |
 | `jdbc` | 不依赖 core 的数据库底层：datasources.flow、jOOQ、事务执行、通用工具和宿主可覆盖的内部 DB 事件/消费者默认配置；不承载能力专属仓储 |
-| `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；通用仓储基类、ServiceInstance 等 core 仓储、迁移 SPI 适配、迁移历史和锁；公开入口为 FlowEngine、FlowService、Repository Interface、PluginExportService，FlowEngine 管理生命周期 |
+| `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；通用仓储基类、ServiceInstance 等 core 仓储、迁移 SPI 适配、迁移历史和锁；公开业务入口为 org.flow.core.services 下唯一的 FlowService、ExecutionService、PluginService，原有服务直接接收宿主 Session 并实现业务；同一服务保留后台运行方法，FlowEngine 管理生命周期 |
 | `queue` | 队列协议、原生 JDBC Dispatch/Broadcast 实现及队列持久化和表配置 |
 | `executor` | 原生执行状态推进与命令消费；ExecutionRepository、ExecutionStateStore、执行器专属持久化和表配置 |
 | `worker` | Task/Trigger 执行、队列领取与结果发布、PG 心跳和恢复，以及 Worker 专属持久化和表配置；普通和 SystemWorker 独立线程池 |
@@ -64,7 +65,8 @@ PostgreSQL 具体实现位于 `org.flow.<owner>.jdbc.postgres`；迁移代码分
 模块显式声明自身使用的库、生成处理器和测试依赖，不再继承整组框架配置。
 内部发布的 Micronaut、jOOQ 及生成对象必要的 PaaS 组件通过限定范围的内部仓库解析；
 其余官方组件仍使用 Maven Central。PaaS 范围包括 common、json、sql、exception，
-以及内部 Bean 装配所需的 paas-pulsar 和必要客户端，不引入 PaaS 聚合包、AuthX 或
+以及内部 Bean 装配所需的 paas-pulsar 和必要客户端；原有 Service 的 Session 接口另引入非传递的
+paas-session，联合构建本地 PaaS pass-2.0-neworg，采用 Java 25。见 [ADR 0133](decisions/0133-session-aware-public-services.md)。不引入 PaaS 聚合包、AuthX 或
 CSES 业务模块。
 外部调用工程也需配置内部仓库，仓库配置不随依赖发布元数据传递；框架规则见
 [依赖管理](harness/dependency-management.md)，jOOQ/PaaS 增量规则见
