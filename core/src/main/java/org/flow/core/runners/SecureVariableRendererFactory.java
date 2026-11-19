@@ -3,7 +3,6 @@ package org.flow.core.runners;
 import java.util.List;
 
 import org.flow.core.runners.pebble.PebbleEngineFactory;
-import org.flow.core.runners.pebble.functions.KvFunction;
 import org.flow.core.runners.pebble.functions.SecretFunction;
 
 import io.micronaut.context.ApplicationContext;
@@ -34,7 +33,7 @@ public class SecureVariableRendererFactory {
             // Explicitly create a new instance through the application context to ensure
             // eventual custom VariableRenderer implementation is used
             secureVariableRenderer = applicationContext.createBean(VariableRenderer.class);
-            secureVariableRenderer.setPebbleEngine(pebbleEngineFactory.createWithMaskedFunctions(secureVariableRenderer, List.of(SecretFunction.NAME, KvFunction.NAME)));
+            secureVariableRenderer.setPebbleEngine(pebbleEngineFactory.createWithMaskedFunctions(secureVariableRenderer, List.of(SecretFunction.NAME)));
         }
         return secureVariableRenderer;
     }

@@ -87,11 +87,6 @@ class StorageContextTest {
     }
 
     @Test
-    void shouldGetNamespaceFilePrefix() {
-        assertThat(StorageContext.namespaceFilePrefix("io.namespace")).isEqualTo("/io/namespace/_files");
-    }
-
-    @Test
     void shouldGetTaskCachePrefix() {
         assertThat(
             StorageContext.forFlow(

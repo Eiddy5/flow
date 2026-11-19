@@ -3,7 +3,6 @@ package org.flow.queue;
 import org.flow.core.async.AsyncOperationProcessedEvent;
 import org.flow.core.executor.command.ExecutionCommand;
 import org.flow.core.models.executions.*;
-import org.flow.core.models.executions.statistics.ExecutionStatistic;
 import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.queues.BroadcastQueueInterface;
 import org.flow.core.queues.DispatchQueueInterface;
@@ -39,9 +38,7 @@ public interface QueueFactoryInterface<D> {
 
     VNodeDispatchQueueInterface<TriggerEvent> triggerEventQueue(D dependencies);
 
-    DispatchQueueInterface<MetricEntry> metricQueue(D dependencies);
 
-    DispatchQueueInterface<ExecutionStatistic> executionStatisticQueue(D dependencies);
 
     BroadcastQueueInterface<FollowExecutionEvent> followExecutionQueue(D dependencies);
 

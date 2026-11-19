@@ -279,19 +279,7 @@ public class QueryFilterTest {
             ),
 
             buildQueryFiltersForOperations(
-                Field.UPDATED, Resource.KV_METADATA,
-                Set.of(
-                    Op.GREATER_THAN_OR_EQUAL_TO,
-                    Op.GREATER_THAN,
-                    Op.LESS_THAN_OR_EQUAL_TO,
-                    Op.LESS_THAN,
-                    Op.EQUALS,
-                    Op.NOT_EQUALS
-                )
-            ),
-
-            buildQueryFiltersForOperations(
-                Field.EXPIRATION_DATE, Resource.KV_METADATA,
+                Field.UPDATED, Resource.CASE,
                 Set.of(
                     Op.GREATER_THAN_OR_EQUAL_TO,
                     Op.GREATER_THAN,
@@ -1162,20 +1150,7 @@ public class QueryFilterTest {
             ),
 
             buildQueryFiltersForOperations(
-                Field.UPDATED, Resource.KV_METADATA,
-                Set.of(
-                    Op.IN,
-                    Op.NOT_IN,
-                    Op.STARTS_WITH,
-                    Op.ENDS_WITH,
-                    Op.CONTAINS,
-                    Op.REGEX,
-                    Op.PREFIX
-                )
-            ),
-
-            buildQueryFiltersForOperations(
-                Field.EXPIRATION_DATE, Resource.KV_METADATA,
+                Field.UPDATED, Resource.CASE,
                 Set.of(
                     Op.IN,
                     Op.NOT_IN,

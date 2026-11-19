@@ -2,7 +2,6 @@ package org.flow.core.jdbc;
 
 import org.flow.jdbc.JdbcTableConfig;
 
-import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -136,37 +135,9 @@ class AbstractJdbcRepositoryTest {
         );
     }
 
-    @Test
-    void shouldMapDecimalMetricAggregatesToDomainDoubles() {
-        List<Field<BigDecimal>> aggregates = List.of(
-            DSL.avg(Tables.METRICS.METRIC_VALUE).as("metric_value"),
-            DSL.sum(Tables.METRICS.METRIC_VALUE).as("metric_value")
-        );
-        Field<Integer> year = DSL.extract(Tables.METRICS.TIMESTAMP, DatePart.YEAR).as("year");
-        Field<Integer> month = DSL.extract(Tables.METRICS.TIMESTAMP, DatePart.MONTH).as("month");
-        Field<Integer> day = DSL.extract(Tables.METRICS.TIMESTAMP, DatePart.DAY).as("day");
-
-        for (Field<BigDecimal> aggregate : aggregates) {
-            var record = DSL.using(SQLDialect.POSTGRES)
-                .newRecord(Tables.METRICS.METRIC_NAME, aggregate, year, month, day);
-            record.set(Tables.METRICS.METRIC_NAME, "latency");
-            record.set(aggregate, new BigDecimal("12.75"));
-            record.set(year, 2026);
-            record.set(month, 10);
-            record.set(day, 16);
-
-            assertThat(record.get(aggregate)).isInstanceOf(BigDecimal.class);
-            var mapped = repository.mapMetricAggregation(record, "day");
-
-            assertThat(mapped.name).isEqualTo("latency");
-            assertThat(mapped.value).as("Domain value for %s", aggregate).isEqualTo(12.75d);
-            assertThat(mapped.date).isEqualTo(Instant.parse("2026-10-16T00:00:00Z"));
-        }
-    }
-
     private static class TestJdbcRepository extends AbstractJdbcRepository<Object> {
         private TestJdbcRepository() {
-            super(new JdbcTableConfig("metrics", Object.class, Tables.METRICS), null);
+            super(new JdbcTableConfig("logs", Object.class, Tables.LOGS), null);
         }
 
         @Override

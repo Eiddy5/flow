@@ -34,10 +34,8 @@ public class FlowWithSource extends Flow {
             .disabled(this.disabled)
             .deleted(this.deleted)
             .draft(this.draft)
-            .concurrency(this.concurrency)
             .quotas(this.quotas)
             .retry(this.retry)
-            .sla(this.sla)
             .checks(this.checks)
             .updated(this.updated)
             .build();
@@ -79,10 +77,8 @@ public class FlowWithSource extends Flow {
             .deleted(flow.deleted)
             .draft(flow.draft)
             .source(source)
-            .concurrency(flow.concurrency)
             .quotas(flow.quotas)
             .retry(flow.retry)
-            .sla(flow.sla)
             .checks(flow.checks)
             .updated(flow.updated)
             .build();

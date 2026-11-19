@@ -17,7 +17,6 @@ import org.flow.core.models.HasUID;
 import org.flow.plugin.api.annotations.PluginProperty;
 import org.flow.core.models.flows.check.Check;
 import org.flow.core.models.flows.quota.Quota;
-import org.flow.core.models.flows.sla.SLA;
 import org.flow.core.models.tasks.FlowableTask;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.models.tasks.retrys.AbstractRetry;
@@ -98,13 +97,6 @@ public class Flow extends AbstractFlow implements HasUID {
     List<String> policyRefs;
 
     @Schema(
-        title = "Concurrency",
-        description = "Limits the number of concurrent executions of the flow."
-    )
-    @Valid
-    Concurrency concurrency;
-
-    @Schema(
         title = "Output values available and exposes to other flows.",
         description = "Output values make information about the execution of your Flow available and expose for other Flow flows to use. Output values are similar to return values in programming languages."
     )
@@ -122,10 +114,6 @@ public class Flow extends AbstractFlow implements HasUID {
     )
     @Valid
     AbstractRetry retry;
-
-    @Valid
-    @PluginProperty
-    List<SLA> sla;
 
     @Schema(
         title = "Conditions evaluated before the flow is executed.",

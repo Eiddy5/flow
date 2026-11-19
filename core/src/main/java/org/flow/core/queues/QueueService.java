@@ -1,7 +1,7 @@
 package org.flow.core.queues;
 
 import org.flow.core.models.HasUID;
-import org.flow.core.models.executions.*;
+import org.flow.core.models.executions.LogEntry;
 
 import jakarta.inject.Singleton;
 
@@ -11,8 +11,6 @@ public class QueueService {
         if (object instanceof HasUID hasUID) {
             return hasUID.uid();
         } else if (object.getClass() == LogEntry.class) {
-            return null;
-        } else if (object.getClass() == MetricEntry.class) {
             return null;
         } else {
             throw new IllegalArgumentException("Unknown type '" + object.getClass().getName() + "'");

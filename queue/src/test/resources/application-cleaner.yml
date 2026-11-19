@@ -7,5 +7,3 @@ flow:
       types:
         - type: org.flow.core.models.executions.LogEntry
           retention: 0s
-        - type: org.flow.core.models.executions.MetricEntry
-          retention: 0s

@@ -20,7 +20,6 @@ import org.flow.core.models.executions.AbstractMetricEntry;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.property.PropertyContext;
 import org.flow.core.storages.Storage;
-import org.flow.core.storages.kv.KVStore;
 
 public abstract class RunContext implements PropertyContext {
 
@@ -198,13 +197,6 @@ public abstract class RunContext implements PropertyContext {
      * @return the string version.
      */
     public abstract String version();
-
-    /**
-     * Gets access to the Key-Value store for the given namespace.
-     *
-     * @return The {@link KVStore}.
-     */
-    public abstract KVStore namespaceKv(String namespace);
 
     /**
      * Get access to local paths of the host machine.

@@ -124,8 +124,6 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
                         executionService.restart(execution, executorContext.getFlow(), restartCommand.revision(), true);
                     case Pause ignored ->
                         executionService.pause(execution);
-                    case Unqueue unqueueCommand ->
-                        executionService.unqueue(execution, unqueueCommand.state());
                     case ForceRun ignored ->
                         executionService.forceRun(execution, executorContext.getFlow());
                     case ChangeTaskRunState changeTaskRunStateCommand ->

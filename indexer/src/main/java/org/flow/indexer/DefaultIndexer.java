@@ -5,13 +5,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import org.flow.core.metrics.MetricRegistry;
 import org.flow.core.models.executions.LogEntry;
-import org.flow.core.models.executions.MetricEntry;
-import org.flow.core.models.executions.statistics.ExecutionStatistic;
 import org.flow.core.queues.*;
 import org.flow.core.queues.event.DispatchEvent;
-import org.flow.core.repositories.ExecutionStatisticsRepositoryInterface;
 import org.flow.core.repositories.LogDataStoreInterface;
-import org.flow.core.repositories.MetricRepositoryInterface;
 import org.flow.core.runners.Indexer;
 import org.flow.core.runners.IndexingRepository;
 import org.flow.core.server.AbstractService;
@@ -36,11 +32,7 @@ public class DefaultIndexer extends AbstractService implements Indexer {
     private final LogDataStoreInterface logRepository;
     private final DispatchQueueInterface<LogEntry> logQueue;
 
-    private final MetricRepositoryInterface metricRepository;
-    private final DispatchQueueInterface<MetricEntry> metricQueue;
 
-    private final ExecutionStatisticsRepositoryInterface executionStatisticsRepository;
-    private final DispatchQueueInterface<ExecutionStatistic> executionStatisticQueue;
 
     private final MetricRegistry metricRegistry;
     // Thread-safe: populated by run() but iterated from doStop() on the context-close thread.
@@ -53,10 +45,6 @@ public class DefaultIndexer extends AbstractService implements Indexer {
     public DefaultIndexer(
         LogDataStoreInterface logRepository,
         DispatchQueueInterface<LogEntry> logQueue,
-        MetricRepositoryInterface metricRepositor,
-        DispatchQueueInterface<MetricEntry> metricQueue,
-        ExecutionStatisticsRepositoryInterface executionStatisticsRepository,
-        DispatchQueueInterface<ExecutionStatistic> executionStatisticQueue,
         MetricRegistry metricRegistry,
         ApplicationEventPublisher<ServiceStateChangeEvent> eventPublisher,
         IgnoreExecutionService ignoreExecutionService,
@@ -65,10 +53,6 @@ public class DefaultIndexer extends AbstractService implements Indexer {
 
         this.logRepository = logRepository;
         this.logQueue = logQueue;
-        this.metricRepository = metricRepositor;
-        this.metricQueue = metricQueue;
-        this.executionStatisticsRepository = executionStatisticsRepository;
-        this.executionStatisticQueue = executionStatisticQueue;
         this.metricRegistry = metricRegistry;
         this.ignoreExecutionService = ignoreExecutionService;
         this.queueService = queueService;
@@ -91,8 +75,6 @@ public class DefaultIndexer extends AbstractService implements Indexer {
 
     protected void startQueues() {
         this.sendBatch(logQueue, logRepository);
-        this.sendBatch(metricQueue, metricRepository);
-        this.sendBatch(executionStatisticQueue, executionStatisticsRepository);
     }
 
     protected <T extends DispatchEvent> void sendBatch(DispatchQueueInterface<T> queueInterface, IndexingRepository<T> indexingRepository) {

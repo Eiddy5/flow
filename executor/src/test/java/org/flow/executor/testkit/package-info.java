@@ -16,12 +16,12 @@
  * </ul>
  * The tests built on the kit live in {@code org.flow.executor.statemachine}: one class per
  * decision dimension (retry, errors/finally, killing, pause, flowable traversal, subflows,
- * flow triggers, concurrency, quotas), each written as given/when/then sagas.
+ * flow triggers and quotas), each written as given/when/then sagas.
  *
  * <h2>Why trust the fakes</h2>
  * The fakes are not free-hand reimplementations: the state-store behavior is specified by
  * annotation-free contract classes ({@code ExecutionStateStoreContract},
- * {@code ConcurrencyLimitStateStoreContract}, {@code MultipleConditionStateStoreContract})
+ * {@code MultipleConditionStateStoreContract})
  * whose scenarios run unchanged against the JDBC/Elasticsearch implementations <b>and</b>
  * against these fakes. A fake that drifts from production semantics fails its contract run.
  *

@@ -1,16 +1,20 @@
 package org.flow.core.models.triggers;
 
+import java.io.ByteArrayInputStream;
+import java.io.FileNotFoundException;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.NoSuchFileException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
 
-import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.hash.Hashing;
 
 import org.flow.core.runners.RunContext;
 import org.flow.core.serializers.JacksonMapper;
-import org.flow.core.storages.kv.KVMetadata;
-import org.flow.core.storages.kv.KVValueAndMetadata;
+import org.flow.core.storages.StorageContext;
 
 public class StatefulTriggerService {
     public record Entry(String uri, String version, Instant modifiedAt, Instant lastSeenAt) {
@@ -22,36 +26,41 @@ public class StatefulTriggerService {
     public record StateUpdate(boolean fire, boolean isNew) {
     }
 
+    record Cursor(Instant expiresAt, List<Entry> entries) {
+    }
+
     public static Map<String, Entry> readState(RunContext runContext, String key, Optional<Duration> ttl) {
-        try {
-            var kv = runContext.namespaceKv(runContext.flowInfo().namespace()).getValue(key);
-            if (kv.isEmpty()) {
+        try (var input = runContext.storage().getFile(stateUri(runContext.flowInfo().namespace(), key))) {
+            Cursor cursor = JacksonMapper.ofJson().readValue(input, Cursor.class);
+            Instant now = Instant.now();
+            if (cursor.expiresAt() != null && !cursor.expiresAt().isAfter(now)) {
                 return new HashMap<>();
             }
-
-            var entries = JacksonMapper.ofJson().readValue((byte[]) kv.get().value(), new TypeReference<List<Entry>>() {
-            });
-
-            var cutoff = ttl.map(d -> Instant.now().minus(d)).orElse(Instant.MIN);
-
-            return entries.stream()
-                .filter(e -> Optional.ofNullable(e.lastSeenAt()).orElse(Instant.now()).isAfter(cutoff))
+            Instant cutoff = ttl.map(now::minus).orElse(Instant.MIN);
+            return cursor.entries().stream()
+                .filter(e -> Optional.ofNullable(e.lastSeenAt()).orElse(now).isAfter(cutoff))
                 .collect(Collectors.toMap(Entry::uri, e -> e));
+        } catch (FileNotFoundException | NoSuchFileException e) {
+            return new HashMap<>();
         } catch (Exception e) {
-            runContext.logger().warn("readState failed", e);
+            runContext.logger().warn("Failed to read state for trigger cursor {}", key, e);
             return new HashMap<>();
         }
     }
 
     public static void writeState(RunContext runContext, String key, Map<String, Entry> state, Optional<Duration> ttl) {
         try {
-            var bytes = JacksonMapper.ofJson().writeValueAsBytes(state.values());
-            var meta = new KVMetadata("trigger state", ttl.orElse(null));
-
-            runContext.namespaceKv(runContext.flowInfo().namespace()).put(key, new KVValueAndMetadata(meta, bytes));
+            Cursor cursor = new Cursor(ttl.map(Instant.now()::plus).orElse(null), List.copyOf(state.values()));
+            var bytes = JacksonMapper.ofJson().writeValueAsBytes(cursor);
+            runContext.storage().putFile(new ByteArrayInputStream(bytes), stateUri(runContext.flowInfo().namespace(), key));
         } catch (Exception e) {
-            runContext.logger().warn("writeState failed", e);
+            runContext.logger().warn("Failed to write state for trigger cursor {}", key, e);
         }
+    }
+
+    private static URI stateUri(String namespace, String key) {
+        String digest = Hashing.sha256().hashString(key, StandardCharsets.UTF_8).toString();
+        return URI.create(StorageContext.namespaceRootUri(namespace) + "_trigger_state/" + digest + ".json");
     }
 
     public static StateUpdate computeAndUpdateState(Map<String, Entry> state, Entry candidate, StatefulTriggerInterface.On on) {

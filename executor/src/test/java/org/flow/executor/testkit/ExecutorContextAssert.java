@@ -87,13 +87,6 @@ public class ExecutorContextAssert extends AbstractAssert<ExecutorContextAssert,
         return this;
     }
 
-    /** The admission gate stamped the claimed concurrency scopes on the execution. */
-    public ExecutorContextAssert hasClaimStamp() {
-        isNotNull();
-        Assertions.assertThat(actual.getExecution().getMetadata().getConcurrencyScopes()).as(described("concurrency claim stamp")).isNotEmpty();
-        return this;
-    }
-
     /** The state history starts at {@code first} — e.g. CREATED for an execution failed straight out of the gate. */
     public ExecutorContextAssert hasFirstState(State.Type first) {
         isNotNull();

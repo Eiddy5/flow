@@ -1,7 +1,5 @@
 package org.flow.core.jdbc.repository;
 
-import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.*;
 
@@ -21,7 +19,6 @@ import org.flow.core.models.flows.State;
 import org.flow.core.models.AccessScope;
 import org.flow.core.repositories.ExecutionRepositoryInterface.ChildFilter;
 import org.flow.core.repositories.NamespaceAccessControl;
-import org.flow.core.utils.DateUtils;
 import org.flow.core.utils.Either;
 import org.flow.core.utils.Enums;
 import org.flow.core.utils.ListUtils;
@@ -148,57 +145,6 @@ public abstract class AbstractJdbcRepository {
         return value == null ? field.isNull() : field.eq(value);
     }
 
-    protected List<Field<?>> groupByFields(Duration duration) {
-        return groupByFields(duration, null, null);
-    }
-
-    protected List<Field<?>> groupByFields(Duration duration, boolean withAs) {
-        return groupByFields(duration, null, null, withAs);
-    }
-
-    protected Field<Integer> weekFromTimestamp(Field<Timestamp> timestampField) {
-        return DSL.week(timestampField);
-    }
-
-    /**
-     * The timestamp expression that {@link #groupByFields} extracts date parts from.
-     * <p>
-     * It must yield <em>UTC</em> wall-clock parts, because
-     * {@link org.flow.core.jdbc.AbstractJdbcRepository#getDate} reassembles them in UTC. PostgreSQL
-     * stores {@code TIMESTAMPTZ}; its metric repository overrides this expression to normalize
-     * the session timezone to UTC before extracting date parts.
-     */
-    protected Field<Timestamp> groupByTimestampField(Field<?> dateField) {
-        return dateField.cast(Timestamp.class);
-    }
-
-    protected List<Field<?>> groupByFields(Duration duration, @Nullable Field<?> dateField, @Nullable DateUtils.GroupType groupBy) {
-        return groupByFields(duration, dateField, groupBy, true);
-    }
-
-    protected List<Field<?>> groupByFields(Duration duration, @Nullable Field<?> dateField, @Nullable DateUtils.GroupType groupBy, boolean withAs) {
-        Field<?> field = dateField != null ? dateField : Objects.requireNonNull(table().field(Tables.METRICS.TIMESTAMP));
-        Field<Timestamp> timestamp = groupByTimestampField(field);
-        Field<Integer> month = withAs ? DSL.month(timestamp).as("month") : DSL.month(timestamp);
-        Field<Integer> year = withAs ? DSL.year(timestamp).as("year") : DSL.year(timestamp);
-        Field<Integer> day = withAs ? DSL.day(timestamp).as("day") : DSL.day(timestamp);
-        Field<Integer> week = withAs ? weekFromTimestamp(timestamp).as("week") : weekFromTimestamp(timestamp);
-        Field<Integer> hour = withAs ? DSL.hour(timestamp).as("hour") : DSL.hour(timestamp);
-        Field<Integer> minute = withAs ? DSL.minute(timestamp).as("minute") : DSL.minute(timestamp);
-
-        if (groupBy == DateUtils.GroupType.MONTH || duration.toDays() > DateUtils.GroupValue.MONTH.getValue()) {
-            return List.of(year, month);
-        } else if (groupBy == DateUtils.GroupType.WEEK || duration.toDays() > DateUtils.GroupValue.WEEK.getValue()) {
-            return List.of(year, week);
-        } else if (groupBy == DateUtils.GroupType.DAY || duration.toDays() > DateUtils.GroupValue.DAY.getValue()) {
-            return List.of(year, month, day);
-        } else if (groupBy == DateUtils.GroupType.HOUR || duration.toHours() > DateUtils.GroupValue.HOUR.getValue()) {
-            return List.of(year, month, day, hour);
-        } else {
-            return List.of(year, month, day, hour, minute);
-        }
-    }
-
     protected Condition filter(
         List<QueryFilter> filters,
         Field<?> dateColumn,
@@ -300,10 +246,6 @@ public abstract class AbstractJdbcRepository {
 
         if (field == QueryFilter.Field.ASSIGNEE) {
             return assigneeCondition(value, operation);
-        }
-
-        if (field == QueryFilter.Field.EXPIRATION_DATE) {
-            return getDateCondition(value, operation, getColumnField(QueryFilter.Field.EXPIRATION_DATE));
         }
 
         if (field == QueryFilter.Field.SCOPE) {

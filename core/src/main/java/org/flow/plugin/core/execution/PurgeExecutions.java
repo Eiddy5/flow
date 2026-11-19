@@ -25,9 +25,9 @@ import lombok.experimental.SuperBuilder;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Purge executions, logs, metrics, and storage files.",
+    title = "Purge executions, logs, and storage files.",
     description = """
-        Deletes historical execution data by namespace/flow, bounded by `startDate`/`endDate`, and optionally filtered by states. Each category can be toggled (`purgeExecution`, `purgeLog`, `purgeMetric`, `purgeStorage`).
+        Deletes historical execution data by namespace/flow, bounded by `startDate`/`endDate`, and optionally filtered by states. Each category can be toggled (`purgeExecution`, `purgeLog`, `purgeStorage`).
 
         Respects Namespace authorization checks (there must be purge rights on the target namespace); default batch size is 100. Irreversible — use carefully in production."""
 )
@@ -100,12 +100,6 @@ public class PurgeExecutions extends Task implements RunnableTask<PurgeExecution
     private Property<Boolean> purgeLog = Property.ofValue(true);
 
     @Schema(
-        title = "Flag specifying whether to purge execution's metrics."
-    )
-    @Builder.Default
-    private Property<Boolean> purgeMetric = Property.ofValue(true);
-
-    @Schema(
         title = "Flag specifying whether to purge execution's files from the Flow's internal storage"
     )
     @Builder.Default
@@ -135,7 +129,6 @@ public class PurgeExecutions extends Task implements RunnableTask<PurgeExecution
         ExecutionService.PurgeResult purgeResult = executionService.purge(
             runContext.render(this.purgeExecution).as(Boolean.class).orElseThrow(),
             runContext.render(this.purgeLog).as(Boolean.class).orElseThrow(),
-            runContext.render(this.purgeMetric).as(Boolean.class).orElseThrow(),
             runContext.render(this.purgeStorage).as(Boolean.class).orElseThrow(),
             flowInfo.tenantId(),
             renderedNamespace,
@@ -152,7 +145,6 @@ public class PurgeExecutions extends Task implements RunnableTask<PurgeExecution
             .executionOutputsCount(purgeResult.getExecutionOutputsCount())
             .logsCount(purgeResult.getLogsCount())
             .storagesCount(purgeResult.getStoragesCount())
-            .metricsCount(purgeResult.getMetricsCount())
             .build();
     }
 
@@ -183,10 +175,5 @@ public class PurgeExecutions extends Task implements RunnableTask<PurgeExecution
             title = "The count of deleted storage files"
         )
         private int storagesCount;
-
-        @Schema(
-            title = "The count of deleted metrics"
-        )
-        private int metricsCount;
     }
 }

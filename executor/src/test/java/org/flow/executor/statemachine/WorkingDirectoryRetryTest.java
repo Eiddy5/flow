@@ -35,8 +35,6 @@ class WorkingDirectoryRetryTest {
     private final FlowWithSource flow = Flows.yaml("""
         id: working-directory-retry
         namespace: org.flow.tests
-        concurrency:
-          limit: 1
         retry:
           type: constant
           interval: PT1S
@@ -67,7 +65,7 @@ class WorkingDirectoryRetryTest {
 
         // Then
         assertThat(dispatched).extracting(task -> task.getTaskRun().getTaskId()).containsExactly("working-directory", "working-directory");
-        assertThat(harness).hasExecutionInState(created, State.Type.SUCCESS).hasRunning(flow, 0);
+        assertThat(harness).hasExecutionInState(created, State.Type.SUCCESS);
     }
 
     @Test
@@ -85,7 +83,7 @@ class WorkingDirectoryRetryTest {
 
         // Then
         assertThat(dispatched).extracting(task -> task.getTaskRun().getTaskId()).containsExactly("working-directory", "working-directory");
-        assertThat(harness).hasExecutionInState(created, State.Type.FAILED).hasRunning(flow, 0);
+        assertThat(harness).hasExecutionInState(created, State.Type.FAILED);
     }
 
     private ScriptedWorker recordingWorker(State.Type generateState) {

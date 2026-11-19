@@ -14,13 +14,10 @@ import java.util.Optional;
 
 import org.slf4j.Logger;
 
-import org.flow.core.services.NamespaceService;
 import org.flow.core.utils.FileUtils;
 
 import jakarta.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
-
-import static org.flow.core.storages.NamespaceFile.toLogicalPath;
 
 /**
  * The default {@link Storage} implementation acting as a facade to the {@link StorageInterface}.
@@ -33,8 +30,6 @@ public class InternalStorage implements Storage {
     private final Logger logger;
     private final StorageContext context;
     private final StorageInterface storage;
-    private final NamespaceFactory namespaceFactory;
-    private final NamespaceService namespaceService;
 
     /**
      * Creates a new {@link InternalStorage} instance.
@@ -42,8 +37,8 @@ public class InternalStorage implements Storage {
      * @param context The storage context.
      * @param storage The storage to delegate operations.
      */
-    public InternalStorage(StorageContext context, StorageInterface storage, NamespaceFactory namespaceFactory) {
-        this(log, context, storage, null, namespaceFactory);
+    public InternalStorage(StorageContext context, StorageInterface storage) {
+        this(log, context, storage);
     }
 
     /**
@@ -53,36 +48,10 @@ public class InternalStorage implements Storage {
      * @param context The storage context.
      * @param storage The storage to delegate operations.
      */
-    public InternalStorage(Logger logger, StorageContext context, StorageInterface storage, NamespaceService namespaceService, NamespaceFactory namespaceFactory) {
+    public InternalStorage(Logger logger, StorageContext context, StorageInterface storage) {
         this.logger = logger;
         this.context = context;
         this.storage = storage;
-        this.namespaceService = namespaceService;
-        this.namespaceFactory = namespaceFactory;
-    }
-
-    /**
-     * {@inheritDoc}
-     **/
-    @Override
-    public Namespace namespace() {
-        return namespaceFactory.of(logger, context.getTenantId(), context.getNamespace());
-    }
-
-    /**
-     * {@inheritDoc}
-     **/
-    @Override
-    public Namespace namespace(String namespace) {
-        boolean isExternalNamespace = !namespace.equals(context.getNamespace());
-        // Checks whether the contextual namespace is allowed to access the passed namespace.
-        if (isExternalNamespace && namespaceService != null) {
-            namespaceService.checkAllowedNamespace(
-                context.getTenantId(), namespace, // requested Tenant/Namespace
-                context.getTenantId(), context.getNamespace() // from Tenant/Namespace
-            );
-        }
-        return namespaceFactory.of(logger, context.getTenantId(), namespace);
     }
 
     /**
@@ -159,7 +128,7 @@ public class InternalStorage implements Storage {
     @Override
     public URI putFile(InputStream inputStream, String name) throws IOException {
         URI uri = context.getContextStorageURI();
-        URI resolved = buildStorageUri(uri, toLogicalPath(name));
+        URI resolved = buildStorageUri(uri, name.replace('\\', '/'));
         return this.storage.put(context.getTenantId(), context.getNamespace(), resolved, new BufferedInputStream(inputStream));
     }
 

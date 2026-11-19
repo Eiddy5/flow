@@ -3,18 +3,14 @@ package org.flow.core.services;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.concurrent.ExecutorService;
 
-import org.flow.core.contexts.FlowContext;
 import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.GenericFlow;
 import org.flow.core.models.validations.ModelValidator;
 import org.flow.core.queues.BroadcastQueueInterface;
-import org.flow.core.repositories.ConcurrencyLimitRepositoryInterface;
 import org.flow.core.repositories.FlowRepositoryInterface;
 import org.flow.core.runners.FlowMetaStoreInterface;
-import org.flow.core.utils.ExecutorsUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -55,19 +51,11 @@ class SessionFlowServiceTest {
         parser = mock(FlowParsingService.class);
         validator = mock(ModelValidator.class);
         queue = mock(BroadcastQueueInterface.class);
-        var executors = mock(ExecutorsUtils.class);
-        var flowContext = mock(FlowContext.class);
-        when(flowContext.getAllocatedCpuCores()).thenReturn(1);
-        when(executors.maxCachedThreadPool(1, "flow-service")).thenReturn(mock(ExecutorService.class));
-        try (var currentContext = mockStatic(FlowContext.class)) {
-            currentContext.when(FlowContext::getContext).thenReturn(flowContext);
-            service = new FlowService(executors);
-        }
+        service = new FlowService();
         inject("flowRepository", repository);
         inject("flowParsingService", parser);
         inject("modelValidator", validator);
         inject("flowQueue", queue);
-        inject("concurrencyLimitRepository", mock(ConcurrencyLimitRepositoryInterface.class));
         inject("flowMetaStore", mock(FlowMetaStoreInterface.class));
         session = new HostSession();
         var user = new HostUser();

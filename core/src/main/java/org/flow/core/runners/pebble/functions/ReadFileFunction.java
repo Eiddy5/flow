@@ -4,17 +4,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 import com.amazon.ion.util.IonStreamUtils;
 
 import org.flow.core.runners.LocalPath;
-import org.flow.core.storages.Namespace;
-import org.flow.core.storages.NamespaceFile;
 import org.flow.core.storages.StorageContext;
 
 import io.pebbletemplates.pebble.template.EvaluationContext;
@@ -23,26 +17,8 @@ import jakarta.inject.Singleton;
 @Singleton
 public class ReadFileFunction extends AbstractFileFunction {
     public static final String NAME = "read";
-    public static final String REVISION = "revision";
 
-    private static final String ERROR_MESSAGE = "The 'read' function expects an argument 'path' that is a path to a namespace file or an internal storage URI.";
-
-    @Override
-    public List<String> getArgumentNames() {
-        return Stream.concat(
-            super.getArgumentNames().stream(),
-            Stream.of(REVISION)
-        ).toList();
-    }
-
-    @Override
-    public Map<String, String> getArgumentDefaults() {
-        HashMap<String, String> defaults = new HashMap<>();
-        defaults.put(PATH, "'a/namespace/file'");
-        defaults.put(NAMESPACE, "flow.namespace");
-        defaults.put(REVISION, null);
-        return defaults;
-    }
+    private static final String ERROR_MESSAGE = "The 'read' function expects an argument 'path' that is an execution storage or local file URI.";
 
     @Override
     protected Object fileFunction(EvaluationContext context, URI path, String namespace, String tenantId, Map<String, Object> args) throws IOException {
@@ -57,11 +33,6 @@ public class ReadFileFunction extends AbstractFileFunction {
                     yield readContent(inputStream);
                 }
             }
-            case Namespace.NAMESPACE_FILE_SCHEME -> {
-                try (InputStream inputStream = contentInputStream(path, namespace, tenantId, args)) {
-                    yield readContent(inputStream);
-                }
-            }
             default -> throw new IllegalArgumentException(SCHEME_NOT_SUPPORTED_ERROR.formatted(path));
         };
     }
@@ -73,25 +44,6 @@ public class ReadFileFunction extends AbstractFileFunction {
             return bytes;
         }
         return new String(bytes, StandardCharsets.UTF_8);
-    }
-
-    private InputStream contentInputStream(URI path, String namespace, String tenantId, Map<String, Object> args) throws IOException {
-        Namespace namespaceStorage = namespaceFactory.get().of(tenantId, namespace);
-
-        if (args.containsKey(REVISION)) {
-            Integer revision;
-            try {
-                revision = Integer.parseInt(args.get(REVISION).toString());
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("The '" + NAME + "' function expects the 'revision' argument to be a valid integer.");
-            }
-            return namespaceStorage.getFileContent(
-                NamespaceFile.normalize(Path.of(path.getPath())),
-                revision
-            );
-        }
-
-        return namespaceStorage.getFileContent(NamespaceFile.normalize(Path.of(path.getPath())));
     }
 
     @Override

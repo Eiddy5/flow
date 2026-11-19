@@ -8,7 +8,7 @@ import java.time.ZoneOffset;
 
 /**
  * A {@link Clock} the test moves by hand. Time only advances when a test says so, which is what
- * makes delay, SLA and schedule-date decisions deterministic.
+ * makes delay and schedule-date decisions deterministic.
  */
 public final class MutableClock extends Clock {
     private volatile Instant now;

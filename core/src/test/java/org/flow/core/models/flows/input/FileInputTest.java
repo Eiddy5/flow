@@ -22,7 +22,7 @@ class FileInputTest {
 
         // Test valid CSV file
         assertDoesNotThrow(() -> csvInput.validate(URI.create("file:///path/to/file.csv")));
-        assertDoesNotThrow(() -> csvInput.validate(URI.create("nsfile:///path/to/file.CSV"))); // Test case-insensitive
+        assertDoesNotThrow(() -> csvInput.validate(URI.create("file:///path/to/file.CSV"))); // Test case-insensitive
 
         // Test multiple extensions
         final FileInput docInput = FileInput.builder()

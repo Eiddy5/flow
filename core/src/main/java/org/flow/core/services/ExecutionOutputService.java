@@ -9,7 +9,6 @@ import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.ExecutionOutput;
 import org.flow.core.repositories.ExecutionOutputRepositoryInterface;
 import org.flow.core.services.configuration.ExecutionOutputConfiguration;
-import org.flow.core.storages.NamespaceFactory;
 import org.flow.core.storages.StorageContext;
 import org.flow.core.storages.StorageInterface;
 import org.flow.core.utils.MapUtils;
@@ -24,9 +23,9 @@ import jakarta.inject.Singleton;
 public class ExecutionOutputService extends AbstractOutputService {
     private final ExecutionOutputRepositoryInterface outputRepository;
 
-    public ExecutionOutputService(ExecutionOutputRepositoryInterface outputRepository, StorageInterface storageInterface, NamespaceFactory namespaceFactory,
+    public ExecutionOutputService(ExecutionOutputRepositoryInterface outputRepository, StorageInterface storageInterface,
         ExecutionOutputConfiguration executionOutputConfiguration) {
-        super(storageInterface, namespaceFactory, executionOutputConfiguration.limit());
+        super(storageInterface, executionOutputConfiguration.limit());
         this.outputRepository = outputRepository;
     }
 

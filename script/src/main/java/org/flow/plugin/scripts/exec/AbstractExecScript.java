@@ -25,7 +25,7 @@ import lombok.experimental.SuperBuilder;
 @EqualsAndHashCode
 @Getter
 @NoArgsConstructor
-public abstract class AbstractExecScript extends Task implements NamespaceFilesInterface, InputFilesInterface, OutputFilesInterface {
+public abstract class AbstractExecScript extends Task implements InputFilesInterface, OutputFilesInterface {
     @Schema(
         title = "The task runner to use.",
         description = "Required. Select a task runner explicitly, such as org.flow.plugin.core.runner.Process. Each runner plugin has its own properties."
@@ -61,8 +61,6 @@ public abstract class AbstractExecScript extends Task implements NamespaceFilesI
             "\nYou can also disable it if your interpreter does not support the `set -e`option."
     )
     protected Property<Boolean> failFast = Property.ofValue(true);
-
-    private NamespaceFiles namespaceFiles;
 
     private Object inputFiles;
 
@@ -112,7 +110,6 @@ public abstract class AbstractExecScript extends Task implements NamespaceFilesI
             .withEnv(renderedEnv.isEmpty() ? new HashMap<>() : renderedEnv)
             .withContainerImage(runContext.render(this.getContainerImage()).as(String.class).orElse(null))
             .withTaskRunner(this.getTaskRunner())
-            .withNamespaceFiles(this.getNamespaceFiles())
             .withInputFiles(this.getInputFiles())
             .withOutputFiles(runContext.render(this.getOutputFiles()).asList(String.class))
             .withEnableOutputDirectory(runContext.render(this.getOutputDirectory()).as(Boolean.class).orElse(null))

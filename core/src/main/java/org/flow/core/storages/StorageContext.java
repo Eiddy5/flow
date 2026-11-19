@@ -34,13 +34,9 @@ public class StorageContext {
     /** Per-flow subdir that holds execution storage. */
     public static final String EXECUTIONS_DIR_NAME = "executions";
 
-    /** Prefix of namespace-level metadata directories ({@code _files}, {@code _kv}, …). */
+    /** Prefix of namespace-level metadata directories ({@code _trigger_state}, for example). */
     public static final String RESERVED_NAMESPACE_DIR_PREFIX = "_";
 
-    // /{namespace}/_files
-    static final String PREFIX_FORMAT_NAMESPACE_FILE = "/%s/_files";
-    // /{namespace}/_kv
-    static final String PREFIX_FORMAT_KV = "/%s/_kv";
     // /{namespace}/{flow-id}
     static final String PREFIX_FORMAT_FLOWS = "/%s/%s";
     // /{namespace}/{flow-id}/executions/{execution-id}
@@ -319,14 +315,6 @@ public class StorageContext {
     @Override
     public String toString() {
         return "StorageContext::Execution";
-    }
-
-    public static String namespaceFilePrefix(String namespace) {
-        return String.format(PREFIX_FORMAT_NAMESPACE_FILE, namespace.replace(".", "/"));
-    }
-
-    public static String kvPrefix(String namespace) {
-        return String.format(PREFIX_FORMAT_KV, namespace.replace(".", "/"));
     }
 
     /**

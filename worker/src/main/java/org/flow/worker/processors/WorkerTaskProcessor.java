@@ -70,7 +70,6 @@ public class WorkerTaskProcessor extends AbstractWorkerJobProcessor<WorkerTask> 
 
     // QUEUEs
     private final WorkerQueue<WorkerTaskResult> workerTaskResultQueue;
-    private final WorkerQueue<MetricEntry> workerMetricQueue;
 
     public WorkerTaskProcessor(final String workerId,
         final String workerGroup,
@@ -81,7 +80,6 @@ public class WorkerTaskProcessor extends AbstractWorkerJobProcessor<WorkerTask> 
         final RunContextInitializer runContextInitializer,
         final RunContextLoggerFactory runContextLoggerFactory,
         final WorkerQueue<WorkerTaskResult> workerTaskResultQueue,
-        final WorkerQueue<MetricEntry> workerMetricQueue,
         final ExecutionKilledManager executionKilledManager) {
         super(workerGroup, metricRegistry, workerSecurityService, tracer, executionKilledManager);
         this.runContextInitializer = runContextInitializer;
@@ -90,7 +88,6 @@ public class WorkerTaskProcessor extends AbstractWorkerJobProcessor<WorkerTask> 
         this.workerGroup = workerGroup;
         this.serverConfig = serverConfig;
         this.workerTaskResultQueue = workerTaskResultQueue;
-        this.workerMetricQueue = workerMetricQueue;
     }
 
     /**
@@ -450,11 +447,6 @@ public class WorkerTaskProcessor extends AbstractWorkerJobProcessor<WorkerTask> 
             .withLogFile(runContext.logFileURI());
 
         // metrics
-        runContext.metrics()
-            .stream()
-            .map(metric -> MetricEntry.of(workerTask.getTaskRun(), metric, workerTask.getExecutionKind()))
-            .forEach(workerMetricQueue::put);
-
         // save outputs
         List<TaskRunAttempt> attempts = this.addAttempt(workerTask, taskRunAttempt);
 

@@ -70,7 +70,7 @@ public abstract class TaskRunner<T extends TaskRunnerDetailResult> implements Pl
      * Task runners may be local or remote.
      * For local task runner (like in process or in a local Docker engine), <code>filesToUpload</code> and <code>filesToDownload</code> may be ignored as they are using the task working
      * directory.
-     * For remote task runner (like Kubernetes or in a cloud provider), <code>filesToUpload</code> must be used to upload input and namespace files to the runner,
+     * For remote task runner (like Kubernetes or in a cloud provider), <code>filesToUpload</code> must be used to upload input files to the runner,
      * and <code>filesToDownload</code> must be used to download output files from the runner.
      */
     public abstract TaskRunnerResult<T> run(RunContext runContext, TaskCommands taskCommands, List<String> filesToDownload) throws Exception;

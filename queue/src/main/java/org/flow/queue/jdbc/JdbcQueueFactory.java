@@ -11,8 +11,6 @@ import org.flow.core.models.executions.*;
 import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.ExecutionKilled;
 import org.flow.core.models.executions.LogEntry;
-import org.flow.core.models.executions.MetricEntry;
-import org.flow.core.models.executions.statistics.ExecutionStatistic;
 import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.queues.BroadcastQueueInterface;
 import org.flow.core.queues.DispatchQueueInterface;
@@ -120,23 +118,6 @@ public class JdbcQueueFactory implements QueueFactoryInterface<JdbcDependencies>
     public VNodeDispatchQueueInterface<TriggerEvent> triggerEventQueue(JdbcDependencies dependencies) {
         return new JdbcVNodeDispatchQueue<>(
             TriggerEvent.class, dependencies.queueService(), dependencies.jdbcQueueClient(), dependencies.executorsUtils(), dependencies.metricRegistry(), dependencies.ignoreExecutionService()
-        );
-    }
-
-    @QueueBean
-    @Override
-    public DispatchQueueInterface<MetricEntry> metricQueue(JdbcDependencies dependencies) {
-        return new JdbcDispatchQueue<>(
-            MetricEntry.class, dependencies.queueService(), dependencies.jdbcQueueClient(), dependencies.executorsUtils(), dependencies.metricRegistry(), dependencies.ignoreExecutionService()
-        );
-    }
-
-    @QueueBean
-    @Override
-    public DispatchQueueInterface<ExecutionStatistic> executionStatisticQueue(JdbcDependencies dependencies) {
-        return new JdbcDispatchQueue<>(
-            ExecutionStatistic.class, dependencies.queueService(), dependencies.jdbcQueueClient(), dependencies.executorsUtils(), dependencies.metricRegistry(),
-            dependencies.ignoreExecutionService()
         );
     }
 

@@ -40,7 +40,7 @@ abstract public class Task implements TaskInterface {
     /**
      * Maximum length of a task id. Enforced for flow-authored tasks by the {@code @Size} constraint
      * below, and used to truncate runtime-generated task ids (e.g. dbt node ids) before they are
-     * persisted as {@code task_id} in the logs/metrics stores.
+     * persisted as {@code task_id} in the log store.
      */
     public static final int ID_MAX_LENGTH = 256;
 

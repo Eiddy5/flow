@@ -14,7 +14,7 @@ import org.jooq.impl.DSL;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.flow.gen.flow.Tables.METRICS;
+import static org.flow.gen.flow.Tables.LOGS;
 
 /**
  * Pins the UTC semantics of {@link PostgresRepositoryUtils#utcTimestampField(Field)}.
@@ -55,7 +55,7 @@ class PostgresUtcTimestampFieldTest {
                     context.execute("INSERT INTO utc_timestamp_field_test VALUES ({0}::timestamptz)", DSL.val(INSTANT.toString()));
 
                     // When extracting date parts the way groupByFields does
-                    var table = METRICS.rename("utc_timestamp_field_test");
+                    var table = LOGS.rename("utc_timestamp_field_test");
                     Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField(table.TIMESTAMP);
                     Record2<Integer, Integer> parts = context
                         .select(DSL.day(timestamp), DSL.hour(timestamp))
@@ -77,7 +77,7 @@ class PostgresUtcTimestampFieldTest {
     @Test
     void shouldRenderAtTimeZoneUtcRatherThanAPlainCast() {
         // Given the grouping timestamp expression for Postgres
-        Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField(METRICS.TIMESTAMP);
+        Field<java.sql.Timestamp> timestamp = PostgresRepositoryUtils.utcTimestampField(LOGS.TIMESTAMP);
 
         // When rendering it
         String sql = DSL.using(SQLDialect.POSTGRES).render(DSL.hour(timestamp));

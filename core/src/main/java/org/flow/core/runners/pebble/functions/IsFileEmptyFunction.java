@@ -3,13 +3,9 @@ package org.flow.core.runners.pebble.functions;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.nio.file.Path;
 import java.util.Map;
 
 import org.flow.core.runners.LocalPath;
-import org.flow.core.storages.FileAttributes;
-import org.flow.core.storages.Namespace;
-import org.flow.core.storages.NamespaceFile;
 import org.flow.core.storages.StorageContext;
 
 import io.pebbletemplates.pebble.template.EvaluationContext;
@@ -18,7 +14,7 @@ import jakarta.inject.Singleton;
 @Singleton
 public class IsFileEmptyFunction extends AbstractFileFunction {
     public static final String NAME = "isFileEmpty";
-    private static final String ERROR_MESSAGE = "The 'isFileEmpty' function expects an argument 'path' that is a path to a namespace file or an internal storage URI.";
+    private static final String ERROR_MESSAGE = "The 'isFileEmpty' function expects an argument 'path' that is an execution storage or local file URI.";
 
     @Override
     protected Object fileFunction(EvaluationContext context, URI path, String namespace, String tenantId, Map<String, Object> args) throws IOException {
@@ -34,12 +30,6 @@ public class IsFileEmptyFunction extends AbstractFileFunction {
                     byte[] buffer = new byte[1];
                     yield inputStream.read(buffer, 0, 1) <= 0;
                 }
-            }
-            case Namespace.NAMESPACE_FILE_SCHEME -> {
-                FileAttributes fileAttributes = namespaceFactory.get()
-                    .of(tenantId, namespace)
-                    .getFileMetadata(NamespaceFile.normalize(Path.of(path.getPath())));
-                yield fileAttributes.getSize() <= 0;
             }
             default -> throw new IllegalArgumentException(SCHEME_NOT_SUPPORTED_ERROR.formatted(path));
         };

@@ -133,12 +133,6 @@ class FlowWithSourceTest {
                     Schedule.builder().id("schedule").cron("0 1 9 * * *").build()
                 )
             )
-            .concurrency(
-                Concurrency.builder()
-                    .behavior(Concurrency.Behavior.CANCEL)
-                    .limit(2)
-                    .build()
-            )
             .build();
         String expectedSource = flow.sourceOrGenerateIfNull() + " # additional comment";
         FlowWithSource of = FlowWithSource.of(flow, expectedSource);

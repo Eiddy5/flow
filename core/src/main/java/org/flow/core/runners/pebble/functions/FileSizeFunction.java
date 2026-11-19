@@ -2,14 +2,11 @@ package org.flow.core.runners.pebble.functions;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Map;
 
 import org.flow.core.runners.LocalPath;
 import org.flow.core.storages.FileAttributes;
-import org.flow.core.storages.Namespace;
-import org.flow.core.storages.NamespaceFile;
 import org.flow.core.storages.StorageContext;
 
 import io.pebbletemplates.pebble.template.EvaluationContext;
@@ -30,12 +27,6 @@ public class FileSizeFunction extends AbstractFileFunction {
             case LocalPath.FILE_SCHEME -> {
                 BasicFileAttributes fileAttributes = localPathFactory.get().createLocalPath().getAttributes(path);
                 yield fileAttributes.size();
-            }
-            case Namespace.NAMESPACE_FILE_SCHEME -> {
-                FileAttributes fileAttributes = namespaceFactory.get()
-                    .of(tenantId, namespace)
-                    .getFileMetadata(NamespaceFile.normalize(Path.of(path.getPath())));
-                yield fileAttributes.getSize();
             }
             default -> throw new IllegalArgumentException(SCHEME_NOT_SUPPORTED_ERROR.formatted(path));
         };

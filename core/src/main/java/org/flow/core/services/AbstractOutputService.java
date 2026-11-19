@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flow.core.exceptions.InternalException;
 import org.flow.core.serializers.JacksonMapper;
 import org.flow.core.storages.InternalStorage;
-import org.flow.core.storages.NamespaceFactory;
 import org.flow.core.storages.StorageContext;
 import org.flow.core.storages.StorageInterface;
 
@@ -29,12 +28,10 @@ public abstract class AbstractOutputService {
     protected static final ObjectMapper ION_MAPPER = JacksonMapper.ofIon();
 
     private final StorageInterface storageInterface;
-    private final NamespaceFactory namespaceFactory;
     private final int limit;
 
-    protected AbstractOutputService(StorageInterface storageInterface, NamespaceFactory namespaceFactory, int limit) {
+    protected AbstractOutputService(StorageInterface storageInterface, int limit) {
         this.storageInterface = storageInterface;
-        this.namespaceFactory = namespaceFactory;
         this.limit = limit;
     }
 
@@ -64,7 +61,7 @@ public abstract class AbstractOutputService {
      */
     protected URI storeToInternalStorage(StorageContext context, byte[] outputBytes) throws InternalException {
         try {
-            var storage = new InternalStorage(context, storageInterface, namespaceFactory);
+            var storage = new InternalStorage(context, storageInterface);
             File file = Files.createTempFile("output-", ".ion").toFile();
             Files.write(file.toPath(), outputBytes);
             return storage.putFile(file);
@@ -89,7 +86,7 @@ public abstract class AbstractOutputService {
                 return null;
             }
 
-            var storage = new InternalStorage(context.get(), storageInterface, namespaceFactory);
+            var storage = new InternalStorage(context.get(), storageInterface);
             try (var is = storage.getFile(URI.create(uri))) {
                 return ION_MAPPER.readValue(is, JacksonMapper.MAP_TYPE_REFERENCE);
             }

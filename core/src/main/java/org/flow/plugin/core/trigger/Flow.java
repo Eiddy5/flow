@@ -41,7 +41,6 @@ import lombok.experimental.SuperBuilder;
 import lombok.extern.slf4j.Slf4j;
 
 import static org.flow.core.models.flows.State.Type.PAUSED;
-import static org.flow.core.topologies.FlowTopologyService.SIMULATED_EXECUTION;
 
 @SuperBuilder
 @ToString
@@ -237,6 +236,7 @@ import static org.flow.core.topologies.FlowTopologyService.SIMULATED_EXECUTION;
 public class Flow extends AbstractTrigger implements TriggerOutput<Flow.Output> {
     private static final String TRIGGER_VAR = "trigger";
     private static final String OUTPUTS_VAR = "outputs";
+    private static final Label SIMULATED_EXECUTION = new Label(Label.SIMULATED_EXECUTION, "true");
     static final String DEPENDS_ON_CONDITION_PREFIX = "depends_on_";
 
     @Nullable

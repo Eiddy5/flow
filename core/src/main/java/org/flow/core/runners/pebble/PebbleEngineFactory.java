@@ -252,7 +252,7 @@ public class PebbleEngineFactory {
                         )
                     );
                 }
-                // Everything else (env(), kv(), now(), uuid(), read(), …) is dropped.
+                // Everything else (env(), now(), uuid(), read(), …) is dropped.
             });
             return result;
         }

@@ -14,7 +14,6 @@ import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.models.flows.State;
 import org.flow.core.queues.BroadcastQueueInterface;
 import org.flow.core.queues.QueueException;
-import org.flow.core.runners.ExecutionQueuedStateStore;
 import org.flow.core.runners.FlowMetaStoreInterface;
 import org.flow.core.services.ExecutionService;
 import org.flow.executor.ExecutionStateStore;
@@ -33,7 +32,6 @@ public class ExecutionKilledExecutionMessageHandler implements ExecutorMessageHa
     private final ExecutionService executionService;
 
     private final ExecutionStateStore executionStateStore;
-    private final ExecutionQueuedStateStore executionQueuedStateStore;
 
     private final MetricRegistry metricRegistry;
 
@@ -50,7 +48,6 @@ public class ExecutionKilledExecutionMessageHandler implements ExecutorMessageHa
         ExecutorService executorService,
         ExecutionService executionService,
         ExecutionStateStore executionStateStore,
-        ExecutionQueuedStateStore executionQueuedStateStore,
         MetricRegistry metricRegistry,
         FlowMetaStoreInterface flowMetaStore,
         BroadcastQueueInterface<ExecutionKilled> killQueue,
@@ -59,7 +56,6 @@ public class ExecutionKilledExecutionMessageHandler implements ExecutorMessageHa
         this.executorService = executorService;
         this.executionService = executionService;
         this.executionStateStore = executionStateStore;
-        this.executionQueuedStateStore = executionQueuedStateStore;
         this.metricRegistry = metricRegistry;
         this.flowMetaStore = flowMetaStore;
         this.killQueue = killQueue;
@@ -148,11 +144,6 @@ public class ExecutionKilledExecutionMessageHandler implements ExecutorMessageHa
         return executionStateStore.lock(executionId, execution ->
         {
             FlowInterface flow = flowMetaStore.findByExecution(execution).orElseThrow();
-
-            // remove it from the queued store if it was queued so it would not be restarted
-            if (execution.getState().isQueued()) {
-                executionQueuedStateStore.remove(execution);
-            }
 
             Execution killing = executionService.kill(execution, flow, afterKillState);
             // kill() returns the same object unchanged when the execution is already terminal.

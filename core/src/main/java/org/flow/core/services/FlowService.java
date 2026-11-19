@@ -4,8 +4,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -19,7 +17,6 @@ import org.apache.commons.lang3.builder.EqualsBuilder;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.google.common.annotations.VisibleForTesting;
 
-import org.flow.core.contexts.FlowContext;
 import org.flow.core.exceptions.FlowProcessingException;
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
 import org.flow.plugin.api.Plugin;
@@ -30,7 +27,6 @@ import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.ExecutableTask;
 import org.flow.core.models.tasks.RunnableTask;
 import org.flow.core.models.tasks.Task;
-import org.flow.core.models.topologies.FlowTopology;
 import org.flow.core.models.triggers.AbstractTrigger;
 import org.flow.core.models.triggers.TriggerId;
 import org.flow.core.models.triggers.WorkerTriggerInterface;
@@ -40,10 +36,7 @@ import org.flow.core.models.validations.ValidateConstraintViolation;
 import org.flow.core.plugins.PluginRegistry;
 import org.flow.core.queues.BroadcastQueueInterface;
 import org.flow.core.queues.QueueException;
-import org.flow.core.repositories.ConcurrencyLimitRepositoryInterface;
 import org.flow.core.repositories.FlowRepositoryInterface;
-import org.flow.core.repositories.FlowTopologyRepositoryInterface;
-import org.flow.core.runners.ConcurrencyLimit;
 import org.flow.core.runners.FlowMetaStoreInterface;
 import org.flow.core.runners.RunContext;
 import org.flow.core.runners.RunContextFactory;
@@ -54,8 +47,6 @@ import org.flow.core.scheduler.events.TriggerFlowRevisionUpdated;
 import org.flow.core.scheduler.events.TriggerUpdated;
 import org.flow.core.scheduler.queue.TriggerEventQueue;
 import org.flow.core.serializers.JacksonMapper;
-import org.flow.core.topologies.FlowTopologyService;
-import org.flow.core.utils.ExecutorsUtils;
 import org.flow.core.utils.ListUtils;
 import org.flow.core.utils.PebbleUtil;
 import org.flow.core.utils.SecretUtils;
@@ -65,7 +56,6 @@ import org.paas.session.Session;
 import org.paas.session.SessionUser;
 
 import io.micronaut.core.annotation.Nullable;
-import jakarta.annotation.PreDestroy;
 import jakarta.inject.Inject;
 import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
@@ -88,13 +78,7 @@ public class FlowService {
     private ModelValidator modelValidator;
 
     @Inject
-    private FlowTopologyRepositoryInterface flowTopologyRepository;
-
-    @Inject
     private Provider<RunContextFactory> runContextFactory; // Lazy init: avoid circular dependency error.
-
-    @Inject
-    private FlowTopologyService flowTopologyService;
 
     @Inject
     private BroadcastQueueInterface<FlowInterface> flowQueue;
@@ -106,29 +90,10 @@ public class FlowService {
     private PluginRegistry pluginRegistry;
 
     @Inject
-    private ConcurrencyLimitRepositoryInterface concurrencyLimitRepository;
-
-    @Inject
     private FlowMetaStoreInterface flowMetaStore;
 
-    private ExecutorService executorService;
-
-    @Inject
-    public FlowService(ExecutorsUtils executorsUtils) {
-        this.executorService = executorsUtils.maxCachedThreadPool(FlowContext.getContext().getAllocatedCpuCores(), "flow-service");
-    }
-
-    @PreDestroy
-    void close() throws InterruptedException {
-        executorService.shutdown();
-
-        if (!executorService.awaitTermination(10, TimeUnit.SECONDS)) {
-            executorService.shutdownNow();
-        }
-    }
-
     /**
-     * 校验并创建当前会话租户的流程，保存后更新拓扑、触发器和运行缓存。
+     * 校验并创建当前会话租户的流程，保存后更新触发器和运行缓存。
      * @param session 具有企业和操作者的宿主会话，不能为 null
      * @param flow 带 YAML 源码的流程定义，租户必须与会话一致；保留 draft 标志
      * @return 已保存并分配版本的流程
@@ -156,7 +121,7 @@ public class FlowService {
 
         FlowWithSource created = flowRepository.create(flow);
 
-        // impact downstream consumers: topology, scheduler, flow metastore, concurrency limit
+        // Notify the scheduler and flow metastore.
         impactDownstreamConsumers(created);
 
         return created;
@@ -270,57 +235,11 @@ public class FlowService {
 
     // overridden in EE
     protected void impactDownstreamConsumers(FlowWithSource flow) throws QueueException {
-        // update the topology asynchronously
-        executorService.submit(() -> updateTopology(flow));
-
         // compute triggers events for the Scheduler
         recomputeTriggers(flow);
 
         // send it to the flow queue for the flow metastore
         flowQueue.emit(flow);
-
-        // update concurrency limit if any
-        updateConcurrencyLimit(flow);
-    }
-
-    @VisibleForTesting
-    void updateTopology(FlowWithSource flow) {
-        try {
-            // Runs on a background thread with no HTTP request / user context, so the ACL-aware
-            // findAllWithSource() would return zero flows in EE: bypass ACLs with findAllWithSourceWithNoAcl().
-            List<FlowWithSource> allFlows = flowRepository.findAllWithSourceWithNoAcl(flow.getTenantId())
-                .stream()
-                .filter(candidate -> !candidate.isDeleted())
-                .toList();
-
-            // Taken from the same snapshot as the edges, so "does this flow still exist" and "what are its
-            // edges" can never be answered from two different states of the repository.
-            Optional<FlowWithSource> current = allFlows.stream()
-                .filter(candidate -> candidate.uidWithoutRevision().equals(flow.uidWithoutRevision()))
-                .findFirst();
-
-            List<FlowTopology> topologies = current
-                .map(it -> flowTopologyService.topology(it, allFlows).distinct().toList())
-                .orElseGet(List::of);
-
-            // If the flow changed meanwhile, that change scheduled its own recomputation and saving
-            // ours would replace a fresher topology with a staler one.
-            Optional<FlowWithSource> latest = flowRepository.findByIdWithSourceWithoutAcl(flow.getTenantId(), flow.getNamespace(), flow.getId(), Optional.empty());
-            if (!Objects.equals(liveRevision(current), liveRevision(latest))) {
-                log.debug("Skipping an outdated flow topology computation for flow '{}'", flow.uidWithoutRevision());
-                return;
-            }
-
-            flowTopologyRepository.save(flow, topologies);
-        } catch (Exception e) {
-            // The Future returned by executorService.submit(...) is never get()-ed, so without
-            // this log a topology failure would be silently swallowed.
-            log.error("Unable to update the flow topology for flow '{}'", flow.uidWithoutRevision(), e);
-        }
-    }
-
-    private static Integer liveRevision(Optional<? extends FlowInterface> flow) {
-        return flow.filter(it -> !it.isDeleted()).map(FlowInterface::getRevision).orElse(null);
     }
 
     private void recomputeTriggers(FlowWithSource flow) {
@@ -389,46 +308,6 @@ public class FlowService {
                     trigger -> sendTriggerEvent(new TriggerCreated(TriggerId.of(flow, trigger), flow.getRevision()))
                 );
         }
-    }
-
-    private void updateConcurrencyLimit(FlowWithSource flow) {
-        if (flow.isDeleted()) {
-            removeConcurrencyLimit(flow);
-            return;
-        }
-
-        // A draft revision is never picked up by the executor, so it must neither get a live
-        // concurrency limit nor remove the one belonging to the live revision.
-        if (flow.isDraft()) {
-            return;
-        }
-
-        if (flow.getConcurrency() == null) {
-            removeConcurrencyLimit(flow);
-            return;
-        }
-
-        var previous = flow.getRevision() <= 1 ? null : flowRepository.findById(flow.getTenantId(), flow.getNamespace(), flow.getId(), Optional.of(flow.getRevision() - 1)).orElse(null);
-
-        // If the previous revision was soft-deleted, its concurrency limit was already removed:
-        // treat this as if there was no previous so a new concurrency limit is re-initialized.
-        if (previous != null && previous.isDeleted()) {
-            previous = null;
-        }
-
-        if (previous == null || previous.getConcurrency() == null) {
-            initConcurrencyLimit(flow);
-        }
-    }
-
-    private void removeConcurrencyLimit(FlowWithSource flow) {
-        var concurrencyLimit = new ConcurrencyLimit(flow.getTenantId(), flow.getNamespace(), flow.getId(), 0);
-        concurrencyLimitRepository.delete(concurrencyLimit);
-    }
-
-    private void initConcurrencyLimit(FlowWithSource flow) {
-        var concurrencyLimit = new ConcurrencyLimit(flow.getTenantId(), flow.getNamespace(), flow.getId(), 0);
-        concurrencyLimitRepository.update(concurrencyLimit);
     }
 
     private void sendTriggerEvent(TriggerEvent event) {
@@ -1196,56 +1075,6 @@ public class FlowService {
             // so the execution fails with the same error path as other invalid flows.
             return Optional.of(new ConstraintViolationException(e.getMessage(), Set.of()));
         }
-    }
-
-    /**
-     * 查询当前会话租户的流程依赖图，递归展开时保持同一租户条件。
-     * @param session 具有企业和操作者的宿主会话，不能为 null
-     * @param namespace 流程命名空间，不能为 null
-     * @param id 流程标识，不能为 null
-     * @param destinationOnly true 只查询入向依赖，false 查询两个方向
-     * @param expandAll true 递归展开，false 只查询一层
-     * @return 匹配的依赖边流；无匹配时为空
-     */
-    public <S extends Session<U>, U extends SessionUser> Stream<FlowTopology> findDependencies(S session, String namespace, String id, boolean destinationOnly, boolean expandAll) {
-        SessionUtil.user(session);
-        String tenant = SessionUtil.company(session);
-        return expandAll ? recursiveFlowTopology(new ArrayList<>(), tenant, namespace, id, destinationOnly)
-            : flowTopologyRepository.findByFlow(tenant, namespace, id, destinationOnly).stream();
-    }
-
-    /**
-     * 在固定租户中递归收集依赖边，并通过已访问列表避免重复展开。
-     * @param visitedTopologies 已访问边标识，将追加本次遇到的边
-     * @param tenantId 原始会话租户，递归过程中不从关系节点覆盖
-     * @param namespace 当前节点命名空间，不能为 null
-     * @param id 当前流程标识，不能为 null
-     * @param destinationOnly true 只查入向边，false 查两个方向
-     * @return 去重后的依赖边流
-     */
-    private Stream<FlowTopology> recursiveFlowTopology(List<String> visitedTopologies, String tenantId, String namespace, String id, boolean destinationOnly) {
-        var flowTopologies = flowTopologyRepository.findByFlow(tenantId, namespace, id, destinationOnly);
-
-        var visitedNodes = new ArrayList<String>();
-        visitedNodes.add(id);
-        return flowTopologies.stream()
-            // ignore already visited topologies
-            .filter(x -> !visitedTopologies.contains(x.uid()))
-            .flatMap(topology ->
-            {
-                visitedTopologies.add(topology.uid());
-                Stream<FlowTopology> subTopologies = Stream
-                    .of(topology.getDestination(), topology.getSource())
-                    // ignore already visited nodes
-                    .filter(x -> !visitedNodes.contains(x.getId()))
-                    // recursively visit children and parents nodes
-                    .flatMap(relationNode ->
-                    {
-                        visitedNodes.add(relationNode.getId());
-                        return recursiveFlowTopology(visitedTopologies, tenantId, relationNode.getNamespace(), relationNode.getId(), destinationOnly);
-                    });
-                return Stream.concat(Stream.of(topology), subTopologies);
-            });
     }
 
     private IllegalStateException noRepositoryException() {

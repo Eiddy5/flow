@@ -11,7 +11,6 @@ import org.apache.commons.lang3.SystemUtils;
 
 import org.flow.core.exceptions.IllegalVariableEvaluationException;
 import org.flow.core.models.property.Property;
-import org.flow.core.models.tasks.NamespaceFiles;
 import org.flow.core.models.tasks.RunnableTaskException;
 import org.flow.core.models.tasks.runners.*;
 import org.flow.core.models.tasks.runners.DefaultLogConsumer;
@@ -21,7 +20,6 @@ import org.flow.core.runners.RunVariables;
 import org.flow.core.runners.WorkingDir;
 import org.flow.core.serializers.JacksonMapper;
 import org.flow.core.utils.IdUtils;
-import org.flow.core.utils.NamespaceFilesUtils;
 import org.flow.plugin.core.runner.Process;
 import org.flow.plugin.scripts.exec.scripts.models.ScriptOutput;
 
@@ -78,9 +76,6 @@ public class CommandsWrapper implements TaskCommands {
     private TaskRunner<?> taskRunner;
 
     @With
-    private NamespaceFiles namespaceFiles;
-
-    @With
     private Object inputFiles;
 
     @With
@@ -121,7 +116,6 @@ public class CommandsWrapper implements TaskCommands {
             logConsumer,
             containerImage,
             taskRunner,
-            namespaceFiles,
             inputFiles,
             outputFiles,
             enableOutputDirectory,
@@ -167,10 +161,6 @@ public class CommandsWrapper implements TaskCommands {
     }
 
     public <T extends TaskRunnerDetailResult> ScriptOutput run() throws Exception {
-        if (this.namespaceFiles != null && !Boolean.FALSE.equals(runContext.render(this.namespaceFiles.getEnabled()).as(Boolean.class).orElse(true))) {
-            NamespaceFilesUtils.loadNamespaceFiles(runContext, this.namespaceFiles);
-        }
-
         // Inject non-glob outputFiles into the Pebble render context as a name→path map before any rendering.
         // This makes {{ outputFiles["name"] }} resolvable in scripts, consistent with JDBC tasks.
         // Glob patterns are skipped here — they cannot resolve to a single path; post-run collection still handles them.

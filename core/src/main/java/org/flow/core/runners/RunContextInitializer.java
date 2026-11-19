@@ -16,9 +16,7 @@ import org.flow.core.models.triggers.AbstractTrigger;
 import org.flow.core.models.triggers.TriggerContext;
 import org.flow.core.models.triggers.TriggerId;
 import org.flow.core.plugins.PluginConfigurations;
-import org.flow.core.services.NamespaceService;
 import org.flow.core.storages.InternalStorage;
-import org.flow.core.storages.NamespaceFactory;
 import org.flow.core.storages.StorageContext;
 import org.flow.core.storages.StorageInterface;
 import org.flow.core.utils.IdUtils;
@@ -44,12 +42,6 @@ public class RunContextInitializer {
 
     @Inject
     protected StorageInterface storageInterface;
-
-    @Inject
-    protected NamespaceFactory namespaceFactory;
-
-    @Inject
-    protected NamespaceService namespaceService;
 
     @Inject
     protected RunContextCache runContextCache;
@@ -100,7 +92,7 @@ public class RunContextInitializer {
 
     /**
      * Builds a {@link RunContext} for a subtask within a WorkingDirectory, reusing the parent's
-     * {@link WorkingDir} so that namespace files and prior subtask outputs remain accessible.
+     * {@link WorkingDir} so that input files and prior subtask outputs remain accessible.
      *
      * @param workerTask The subtask's {@link WorkerTask}.
      * @param workingDir The parent WorkingDirectory's {@link WorkingDir}.
@@ -143,7 +135,7 @@ public class RunContextInitializer {
 
         DefaultRunContext runContext = buildAndInitRunContext(variables, data.traceParent(), workingDir);
         runContext.setPluginConfiguration(pluginConfigurations.getConfigurationByPluginTypeOrAliases(task.getType(), task.getClass()));
-        runContext.setStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forTask(taskRun), storageInterface, namespaceService, namespaceFactory));
+        runContext.setStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forTask(taskRun), storageInterface));
         runContext.setLogger(runContextLogger);
         runContext.setTask(task);
 
@@ -320,7 +312,7 @@ public class RunContextInitializer {
         );
 
         runContext.setLogger(runContextLogger);
-        runContext.setStorage(new InternalStorage(runContextLogger.logger(), storageContext, storageInterface, namespaceService, namespaceFactory));
+        runContext.setStorage(new InternalStorage(runContextLogger.logger(), storageContext, storageInterface));
         runContext.setPluginConfiguration(pluginConfigurations.getConfigurationByPluginTypeOrAliases(trigger.getType(), trigger.getClass()));
         runContext.setTriggerExecutionId(triggerExecutionId);
         runContext.setTrigger(trigger);

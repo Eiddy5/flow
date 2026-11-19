@@ -6,7 +6,6 @@ import org.flow.core.queues.event.DispatchEvent;
 
 import org.flow.core.executor.WorkerJobRunningStateStore;
 import org.flow.core.models.executions.LogEntry;
-import org.flow.core.models.executions.MetricEntry;
 import org.flow.core.models.flows.State;
 import org.flow.core.queues.*;
 import org.flow.core.runners.WorkerTaskResult;
@@ -81,11 +80,6 @@ public class QueueWorkerIOSenderFactory {
     @Prototype
     public QueueWorkerIOSender<LogEntry> logs(WorkerQueueRegistry registry, DispatchQueueInterface<LogEntry> queue) {
         return new QueueWorkerIOSender<>(registry, LogEntry.class, (context, event) -> emit(queue, event));
-    }
-
-    @Prototype
-    public QueueWorkerIOSender<MetricEntry> metrics(WorkerQueueRegistry registry, DispatchQueueInterface<MetricEntry> queue) {
-        return new QueueWorkerIOSender<>(registry, MetricEntry.class, (context, event) -> emit(queue, event));
     }
 
     private static <T extends DispatchEvent> void emit(DispatchQueueInterface<T> queue, T event) {

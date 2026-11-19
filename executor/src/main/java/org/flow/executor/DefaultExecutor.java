@@ -65,7 +65,6 @@ public class DefaultExecutor extends AbstractService implements Executor {
     private final Clock clock;
     private final ExecutorCore executorCore;
     private ScheduledFuture<?> executionDelayFuture;
-    private ScheduledFuture<?> monitorSLAFuture;
 
     // Thread-safe: populated by run() but iterated from maintenance listener and shutdown threads.
     private final List<Runnable> receiveCancellations = new CopyOnWriteArrayList<>();
@@ -76,7 +75,6 @@ public class DefaultExecutor extends AbstractService implements Executor {
     private final java.util.concurrent.ExecutorService executionExecutorService;
     private final int numberOfThreads;
 
-    private Timer slaMonitorLoopTimer;
     private Timer executionDelayLoopTimer;
 
     @Inject
@@ -133,7 +131,6 @@ public class DefaultExecutor extends AbstractService implements Executor {
         this.metricRegistry.gauge(MetricRegistry.METRIC_EXECUTOR_THREAD_COUNT, MetricRegistry.METRIC_EXECUTOR_THREAD_COUNT_DESCRIPTION, numberOfThreads);
 
         // init internal timers
-        this.slaMonitorLoopTimer = this.metricRegistry.timer(MetricRegistry.METRIC_EXECUTOR_SLA_MONITOR_LOOP_DURATION, MetricRegistry.METRIC_EXECUTOR_SLA_MONITOR_LOOP_DURATION_DESCRIPTION);
         this.executionDelayLoopTimer = this.metricRegistry
             .timer(MetricRegistry.METRIC_EXECUTOR_EXECUTION_DELAY_LOOP_DURATION, MetricRegistry.METRIC_EXECUTOR_EXECUTION_DELAY_LOOP_DURATION_DESCRIPTION);
     }
@@ -246,20 +243,13 @@ public class DefaultExecutor extends AbstractService implements Executor {
             return;
         }
 
-        // Start delay and monitoring loops
+        // Start the execution delay loop
         executionDelayFuture = scheduledExecutorService.scheduleAtFixedRate(
             this::executionDelayLoop,
             0,
             1,
             TimeUnit.SECONDS
         );
-        monitorSLAFuture = scheduledExecutorService.scheduleAtFixedRate(
-            this::executionSLAMonitorLoop,
-            0,
-            1,
-            TimeUnit.SECONDS
-        );
-
         // look at exceptions on the scheduledDelay thread
         Thread.ofVirtual().name("executor-delay-exception-watcher").start(
             () ->
@@ -275,28 +265,6 @@ public class DefaultExecutor extends AbstractService implements Executor {
                     // We avoid closing the Executor if the exception is a CannotCreateTransactionException as it may be transient
                     if (!isStopRequested() && e.getCause() != null && !e.getCause().getClass().getSimpleName().equals("CannotCreateTransactionException")) {
                         log.error("Executor fatal exception in the scheduledDelay thread", e);
-                        close();
-                        flowContext.shutdown();
-                    }
-                }
-            }
-        );
-
-        // look at exceptions on the scheduledSLAMonitorFuture thread
-        Thread.ofVirtual().name("executor-sla-monitor-exception-watcher").start(
-            () ->
-            {
-                Await.until(monitorSLAFuture::isDone);
-
-                try {
-                    monitorSLAFuture.get();
-                } catch (CancellationException ignored) {
-
-                } catch (ExecutionException | InterruptedException e) {
-                    // An exception during shutdown is teardown noise (e.g. closed datasource), not a reason to escalate.
-                    // We avoid closing the Executor if the exception is a CannotCreateTransactionException as it may be transient
-                    if (!isStopRequested() && e.getCause() != null && !e.getCause().getClass().getSimpleName().equals("CannotCreateTransactionException")) {
-                        log.error("Executor fatal exception in the scheduledSLAMonitor thread", e);
                         close();
                         flowContext.shutdown();
                     }
@@ -400,14 +368,6 @@ public class DefaultExecutor extends AbstractService implements Executor {
         executionDelayLoopTimer.record(() -> executorCore.onExpiredExecutionDelays(clock.instant()));
     }
 
-    private void executionSLAMonitorLoop() {
-        if (isStopRequested() || this.isPaused.get()) {
-            return;
-        }
-
-        slaMonitorLoopTimer.record(() -> executorCore.onExpiredSLAMonitors(clock.instant()));
-    }
-
     private void enterMaintenance() {
         this.queueSubscribers.forEach(QueueSubscriber::pause);
 
@@ -436,7 +396,7 @@ public class DefaultExecutor extends AbstractService implements Executor {
             ExecutorsUtils.closeScheduledThreadPool(
                 scheduledExecutorService,
                 Duration.ofSeconds(5),
-                Stream.of(executionDelayFuture, monitorSLAFuture).filter(Objects::nonNull).toList()
+                executionDelayFuture == null ? List.of() : List.of(executionDelayFuture)
             );
         }
         return ServiceState.TERMINATED_GRACEFULLY;

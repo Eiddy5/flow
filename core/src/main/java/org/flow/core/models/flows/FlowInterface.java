@@ -21,7 +21,6 @@ import org.flow.core.models.Label;
 import org.flow.core.models.SoftDeletable;
 import org.flow.core.models.TenantInterface;
 import org.flow.core.models.flows.quota.Quota;
-import org.flow.core.models.flows.sla.SLA;
 import org.flow.core.models.tasks.WorkerSelector;
 import org.flow.core.queues.event.BroadcastEvent;
 import org.flow.core.runners.ReusableInputsExpander;
@@ -106,15 +105,7 @@ public interface FlowInterface extends FlowId, SoftDeletable<FlowInterface>, Ten
         return null;
     }
 
-    default Concurrency getConcurrency() {
-        return null;
-    }
-
     default List<Quota> getQuotas() {
-        return List.of();
-    }
-
-    default List<SLA> getSla() {
         return List.of();
     }
 

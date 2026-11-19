@@ -30,7 +30,7 @@ import lombok.experimental.SuperBuilder;
 @Schema(
     title = "Run tasks as local subprocesses on the worker.",
     description = """
-        Executes task commands using the host OS process APIs. The working directory is exposed as the `{{workingDir}}` template variable and the `WORKING_DIR` environment variable; input files and namespace files are materialized there before execution, and `outputFiles` must be written there to be captured.
+        Executes task commands using the host OS process APIs. The working directory is exposed as the `{{workingDir}}` template variable and the `WORKING_DIR` environment variable; input files are materialized there before execution, and `outputFiles` must be written there to be captured.
 
         When a task enables output directory support, the `{{outputDir}}` template variable and `OUTPUT_DIR` environment variable are also available as a dedicated location for output files — this is a separate mechanism from `outputFiles`.
 

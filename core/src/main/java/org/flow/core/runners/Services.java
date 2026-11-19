@@ -5,7 +5,6 @@ import java.util.Optional;
 import org.flow.core.docs.JsonSchemaGenerator;
 import org.flow.core.models.ServerType;
 import org.flow.core.models.tasks.runners.TaskLogLineMatcher;
-import org.flow.core.services.KVStoreService;
 import org.flow.core.trace.TracerFactory;
 import org.flow.core.utils.UriProvider;
 
@@ -52,13 +51,6 @@ public class Services {
      */
     public Optional<ObservationRegistry> observationRegistry() {
         return applicationContext.findBean(ObservationRegistry.class);
-    }
-
-    /**
-     * Provides access to the {@link KVStoreService} bean.
-     */
-    public KVStoreService kvStoreService() {
-        return applicationContext.getBean(KVStoreService.class);
     }
 
     /**

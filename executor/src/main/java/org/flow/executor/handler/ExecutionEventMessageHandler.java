@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.slf4j.event.Level;
 
 import org.flow.core.exceptions.FlowNotFoundException;
@@ -19,21 +18,15 @@ import org.flow.core.models.flows.FlowWithException;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.State;
 import org.flow.core.models.flows.quota.Quota;
-import org.flow.core.models.flows.sla.ExecutionMonitoringSLA;
-import org.flow.core.models.flows.sla.SLA;
-import org.flow.core.models.flows.sla.SLAMonitor;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.queues.DispatchQueueInterface;
 import org.flow.core.queues.KeyedDispatchQueueInterface;
 import org.flow.core.queues.QueueException;
 import org.flow.core.runners.*;
-import org.flow.core.services.ConcurrencyLimitResolver;
 import org.flow.core.services.QuotaService;
 import org.flow.core.services.WorkerQueueService;
 import org.flow.core.trace.Tracer;
 import org.flow.core.trace.TracerFactory;
-import org.flow.core.utils.DateUtils;
-import org.flow.core.utils.ListUtils;
 import org.flow.core.utils.TruthUtils;
 import org.flow.core.worker.WorkerQueues;
 import org.flow.executor.*;
@@ -53,11 +46,7 @@ import static org.flow.core.utils.Rethrow.throwConsumer;
 public class ExecutionEventMessageHandler implements ExecutorMessageHandler<ExecutionEvent> {
     private final Clock clock;
     private final ExecutionStateStore executionStateStore;
-    private final ExecutionQueuedStateStore executionQueuedStateStore;
     private final ExecutionDelayStateStore executionDelayStateStore;
-    private final SLAMonitorStateStore slaMonitorStateStore;
-    private final ConcurrencyLimitStateStore concurrencyLimitStateStore;
-    private final ConcurrencyLimitResolver concurrencyLimitResolver;
     private final ExecutorService executorService;
     private final WorkerQueueService workerGroupService;
     private final QuotaService quotaService;
@@ -74,11 +63,7 @@ public class ExecutionEventMessageHandler implements ExecutorMessageHandler<Exec
     @Inject
     public ExecutionEventMessageHandler(
         ExecutionStateStore executionStateStore,
-        ExecutionQueuedStateStore executionQueuedStateStore,
         ExecutionDelayStateStore executionDelayStateStore,
-        SLAMonitorStateStore slaMonitorStateStore,
-        ConcurrencyLimitStateStore concurrencyLimitStateStore,
-        ConcurrencyLimitResolver concurrencyLimitResolver,
         ExecutorService executorService,
         WorkerQueueService workerGroupService,
         QuotaService quotaService,
@@ -94,11 +79,7 @@ public class ExecutionEventMessageHandler implements ExecutorMessageHandler<Exec
         Clock clock) {
         this.clock = clock;
         this.executionStateStore = executionStateStore;
-        this.executionQueuedStateStore = executionQueuedStateStore;
         this.executionDelayStateStore = executionDelayStateStore;
-        this.slaMonitorStateStore = slaMonitorStateStore;
-        this.concurrencyLimitStateStore = concurrencyLimitStateStore;
-        this.concurrencyLimitResolver = concurrencyLimitResolver;
         this.executorService = executorService;
         this.workerGroupService = workerGroupService;
         this.quotaService = quotaService;
@@ -162,28 +143,6 @@ public class ExecutionEventMessageHandler implements ExecutorMessageHandler<Exec
 
                         // process actions that must be done after the execution has been created
                         if ((execution.getState().getCurrent() == State.Type.CREATED || execution.getState().failedThenRestarted())) {
-                            // create an SLA monitor if needed, we skip LOOP executions
-                            if (!ListUtils.isEmpty(flow.getSla()) && execution.getKind() != ExecutionKind.LOOP) {
-                                try {
-                                    List<SLAMonitor> monitors = new ArrayList<>();
-                                    for (SLA sla : flow.getSla()) {
-                                        if (sla instanceof ExecutionMonitoringSLA monitoringSla) {
-                                            monitors.add(
-                                                SLAMonitor.builder()
-                                                    .executionId(execution.getId())
-                                                    .slaId(sla.getId())
-                                                    .deadline(DateUtils.plusOrThrow(execution.getState().getStartDate(), monitoringSla.getDuration()))
-                                                    .build()
-                                            );
-                                        }
-                                    }
-                                    monitors.forEach(slaMonitorStateStore::save);
-                                } catch (InternalException e) {
-                                    Execution failedExecution = fail(execution, e);
-                                    return new ExecutorContext(execution).withExecution(failedExecution, "slaMonitorInvalidDuration");
-                                }
-                            }
-
                             // handle quotas
                             Optional<Quota> quota = quotaService.checkAndIncrement(flow);
                             if (quota.isPresent()) {
@@ -207,55 +166,7 @@ public class ExecutionEventMessageHandler implements ExecutorMessageHandler<Exec
 
                                 return executor.withExecution(newExecution, "processQuotas");
                             }
-
-                            // handle concurrency limits — flow, namespace and tenant scoped; an execution that
-                            // runs claims one slot in every scope, the first limit reached defines the behavior
-                            // LOOP executions are virtual iterations of the parent flow; they must not consume
-                            // a separate FLOW concurrency slot since the parent already holds it
-                            if (execution.getKind() != ExecutionKind.LOOP) {
-                                List<ScopedConcurrencyLimit> concurrencyLimits = concurrencyLimitResolver.resolveLimits(flow);
-                                if (!concurrencyLimits.isEmpty()) {
-                                ExecutionRunning executionRunning = ExecutionRunning.builder()
-                                    .tenantId(executor.getFlow().getTenantId())
-                                    .namespace(executor.getFlow().getNamespace())
-                                    .flowId(executor.getFlow().getId())
-                                    .execution(executor.getExecution())
-                                    .concurrencyState(ExecutionRunning.ConcurrencyState.CREATED)
-                                    .build();
-
-                                ExecutionRunning processed = concurrencyLimitStateStore.countThenProcess(flow, concurrencyLimits, (txContext, runningCounts) ->
-                                {
-                                    ExecutionRunning computed = executorService.processExecutionRunning(concurrencyLimits, runningCounts, executionRunning.withExecution(execution)); // be sure that the execution running contains the latest value of the execution
-                                    if (computed.getConcurrencyState() == ExecutionRunning.ConcurrencyState.RUNNING && !computed.getExecution().getState().isTerminated()) {
-                                        return Pair.of(computed, true);
-                                    } else if (computed.getConcurrencyState() == ExecutionRunning.ConcurrencyState.QUEUED) {
-                                        executionQueuedStateStore.save(txContext, ExecutionQueued.fromExecutionRunning(computed));
-                                    }
-                                    return Pair.of(computed, false);
-                                });
-
-                                // if the execution is queued or terminated due to concurrency limit, we stop here
-                                if (processed.getExecution().getState().isTerminated() || processed.getConcurrencyState() == ExecutionRunning.ConcurrencyState.QUEUED) {
-                                    if (processed.getExecution().getState().getCurrent().isTerminatedInError()) {
-                                        Span.current().setStatus(StatusCode.ERROR, "Execution ended in state " + processed.getExecution().getState().getCurrent().name());
-                                    }
-                                    return executor.withExecution(processed.getExecution(), "handleConcurrencyLimit");
-                                }
-
-                                // the execution claimed one slot in every scope: remember them so the release
-                                // decrements exactly these, even if the definitions change while it runs
-                                if (execution.getMetadata() != null) {
-                                    executor.withExecution(
-                                        execution.withMetadata(execution.getMetadata().withConcurrencyScopes(concurrencyLimits.stream().map(ScopedConcurrencyLimit::uid).toList())),
-                                        "handleConcurrencyLimit"
-                                    );
-                                }
-                            }
                         }
-                        }
-
-                        // handle execution changed SLA
-                        executor = executorService.handleExecutionChangedSLA(executor);
 
                         // process the execution
                         if (log.isDebugEnabled()) {

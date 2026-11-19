@@ -2,7 +2,6 @@ package org.flow.executor;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -25,10 +24,8 @@ import org.flow.core.models.executions.ExecutionKilledExecution;
 import org.flow.core.models.executions.ExecutionKind;
 import org.flow.core.models.executions.LoopExecutionEvent;
 import org.flow.core.models.executions.TaskRun;
-import org.flow.core.models.executions.statistics.ExecutionStatistic;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.State;
-import org.flow.core.models.flows.sla.ExecutionMonitoringSLA;
 import org.flow.core.models.tasks.Task;
 import org.flow.core.models.triggers.AbstractTrigger;
 import org.flow.core.models.triggers.TriggerId;
@@ -88,10 +85,7 @@ public class ExecutorCore {
     private final FlowTriggerService flowTriggerService;
     private final FlowMetaStoreInterface flowMetaStore;
     private final ExecutionStateStore executionStateStore;
-    private final SLAMonitorStateStore slaMonitorStateStore;
-    private final ConcurrencySlotReleaseProcessor concurrencySlotReleaseProcessor;
     private final ExecutionDelayProcessor executionDelayProcessor;
-    private final SLAMonitorProcessor slaMonitorProcessor;
     private final RunContextFactory runContextFactory;
     private final KillSwitchService killSwitchService;
     private final KillSwitchActionService killSwitchActionService;
@@ -101,7 +95,6 @@ public class ExecutorCore {
     private final DispatchQueueInterface<SubflowExecutionEnd> subflowExecutionEndQueue;
     private final DispatchQueueInterface<MultipleConditionEvent> multipleConditionEventQueue;
     private final DispatchQueueInterface<LoopExecutionEvent> loopExecutionEventQueue;
-    private final DispatchQueueInterface<ExecutionStatistic> executionStatisticQueue;
     private final TriggerEventQueue triggerEventQueue;
     private final ExecutionTerminatedNotifier executionTerminatedNotifier;
     private final WorkerJobRunningStateStore workerJobRunningStateStore;
@@ -123,10 +116,7 @@ public class ExecutorCore {
         FlowTriggerService flowTriggerService,
         FlowMetaStoreInterface flowMetaStore,
         ExecutionStateStore executionStateStore,
-        SLAMonitorStateStore slaMonitorStateStore,
-        ConcurrencySlotReleaseProcessor concurrencySlotReleaseProcessor,
         ExecutionDelayProcessor executionDelayProcessor,
-        SLAMonitorProcessor slaMonitorProcessor,
         RunContextFactory runContextFactory,
         KillSwitchService killSwitchService,
         KillSwitchActionService killSwitchActionService,
@@ -138,7 +128,6 @@ public class ExecutorCore {
         DispatchQueueInterface<SubflowExecutionEnd> subflowExecutionEndQueue,
         DispatchQueueInterface<MultipleConditionEvent> multipleConditionEventQueue,
         DispatchQueueInterface<LoopExecutionEvent> loopExecutionEventQueue,
-        DispatchQueueInterface<ExecutionStatistic> executionStatisticQueue,
         TriggerEventQueue triggerEventQueue,
         ExecutionTerminatedNotifier executionTerminatedNotifier,
         WorkerJobRunningStateStore workerJobRunningStateStore,
@@ -155,10 +144,7 @@ public class ExecutorCore {
         this.flowTriggerService = flowTriggerService;
         this.flowMetaStore = flowMetaStore;
         this.executionStateStore = executionStateStore;
-        this.slaMonitorStateStore = slaMonitorStateStore;
-        this.concurrencySlotReleaseProcessor = concurrencySlotReleaseProcessor;
         this.executionDelayProcessor = executionDelayProcessor;
-        this.slaMonitorProcessor = slaMonitorProcessor;
         this.runContextFactory = runContextFactory;
         this.killSwitchService = killSwitchService;
         this.killSwitchActionService = killSwitchActionService;
@@ -168,7 +154,6 @@ public class ExecutorCore {
         this.subflowExecutionEndQueue = subflowExecutionEndQueue;
         this.multipleConditionEventQueue = multipleConditionEventQueue;
         this.loopExecutionEventQueue = loopExecutionEventQueue;
-        this.executionStatisticQueue = executionStatisticQueue;
         this.triggerEventQueue = triggerEventQueue;
         this.executionTerminatedNotifier = executionTerminatedNotifier;
         this.workerJobRunningStateStore = workerJobRunningStateStore;
@@ -256,10 +241,6 @@ public class ExecutorCore {
         executionDelayProcessor.processExpired(now).forEach(this::toExecution);
     }
 
-    public void onExpiredSLAMonitors(Instant now) {
-        slaMonitorProcessor.processExpired(now).forEach(this::toExecution);
-    }
-
     // --- verbatim from DefaultExecutor
 
     private void toExecution(ExecutorContext executor) {
@@ -290,7 +271,6 @@ public class ExecutorCore {
                 ) {
                     sendTriggerExecutionTerminated(execution);
                     this.followExecutionEventQueue.emit(new FollowExecutionEvent(execution, ExecutionEventType.TERMINATED));
-                    emitExecutionStatistic(execution);
                     notifyExecutionTerminated(execution);
                 }
 
@@ -324,27 +304,12 @@ public class ExecutorCore {
 
             // IMPORTANT: this must be done before emitting the last execution message so that all consumers are notified that the execution ends.
             if (isTerminated) {
-                // release the concurrency slots (a no-op when no limit applies to the flow),
-                // then check if there exists a queued execution and submit it to the execution queue.
-                // Transactional outbox: the processor pops inside the concurrency-limit
-                // store's transaction and only returns the execution; it is emitted here,
-                // after releaseThenPop() has committed (same rule as executionDelayLoop).
-                // This runs first in the terminal block on purpose: only the cycle that terminated
-                // the execution may release.
                 // An execution that was not already terminal when this cycle started cannot have
                 // been over before it: afterExecution tasks run once the execution state is already terminal,
                 // and the cycle completing them is the one that really terminates the execution.
                 Execution executionAtEntry = executor.getTerminalExecutionAtEntry();
                 boolean terminatedByThisCycle = executionAtEntry == null
                     || !executionService.isTerminated(executor.getFlow(), executionAtEntry);
-                Optional<Execution> popped = concurrencySlotReleaseProcessor.release(executor, terminatedByThisCycle);
-                if (popped.isPresent()) {
-                    executionQueue.emit(popped.get());
-
-                    // process flow triggers to allow listening on RUNNING state after a QUEUED state
-                    processFlowTriggers(popped.get());
-                }
-
                 if (terminatedByThisCycle) {
                     releaseWorkingDirectoryLeases(executor);
                 }
@@ -391,11 +356,6 @@ public class ExecutorCore {
                     loopExecutionEventQueue.emit(new LoopExecutionEvent(execution.getLoopRun(), execution.getId(), execution.getState().getCurrent(), outputs));
                 }
 
-                // purge SLA monitors
-                if (!ListUtils.isEmpty(executor.getFlow().getSla()) && executor.getFlow().getSla().stream().anyMatch(ExecutionMonitoringSLA.class::isInstance)) {
-                    slaMonitorStateStore.purge(executor.getExecution().getId());
-                }
-
                 // purge the trigger: reset scheduler trigger at end
                 if (execution.getTrigger() != null && !isRealtimeTriggerExecution(executor.getFlow(), execution)) {
                     sendTriggerExecutionTerminated(execution);
@@ -409,7 +369,6 @@ public class ExecutorCore {
                 // and transactions are bound to a thread. This is true for all emission of the follow execution event inside an execution lock.
                 this.followExecutionEventQueue.emit(new FollowExecutionEvent(executor.getExecution(), ExecutionEventType.TERMINATED));
 
-                emitExecutionStatistic(execution);
                 notifyExecutionTerminated(execution);
             } else {
                 ExecutionEvent event = new ExecutionEvent(executor.getExecution(), ExecutionEventType.UPDATED);
@@ -439,7 +398,6 @@ public class ExecutorCore {
                         // update all execution followers
                         this.followExecutionEventQueue.emit(new FollowExecutionEvent(failedExecution, ExecutionEventType.TERMINATED));
 
-                        emitExecutionStatistic(failedExecution);
                         notifyExecutionTerminated(failedExecution);
                     } catch (QueueException ex) {
                         log.error("Unable to emit the execution {}", failedExecution.getId(), ex);
@@ -472,18 +430,6 @@ public class ExecutorCore {
             } catch (Exception e) {
                 log.error("Failed to release the lease of task run '{}' of execution '{}'.", taskRun.getId(), taskRun.getExecutionId(), e);
             }
-        }
-    }
-
-    /**
-     * Asynchronously emits a raw execution-statistic row for the indexer to persist for every terminal NORMAL-kind execution.
-     */
-
-    private void emitExecutionStatistic(Execution execution) {
-        if (ExecutionKind.isNormal(execution)) {
-            // An end date should always be set, but use the current date as a safety belt
-            Instant bucket = execution.getState().getEndDate().orElse(clock.instant()).truncatedTo(ChronoUnit.MINUTES);
-            this.executionStatisticQueue.emitAsync(new ExecutionStatistic(execution, bucket));
         }
     }
 

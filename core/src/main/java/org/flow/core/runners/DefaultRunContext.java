@@ -30,10 +30,8 @@ import org.flow.core.models.tasks.Task;
 import org.flow.core.models.tasks.common.EncryptedString;
 import org.flow.core.models.triggers.AbstractTrigger;
 import org.flow.core.plugins.PluginConfigurations;
-import org.flow.core.services.KVStoreService;
 import org.flow.core.storages.Storage;
 import org.flow.core.storages.StorageInterface;
-import org.flow.core.storages.kv.KVStore;
 import org.flow.core.utils.ListUtils;
 import org.flow.core.utils.MapUtils;
 import org.flow.core.utils.VersionProvider;
@@ -65,7 +63,6 @@ public class DefaultRunContext extends RunContext {
     private VariableRenderer variableRenderer;
     private MetricRegistry meterRegistry;
     private VersionProvider version;
-    private KVStoreService kvStoreService;
     private AssetManagerFactory assetManagerFactory;
     private Optional<String> secretKey;
     private WorkingDir workingDir;
@@ -206,7 +203,6 @@ public class DefaultRunContext extends RunContext {
             this.variableRenderer = applicationContext.getBean(VariableRenderer.class);
             this.meterRegistry = applicationContext.getBean(MetricRegistry.class);
             this.version = applicationContext.getBean(VersionProvider.class);
-            this.kvStoreService = applicationContext.getBean(KVStoreService.class);
             this.secretKey = applicationContext.getBean(EncryptionConfig.class).asOptional();
             this.validator = applicationContext.getBean(Validator.class);
             this.localPath = applicationContext.getBean(LocalPathFactory.class).createLocalPath(this);
@@ -682,11 +678,6 @@ public class DefaultRunContext extends RunContext {
     }
 
     @Override
-    public KVStore namespaceKv(String namespace) {
-        return kvStoreService.get(this.flowInfo().tenantId(), namespace, this.flowInfo().namespace());
-    }
-
-    @Override
     public AclChecker acl() {
         return new AclCheckerImpl(this.applicationContext, flowInfo());
     }
@@ -785,7 +776,6 @@ public class DefaultRunContext extends RunContext {
         private Storage storage;
         private String triggerExecutionId;
         private RunContextLogger logger;
-        private KVStoreService kvStoreService;
         private AssetManagerFactory assetManagerFactory;
         private Task task;
         private AbstractTrigger trigger;
@@ -808,7 +798,6 @@ public class DefaultRunContext extends RunContext {
             context.workingDir = workingDir;
             context.storage = storage;
             context.triggerExecutionId = triggerExecutionId;
-            context.kvStoreService = kvStoreService;
             context.assetManagerFactory = assetManagerFactory;
             context.task = task;
             context.trigger = trigger;

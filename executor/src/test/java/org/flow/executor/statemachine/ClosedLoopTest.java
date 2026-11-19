@@ -10,7 +10,6 @@ import org.junit.jupiter.api.Test;
 
 import org.flow.core.models.executions.Execution;
 import org.flow.core.executor.command.SessionCommand;
-import org.flow.core.models.flows.Concurrency;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.State;
 import org.flow.core.runners.ExecutionEvent;
@@ -83,42 +82,9 @@ class ClosedLoopTest {
             .containsExactly(ExecutionEventType.UPDATED);
         assertThat(terminal.getFirst().emitted())
             .extracting(Trace.Emission::queue)
-            .as("the terminating delivery says nothing else but the terminal trio")
-            .containsExactly("executionEvent", "followExecutionEvent", "executionStatistic", "executionTerminated");
-        assertThat(trace.emitted("execution")).as("nothing to re-enqueue without a concurrency limit").isEmpty();
-    }
-
-    @Test
-    void terminationReleasesTheSlotAndRequeuesBeforeAnnouncingTheEnd() {
-        // Given: one slot, two executions arriving back to back
-        FlowWithSource flow = Flows.withConcurrency(Concurrency.builder().behavior(Concurrency.Behavior.QUEUE).limit(1).build(), Flows.log("a"));
-        harness.registerFlow(flow);
-        Execution first = Executions.created(flow);
-        Execution second = Executions.created(flow);
-
-        // When
-        Trace trace = harness.run(List.of(first, second), ScriptedWorker.succeeding(T0));
-
-        assertThat(harness.stateOf(first)).as("both ran to SUCCESS, one after the other, and the slot is free again").isEqualTo(State.Type.SUCCESS);
-        assertThat(harness).hasExecutionInState(second, State.Type.SUCCESS);
-        assertThat(harness).hasRunning(flow, 0);
-        assertThat(harness).hasNothingQueued();
-
-        // the delivery that terminated the first re-enqueued the second BEFORE publishing its own TERMINATED:
-        // release-then-pop is committed before any consumer can learn the first is over. The popped execution is
-        // handed the freed slot inside that same transaction, so it re-enters the execution queue already RUNNING.
-        Trace.Step releasing = trace.steps().stream()
-            .filter(step -> step.emitted("execution").anyMatch(e -> e.as(Execution.class).getId().equals(second.getId())))
-            .findFirst()
-            .orElseThrow(() -> new AssertionError("no delivery re-enqueued the queued execution"));
-        Trace.Emission requeued = releasing.emitted("execution").findFirst().orElseThrow();
-        Trace.Emission terminated = releasing.emitted("executionEvent").findFirst().orElseThrow();
-        assertThat(requeued.sequence()).isLessThan(terminated.sequence());
-        assertThat(terminated.as(ExecutionEvent.class).eventType()).isEqualTo(ExecutionEventType.TERMINATED);
-        assertThat(terminated.as(ExecutionEvent.class).executionId()).isEqualTo(first.getId());
-        assertThat(requeued.as(Execution.class).getState().getCurrent()).isEqualTo(State.Type.RUNNING);
-        // and it was the real execution-queue subscription that picked the popped execution up again
-        assertThat(trace.deliveredFrom("execution").map(step -> ((Execution) step.message()).getId())).containsExactly(first.getId(), second.getId(), second.getId());
+            .as("the terminating delivery says nothing else but the terminal events")
+            .containsExactly("executionEvent", "followExecutionEvent", "executionTerminated");
+        assertThat(trace.emitted("execution")).as("nothing to re-enqueue").isEmpty();
     }
 
     @Test

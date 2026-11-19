@@ -7,7 +7,6 @@ import org.flow.core.models.property.Property;
 import org.flow.core.models.property.PropertyContext;
 import org.flow.core.runners.LocalPath;
 import org.flow.core.runners.VariableRenderer;
-import org.flow.core.storages.Namespace;
 import org.flow.core.validations.FileInputValidation;
 
 import io.micronaut.core.annotation.AnnotationValue;
@@ -34,10 +33,10 @@ public class FileInputValidator implements ConstraintValidator<FileInputValidati
             PropertyContext propertyContext = PropertyContext.create(variableRenderer);
             try {
                 URI uri = Property.as(value.getDefaults(), propertyContext, URI.class);
-                if (uri != null && !LocalPath.FILE_SCHEME.equals(uri.getScheme()) && !Namespace.NAMESPACE_FILE_SCHEME.equals(uri.getScheme())) {
+                if (uri != null && !LocalPath.FILE_SCHEME.equals(uri.getScheme())) {
                     context.disableDefaultConstraintViolation();
                     context
-                        .buildConstraintViolationWithTemplate("inputs of type 'FILE' only support `defaults` as local files using a file URI or as namespace files using a nsfile URI")
+                        .buildConstraintViolationWithTemplate("inputs of type 'FILE' only support `defaults` as local files using a file URI")
                         .addConstraintViolation();
                     return false;
                 }

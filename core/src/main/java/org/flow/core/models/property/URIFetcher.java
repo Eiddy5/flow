@@ -8,7 +8,6 @@ import java.util.List;
 
 import org.flow.core.runners.LocalPath;
 import org.flow.core.runners.RunContext;
-import org.flow.core.storages.Namespace;
 import org.flow.core.storages.StorageContext;
 
 /**
@@ -16,7 +15,7 @@ import org.flow.core.storages.StorageContext;
  * It supports reading from the following schemes: {@link #SUPPORTED_SCHEMES}.
  */
 public class URIFetcher {
-    private static final List<String> SUPPORTED_SCHEMES = List.of(StorageContext.FLOW_SCHEME, LocalPath.FILE_SCHEME, Namespace.NAMESPACE_FILE_SCHEME);
+    private static final List<String> SUPPORTED_SCHEMES = List.of(StorageContext.FLOW_SCHEME, LocalPath.FILE_SCHEME);
 
     private final URI uri;
 
@@ -89,10 +88,6 @@ public class URIFetcher {
         return switch (uri.getScheme()) {
             case StorageContext.FLOW_SCHEME -> runContext.storage().getFile(uri);
             case LocalPath.FILE_SCHEME -> runContext.localPath().get(uri);
-            case Namespace.NAMESPACE_FILE_SCHEME -> {
-                var namespace = uri.getAuthority() == null ? runContext.storage().namespace() : runContext.storage().namespace(uri.getAuthority());
-                yield namespace.getFileContent(namespace.get(Path.of(uri.getPath())));
-            }
             default -> throw new IllegalArgumentException("Scheme not supported: " + uri.getScheme());
         };
     }

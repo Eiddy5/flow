@@ -25,8 +25,6 @@ import org.flow.core.models.executions.TaskRun;
 import org.flow.core.models.flows.State;
 import org.flow.core.models.property.Property;
 import org.flow.core.models.tasks.InputFilesInterface;
-import org.flow.core.models.tasks.NamespaceFiles;
-import org.flow.core.models.tasks.NamespaceFilesInterface;
 import org.flow.core.models.tasks.OutputFilesInterface;
 import org.flow.core.models.tasks.ResolvedTask;
 import org.flow.core.models.tasks.Task;
@@ -35,7 +33,6 @@ import org.flow.core.runners.*;
 import org.flow.core.serializers.FileSerde;
 import org.flow.core.utils.IdUtils;
 import org.flow.core.utils.ListUtils;
-import org.flow.core.utils.NamespaceFilesUtils;
 import org.flow.core.validations.WorkingDirectoryTaskValidation;
 
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -211,7 +208,7 @@ import lombok.experimental.SuperBuilder;
     }
 )
 @WorkingDirectoryTaskValidation
-public class WorkingDirectory extends Sequential implements NamespaceFilesInterface, InputFilesInterface, OutputFilesInterface {
+public class WorkingDirectory extends Sequential implements InputFilesInterface, OutputFilesInterface {
 
     private static final String OUTPUTS_FILE = "outputs.ion";
 
@@ -226,8 +223,6 @@ public class WorkingDirectory extends Sequential implements NamespaceFilesInterf
     )
     @PluginProperty
     private Cache cache;
-
-    private NamespaceFiles namespaceFiles;
 
     @Getter(AccessLevel.PRIVATE)
     @Builder.Default
@@ -304,10 +299,6 @@ public class WorkingDirectory extends Sequential implements NamespaceFilesInterf
                 // Set the cacheDownloadedTime so that we can check if files has been updated later
                 cacheDownloadedTime = System.currentTimeMillis();
             }
-        }
-
-        if (this.namespaceFiles != null && !Boolean.FALSE.equals(runContext.render(this.namespaceFiles.getEnabled()).as(Boolean.class).orElse(true))) {
-            NamespaceFilesUtils.loadNamespaceFiles(runContext, this.namespaceFiles);
         }
 
         if (this.inputFiles != null) {

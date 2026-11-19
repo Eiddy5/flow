@@ -1,8 +1,0 @@
-group: org.flow.plugin.core.kv
-name: "kv"
-title: "KV"
-description: "Tasks that manage key-value pairs in Flow's KV store."
-body: "Set, put, get, list, version, and delete namespaced keys to share state across flows; specify the key path, value for writes, and optional namespace or TTL to control how data is stored, retrieved, and purged."
-videos: []
-createdBy: "Flow Core Team"
-managedBy: "Flow Core Team"

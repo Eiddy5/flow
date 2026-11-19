@@ -251,13 +251,6 @@ public record QueryFilter(
                 return List.of(Op.GREATER_THAN_OR_EQUAL_TO, Op.GREATER_THAN, Op.LESS_THAN_OR_EQUAL_TO, Op.LESS_THAN, Op.EQUALS, Op.NOT_EQUALS);
             }
         },
-        @JsonProperty("expirationDate")
-        EXPIRATION_DATE("expirationDate") {
-            @Override
-            public List<Op> supportedOp() {
-                return List.of(Op.GREATER_THAN_OR_EQUAL_TO, Op.GREATER_THAN, Op.LESS_THAN_OR_EQUAL_TO, Op.LESS_THAN, Op.EQUALS, Op.NOT_EQUALS);
-            }
-        },
         @JsonProperty("state")
         STATE("state") {
             @Override
@@ -401,27 +394,6 @@ public record QueryFilter(
             @Override
             public List<Op> supportedOp() {
                 return List.of(Op.GREATER_THAN_OR_EQUAL_TO, Op.LESS_THAN_OR_EQUAL_TO, Op.IN, Op.NOT_IN);
-            }
-        },
-        @JsonProperty("path")
-        PATH("path") {
-            @Override
-            public List<Op> supportedOp() {
-                return List.of(Op.EQUALS, Op.NOT_EQUALS, Op.IN);
-            }
-        },
-        @JsonProperty("parentPath")
-        PARENT_PATH("parentPath") {
-            @Override
-            public List<Op> supportedOp() {
-                return List.of(Op.EQUALS, Op.NOT_EQUALS, Op.STARTS_WITH);
-            }
-        },
-        @JsonProperty("version")
-        VERSION("version") {
-            @Override
-            public List<Op> supportedOp() {
-                return List.of(Op.EQUALS, Op.NOT_EQUALS);
             }
         },
         @JsonProperty("enabled")
@@ -644,30 +616,6 @@ public record QueryFilter(
                 return List.of(
                     Field.QUERY,
                     Field.NAMESPACE
-                );
-            }
-        },
-        KV_METADATA {
-            @Override
-            public List<Field> supportedField() {
-                return List.of(
-                    Field.QUERY,
-                    Field.NAMESPACE,
-                    Field.UPDATED,
-                    Field.EXPIRATION_DATE
-                );
-            }
-        },
-        NAMESPACE_FILE_METADATA {
-            @Override
-            public List<Field> supportedField() {
-                return List.of(
-                    Field.QUERY,
-                    Field.NAMESPACE,
-                    Field.PATH,
-                    Field.PARENT_PATH,
-                    Field.VERSION,
-                    Field.UPDATED
                 );
             }
         },

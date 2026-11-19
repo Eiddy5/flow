@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Pattern;
 
 import com.cronutils.utils.VisibleForTesting;
@@ -31,7 +30,6 @@ abstract class AbstractFileFunction implements FlowFunction {
     static final String ID = "id";
     static final String PATH = "path";
 
-    private static final Pattern URI_PATTERN = Pattern.compile("^[a-zA-Z][a-zA-Z0-9+.-]*:.*");
     private static final Pattern EXECUTION_FILE = Pattern.compile(".*/.*/executions/.*/tasks/.*/.*");
 
     @Inject
@@ -42,9 +40,6 @@ abstract class AbstractFileFunction implements FlowFunction {
 
     @Inject
     protected Provider<LocalPathFactory> localPathFactory;
-
-    @Inject
-    protected Provider<NamespaceFactory> namespaceFactory;
 
     @Inject
     protected LocalFilesConfiguration localFilesConfiguration;
@@ -75,27 +70,21 @@ abstract class AbstractFileFunction implements FlowFunction {
 
             if (path instanceof URI uri) {
                 fileUri = uri;
-                namespace = checkAllowedFileAndReturnNamespace(context, fileUri);
             } else if (path instanceof String str) {
-                if (str.startsWith(FLOW_SCHEME)) {
-                    fileUri = URI.create(str);
-                    namespace = checkAllowedFileAndReturnNamespace(context, fileUri);
-                } else if (str.startsWith(LocalPath.FILE_PROTOCOL)) {
-                    fileUri = URI.create(str);
-                    namespace = checkEnabledLocalFileAndReturnNamespace(args, flow);
-                } else if (str.startsWith(Namespace.NAMESPACE_FILE_SCHEME)) {
-                    fileUri = URI.create(str);
-                    namespace = checkedAllowedNamespaceAndReturnNamespace(args, fileUri, tenantId, flow);
-                } else if (URI_PATTERN.matcher(str).matches()) {
-                    // it is an unsupported URI
-                    throw new IllegalArgumentException(SCHEME_NOT_SUPPORTED_ERROR.formatted(str));
-                } else {
-                    fileUri = URI.create(Namespace.NAMESPACE_FILE_SCHEME + ":///" + str);
-                    namespace = (String) Optional.ofNullable(args.get(NAMESPACE)).orElse(flow.get(NAMESPACE));
-                    namespaceService.get().checkAllowedNamespace(tenantId, namespace, tenantId, flow.get(NAMESPACE));
-                }
+                fileUri = URI.create(str);
             } else {
                 throw new PebbleException(null, "Unable to read the file " + path, lineNumber, self.getName());
+            }
+
+            if (StorageContext.FLOW_SCHEME.equals(fileUri.getScheme())) {
+                namespace = checkAllowedFileAndReturnNamespace(context, fileUri);
+            } else if (LocalPath.FILE_SCHEME.equals(fileUri.getScheme())) {
+                if (!localFilesConfiguration.enableFileFunctions()) {
+                    throw new SecurityException("The file:// protocol has been disabled inside the Flow configuration.");
+                }
+                namespace = flow.get(NAMESPACE);
+            } else {
+                throw new IllegalArgumentException(SCHEME_NOT_SUPPORTED_ERROR.formatted(path));
             }
             return fileFunction(context, fileUri, namespace, tenantId, args);
         } catch (IOException | IllegalArgumentException e) { // IllegalArgumentException may be thrown for path traversal, catch it to have proper error handling
@@ -105,14 +94,13 @@ abstract class AbstractFileFunction implements FlowFunction {
 
     @Override
     public List<String> getArgumentNames() {
-        return List.of(PATH, NAMESPACE);
+        return List.of(PATH);
     }
 
     @Override
     public Map<String, String> getArgumentDefaults() {
         return Map.of(
-            PATH, "outputs.download.uri",
-            NAMESPACE, "flow.namespace"
+            PATH, "outputs.download.uri"
         );
     }
 
@@ -122,15 +110,13 @@ abstract class AbstractFileFunction implements FlowFunction {
 
     boolean isFileUriValid(String namespace, String flowId, String executionId, URI path) {
         // Internal storage URI should be: flow:///$namespace/$flowId/executions/$executionId/tasks/$taskName/$taskRunId/$random.ion or flow:///$namespace/$flowId/executions/$executionId/trigger/$triggerName/$random.ion
-        // Namespace file URI should be: flow:///$namespace/_files/$random'
         // We check that the file is for the given flow execution
         if (namespace == null || flowId == null || executionId == null) {
             return false;
         }
 
         String executionAuthorizedBasePath = FLOW_SCHEME + namespace.replace(".", "/") + "/" + Slugify.of(flowId) + "/executions/" + executionId + "/";
-        String nsFileAuthorizedBasePath = FLOW_SCHEME + namespace.replace(".", "/") + "/_files/";
-        return path.toString().startsWith(executionAuthorizedBasePath) || path.toString().startsWith(nsFileAuthorizedBasePath);
+        return path.toString().startsWith(executionAuthorizedBasePath);
     }
 
     @SuppressWarnings("unchecked")
@@ -168,27 +154,6 @@ abstract class AbstractFileFunction implements FlowFunction {
         String namespace = extractNamespace(path);
         namespaceService.get().checkAllowedNamespace(tenantId, namespace, tenantId, fromNamespace);
         return namespace;
-    }
-
-    private String checkEnabledLocalFileAndReturnNamespace(Map<String, Object> args, Map<String, String> flow) {
-        if (!localFilesConfiguration.enableFileFunctions()) {
-            throw new SecurityException("The file:// protocol has been disabled inside the Flow configuration.");
-        }
-
-        return (String) Optional.ofNullable(args.get(NAMESPACE)).orElse(flow.get(NAMESPACE));
-    }
-
-    private String checkedAllowedNamespaceAndReturnNamespace(Map<String, Object> args, URI nsFileUri, String tenantId, Map<String, String> flow) {
-        if (args.get(NAMESPACE) != null && nsFileUri.getAuthority() != null) {
-            throw new IllegalArgumentException("You cannot set a namespace both as the function argument and inside the URI");
-        }
-
-        // we will transform nsfile URI into a flow URI so it is handled seamlessly by all functions
-        String customNs = Optional.ofNullable((String) args.get(NAMESPACE)).orElse(nsFileUri.getAuthority());
-        if (customNs != null) {
-            namespaceService.get().checkAllowedNamespace(tenantId, customNs, tenantId, flow.get(NAMESPACE));
-        }
-        return Optional.ofNullable(customNs).orElse(flow.get(NAMESPACE));
     }
 
     @VisibleForTesting

@@ -25,7 +25,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.flow.gen.flow.Tables;
 import org.flow.core.exceptions.DeserializationException;
 import org.flow.core.models.HasUID;
-import org.flow.core.models.executions.metrics.MetricAggregation;
 import org.flow.core.repositories.ArrayListTotal;
 import org.flow.core.repositories.NonSortableFields;
 import org.flow.core.serializers.JacksonMapper;
@@ -310,24 +309,9 @@ public abstract class AbstractJdbcRepository<T> {
         }
     }
 
-    public <R extends Record> MetricAggregation mapMetricAggregation(R record, String groupByType) {
-        Instant date = getDate(record, groupByType);
-        return MetricAggregation
-            .builder()
-            .name(record.get(Tables.METRICS.METRIC_NAME))
-            .value(record.get(Tables.METRICS.METRIC_VALUE, Double.class))
-            .date(date)
-            .build();
-
-    }
-
     /**
-     * Reassembles an {@link Instant} from the SQL-extracted date parts (year/month/day/hour/minute)
-     * produced by {@code AbstractJdbcRepository#groupByFields}.
-     * <p>
-     * Those parts are UTC wall-clock values, normalised via {@code groupByTimestampField}, so they must
-     * be reassembled in UTC. Using the JVM default zone here would shift every bucket by the local
-     * UTC offset on a non-UTC host.
+     * Reassembles an {@link Instant} from SQL date parts extracted in UTC.
+     * Using the JVM default zone here would shift the bucket on a non-UTC host.
      */
     public <R extends Record> Instant getDate(R record, String groupByType) {
         List<String> fields = Arrays.stream(record.fields()).map(Field::getName).toList();
@@ -378,10 +362,6 @@ public abstract class AbstractJdbcRepository<T> {
 
     public <R extends Record> List<T> fetch(Select<R> select) {
         return select.fetch().map(this::map);
-    }
-
-    public List<MetricAggregation> fetchMetricStat(Select<Record> select, String groupByType) {
-        return select.fetch().map(e -> this.mapMetricAggregation(e, groupByType));
     }
 
     abstract public <R extends Record, E> ArrayListTotal<E> fetchPage(DSLContext context, SelectConditionStep<R> select, Pageable pageable, RecordMapper<R, E> mapper);

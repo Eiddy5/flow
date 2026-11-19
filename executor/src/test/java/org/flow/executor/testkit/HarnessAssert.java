@@ -1,15 +1,11 @@
 package org.flow.executor.testkit;
 
-import java.util.List;
 
 import org.assertj.core.api.AbstractAssert;
 import org.assertj.core.api.Assertions;
 
 import org.flow.core.models.executions.Execution;
-import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.models.flows.State;
-import org.flow.core.runners.ExecutionQueued;
-import org.flow.core.runners.ScopedConcurrencyLimit;
 
 /**
  * AssertJ vocabulary over the harness's in-memory state — the running counters, the queued store,
@@ -32,31 +28,6 @@ public class HarnessAssert extends AbstractAssert<HarnessAssert, ExecutorTestHar
         return this;
     }
 
-    public HarnessAssert hasRunning(FlowInterface flow, int expected) {
-        Assertions.assertThat(actual.concurrencyLimitStateStore().running(flow))
-            .as(described("running counter of flow <%s>", flow.getId()))
-            .isEqualTo(expected);
-        return this;
-    }
-
-    public HarnessAssert hasNothingQueued() {
-        Assertions.assertThat(queuedIds()).as(described("queued executions")).isEmpty();
-        return this;
-    }
-
-    /** Exactly these executions are queued, in this order — the order a release pops them in. */
-    public HarnessAssert hasQueuedExactly(Execution... executions) {
-        Assertions.assertThat(queuedIds())
-            .as(described("queued executions, in arrival order"))
-            .containsExactly(java.util.Arrays.stream(executions).map(Execution::getId).toArray(String[]::new));
-        return this;
-    }
-
-    public HarnessAssert hasQueuedCount(int expected) {
-        Assertions.assertThat(queuedIds()).as(described("queued executions")).hasSize(expected);
-        return this;
-    }
-
     public HarnessAssert hasPendingDelays(int expected) {
         Assertions.assertThat(actual.executionDelayStateStore().pending()).as(described("pending execution delays")).hasSize(expected);
         return this;
@@ -69,18 +40,6 @@ public class HarnessAssert extends AbstractAssert<HarnessAssert, ExecutorTestHar
 
     public HarnessAssert emittedNoLoopEvents() {
         Assertions.assertThat(actual.loopEvents()).as(described("loop events emitted")).isEmpty();
-        return this;
-    }
-
-    public HarnessAssert hasRunning(ScopedConcurrencyLimit scope, int expected) {
-        Assertions.assertThat(actual.concurrencyLimitStateStore().running(scope))
-            .as(described("running counter of scope <%s>", scope.uid()))
-            .isEqualTo(expected);
-        return this;
-    }
-
-    public HarnessAssert hasNoPendingSlaMonitors() {
-        Assertions.assertThat(actual.slaMonitorStateStore().pending()).as(described("pending SLA monitors")).isEmpty();
         return this;
     }
 
@@ -107,10 +66,6 @@ public class HarnessAssert extends AbstractAssert<HarnessAssert, ExecutorTestHar
     public HarnessAssert emittedNoSubflowResults() {
         Assertions.assertThat(actual.subflowExecutionResultQueue().emitted()).as(described("subflow results emitted")).isEmpty();
         return this;
-    }
-
-    private List<String> queuedIds() {
-        return actual.executionQueuedStateStore().queued().stream().map(ExecutionQueued::getExecution).map(Execution::getId).toList();
     }
 
     private String described(String detail, Object... args) {

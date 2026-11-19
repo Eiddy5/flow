@@ -17,7 +17,6 @@ import org.flow.core.debug.Breakpoint;
 import org.flow.core.exceptions.InternalException;
 import org.flow.core.exceptions.NoMatchingWorkerQueueException;
 import org.flow.core.metrics.MetricRegistry;
-import org.flow.core.models.Label;
 import org.flow.core.models.assets.AssetIdentifier;
 import org.flow.core.models.assets.AssetUser;
 import org.flow.core.models.assets.AssetsDeclaration;
@@ -26,7 +25,6 @@ import org.flow.core.models.executions.*;
 import org.flow.core.models.flows.FlowInterface;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.State;
-import org.flow.core.models.flows.sla.Violation;
 import org.flow.core.models.tasks.*;
 import org.flow.core.models.tasks.Output;
 import org.flow.core.models.tasks.retrys.AbstractRetry;
@@ -62,7 +60,6 @@ public class ExecutorService {
     protected final FlowMetaStoreInterface flowExecutorInterface;
     private final ExecutionService executionService;
     private final WorkerQueueService workerQueueService;
-    private final SLAService slaService;
     private final Optional<OpenTelemetry> openTelemetry;
     protected final BroadcastQueueInterface<ExecutionKilled> killQueue;
     private final DispatchQueueInterface<LoopExecutionEvent> loopExecutionEventQueue;
@@ -80,7 +77,6 @@ public class ExecutorService {
         FlowMetaStoreInterface flowExecutorInterface,
         ExecutionService executionService,
         WorkerQueueService workerQueueService,
-        SLAService slaService,
         Optional<OpenTelemetry> openTelemetry,
         BroadcastQueueInterface<ExecutionKilled> killQueue,
         DispatchQueueInterface<LoopExecutionEvent> loopExecutionEventQueue,
@@ -95,7 +91,6 @@ public class ExecutorService {
         this.flowExecutorInterface = flowExecutorInterface;
         this.executionService = executionService;
         this.workerQueueService = workerQueueService;
-        this.slaService = slaService;
         this.openTelemetry = openTelemetry;
         this.killQueue = killQueue;
         this.loopExecutionEventQueue = loopExecutionEventQueue;
@@ -107,72 +102,8 @@ public class ExecutorService {
         this.pausedTaskNotifier = pausedTaskNotifier;
     }
 
-    /**
-     * Evaluate the scoped concurrency limits in order against their running counts: the first
-     * limit reached defines the behavior applied to the execution; when none is reached the
-     * execution runs.
-     */
-    public ExecutionRunning processExecutionRunning(List<ScopedConcurrencyLimit> limits, List<Integer> runningCounts, ExecutionRunning executionRunning) {
-        for (int i = 0; i < limits.size(); i++) {
-            ScopedConcurrencyLimit limit = limits.get(i);
-            int runningCount = runningCounts.get(i);
-            if (runningCount < limit.concurrency().getLimit()) {
-                continue;
-            }
-
-            return switch (limit.concurrency().getBehavior()) {
-                case QUEUE -> {
-                    Logs.logExecution(
-                        executionRunning.getExecution(),
-                        Level.INFO,
-                        "Execution is queued due to " + scopeDescription(limit) + "concurrency limit exceeded, {} running(s)",
-                        runningCount
-                    );
-                    var newExecution = executionRunning.getExecution().withState(State.Type.QUEUED);
-                    metricRegistry
-                        .counter(MetricRegistry.METRIC_EXECUTOR_EXECUTION_QUEUED_COUNT, MetricRegistry.METRIC_EXECUTOR_EXECUTION_QUEUED_COUNT_DESCRIPTION, metricRegistry.tags(newExecution))
-                        .increment();
-                    yield executionRunning
-                        .withExecution(newExecution)
-                        .withConcurrencyState(ExecutionRunning.ConcurrencyState.QUEUED);
-                }
-                case CANCEL -> executionRunning
-                    .withExecution(executionRunning.getExecution().withState(State.Type.CANCELLED))
-                    .withConcurrencyState(ExecutionRunning.ConcurrencyState.CANCELLED);
-                case FAIL -> {
-                    var failedExecution = executionRunning.getExecution()
-                        .failedExecutionFromExecutor(new IllegalStateException("Execution is FAILED due to " + scopeDescription(limit) + "concurrency limit exceeded"));
-                    var logger = runContextLoggerFactory.create(executionRunning.getExecution());
-                    logger.emitLogs(failedExecution.logs());
-                    yield executionRunning
-                        .withExecution(failedExecution.execution())
-                        .withConcurrencyState(ExecutionRunning.ConcurrencyState.FAILED);
-                }
-
-            };
-        }
-
-        // if under every limit, run it!
-        return runExecutionRunning(executionRunning);
-    }
-
-    private static ExecutionRunning runExecutionRunning(ExecutionRunning executionRunning) {
-        return executionRunning
-            .withExecution(executionRunning.getExecution().withState(State.Type.RUNNING))
-            .withConcurrencyState(ExecutionRunning.ConcurrencyState.RUNNING);
-    }
-
-    private static String scopeDescription(ScopedConcurrencyLimit limit) {
-        return switch (limit.scope()) {
-            case FLOW -> "";
-            case NAMESPACE -> "namespace '" + limit.namespace() + "' ";
-            case TENANT -> "tenant ";
-        };
-    }
-
     public ExecutorContext process(ExecutorContext executor) {
         // previous failed (flow join can fail), just forward
-        // or concurrency limit failed/cancelled the execution
         if (!executor.canBeProcessed() || executionService.isTerminated(executor.getFlow(), executor.getExecution())) {
             return executor;
         }
@@ -1792,97 +1723,4 @@ public class ExecutorService {
         );
     }
 
-    /**
-     * Handle flow ExecutionChangedSLA on an executor.
-     * If there are SLA violations, it will take care of updating the execution based on the SLA behavior.
-     * NOTE: Loop executions are skipped.
-     *
-     * @see #processViolation(RunContext, ExecutorContext, Violation)
-     *      <p>
-     *      WARNING: ATM, only the first violation will update the execution.
-     */
-    public ExecutorContext handleExecutionChangedSLA(ExecutorContext executor) throws QueueException {
-        if (executor.getFlow() == null || ListUtils.isEmpty(executor.getFlow().getSla()) || executor.getExecution().getState().isTerminated() ||
-            executor.getExecution().getKind() ==  ExecutionKind.LOOP) {
-            return executor;
-        }
-
-        RunContext runContext = runContextFactory.of(executor.getFlow(), executor.getExecution());
-        List<Violation> violations = slaService.evaluateExecutionChangedSLA(runContext, executor.getFlow(), executor.getExecution());
-        if (!violations.isEmpty()) {
-            metricRegistry
-                .counter(MetricRegistry.METRIC_EXECUTOR_SLA_VIOLATION_COUNT, MetricRegistry.METRIC_EXECUTOR_SLA_VIOLATION_COUNT_DESCRIPTION, metricRegistry.tags(executor.getExecution()))
-                .increment(violations.size());
-
-            // For now, we only consider the first violation to be capable of updating the execution.
-            // Other violations would only be logged.
-            Violation violation = violations.getFirst();
-            return processViolation(runContext, executor, violation);
-        }
-
-        return executor;
-    }
-
-    /**
-     * Process an SLA violation on an executor:
-     * - If behavior is FAIL or CANCEL: kill the execution, then return it with the new state.
-     * - If behavior is NONE: do nothing and return an unmodified executor.
-     * <p>
-     * Then, if there are labels, they are added to the SLA (modifying the executor)
-     */
-    public ExecutorContext processViolation(RunContext runContext, ExecutorContext executor, Violation violation) throws QueueException {
-        boolean hasChanged = false;
-        Execution newExecution = switch (violation.behavior()) {
-            case FAIL -> {
-                runContext.logger().error("Execution failed due to SLA '{}' violated: {}", violation.slaId(), violation.reason());
-                hasChanged = true;
-                yield markAs(executor.getExecution(), State.Type.FAILED);
-            }
-            case CANCEL -> {
-                hasChanged = true;
-                yield markAs(executor.getExecution(), State.Type.CANCELLED);
-            }
-            case NONE -> executor.getExecution();
-        };
-
-        if (!ListUtils.isEmpty(violation.labels()) && !LabelService.containsAll(executor.getExecution().getLabels(), violation.labels())) {
-            List<Label> labels = new ArrayList<>(newExecution.getLabels());
-            labels.addAll(violation.labels());
-            hasChanged = true;
-            newExecution = newExecution.withLabels(labels);
-        }
-
-        if (hasChanged) {
-            return executor.withExecution(newExecution, "SLAViolation");
-        }
-        return executor;
-    }
-
-    private Execution markAs(Execution execution, State.Type state) throws QueueException {
-        Execution newExecution = execution.findLastNotTerminated()
-            .map(taskRun ->
-            {
-                try {
-                    return execution.withTaskRun(taskRun.withStateAndAttempt(state));
-                } catch (InternalException e) {
-                    // in case we cannot update the last not terminated task run, we ignore it
-                    return execution;
-                }
-            })
-            .orElse(execution)
-            .withState(state);
-
-        killQueue.emit(
-            ExecutionKilledExecution
-                .builder()
-                .state(ExecutionKilled.State.REQUESTED)
-                .executionState(state)
-                .executionId(execution.getId())
-                .isOnKillCascade(true)
-                .tenantId(execution.getTenantId())
-                .build()
-        );
-
-        return newExecution;
-    }
 }

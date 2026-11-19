@@ -13,7 +13,6 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import org.flow.core.exceptions.DeserializationException;
 import org.flow.core.models.HasUID;
 import org.flow.core.models.flows.quota.Quota;
-import org.flow.core.models.flows.sla.SLA;
 import org.flow.core.models.tasks.GenericTask;
 import org.flow.core.models.triggers.GenericTrigger;
 import org.flow.core.serializers.YamlParser;
@@ -37,10 +36,6 @@ import lombok.experimental.SuperBuilder;
 @JsonDeserialize
 public class GenericFlow extends AbstractFlow implements HasUID {
     private String source;
-
-    private List<SLA> sla;
-
-    private Concurrency concurrency;
 
     private List<Quota> quotas;
 

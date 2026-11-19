@@ -10,7 +10,6 @@ import java.util.List;
  *
  * @param <T> type of the queue.
  * @see org.flow.core.models.executions.LogEntry
- * @see org.flow.core.models.executions.MetricEntry
  * @see org.flow.core.runners.WorkerJob
  * @see org.flow.core.runners.WorkerTaskResult
  */

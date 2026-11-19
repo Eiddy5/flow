@@ -42,7 +42,6 @@ import org.flow.core.queues.QueueException;
 import org.flow.core.repositories.ArrayListTotal;
 import org.flow.core.repositories.ExecutionRepositoryInterface;
 import org.flow.core.repositories.LogDataStoreInterface;
-import org.flow.core.repositories.MetricRepositoryInterface;
 import org.flow.core.runners.FlowInputOutput;
 import org.flow.core.runners.ProcessedFlow;
 import org.flow.core.storages.StorageContext;
@@ -84,10 +83,8 @@ public class ExecutionService {
     private StorageInterface storageInterface;
     private ExecutionRepositoryInterface executionRepository;
     private LogDataStoreInterface logRepository;
-    private MetricRepositoryInterface metricRepository;
     private FlowInputOutput flowInputOutput;
     private ApplicationEventPublisher<CrudEvent<Execution>> eventPublisher;
-    private ConcurrencyLimitService concurrencyLimitService;
     private FlowParsingService flowParsingService;
     private TaskOutputService taskOutputService;
     private ExecutionOutputService executionOutputService;
@@ -105,10 +102,8 @@ public class ExecutionService {
      * @param storageInterface 读取和清理执行文件的宿主存储，不能为 null
      * @param executionRepository 查询、写入及清理执行的仓储，不能为 null
      * @param logRepository 清理执行日志的仓储，不能为 null
-     * @param metricRepository 清理执行指标的仓储，不能为 null
      * @param flowInputOutput 解析和校验执行输入输出的组件，不能为 null
      * @param eventPublisher 发布执行变更事件的发布器，不能为 null
-     * @param concurrencyLimitService 解析执行并发限制的服务，不能为 null
      * @param flowParsingService 解析运行时流程的服务，不能为 null
      * @param taskOutputService 读取、复制及清理任务输出的服务，不能为 null
      * @param executionOutputService 读取及清理执行输出的服务，不能为 null
@@ -126,10 +121,8 @@ public class ExecutionService {
         StorageInterface storageInterface,
         ExecutionRepositoryInterface executionRepository,
         LogDataStoreInterface logRepository,
-        MetricRepositoryInterface metricRepository,
         FlowInputOutput flowInputOutput,
         ApplicationEventPublisher<CrudEvent<Execution>> eventPublisher,
-        ConcurrencyLimitService concurrencyLimitService,
         FlowParsingService flowParsingService,
         TaskOutputService taskOutputService,
         ExecutionOutputService executionOutputService,
@@ -143,10 +136,8 @@ public class ExecutionService {
         this.storageInterface = Objects.requireNonNull(storageInterface);
         this.executionRepository = Objects.requireNonNull(executionRepository);
         this.logRepository = Objects.requireNonNull(logRepository);
-        this.metricRepository = Objects.requireNonNull(metricRepository);
         this.flowInputOutput = Objects.requireNonNull(flowInputOutput);
         this.eventPublisher = Objects.requireNonNull(eventPublisher);
-        this.concurrencyLimitService = Objects.requireNonNull(concurrencyLimitService);
         this.flowParsingService = Objects.requireNonNull(flowParsingService);
         this.taskOutputService = Objects.requireNonNull(taskOutputService);
         this.executionOutputService = Objects.requireNonNull(executionOutputService);
@@ -963,7 +954,6 @@ public class ExecutionService {
     public PurgeResult purge(
         Boolean purgeExecution,
         Boolean purgeLog,
-        Boolean purgeMetric,
         Boolean purgeStorage,
         @Nullable String tenantId,
         @Nullable String namespace,
@@ -1001,10 +991,6 @@ public class ExecutionService {
                     builder.logsCount(this.logRepository.purge(executions));
                 }
 
-                if (purgeMetric) {
-                    builder.metricsCount(this.metricRepository.purge(executions));
-                }
-
                 if (purgeStorage) {
                     executions.forEach(throwConsumer(execution ->
                     {
@@ -1021,7 +1007,6 @@ public class ExecutionService {
                     .executionsCount(a.getExecutionsCount() + b.getExecutionsCount())
                     .logsCount(a.getLogsCount() + b.getLogsCount())
                     .storagesCount(a.getStoragesCount() + b.getStoragesCount())
-                    .metricsCount(a.getMetricsCount() + b.getMetricsCount())
                     .executionOutputsCount(a.getExecutionOutputsCount() + b.getExecutionOutputsCount())
                     .taskOutputsCount(a.getTaskOutputsCount() + b.getTaskOutputsCount())
                     .build()
@@ -1047,7 +1032,6 @@ public class ExecutionService {
         }
 
         if (deleteMetrics) {
-            this.metricRepository.purge(execution);
         }
 
         if (deleteStorage) {
@@ -1486,9 +1470,6 @@ public class ExecutionService {
 
         @Builder.Default
         private int storagesCount = 0;
-
-        @Builder.Default
-        private int metricsCount = 0;
     }
 
     private Set<String> removeWorkerTask(Flow flow, Execution execution, Set<String> taskRunToRestart, Map<String, String> mappingTaskRunId) throws InternalException {
@@ -1605,7 +1586,6 @@ public class ExecutionService {
     /**
      * Force run the execution, it must be in a non-terminal state.
      * - CREATED executions will be moved to RUNNING
-     * - QUEUED executions will be unqueued
      * - PAUSED executions will be resumed
      * All other non-terminated states will be no-op.
      */
@@ -1619,9 +1599,6 @@ public class ExecutionService {
             newExecution = execution.withState(State.Type.RUNNING);
         }
 
-        if (execution.getState().getCurrent() == State.Type.QUEUED) {
-            newExecution = concurrencyLimitService.unqueue(execution, State.Type.RUNNING);
-        }
 
         if (execution.getState().getCurrent() == State.Type.PAUSED) {
             // we return directly as resume already send an UPDATE event
@@ -1702,14 +1679,4 @@ public class ExecutionService {
         return changed;
     }
 
-    /**
-     * Unqueue queued execution.
-     *
-     * @see ConcurrencyLimitService#unqueue(Execution, State.Type)
-     */
-    public Execution unqueue(Execution execution, State.Type newState) {
-        Execution unqueued = concurrencyLimitService.unqueue(execution, newState);
-        eventPublisher.publishEvent(CrudEvent.of(execution, unqueued));
-        return unqueued;
-    }
 }

@@ -2,7 +2,6 @@ package org.flow.worker.processors;
 
 import org.flow.core.metrics.MetricRegistry;
 import org.flow.core.models.executions.LogEntry;
-import org.flow.core.models.executions.MetricEntry;
 import org.flow.core.runners.RunContextInitializer;
 import org.flow.core.runners.RunContextLoggerFactory;
 import org.flow.core.runners.Worker;
@@ -75,7 +74,6 @@ public class WorkerJobProcessorFactory {
                         super.put(result.withWorkerJobId(job.uid()).withWorkerDeliveryId(task.getWorkerDeliveryId()));
                     }
                 },
-                workerQueueRegistry.getOrCreate(context, MetricEntry.class),
                 executionKilledManager
             );
         } else if (job instanceof WorkerTrigger) {

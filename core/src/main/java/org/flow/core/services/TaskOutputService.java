@@ -9,7 +9,6 @@ import org.flow.core.models.executions.*;
 import org.flow.core.models.tasks.Output;
 import org.flow.core.repositories.TaskOutputRepositoryInterface;
 import org.flow.core.services.configuration.TaskOutputConfiguration;
-import org.flow.core.storages.NamespaceFactory;
 import org.flow.core.storages.StorageContext;
 import org.flow.core.storages.StorageInterface;
 import org.flow.core.utils.MapUtils;
@@ -26,9 +25,9 @@ import static org.flow.core.utils.Rethrow.throwFunction;
 public class TaskOutputService extends AbstractOutputService {
     private final TaskOutputRepositoryInterface outputRepository;
 
-    public TaskOutputService(TaskOutputRepositoryInterface outputRepository, StorageInterface storageInterface, NamespaceFactory namespaceFactory,
+    public TaskOutputService(TaskOutputRepositoryInterface outputRepository, StorageInterface storageInterface,
         TaskOutputConfiguration taskOutputConfiguration) {
-        super(storageInterface, namespaceFactory, taskOutputConfiguration.limit());
+        super(storageInterface, taskOutputConfiguration.limit());
         this.outputRepository = outputRepository;
     }
 

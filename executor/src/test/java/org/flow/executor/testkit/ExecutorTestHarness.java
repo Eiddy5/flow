@@ -25,15 +25,12 @@ import org.flow.core.models.executions.Execution;
 import org.flow.core.models.executions.ExecutionKilled;
 import org.flow.core.models.executions.LogEntry;
 import org.flow.core.models.executions.LoopExecutionEvent;
-import org.flow.core.models.executions.statistics.ExecutionStatistic;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.State;
 import org.flow.core.models.triggers.multipleflows.MultipleConditionStateStore;
-import org.flow.core.namespace.NamespaceFileMetadataStateStore;
 import org.flow.core.queues.event.Event;
 import org.flow.core.repositories.ExecutionRepositoryInterface;
 import org.flow.core.repositories.LogDataStoreInterface;
-import org.flow.core.repositories.MetricRepositoryInterface;
 import org.flow.core.runners.DisabledReusableInputsExpander;
 import org.flow.core.runners.ExecutionEvent;
 import org.flow.core.runners.ExecutionEventType;
@@ -58,8 +55,6 @@ import org.flow.core.runners.pebble.PebbleEngineFactory;
 import org.flow.core.scheduler.queue.TriggerEventQueue;
 import org.flow.core.server.ServiceStateChangeEvent;
 import org.flow.core.services.AsyncOperationWaiter;
-import org.flow.core.services.ConcurrencyLimitResolver;
-import org.flow.core.services.ConcurrencyLimitService;
 import org.flow.core.services.ExecutionOutputService;
 import org.flow.core.services.ExecutionService;
 import org.flow.core.services.FlowParsingService;
@@ -69,12 +64,9 @@ import org.flow.core.services.TaskOutputService;
 import org.flow.core.services.WorkerQueueService;
 import org.flow.core.services.configuration.ExecutionOutputConfiguration;
 import org.flow.core.services.configuration.TaskOutputConfiguration;
-import org.flow.core.storages.NamespaceFactory;
-import org.flow.core.storages.NamespaceFileBackend;
 import org.flow.core.storages.StorageInterface;
 import org.flow.core.trace.TracerFactory;
 import org.flow.core.utils.ExecutorsUtils;
-import org.flow.executor.ConcurrencySlotReleaseProcessor;
 import org.flow.executor.DefaultExecutor;
 import org.flow.executor.ExecutionDelayProcessor;
 import org.flow.executor.ExecutorContext;
@@ -82,8 +74,6 @@ import org.flow.executor.ExecutorCore;
 import org.flow.executor.ExecutorService;
 import org.flow.executor.FlowTriggerService;
 import org.flow.executor.KillSwitchActionService;
-import org.flow.executor.SLAMonitorProcessor;
-import org.flow.executor.SLAService;
 import org.flow.executor.configuration.ExecutorConfiguration;
 import org.flow.executor.handler.ExecutionCommandMessageHandler;
 import org.flow.executor.handler.ExecutionEventMessageHandler;
@@ -123,8 +113,6 @@ public final class ExecutorTestHarness {
     private final LoopExecutionEventMessageHandler loopExecutionEventMessageHandler;
     private final MultipleConditionEventMessageHandler multipleConditionEventMessageHandler;
     private final ExecutionDelayProcessor executionDelayProcessor;
-    private final ConcurrencySlotReleaseProcessor concurrencySlotReleaseProcessor;
-    private final SLAMonitorProcessor slaMonitorProcessor;
     private final List<Runnable> loops = new ArrayList<>();
     private final List<Trace.Emission> journal = new ArrayList<>();
     private int workerJobsAnswered = 0;
@@ -132,10 +120,7 @@ public final class ExecutorTestHarness {
     // in-memory fakes
     private final InMemoryFlowMetaStore flowMetaStore;
     private final InMemoryExecutionStateStore executionStateStore;
-    private final InMemoryExecutionQueuedStateStore executionQueuedStateStore;
     private final InMemoryExecutionDelayStateStore executionDelayStateStore;
-    private final InMemorySLAMonitorStateStore slaMonitorStateStore;
-    private final InMemoryConcurrencyLimitStateStore concurrencyLimitStateStore;
     private final InMemoryTaskOutputRepository taskOutputRepository;
     private final InMemoryExecutionOutputRepository executionOutputRepository;
     private final ExecutionOutputService executionOutputService;
@@ -150,7 +135,6 @@ public final class ExecutorTestHarness {
     private final RecordingDispatchQueue<WorkerTaskResult> workerTaskResultQueue;
     private final RecordingDispatchQueue<SubflowExecutionEnd> subflowExecutionEndQueue;
     private final RecordingDispatchQueue<MultipleConditionEvent> multipleConditionEventQueue;
-    private final RecordingDispatchQueue<ExecutionStatistic> executionStatisticQueue;
     private final List<RecordingQueue<?>> queues;
     private final RecordingLogEntryEmitter logEmitter;
 
@@ -159,7 +143,6 @@ public final class ExecutorTestHarness {
     private final KillSwitchActionService killSwitchActionService;
     private final WorkerTaskResultListener workerTaskResultListener;
     private final WorkerJobRunningStateStore workerJobRunningStateStore;
-    private final ConcurrencyLimitResolver concurrencyLimitResolver;
     private final QuotaService quotaService;
     private final AsyncOperationService asyncOperationService;
     private final FlowTriggerService flowTriggerService;
@@ -177,10 +160,7 @@ public final class ExecutorTestHarness {
         this.clock = new MutableClock(Instant.parse("2026-01-01T00:00:00Z"));
         this.flowMetaStore = new InMemoryFlowMetaStore();
         this.executionStateStore = new InMemoryExecutionStateStore();
-        this.executionQueuedStateStore = new InMemoryExecutionQueuedStateStore();
         this.executionDelayStateStore = new InMemoryExecutionDelayStateStore();
-        this.slaMonitorStateStore = new InMemorySLAMonitorStateStore();
-        this.concurrencyLimitStateStore = new InMemoryConcurrencyLimitStateStore();
         this.taskOutputRepository = new InMemoryTaskOutputRepository();
         this.executionOutputRepository = new InMemoryExecutionOutputRepository();
         this.killQueue = new RecordingBroadcastQueue<>("kill", journal);
@@ -194,7 +174,6 @@ public final class ExecutorTestHarness {
         this.workerTaskResultQueue = new RecordingDispatchQueue<>("workerTaskResult", journal);
         this.subflowExecutionEndQueue = new RecordingDispatchQueue<>("subflowExecutionEnd", journal);
         this.multipleConditionEventQueue = new RecordingDispatchQueue<>("multipleConditionEvent", journal);
-        this.executionStatisticQueue = new RecordingDispatchQueue<>("executionStatistic", journal);
         TriggerEventQueue triggerEventQueue = Mockito.mock(TriggerEventQueue.class);
         Mockito.doAnswer(invocation -> journal.add(new Trace.Emission(journal.size(), "triggerEvent", invocation.getArgument(0)))).when(triggerEventQueue).send(Mockito.any());
         this.queues = List.of(
@@ -208,13 +187,11 @@ public final class ExecutorTestHarness {
         TaskOutputService taskOutputService = new TaskOutputService(
             taskOutputRepository,
             Mockito.mock(StorageInterface.class),
-            new NamespaceFactory(Mockito.mock(NamespaceFileMetadataStateStore.class), Mockito.mock(NamespaceFileBackend.class)),
             new TaskOutputConfiguration(-1)
         );
         this.executionOutputService = new ExecutionOutputService(
             executionOutputRepository,
             Mockito.mock(StorageInterface.class),
-            new NamespaceFactory(Mockito.mock(NamespaceFileMetadataStateStore.class), Mockito.mock(NamespaceFileBackend.class)),
             new ExecutionOutputConfiguration(-1)
         );
         // Real Pebble engine without Micronaut: the mocked ApplicationContext returns no Extension
@@ -280,10 +257,8 @@ public final class ExecutorTestHarness {
                 Mockito.mock(StorageInterface.class),
                 executionRepository,
                 Mockito.mock(LogDataStoreInterface.class),
-                Mockito.mock(MetricRepositoryInterface.class),
                 Mockito.mock(FlowInputOutput.class),
                 Mockito.mock(ApplicationEventPublisher.class),
-                Mockito.mock(ConcurrencyLimitService.class),
                 Mockito.mock(FlowParsingService.class),
                 taskOutputService,
                 executionOutputService,
@@ -303,8 +278,6 @@ public final class ExecutorTestHarness {
         this.killSwitchActionService = Mockito.mock(KillSwitchActionService.class);
         this.workerTaskResultListener = Mockito.mock(WorkerTaskResultListener.class);
         this.workerJobRunningStateStore = Mockito.mock(WorkerJobRunningStateStore.class);
-        // a spy so tests can stub namespace/tenant limits while the OSS flow-scope default stays real
-        this.concurrencyLimitResolver = Mockito.spy(new ConcurrencyLimitResolver());
         this.quotaService = Mockito.mock(QuotaService.class);
         this.asyncOperationService = Mockito.mock(AsyncOperationService.class);
         this.flowTriggerService = Mockito.mock(FlowTriggerService.class);
@@ -316,7 +289,6 @@ public final class ExecutorTestHarness {
             flowMetaStore,
             executionService,
             workerQueueService,
-            new SLAService(),
             Optional.empty(),
             killQueue,
             loopExecutionEventQueue,
@@ -330,11 +302,7 @@ public final class ExecutorTestHarness {
 
         this.executionEventMessageHandler = new ExecutionEventMessageHandler(
             executionStateStore,
-            executionQueuedStateStore,
             executionDelayStateStore,
-            slaMonitorStateStore,
-            concurrencyLimitStateStore,
-            concurrencyLimitResolver,
             executorService,
             workerQueueService,
             quotaService,
@@ -372,7 +340,6 @@ public final class ExecutorTestHarness {
             executorService,
             executionService,
             executionStateStore,
-            executionQueuedStateStore,
             metricRegistry,
             flowMetaStore,
             killQueue,
@@ -421,23 +388,6 @@ public final class ExecutorTestHarness {
             metricRegistry,
             loopExecutionEventQueue
         );
-        this.concurrencySlotReleaseProcessor = new ConcurrencySlotReleaseProcessor(
-            concurrencyLimitStateStore,
-            concurrencyLimitResolver,
-            executionQueuedStateStore,
-            flowMetaStore,
-            metricRegistry
-        );
-        this.slaMonitorProcessor = new SLAMonitorProcessor(
-            slaMonitorStateStore,
-            executionStateStore,
-            flowMetaStore,
-            executionService,
-            executorService,
-            new SLAService(),
-            runContextFactory,
-            metricRegistry
-        );
 
         ExecutorCore executorCore = new ExecutorCore(
             executorService,
@@ -445,10 +395,7 @@ public final class ExecutorTestHarness {
             flowTriggerService,
             flowMetaStore,
             executionStateStore,
-            slaMonitorStateStore,
-            concurrencySlotReleaseProcessor,
             executionDelayProcessor,
-            slaMonitorProcessor,
             runContextFactory,
             killSwitchService,
             killSwitchActionService,
@@ -460,7 +407,6 @@ public final class ExecutorTestHarness {
             subflowExecutionEndQueue,
             multipleConditionEventQueue,
             loopExecutionEventQueue,
-            executionStatisticQueue,
             triggerEventQueue,
             execution -> journal.add(new Trace.Emission(journal.size(), "executionTerminated", execution)),
             workerJobRunningStateStore,
@@ -718,14 +664,6 @@ public final class ExecutorTestHarness {
         return multipleConditionEventMessageHandler;
     }
 
-    public ConcurrencySlotReleaseProcessor concurrencySlotReleaseProcessor() {
-        return concurrencySlotReleaseProcessor;
-    }
-
-    public SLAMonitorProcessor slaMonitorProcessor() {
-        return slaMonitorProcessor;
-    }
-
     public ExecutionDelayProcessor executionDelayProcessor() {
         return executionDelayProcessor;
     }
@@ -736,20 +674,8 @@ public final class ExecutorTestHarness {
         return executionStateStore;
     }
 
-    public InMemoryExecutionQueuedStateStore executionQueuedStateStore() {
-        return executionQueuedStateStore;
-    }
-
     public InMemoryExecutionDelayStateStore executionDelayStateStore() {
         return executionDelayStateStore;
-    }
-
-    public InMemorySLAMonitorStateStore slaMonitorStateStore() {
-        return slaMonitorStateStore;
-    }
-
-    public InMemoryConcurrencyLimitStateStore concurrencyLimitStateStore() {
-        return concurrencyLimitStateStore;
     }
 
     public InMemoryFlowMetaStore flowMetaStore() {
@@ -816,10 +742,6 @@ public final class ExecutorTestHarness {
 
     public WorkerJobRunningStateStore workerJobRunningStateStore() {
         return workerJobRunningStateStore;
-    }
-
-    public ConcurrencyLimitResolver concurrencyLimitResolver() {
-        return concurrencyLimitResolver;
     }
 
     public QuotaService quotaService() {

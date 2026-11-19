@@ -80,13 +80,13 @@ class AbstractJdbcRepositoryTest extends AbstractJdbcRepository {
 
     @Test
     void shouldBindNumericFiltersUsingGeneratedColumnType() {
-        generatedTable = Tables.KV_METADATA;
+        generatedTable = Tables.LOGS;
 
-        assertThat(getColumnField(QueryFilter.Field.VERSION)).isSameAs(Tables.KV_METADATA.VERSION);
-        assertThat(getConditionOnField(QueryFilter.Field.VERSION, "2", QueryFilter.Op.EQUALS, null))
-            .isEqualTo(Tables.KV_METADATA.VERSION.eq(2));
-        assertThat(getConditionOnField(QueryFilter.Field.VERSION, List.of("1", "2"), QueryFilter.Op.IN, null))
-            .isEqualTo(Tables.KV_METADATA.VERSION.in(1, 2));
+        assertThat(getColumnField(QueryFilter.Field.ATTEMPT_NUMBER)).isSameAs(Tables.LOGS.ATTEMPT_NUMBER);
+        assertThat(getConditionOnField(QueryFilter.Field.ATTEMPT_NUMBER, "2", QueryFilter.Op.EQUALS, null))
+            .isEqualTo(Tables.LOGS.ATTEMPT_NUMBER.eq(2));
+        assertThat(getConditionOnField(QueryFilter.Field.ATTEMPT_NUMBER, List.of("1", "2"), QueryFilter.Op.IN, null))
+            .isEqualTo(Tables.LOGS.ATTEMPT_NUMBER.in(1, 2));
     }
 
     @Test

@@ -2,7 +2,6 @@ package org.flow.executor.testkit;
 
 import java.util.List;
 
-import org.flow.core.models.flows.Concurrency;
 import org.flow.core.models.flows.Flow;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.tasks.Task;
@@ -32,10 +31,6 @@ public final class Flows {
 
     public static FlowWithSource of(Task... tasks) {
         return of(builder(tasks).build());
-    }
-
-    public static FlowWithSource withConcurrency(Concurrency concurrency, Task... tasks) {
-        return of(builder(tasks).concurrency(concurrency).build());
     }
 
     public static Flow.FlowBuilder<?, ?> builder(Task... tasks) {

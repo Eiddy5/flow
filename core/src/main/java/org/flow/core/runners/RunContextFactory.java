@@ -25,11 +25,8 @@ import org.flow.core.models.tasks.Task;
 import org.flow.core.models.triggers.AbstractTrigger;
 import org.flow.core.plugins.PluginConfigurations;
 import org.flow.core.services.ExecutionOutputService;
-import org.flow.core.services.KVStoreService;
-import org.flow.core.services.NamespaceService;
 import org.flow.core.services.TaskOutputService;
 import org.flow.core.storages.InternalStorage;
-import org.flow.core.storages.NamespaceFactory;
 import org.flow.core.storages.StorageContext;
 import org.flow.core.storages.StorageInterface;
 
@@ -59,9 +56,6 @@ public class RunContextFactory {
     protected StorageInterface storageInterface;
 
     @Inject
-    protected NamespaceService namespaceService;
-
-    @Inject
     protected MetricRegistry metricRegistry;
 
     @Inject
@@ -78,12 +72,6 @@ public class RunContextFactory {
 
     @Inject
     protected RunContextLoggerFactory runContextLoggerFactory;
-
-    @Inject
-    protected KVStoreService kvStoreService;
-
-    @Inject
-    protected NamespaceFactory namespaceFactory;
 
     @Inject
     protected AssetManagerFactory assetManagerFactory;
@@ -135,7 +123,7 @@ public class RunContextFactory {
             .withLogger(runContextLogger)
             // Execution
             .withPluginConfiguration(Map.of())
-            .withStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forExecution(execution), storageInterface, namespaceService, namespaceFactory))
+            .withStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forExecution(execution), storageInterface))
             .withVariableRenderer(variableRenderer)
             .withVariables(variables)
             .withDecryptVariables(decryptVariables)
@@ -167,7 +155,7 @@ public class RunContextFactory {
             .withLogger(runContextLogger)
             // Task
             .withPluginConfiguration(pluginConfigurations.getConfigurationByPluginTypeOrAliases(task.getType(), task.getClass()))
-            .withStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forTask(taskRun), storageInterface, namespaceService, namespaceFactory))
+            .withStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forTask(taskRun), storageInterface))
             .withVariables(variables)
             .withDecryptVariables(decryptVariables)
             .withTask(task)
@@ -196,7 +184,7 @@ public class RunContextFactory {
         RunContextLogger runContextLogger = new RunContextLogger();
         return newBuilder()
             .withLogger(runContextLogger)
-            .withStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forFlow(flow), storageInterface, namespaceService, namespaceFactory))
+            .withStorage(new InternalStorage(runContextLogger.logger(), StorageContext.forFlow(flow), storageInterface))
             .withVariables(
                 newRunVariablesBuilder()
                     .withFlow(flow)
@@ -239,9 +227,7 @@ public class RunContextFactory {
                             return Optional.ofNullable(namespace).map(Object::toString).orElse(null);
                         }
                     },
-                    storageInterface,
-                    namespaceService,
-                    namespaceFactory
+                    storageInterface
                 )
             )
             .withVariables(variables)
@@ -285,7 +271,6 @@ public class RunContextFactory {
             .withStorageInterface(storageInterface)
             .withSecretKey(encryptionConfig.asOptional())
             .withWorkingDir(workingDirFactory.createWorkingDirectory())
-            .withKvStoreService(kvStoreService)
             .withAssetManagerFactory(assetManagerFactory);
     }
 

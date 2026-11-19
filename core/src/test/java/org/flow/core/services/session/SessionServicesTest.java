@@ -13,11 +13,9 @@ import org.flow.core.queues.BroadcastQueueInterface;
 import org.flow.core.queues.DispatchQueueInterface;
 import org.flow.core.repositories.ExecutionRepositoryInterface;
 import org.flow.core.repositories.LogDataStoreInterface;
-import org.flow.core.repositories.MetricRepositoryInterface;
 import org.flow.core.runners.FlowInputOutput;
 import org.flow.core.serializers.JacksonMapper;
 import org.flow.core.services.AsyncOperationWaiter;
-import org.flow.core.services.ConcurrencyLimitService;
 import org.flow.core.services.ExecutionOutputService;
 import org.flow.core.services.ExecutionService;
 import org.flow.core.services.FlowParsingService;
@@ -67,8 +65,8 @@ class SessionServicesTest {
         FlowService flows, ExecutionRepositoryInterface repository, DispatchQueueInterface<ExecutionCommand> queue) {
         return new ExecutionService(
             flows, mock(StorageInterface.class), repository, mock(LogDataStoreInterface.class),
-            mock(MetricRepositoryInterface.class), mock(FlowInputOutput.class), mock(ApplicationEventPublisher.class),
-            mock(ConcurrencyLimitService.class), mock(FlowParsingService.class), mock(TaskOutputService.class),
+            mock(FlowInputOutput.class), mock(ApplicationEventPublisher.class),
+            mock(FlowParsingService.class), mock(TaskOutputService.class),
             mock(ExecutionOutputService.class), queue, mock(BroadcastQueueInterface.class),
             mock(DispatchQueueInterface.class), mock(AsyncOperationWaiter.class),
             mock(AsyncOperationsConfiguration.class), Optional.empty()

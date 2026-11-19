@@ -2,12 +2,9 @@ package org.flow.core.runners.pebble.functions;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.file.Path;
 import java.util.Map;
 
 import org.flow.core.runners.LocalPath;
-import org.flow.core.storages.Namespace;
-import org.flow.core.storages.NamespaceFile;
 import org.flow.core.storages.StorageContext;
 
 import io.pebbletemplates.pebble.template.EvaluationContext;
@@ -23,10 +20,6 @@ public class FileExistsFunction extends AbstractFileFunction {
         return switch (path.getScheme()) {
             case StorageContext.FLOW_SCHEME -> storageInterface.get().exists(tenantId, namespace, path);
             case LocalPath.FILE_SCHEME -> localPathFactory.get().createLocalPath().exists(path);
-            case Namespace.NAMESPACE_FILE_SCHEME -> {
-                Namespace namespaceStorage = namespaceFactory.get().of(tenantId, namespace);
-                yield namespaceStorage.exists(NamespaceFile.normalize(Path.of(path.getPath())));
-            }
             default -> throw new IllegalArgumentException(SCHEME_NOT_SUPPORTED_ERROR.formatted(path));
         };
     }
