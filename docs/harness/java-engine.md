@@ -76,7 +76,7 @@ core 只引入 Session 合同所在制品，关闭该依赖的传递基础设施
 
 ## 配置
 
-调用应用提供具名 `datasources.flow`。Repository、JDBC 队列、默认日志和迁移共用
+调用应用提供具名 `datasources.flow`。Repository、JDBC 队列、默认日志和初始化共用
 该连接池；存在 default 池时也不会回退到 default。数据库产品固定 PostgreSQL，
 连接、schema、池大小可配置。不要将原生表直接建入旧 Flow 已使用的同名表空间。
 
@@ -99,8 +99,6 @@ flow:
     type: ${FLOW_STORAGE_TYPE}
   plugins:
     path: ${FLOW_PLUGINS_PATH:}
-  migration:
-    auto: false
   engine:
     worker-threads: 4
     start-timeout: PT1M
@@ -111,14 +109,13 @@ flow:
         fixed-delay: P1D
 ```
 
-`flow.migration.auto` 默认 false。由部署准备程序显式调用
-`MigrationRunnerInterface.runOrFailIfLocked()` 完成建库或升级；需要启动时自动迁移的
-环境可以明确设为 true。FlowEngine.start 不执行迁移。SQL 与 advisory lock 保持原有协议，历史表使用 `flow_migration_history`；
-`pendingScripts()` 会 bootstrap 历史表，并非零 DDL 查询。
-迁移 SPI 的数据库适配、历史表与锁归 core，底层连接与事务执行归 jdbc。混合基线
-SQL 留在 core，专属 SQL 归 queue、executor、scheduler、indexer；资源继续使用
-原 `/migrations/...` classpath 路径，由现有迁移入口协调执行。移动资源不改变脚本
-标识、内容、checksum 或执行顺序，直接消费模块时需带齐所需迁移资源。
+首次部署时，宿主调用 `PostgresSchema.initialize()`，然后启动 FlowEngine。初始化使用
+`datasources.flow`，在同一个事务中执行 [PostgreSQL 基线](../../core/src/main/resources/db/postgres)。
+空 schema 建出 13 张表。同一基线重复执行会保留已有运行数据。需要从旧结构切换时，由宿主
+选择一个空 schema。设计见 [ADR 0137](../decisions/0137-provision-postgres-schema-explicitly.md)。
+
+如配置了独立 PostgreSQL 日志库或自定义日志表名，在启动前对实际日志数据源调用
+`PostgresSchema.initializeLogs(dataSource, tableName)`。该入口复用标准日志表的列与索引。
 
 当前 `FlowEngine` Bean 仅在 `flow.server-type: STANDALONE` 时装配，因此以上直接
 Java 示例保留该值。显式设置 `flow.server-type` 同时会启用
@@ -141,8 +138,7 @@ Java 示例保留该值。显式设置 `flow.server-type` 同时会启用
   Context 关闭时调用 `close()`。
 
 仅设置旧的 `flow.storage.type: local` 或 `flow.storage.local.base-path` 不再提供
-存储能力；缺少宿主 Bean 或可解析的插件时会装配失败。文件输入输出、命名空间文件
-及 KV 内容仍依赖存储契约，不能用空实现代替。多进程 Worker 的宿主实现必须让各
+存储能力；缺少宿主 Bean 或可解析的插件时会装配失败。文件输入输出及有状态触发器游标依赖实际存储。多进程 Worker 的宿主实现必须让各
 进程访问同一份数据；数据库连接和存储是分别配置的职责。
 
 ## Java 入口
@@ -150,21 +146,21 @@ Java 示例保留该值。显式设置 `flow.server-type` 同时会启用
 下面对象均由同一个 Context 注入。初始化数据库是部署准备步骤，完成后启动运行角色：
 
 ```java
-import org.flow.core.migration.MigrationRunnerInterface;
+import org.flow.core.jdbc.postgres.PostgresSchema;
 import org.flow.core.runners.FlowEngine;
 import org.flow.core.services.FlowService;
 import org.flow.core.services.ExecutionService;
 import org.flow.core.services.PluginService;
 import jakarta.inject.Inject;
 
-@Inject MigrationRunnerInterface migrations;
+@Inject PostgresSchema database;
 @Inject FlowEngine engine;
 @Inject FlowService flows;
 @Inject ExecutionService executions;
 @Inject PluginService plugins;
 
 // 部署准备阶段显式调用；运行阶段不重复执行。
-migrations.runOrFailIfLocked();
+database.initialize();
 engine.start();
 
 // session 由宿主提供，保留具体 Session<U> 与 U extends SessionUser 类型。
@@ -254,7 +250,7 @@ bash docs/harness/verify-flow.sh --full-regression
 根 `src/test` 和其中的跨模块测试、强杀探针已删除。当前测试结果在各模块的
 `build/reports/tests/test/`。用户确认将依赖 `tests`、`storage-local` 的测试及其
 专用资源一并删除，不迁移辅助代码或保留测试存储实现；保留不依赖二者的普通测试
-和数据库技术测试，包括 PostgreSQL 设置仓储、迁移与生成元数据验证。
+和数据库技术测试，包括 PostgreSQL 设置仓储、Schema 初始化与生成元数据验证。
 默认入口执行 core 模块使用模拟角色的 `FlowEngineTest`，以及迁入
 `org.flow.core.jdbc.postgres` 的真实 PostgreSQL 测试 `PostgresSettingRepositoryTest`、
 `PostgresSortMetadataTest`，并检查构建、运行隔离
@@ -306,8 +302,8 @@ Context；真实数据库装配与生命周期由根集成测试覆盖。
 外部插件须使用当前 processor 和 API 重新编译；不自动加载旧包名插件或旧配置别名。
 
 这是源码开发阶段的命名切换。请使用独立的新数据库 schema 和存储目录验证。
-已有实例的流程 YAML、序列化类型、存储 URI 和迁移历史表需要单独迁移；本轮不自动
-修改外部应用或已有数据库。历史 SQL 原文不变，以保留 checksum 和来源追溯。
+旧版产品迁移到 Flow 时，宿主仍需处理流程 YAML、序列化类型和存储 URI。当前 Flow 以
+空 schema 为初始化起点。
 示例里的 `example.com` URL 是占位值，运行前替换为实际可访问的数据或代码仓库地址。
 
 ### 2026-10-14 命名迁移专项

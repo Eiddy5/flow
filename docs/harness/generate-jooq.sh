@@ -3,23 +3,7 @@ set -euo pipefail
 
 # 只使用本脚本创建的空数据库；不读取业务连接，不随普通编译自动运行。
 flow_gen_root="$(cd "$(dirname "$0")/../.." && pwd)"
-flow_gen_migrations="$flow_gen_root"
-flow_gen_scripts=(
-    core/src/main/resources/migrations/baseline-postgres.sql
-    queue/src/main/resources/migrations/baseline-queue-postgres.sql
-    core/src/main/resources/migrations/2.0.01-schema-postgres.sql
-    queue/src/main/resources/migrations/2.0.02-queue-postgres.sql
-    indexer/src/main/resources/migrations/2.0.06-widen-logs-postgres.sql
-    core/src/main/resources/migrations/2.0.09-execution-outputs-postgres.sql
-    executor/src/main/resources/migrations/2.0.12-fix-state-duration-postgres.sql
-    scheduler/src/main/resources/migrations/2.1.02-trigger-source-disabled-postgres.sql
-)
-for flow_gen_script in "${flow_gen_scripts[@]}"; do
-    if [[ ! -f "$flow_gen_migrations/$flow_gen_script" ]]; then
-        printf 'Missing migration: %s\n' "$flow_gen_script" >&2
-        exit 1
-    fi
-done
+flow_gen_schema="$flow_gen_root/core/src/main/resources/db/postgres"
 
 mkdir -p "$flow_gen_root/build/gen-validation"
 flow_gen_run_dir="$(mktemp -d "$flow_gen_root/build/gen-validation/run.XXXXXXXX")"
@@ -73,34 +57,13 @@ if [[ ! "$flow_gen_binding" =~ ^127\.0\.0\.1:[0-9]+$ ]]; then
 fi
 flow_gen_port="${flow_gen_binding##*:}"
 
-# 与 JdbcMigrationHistoryStore.bootstrapIfNeeded 的结构一致；不伪造已执行记录。
-docker exec --interactive "$flow_gen_container_id" \
-    psql -X -v ON_ERROR_STOP=1 --username flow --dbname flow --no-password \
-    >"$flow_gen_run_dir/schema.log" 2>&1 <<'SQL'
-CREATE TABLE IF NOT EXISTS flow_migration_history (
-    script_id    VARCHAR(255) NOT NULL,
-    description  VARCHAR(500) NOT NULL,
-    checksum     VARCHAR(64),
-    installed_on TIMESTAMP    NOT NULL,
-    execution_ms BIGINT       NOT NULL,
-    success      BOOLEAN      NOT NULL,
-    CONSTRAINT pk_flow_migration_history PRIMARY KEY (script_id)
-);
-SQL
-
-# Fresh-install SQL 按迁移顺序执行。空库不需要 Java 数据搬迁，也不执行 drop-legacy。
-# 部分 SQL 包含 CONCURRENTLY，不能用 psql -1 包进单一事务。
-for flow_gen_script in "${flow_gen_scripts[@]}"; do
-    flow_gen_input="$flow_gen_migrations/$flow_gen_script"
-    if [[ "${flow_gen_script##*/}" == "2.0.06-widen-logs-postgres.sql" ]]; then
-        flow_gen_input="$flow_gen_run_dir/${flow_gen_script##*/}"
-        sed 's/${table}/logs/g' "$flow_gen_migrations/$flow_gen_script" >"$flow_gen_input"
-    fi
-    printf 'Applying %s\n' "$flow_gen_script" | tee -a "$flow_gen_run_dir/schema.log"
-    docker exec --interactive "$flow_gen_container_id" \
-        psql -X -v ON_ERROR_STOP=1 --username flow --dbname flow --no-password \
-        <"$flow_gen_input" >>"$flow_gen_run_dir/schema.log" 2>&1
-done
+# Apply the same baseline as PostgresSchema in a single transaction.
+{
+    cat "$flow_gen_schema/types.sql" "$flow_gen_schema/tables.sql"
+    sed 's/${table}/logs/g' "$flow_gen_schema/logs.sql"
+} | docker exec --interactive "$flow_gen_container_id" \
+    psql -X --single-transaction -v ON_ERROR_STOP=1 --username flow --dbname flow --no-password --file=- \
+    >"$flow_gen_run_dir/schema.log" 2>&1
 
 env FLOW_GEN_URL="jdbc:postgresql://127.0.0.1:$flow_gen_port/flow" \
     FLOW_GEN_USER=flow FLOW_GEN_PASSWORD=flow FLOW_GEN_SCHEMA=public \

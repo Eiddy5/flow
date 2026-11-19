@@ -28,11 +28,8 @@ public class JooqFlowGenerator {
     private static final String USER_OPTION = "user";
     private static final String PASSWORD_OPTION = "password";
     private static final String SCHEMA_OPTION = "schema";
-    private static final String INCLUDED_TABLES = "queues|flows|executions|triggers|logs|metrics|"
-        + "multipleconditions|execution_statistics|executordelayed|settings|flow_topologies|"
-        + "service_instance|worker_job_running|execution_queued|sla_monitor|concurrency_limit|"
-        + "kv_metadata|namespace_file_metadata|locks|task_outputs|execution_outputs|"
-        + "flow_migration_history";
+    private static final String INCLUDED_TABLES = "queues|flows|executions|triggers|logs|multipleconditions|"
+        + "executordelayed|settings|service_instance|worker_job_running|locks|task_outputs|execution_outputs";
     private static final String INCLUDED_OBJECTS = INCLUDED_TABLES + "|state_type|log_level";
 
     /**
@@ -63,7 +60,7 @@ public class JooqFlowGenerator {
             System.out.println("Flow jOOQ objects generated in src/main/java/org/flow/gen/flow");
         } catch (Exception exception) {
             System.err.println("Flow jOOQ generation failed (" + exception.getClass().getSimpleName()
-                + "). Check the database connection, migration state and generator dependencies.");
+                + "). Check the database connection, schema initialization and generator dependencies.");
             System.exit(1);
         }
     }

@@ -6,6 +6,8 @@ Accepted（2026-10-13）。用户批准第二轮清理，并明确无需保留�
 局部修订 ADR 0115/0116/0117 的功能范围；执行、JDBC 队列、调度、通用扩展和
 Task 导出仍为必保能力。不加入 Route 或业务逻辑。
 
+当前核心表结构和最新退役能力见 [ADR 0136](0136-retain-triggers-in-the-core-schema.md)。
+
 ## 背景
 
 第一轮已移除独立 CLI、Web 和 MySQL 模块，core/script 仍包含 AI 助手、MCP、
@@ -54,6 +56,11 @@ Task 导出仍为必保能力。不加入 Route 或业务逻辑。
     移除 main 中的 HTTP Server Netty、Web 密码哈希依赖及退出功能的 AI/MCP 平台声明。
     HTTP 客户端、测试用 HTTP Server、实际使用的脚本能力和配置校验保留；不按“没有
     静态调用”删除反射加载、注解注册或供外部插件使用的通用扩展接口。
+12. 从 PostgreSQL 新库脚本移除 `dashboards`、`mcp`、`mcp_session` 的建表、索引和触发器定义。
+    已有库通过 `2.1.03-remove-retired-product-tables` 删除当前 Flow schema 中这三张表及其数据。
+    两个修改过的脚本仅接受本次明确列出的旧、新 SHA-256 对；已有迁移记录保持原值。
+    这局部修订 ADR 0130 对两个 SQL 文件内容的约束。存在外部依赖时，PostgreSQL 以
+    `RESTRICT` 拒绝删除并使本次迁移失败。
 
 ## 理由
 

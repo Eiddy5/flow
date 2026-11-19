@@ -43,10 +43,9 @@ class GeneratedObjectsTest {
     @Test
     void exposesAllRuntimeTablesWithoutRetiredProductTables() {
         Set<String> expected = Set.of(
-            "queues", "flows", "executions", "triggers", "logs", "metrics", "multipleconditions",
-            "execution_statistics", "executordelayed", "settings", "flow_topologies", "service_instance",
-            "worker_job_running", "execution_queued", "sla_monitor", "concurrency_limit", "kv_metadata",
-            "namespace_file_metadata", "locks", "task_outputs", "execution_outputs", "flow_migration_history"
+            "queues", "flows", "executions", "triggers", "logs", "multipleconditions", "executordelayed",
+            "settings", "service_instance", "worker_job_running", "locks", "task_outputs",
+            "execution_outputs"
         );
         assertEquals(expected, runtimeTables().map(Table::getName).collect(Collectors.toSet()));
     }

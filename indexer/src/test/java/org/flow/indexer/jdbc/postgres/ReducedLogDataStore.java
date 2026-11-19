@@ -25,7 +25,7 @@ import io.swagger.v3.oas.annotations.Hidden;
  * branch against it.
  * <p>
  * Wired via {@code @MockBean(LogDataStoreInterface.class)} in the tests (with {@code flow.logs.type} unset so it
- * falls back to the Postgres repository — which keeps the log-table migrations, e.g. the {@code task_id} widen, running).
+ * falls back to the Postgres repository).
  */
 // @Plugin and @Plugin.Id are @Inherited, so without @Hidden this test double would be registered as a
 // SECOND log-store plugin under the inherited id "postgres". LogDataStoreInterfaceFactory.resolve("postgres") then does

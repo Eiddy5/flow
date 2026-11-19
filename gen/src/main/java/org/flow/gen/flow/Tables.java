@@ -4,25 +4,16 @@
 package org.flow.gen.flow;
 
 
-import org.flow.gen.flow.tables.ConcurrencyLimitTable;
 import org.flow.gen.flow.tables.ExecutionOutputsTable;
-import org.flow.gen.flow.tables.ExecutionQueuedTable;
-import org.flow.gen.flow.tables.ExecutionStatisticsTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExecutordelayedTable;
-import org.flow.gen.flow.tables.FlowMigrationHistoryTable;
-import org.flow.gen.flow.tables.FlowTopologiesTable;
 import org.flow.gen.flow.tables.FlowsTable;
-import org.flow.gen.flow.tables.KvMetadataTable;
 import org.flow.gen.flow.tables.LocksTable;
 import org.flow.gen.flow.tables.LogsTable;
-import org.flow.gen.flow.tables.MetricsTable;
 import org.flow.gen.flow.tables.MultipleconditionsTable;
-import org.flow.gen.flow.tables.NamespaceFileMetadataTable;
 import org.flow.gen.flow.tables.QueuesTable;
 import org.flow.gen.flow.tables.ServiceInstanceTable;
 import org.flow.gen.flow.tables.SettingsTable;
-import org.flow.gen.flow.tables.SlaMonitorTable;
 import org.flow.gen.flow.tables.TaskOutputsTable;
 import org.flow.gen.flow.tables.TriggersTable;
 import org.flow.gen.flow.tables.WorkerJobRunningTable;
@@ -35,24 +26,9 @@ import org.flow.gen.flow.tables.WorkerJobRunningTable;
 public class Tables {
 
     /**
-     * The table <code>concurrency_limit</code>.
-     */
-    public static final ConcurrencyLimitTable CONCURRENCY_LIMIT = ConcurrencyLimitTable.CONCURRENCY_LIMIT;
-
-    /**
      * The table <code>execution_outputs</code>.
      */
     public static final ExecutionOutputsTable EXECUTION_OUTPUTS = ExecutionOutputsTable.EXECUTION_OUTPUTS;
-
-    /**
-     * The table <code>execution_queued</code>.
-     */
-    public static final ExecutionQueuedTable EXECUTION_QUEUED = ExecutionQueuedTable.EXECUTION_QUEUED;
-
-    /**
-     * The table <code>execution_statistics</code>.
-     */
-    public static final ExecutionStatisticsTable EXECUTION_STATISTICS = ExecutionStatisticsTable.EXECUTION_STATISTICS;
 
     /**
      * The table <code>executions</code>.
@@ -65,24 +41,9 @@ public class Tables {
     public static final ExecutordelayedTable EXECUTORDELAYED = ExecutordelayedTable.EXECUTORDELAYED;
 
     /**
-     * The table <code>flow_migration_history</code>.
-     */
-    public static final FlowMigrationHistoryTable FLOW_MIGRATION_HISTORY = FlowMigrationHistoryTable.FLOW_MIGRATION_HISTORY;
-
-    /**
-     * The table <code>flow_topologies</code>.
-     */
-    public static final FlowTopologiesTable FLOW_TOPOLOGIES = FlowTopologiesTable.FLOW_TOPOLOGIES;
-
-    /**
      * The table <code>flows</code>.
      */
     public static final FlowsTable FLOWS = FlowsTable.FLOWS;
-
-    /**
-     * The table <code>kv_metadata</code>.
-     */
-    public static final KvMetadataTable KV_METADATA = KvMetadataTable.KV_METADATA;
 
     /**
      * The table <code>locks</code>.
@@ -95,19 +56,9 @@ public class Tables {
     public static final LogsTable LOGS = LogsTable.LOGS;
 
     /**
-     * The table <code>metrics</code>.
-     */
-    public static final MetricsTable METRICS = MetricsTable.METRICS;
-
-    /**
      * The table <code>multipleconditions</code>.
      */
     public static final MultipleconditionsTable MULTIPLECONDITIONS = MultipleconditionsTable.MULTIPLECONDITIONS;
-
-    /**
-     * The table <code>namespace_file_metadata</code>.
-     */
-    public static final NamespaceFileMetadataTable NAMESPACE_FILE_METADATA = NamespaceFileMetadataTable.NAMESPACE_FILE_METADATA;
 
     /**
      * The table <code>queues</code>.
@@ -123,11 +74,6 @@ public class Tables {
      * The table <code>settings</code>.
      */
     public static final SettingsTable SETTINGS = SettingsTable.SETTINGS;
-
-    /**
-     * The table <code>sla_monitor</code>.
-     */
-    public static final SlaMonitorTable SLA_MONITOR = SlaMonitorTable.SLA_MONITOR;
 
     /**
      * The table <code>task_outputs</code>.

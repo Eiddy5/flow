@@ -7,25 +7,16 @@ package org.flow.gen.flow;
 import java.util.Arrays;
 import java.util.List;
 
-import org.flow.gen.flow.tables.ConcurrencyLimitTable;
 import org.flow.gen.flow.tables.ExecutionOutputsTable;
-import org.flow.gen.flow.tables.ExecutionQueuedTable;
-import org.flow.gen.flow.tables.ExecutionStatisticsTable;
 import org.flow.gen.flow.tables.ExecutionsTable;
 import org.flow.gen.flow.tables.ExecutordelayedTable;
-import org.flow.gen.flow.tables.FlowMigrationHistoryTable;
-import org.flow.gen.flow.tables.FlowTopologiesTable;
 import org.flow.gen.flow.tables.FlowsTable;
-import org.flow.gen.flow.tables.KvMetadataTable;
 import org.flow.gen.flow.tables.LocksTable;
 import org.flow.gen.flow.tables.LogsTable;
-import org.flow.gen.flow.tables.MetricsTable;
 import org.flow.gen.flow.tables.MultipleconditionsTable;
-import org.flow.gen.flow.tables.NamespaceFileMetadataTable;
 import org.flow.gen.flow.tables.QueuesTable;
 import org.flow.gen.flow.tables.ServiceInstanceTable;
 import org.flow.gen.flow.tables.SettingsTable;
-import org.flow.gen.flow.tables.SlaMonitorTable;
 import org.flow.gen.flow.tables.TaskOutputsTable;
 import org.flow.gen.flow.tables.TriggersTable;
 import org.flow.gen.flow.tables.WorkerJobRunningTable;
@@ -49,24 +40,9 @@ public class DefaultSchema extends SchemaImpl {
     public static final DefaultSchema DEFAULT_SCHEMA = new DefaultSchema();
 
     /**
-     * The table <code>concurrency_limit</code>.
-     */
-    public final ConcurrencyLimitTable CONCURRENCY_LIMIT = ConcurrencyLimitTable.CONCURRENCY_LIMIT;
-
-    /**
      * The table <code>execution_outputs</code>.
      */
     public final ExecutionOutputsTable EXECUTION_OUTPUTS = ExecutionOutputsTable.EXECUTION_OUTPUTS;
-
-    /**
-     * The table <code>execution_queued</code>.
-     */
-    public final ExecutionQueuedTable EXECUTION_QUEUED = ExecutionQueuedTable.EXECUTION_QUEUED;
-
-    /**
-     * The table <code>execution_statistics</code>.
-     */
-    public final ExecutionStatisticsTable EXECUTION_STATISTICS = ExecutionStatisticsTable.EXECUTION_STATISTICS;
 
     /**
      * The table <code>executions</code>.
@@ -79,24 +55,9 @@ public class DefaultSchema extends SchemaImpl {
     public final ExecutordelayedTable EXECUTORDELAYED = ExecutordelayedTable.EXECUTORDELAYED;
 
     /**
-     * The table <code>flow_migration_history</code>.
-     */
-    public final FlowMigrationHistoryTable FLOW_MIGRATION_HISTORY = FlowMigrationHistoryTable.FLOW_MIGRATION_HISTORY;
-
-    /**
-     * The table <code>flow_topologies</code>.
-     */
-    public final FlowTopologiesTable FLOW_TOPOLOGIES = FlowTopologiesTable.FLOW_TOPOLOGIES;
-
-    /**
      * The table <code>flows</code>.
      */
     public final FlowsTable FLOWS = FlowsTable.FLOWS;
-
-    /**
-     * The table <code>kv_metadata</code>.
-     */
-    public final KvMetadataTable KV_METADATA = KvMetadataTable.KV_METADATA;
 
     /**
      * The table <code>locks</code>.
@@ -109,19 +70,9 @@ public class DefaultSchema extends SchemaImpl {
     public final LogsTable LOGS = LogsTable.LOGS;
 
     /**
-     * The table <code>metrics</code>.
-     */
-    public final MetricsTable METRICS = MetricsTable.METRICS;
-
-    /**
      * The table <code>multipleconditions</code>.
      */
     public final MultipleconditionsTable MULTIPLECONDITIONS = MultipleconditionsTable.MULTIPLECONDITIONS;
-
-    /**
-     * The table <code>namespace_file_metadata</code>.
-     */
-    public final NamespaceFileMetadataTable NAMESPACE_FILE_METADATA = NamespaceFileMetadataTable.NAMESPACE_FILE_METADATA;
 
     /**
      * The table <code>queues</code>.
@@ -137,11 +88,6 @@ public class DefaultSchema extends SchemaImpl {
      * The table <code>settings</code>.
      */
     public final SettingsTable SETTINGS = SettingsTable.SETTINGS;
-
-    /**
-     * The table <code>sla_monitor</code>.
-     */
-    public final SlaMonitorTable SLA_MONITOR = SlaMonitorTable.SLA_MONITOR;
 
     /**
      * The table <code>task_outputs</code>.
@@ -174,25 +120,16 @@ public class DefaultSchema extends SchemaImpl {
     @Override
     public final List<Table<?>> getTables() {
         return Arrays.asList(
-            ConcurrencyLimitTable.CONCURRENCY_LIMIT,
             ExecutionOutputsTable.EXECUTION_OUTPUTS,
-            ExecutionQueuedTable.EXECUTION_QUEUED,
-            ExecutionStatisticsTable.EXECUTION_STATISTICS,
             ExecutionsTable.EXECUTIONS,
             ExecutordelayedTable.EXECUTORDELAYED,
-            FlowMigrationHistoryTable.FLOW_MIGRATION_HISTORY,
-            FlowTopologiesTable.FLOW_TOPOLOGIES,
             FlowsTable.FLOWS,
-            KvMetadataTable.KV_METADATA,
             LocksTable.LOCKS,
             LogsTable.LOGS,
-            MetricsTable.METRICS,
             MultipleconditionsTable.MULTIPLECONDITIONS,
-            NamespaceFileMetadataTable.NAMESPACE_FILE_METADATA,
             QueuesTable.QUEUES,
             ServiceInstanceTable.SERVICE_INSTANCE,
             SettingsTable.SETTINGS,
-            SlaMonitorTable.SLA_MONITOR,
             TaskOutputsTable.TASK_OUTPUTS,
             TriggersTable.TRIGGERS,
             WorkerJobRunningTable.WORKER_JOB_RUNNING

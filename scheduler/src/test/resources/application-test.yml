@@ -1,6 +1,6 @@
 flow:
-  migration:
-    auto: true
+  test:
+    initialize-schema: true
   queue:
     type: postgres
     message-protection:
@@ -25,10 +25,6 @@ flow:
         initial-delay: 1h
         fixed-delay: 1d
         retention: 30d
-logger:
-  levels:
-    "org.flow.core.migration": WARN
-
 datasources:
   flow:
     url: ${FLOW_UPSTREAM_TEST_URL:jdbc:postgresql://localhost:5432/flow_unit}

@@ -36,12 +36,12 @@ Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前
 | `plugin-api`、`processor` | 基础插件契约、注解与编译期插件注册资源生成 |
 | `gen` | PostgreSQL 生成对象及独立 codegen 入口；运行生成类型供数据库适配器使用，普通编译不连接数据库 |
 | `jdbc` | 不依赖 core 的数据库底层：datasources.flow、jOOQ、事务执行、通用工具和宿主可覆盖的内部 DB 事件/消费者默认配置；不承载能力专属仓储 |
-| `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；通用仓储基类、ServiceInstance 等 core 仓储、迁移 SPI 适配、迁移历史和锁；公开入口位于 `org.flow.core.services`，FlowService、ExecutionService 的用户操作接收宿主 Session，PluginService 直接查询全局插件目录；FlowEngine 管理生命周期 |
+| `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；通用仓储基类、ServiceInstance 等 core 仓储、PostgreSQL Schema 初始化和锁；公开入口位于 `org.flow.core.services`，FlowService、ExecutionService 的用户操作接收宿主 Session，PluginService 直接查询全局插件目录；FlowEngine 管理生命周期 |
 | `queue` | 队列协议、原生 JDBC Dispatch/Broadcast 实现及队列持久化和表配置 |
 | `executor` | 原生执行状态推进与命令消费；ExecutionRepository、ExecutionStateStore、执行器专属持久化和表配置 |
 | `worker` | Task/Trigger 执行、队列领取与结果发布、PG 心跳和恢复，以及 Worker 专属持久化和表配置；普通和 SystemWorker 独立线程池 |
 | `scheduler` | 原生触发器、时间调度、调度状态及其持久化和表配置 |
-| `indexer` | 日志、指标与执行统计异步入库，以及相关持久化和表配置 |
+| `indexer` | 日志异步入库，以及相关持久化和表配置 |
 | `script` | 通用脚本基类、CommandsWrapper 和 ScriptOutput；TaskRunner SPI/Process 位于 core，脚本显式选择执行器，无内置 Docker |
 | `tooling` | 离线聚合/配置 Schema 生成器；不启动 Context，不进入根生产依赖 |
 | `http` | 可选 PaaS HTTP 适配模块。宿主启用后由 Flow Controller 提供插件查询，契约见 [HTTP API](../http/api/README.md) |
@@ -52,13 +52,12 @@ Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前
 
 模块内部沿用 `src/main/java`、`src/main/resources`、`src/test/java`、`src/test/resources`。
 各能力的数据库实现使用 `org.flow.<owner>.jdbc` 包，数据库底层仍为 `org.flow.jdbc`。
-PostgreSQL 具体实现位于 `org.flow.<owner>.jdbc.postgres`；迁移代码分别位于所属
-数据库包的 `migration` 与 `postgres.migration`。
+PostgreSQL 具体实现位于 `org.flow.<owner>.jdbc.postgres`。
 `queue-jdbc`、`jdbc-postgres` 已移除，`script` 保持独立模块。
 源码变更通过 Git 历史追踪；根来源清单、变更账本与原始构建备份已删除。
 独立 `tests`、`storage-local` 模块及依赖它们的测试、专用资源已删除；不迁移共享
 测试辅助代码、架构测试或本地存储实现。各模块保留不依赖这两个模块的普通测试
-和数据库技术测试，包括 PostgreSQL 设置仓储、迁移及生成元数据验证。
+和数据库技术测试，包括 PostgreSQL 设置仓储、Schema 初始化及生成元数据验证。
 
 ## 依赖和运行
 
@@ -77,10 +76,9 @@ CSES 业务模块。
 FlowEngine 在 core 中通过这些契约协调五类运行服务，core 生产依赖不反向引用具体运行模块。
 core 依赖 jdbc/gen；queue、executor、worker、scheduler、indexer 按职责依赖
 core/jdbc/gen。jdbc 不依赖 core 或运行角色，gen 不依赖 Flow 运行模块。
-core 的数据库技术测试在测试运行 classpath 引入所需能力模块，以加载完整迁移与
-装配；这些测试依赖不进入 core 的生产制品依赖。
+core 的数据库技术测试在测试运行 classpath 引入所需能力模块，以加载完整运行角色装配；这些测试依赖不进入 core 的生产制品依赖。
 根依赖聚合不包含第二套引擎、Context 或数据源。调用应用在自己的同一 Context 内
-配置 `datasources.flow`，显式迁移后启动 FlowEngine；完整入口见
+配置 `datasources.flow`，显式初始化数据库后启动 FlowEngine；完整入口见
 [直接 Java 使用指南](harness/java-engine.md)。
 
 core、queue、jdbc、executor、worker、scheduler 和 indexer
@@ -93,14 +91,10 @@ core 及各能力模块的数据库实现直接消费 gen 的 Table、Field、Re
 子类；Core Domain 和服务契约不使用生成类型。各模块通过自己的
 `<Owner>JdbcTableConfigsFactory` 显式绑定生成表，逐表读取
 `flow.jdbc.tables.<name>.table`，未配置时使用生成表名称；jdbc 不维护中央表名映射。
-生成器在独立 codegen source set 中，普通编译使用已提交代码。混合基线 SQL 留在
-core，queue、executor、scheduler、indexer 的专属 SQL 归各自
-`src/main/resources/migrations/`；classpath 的 `/migrations/...` 路径、文件内容、
-脚本标识、checksum 和执行顺序不变，由现有迁移入口协调执行。生成脚本只在临时
-PostgreSQL 上执行这些 SQL，gen 不维护第二份 SQL 基线。
-
-事务、队列、默认日志和迁移绑定 flow 数据源，不回退 default。原生独立日志扩展仍
-保留，但不是默认装配。迁移默认显式执行；自动迁移需明确开启 flow.migration.auto。
+生成器在独立 codegen source set 中，普通编译使用已提交代码。13 张表的最终 DDL 位于
+core 的 `src/main/resources/db/postgres/`，由宿主显式初始化，jOOQ 生成和测试复用同一套
+脚本。数据库初始化、事务、队列及默认日志使用具名 flow 数据源。独立 PostgreSQL 日志
+扩展使用日志表的同一份 DDL。见 [ADR 0137](decisions/0137-provision-postgres-schema-explicitly.md)。
 数据库技术测试使用独立测试库和 schema，不连接业务数据库。
 
 Worker 直接领取 JDBC 队列，在同源 PG 事务中登记归属、确认消息和发布结果，无
@@ -127,7 +121,7 @@ Pulsar 类型，Flow 队列仍是 JDBC。jdbc 的 `FlowDatabaseContextConfigurer
 最低优先级 PropertySource，默认关闭内部 DB 事件、数据库 Pulsar 监听和消费者，
 宿主显式配置可以覆盖；配置键与实际验证结果见生成指南。
 普通日志继续通过 Dispatch/Indexer
-入库，Webhook 继续使用执行事件流。历史迁移 SQL 及原文 checksum 保留；当前迁移历史表为 flow_migration_history。
+入库，Webhook 继续使用执行事件流。
 
 ## 构建、来源和产物
 
@@ -141,7 +135,8 @@ Pulsar 类型，Flow 队列仍是 JDBC。jdbc 的 `FlowDatabaseContextConfigurer
 - `docs/harness/verify-flow.sh`：在临时 PostgreSQL 上执行保留测试，以及构建、运行隔离与 Schema 检查；不代表完整引擎和宿主存储运行验收。
 - `docs/harness/capture-dependency-versions.init.gradle`：按配置导出解析组件和制品，用于依赖调整前后比较。
 - `gen/src/codegen/java/`、`docs/harness/generate-jooq.sh`：显式生成入口及临时 PostgreSQL 建库、生成与清理脚本；产物提交到 gen 的主源码目录。
-- core、queue、executor、scheduler、indexer 的 `src/main/resources/migrations/`：按能力归属存放迁移 SQL，混合基线留在 core；保持原 classpath 路径、脚本标识、内容、checksum 和顺序。
+- `core/src/main/resources/db/postgres/`：原生 PostgreSQL 建表基线。
+- `core/src/testSupport/java/`：各 PostgreSQL 模块共用的测试 schema 初始化装配。
 
 ## 文档与 Agent
 

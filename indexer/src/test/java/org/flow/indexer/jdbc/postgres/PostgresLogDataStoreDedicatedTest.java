@@ -1,11 +1,14 @@
 package org.flow.indexer.jdbc.postgres;
 
 import org.flow.core.jdbc.postgres.PostgresRepository;
+import org.flow.core.jdbc.postgres.PostgresSchema;
+import org.flow.indexer.jdbc.LogJdbcDataSourceProvider;
 
 import java.time.Instant;
 import java.util.List;
 
 import org.jooq.impl.DSL;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.event.Level;
 
@@ -23,11 +26,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Proves the dedicated-datasource path: with {@code flow.logs.type=postgres} + a distinct
- * {@code flow.logs.postgres.url}, the log store writes/reads a separate Postgres database (created by the
- * {@code 2.0.05-logs-postgres} migration), and the primary database receives none of those logs.
+ * {@code flow.logs.postgres.url}, the log store writes/reads the explicitly initialized dedicated Postgres database.
  */
 @MicronautTest(transactional = false)
 @Property(name = "flow.logs.type", value = "postgres")
+@Property(name = "flow.logs.postgres.table", value = "dedicated_logs")
 @Property(name = "flow.logs.postgres.url", value = "${FLOW_LOGS_TEST_URL}")
 @Property(name = "flow.logs.postgres.username", value = "${FLOW_UPSTREAM_TEST_USER}")
 @Property(name = "flow.logs.postgres.password", value = "${FLOW_UPSTREAM_TEST_PASSWORD}")
@@ -43,6 +46,14 @@ class PostgresLogDataStoreDedicatedTest {
     @Inject
     @Named("logs")
     PostgresRepository<LogEntry> primaryLogs;
+
+    @Inject
+    LogJdbcDataSourceProvider logDataSourceProvider;
+
+    @BeforeEach
+    void initializeLogTable() throws Exception {
+        PostgresSchema.initializeLogs(logDataSourceProvider.dataSource(), logDataSourceProvider.table());
+    }
 
     @Test
     void shouldWriteAndReadFromDedicatedDatabaseAndNotThePrimary() {

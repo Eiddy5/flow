@@ -1,5 +1,13 @@
 # PostgreSQL Schema 基线规范
 
+## 当前原生引擎
+
+[ADR 0137](../decisions/0137-provision-postgres-schema-explicitly.md) 确立当前 PostgreSQL
+基线入口。原生引擎使用 core 的 `src/main/resources/db/postgres/`，保留运行所依赖的
+时间类型、枚举、生成列与查询函数。基线验证使用
+`bash docs/harness/verify-flow.sh` 与 `bash docs/harness/generate-jooq.sh`。
+下面按表拆分的 `gen/sql` 规则属于此前自研模型。
+
 ## 适用范围
 
 本规范约束 Flow 开发期 PostgreSQL 基线中的表命名、文件隔离和完整入口。具体领域

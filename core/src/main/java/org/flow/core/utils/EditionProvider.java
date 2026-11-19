@@ -15,8 +15,7 @@ public class EditionProvider {
 
     /**
      * Persists the current edition in the settings repository.
-     * Must be called after database migrations have completed (e.g., from a startup
-     * hook).
+     * Call after initializing the database schema.
      *
      * @param settingRepository the repository to persist the edition setting.
      */

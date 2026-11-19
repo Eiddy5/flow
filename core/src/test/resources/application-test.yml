@@ -15,8 +15,8 @@ flow:
   storage:
     # 仅供配置校验；剩余测试不装配或调用存储后端。
     type: external
-  migration:
-    auto: true
+  test:
+    initialize-schema: true
   encryption:
     secret-key: I6EGNzRESu3X3pKZidrqCGOHQFUFC0yK
   url: https://mysuperhost.com/subpath
@@ -79,10 +79,6 @@ flow:
         - http://169.254.169.254
         - http://flow_internal_db
         - 10.0.0.0/8
-
-logger:
-  levels:
-    "org.flow.core.migration": WARN
 
 datasources:
   flow:

@@ -71,10 +71,10 @@ class JooqFlowGeneratorTest {
     void includesRuntimeTablesAndEnumsButExcludesRetiredObjects() {
         var included = Pattern.compile(JooqFlowGenerator.configuration("public")
             .getGenerator().getDatabase().getIncludes());
-        for (String name : new String[]{"flows", "queues", "flow_migration_history", "state_type", "log_level"}) {
+        for (String name : new String[]{"flows", "queues", "state_type", "log_level"}) {
             assertTrue(included.matcher(name).matches(), name);
         }
-        for (String name : new String[]{"dashboards", "mcp", "mcp_session", "pgp_armor_headers"}) {
+        for (String name : new String[]{"dashboards", "mcp", "mcp_session", "flow_migration_history", "pgp_armor_headers"}) {
             assertFalse(included.matcher(name).matches(), name);
         }
     }

@@ -73,6 +73,8 @@ JDBC，实现共用可配置 `datasources.flow`。旧 Pulsar、DataSourceEngine/
 
 ## Core 组件与依赖方向
 
+- [ADR 0137](0137-provision-postgres-schema-explicitly.md) 宿主显式初始化 PostgreSQL，核心运行数据库包含 13 张表。
+- [ADR 0136](0136-retain-triggers-in-the-core-schema.md) 保留原生触发器和多条件窗口。该决策中的升级部分由 ADR 0137 修订。
 - [ADR 0135](0135-expose-plugin-queries-through-host-paas-web.md)：Flow 持有插件 HTTP 路由和契约，使用宿主 PaaS Web 与鉴权。
 - [ADR 0134](0134-limit-session-to-user-service-entrypoints.md)：定义与执行的用户操作使用宿主 Session，插件查询直接读取全局目录，异步执行消费命令与操作者标识，应用开关由宿主管理。
 - [ADR 0132](0132-rename-model-to-plugin-api.md)：model 更名为 plugin-api，统一插件 API 包名与 SPI 注册路径。

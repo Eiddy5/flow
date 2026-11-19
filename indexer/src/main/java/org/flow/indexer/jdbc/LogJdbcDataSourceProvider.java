@@ -24,10 +24,9 @@ import jakarta.annotation.PreDestroy;
 import jakarta.inject.Singleton;
 
 /**
- * Resolves the JDBC datasource a log store (and its migration) should use, from {@code flow.logs.*}.
+ * Resolves the JDBC datasource a log store should use, from {@code flow.logs.*}.
  * <p>
- * A single resolution shared by the log store and the log-table migration so a dedicated log
- * database is described in one place (rather than a separate {@code datasources.logs} block):
+ * The store configuration determines which connection pool it uses:
  * <ul>
  * <li>if {@code flow.logs.<type>.url} is set → build (and own) a dedicated HikariCP
  * {@link DataSource} + {@link JooqDSLContextWrapper} for it (PostgreSQL only);</li>
@@ -140,7 +139,7 @@ public class LogJdbcDataSourceProvider implements AutoCloseable {
     }
 
     /**
-     * @return the datasource to run the log-table migration against: the dedicated one when configured,
+     * @return the datasource for the log table: the dedicated one when configured,
      *         otherwise the primary datasource.
      */
     public DataSource dataSource() {

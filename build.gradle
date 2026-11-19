@@ -96,6 +96,11 @@ allprojects {
             'X-Flow-Group': project.group, 'X-Flow-Version': project.version)
     }
 }
+// Each PostgreSQL module test uses the same test-only initializer and an isolated schema.
+configure([project(':core'), project(':executor'), project(':indexer'), project(':queue'), project(':scheduler'), project(':worker')]) {
+    sourceSets.test.java.srcDir rootProject.file('core/src/testSupport/java')
+}
+
 ext.testHeapSizes = [
     'processor'        : '256m',
     'executor'         : '768m',

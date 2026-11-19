@@ -7,7 +7,8 @@ flow_check_container_id=""
 flow_check_plugins="$(mktemp -d "${TMPDIR:-/tmp}/flow-check-plugins.XXXXXX")"
 flow_check_tasks=(:core:test --tests 'org.flow.core.runners.FlowEngineTest'
     --tests 'org.flow.core.jdbc.postgres.PostgresSettingRepositoryTest'
-    --tests 'org.flow.core.jdbc.postgres.PostgresSortMetadataTest')
+    --tests 'org.flow.core.jdbc.postgres.PostgresSortMetadataTest'
+    --tests 'org.flow.core.jdbc.postgres.PostgresSchemaTest')
 if [[ "${1:-}" == "--full-regression" ]]; then
     # 完整回归也只连接本脚本创建的独立数据库。
     flow_check_tasks=(test --continue)

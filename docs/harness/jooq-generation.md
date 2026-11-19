@@ -2,11 +2,9 @@
 
 依据 [ADR 0127](../decisions/0127-use-generated-database-objects.md)，gen 使用 CSES
 同款内部 `ExtJavaGenerator`、`ExtJavaGeneratorStrategy` 和 `JooqPojo`。生成代码
-统一位于 `gen/src/main/java/org/flow/gen/flow/`，包括 22 张表的 Table、Field、
-Record、POJO，以及枚举、主键和索引；其中 21 张为运行表，另一张为迁移历史表。
-持久化归属按 [ADR 0130](../decisions/0130-co-locate-persistence-with-owning-modules.md)：
-数据库底层为 jdbc，各能力在自身模块直接使用生成表和字段；混合基线留在 core，
-专属迁移资源归对应能力模块。
+统一位于 `gen/src/main/java/org/flow/gen/flow/`，包括 13 张运行表的 Table、Field、
+Record、POJO，以及枚举、主键和索引。数据库底层归 jdbc，各能力在自身模块直接使用
+生成表和字段。建表基线见 [ADR 0137](../decisions/0137-provision-postgres-schema-explicitly.md)。
 
 ## CSES 参照方式
 
@@ -21,7 +19,7 @@ Record、POJO，以及枚举、主键和索引；其中 21 张为运行表，另
 
 Flow 沿用生成器与类型协议，包名使用 `org.flow.gen.flow`。生成入口单独放入 codegen
 source set，数据库适配器依赖 gen；领域对象仍遵循当前引擎协议。生成时使用临时库和
-现有迁移 SQL，不复制 CSES 的连接信息、业务表或额外服务模块。
+当前 PostgreSQL 建表基线。
 
 ## 日常编译与重新生成
 
@@ -38,27 +36,9 @@ schema，并使用随机本地端口。它不读取业务连接，退出时清�
 在 `build/gen-validation/run.*/`，包括 Schema、生成器和 PostgreSQL 日志；清理错误
 直接输出到终端，即使构建日志目录被删除也会尝试清理容器。
 
-脚本按原顺序读取 core、queue、indexer、executor、scheduler 的
-`src/main/resources/migrations/` 中八份新库 SQL，
-先创建与运行迁移器一致的 `flow_migration_history` 结构，不写入虚假的迁移记录。
-
-| 执行顺序 | 所属模块 | SQL 文件 |
-| --- | --- | --- |
-| 1 | core | `baseline-postgres.sql` |
-| 2 | queue | `baseline-queue-postgres.sql` |
-| 3 | core | `2.0.01-schema-postgres.sql` |
-| 4 | queue | `2.0.02-queue-postgres.sql` |
-| 5 | indexer | `2.0.06-widen-logs-postgres.sql` |
-| 6 | core | `2.0.09-execution-outputs-postgres.sql` |
-| 7 | executor | `2.0.12-fix-state-duration-postgres.sql` |
-| 8 | scheduler | `2.1.02-trigger-source-disabled-postgres.sql` |
-
-其他迁移资源仍按既有用途保留：queue 的 `2.0.02-queue-drop-legacy-postgres.sql`
-用于旧队列表清理，indexer 的 `logs-postgres.sql` 用于日志库；不加入本入口的新库
-生成顺序。所有资源继续使用原 `/migrations/...` classpath 路径，内容与迁移身份不变。
-日志扩宽脚本的表名占位符只在临时副本中替换；已有 SQL 及 checksum 不变。
-空库不执行旧数据搬迁或旧表删除。新增迁移后应同步检查脚本的迁移列表和生成器
-对象清单，再生成并审查差异，不直接修改生成代码。
+脚本在同一事务内执行 core 的 `src/main/resources/db/postgres/` 中的三份文件。
+`types.sql` 创建原生类型与查询表达式，`tables.sql` 创建十二张运行表，`logs.sql` 创建
+默认 `logs` 表。宿主初始化和生成器共用这些文件。修改基线后重新生成并检查差异。
 
 Gradle 参数可透传给生成命令，例如已缓存依赖时：
 
@@ -67,7 +47,7 @@ bash docs/harness/generate-jooq.sh --offline --console=plain
 ```
 
 不要在另一构建正在编译 gen 时重新生成。生成器会清理目标包中的旧文件；先验证
-22 张表和主键是否完整可防止明显错误连接清空输出，但不能代替生成完成后的差异
+13 张表和主键是否完整可防止明显错误连接清空输出，但不能代替生成完成后的差异
 检查。生成失败后修复环境并重新生成，不能提交不完整产物。
 
 ## 显式指定生成数据库
