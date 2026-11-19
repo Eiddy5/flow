@@ -70,9 +70,9 @@ Flow 不硬编码 toolchain，也不设置固定的 `sourceCompatibility`、`tar
 `FLOW_PAAS_SOURCE_PATH` 环境变量；CI 和 includeBuild 消费方也需提供该源码。
 未提供正确源码时构建会明确报错，不回退到旧版 Session。
 
-core 只引入 Session 合同所在制品，关闭该依赖的传递基础设施，并默认设置
-`paas.session.enabled=false`。宿主已有 Session 基础设施配置可覆盖这一最低优先级默认值。
-宿主应显式注册自己的 SessionFactory；Flow 不创建认证服务或 Redis 缓存。
+core 只引入 Session 合同所在制品，关闭该依赖的传递基础设施。
+宿主管理 `paas.session.enabled`。Flow 不依赖宿主的 `SessionFactory` 执行命令。
+当前约定见 [ADR 0134](../decisions/0134-limit-session-to-user-service-entrypoints.md)。
 
 ## 配置
 
@@ -181,11 +181,11 @@ String executionId = command.executionId();
 
 // 命令返回表示已入队；实例由执行器异步创建，首次查询可能为空。
 var execution = executions.findById(session, executionId);
-var registeredPlugins = plugins.plugins(session);
+var registeredPlugins = plugins.plugins();
 ```
 
-三个服务统一位于 `org.flow.core.services`，每个名称只有一个业务实现。宿主直接
-注入原有 Service，由服务本身完成身份校验、存储和命令投递。业务入口均接收
+三个服务统一位于 `org.flow.core.services`，每个名称只有一个实现。宿主直接注入服务。
+`FlowService` 和 `ExecutionService` 完成身份校验、存储和命令投递，用户操作入口接收
 `<S extends Session<U>, U extends SessionUser>`，从
 `session.getCompanyId()` 提取租户，从 `session.getUser().getId()` 提取操作者。
 缺少租户、用户或用户 ID 时拒绝调用，YAML 中的 tenantId 不覆盖 Session。
@@ -198,11 +198,9 @@ var registeredPlugins = plugins.plugins(session);
 用于关联原生异步操作结果。恢复操作将 actorId 写入 Pause 的 resumed.by。
 执行器消费控制命令和重放来源时再次检查租户、命名空间和流程。
 
-宿主还需注册自己的 `SessionFactory<S, U>` Bean。异步队列使用 `SessionCommand`
-包装原生命令，仅保存租户和 actorId，不序列化 Session、cookie、token 或用户资料。
-消费者通过该工厂创建会话、装载用户并调用 `onSessionBound()`，校验恢复后的身份，
-然后执行原生命令；身份恢复失败会记录异步失败，不执行命令。
-恢复只重建后台操作身份，不代表恢复登录状态；工厂应能创建独立的新会话和用户对象。
+异步队列继续使用 `SessionCommand` 包装原生命令和 `actorId`。租户、目标及操作参数保存在
+原生命令中，消息不序列化 Session、cookie、token 或用户资料。消费者直接从命令读取操作者，
+记录日志并执行原生命令。人工恢复的 `resumed.by` 由受理时的 `Resume` 命令提供。
 操作者标识保留在队列消息和消费日志中，本次没有新增执行审计表。
 
 `FlowService.validate(session, sources)` 提供定义校验且不保存流程；导入、依赖查询、
@@ -230,8 +228,8 @@ var registeredPlugins = plugins.plugins(session);
 `flow.plugins.path` 非空时必须指向存在的目录，原生 Registry 工厂在返回注册表前
 扫描该目录。外部插件由 processor 生成注册资源，使用独立 JAR/ClassLoader 加载。
 
-业务插件查询统一使用 `PluginService.plugins(session)`、`plugin(session, identifier)` 和
-`versions(session, type)`。注册表是引擎级共享目录，Session 校验不会产生租户专属插件列表。
+插件查询通过 `PluginService.plugins()`、`plugin(identifier)` 和 `versions(type)`
+直接读取引擎级共享目录。宿主对用户暴露目录时，负责相应的权限检查。
 离线导出工具内部使用 `org.flow.core.docs.PluginExportService.export(destination, includeCore)` 导出 Markdown、JSON Schema、SVG。目标目录必须
 尚不存在且父目录存在。离线聚合/配置 Schema 仍由 tooling 生成：
 
@@ -411,6 +409,8 @@ bash docs/harness/verify-flow.sh --full-regression --no-build-cache --console=pl
 范围与宿主运行前提见 [ADR 0133](../decisions/0133-session-aware-public-services.md#验证)。
 
 ## 2026-10-19 直接 Service 调整验证
+
+下述记录对应当时三个 Service 均接收 Session 的实现。当前调用方式见上面的 Java 入口和插件说明。
 
 三个原有 Service 直接接收 Session 后，生产与测试编译、JAR、根和 tooling 运行依赖
 隔离、独立宿主消费工程编译及配置/插件 Schema 导出通过。Java 25 与隔离 PostgreSQL

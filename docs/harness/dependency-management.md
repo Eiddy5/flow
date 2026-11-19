@@ -53,7 +53,7 @@ dependencies {
 引用 BOM 的 Gradle `platform(...)` 语法不表示存在本地 `platform` 子模块。
 gen 使用内部 jOOQ、jooq-paas 和 codegen extension，允许 `JooqPojo` 必要的 PaaS
 common、json、sql、exception，以及内部 Bean 装配所需的 paas-pulsar 和必要客户端。
-core 另以非传递 api 依赖引入 paas-session，只使用会话合同；默认关闭其认证、缓存和消费者。
+core 另以非传递 api 依赖引入 paas-session，使用会话合同。Session 开关由宿主管理。
 不引入 PaaS 聚合包、AuthX 或 CSES 业务。
 PostgreSQL JDBC 驱动仍使用现有官方依赖，Flow 工作队列仍采用 JDBC。
 
@@ -379,9 +379,10 @@ Java 21 的字节码。这项检查不覆盖运行时 API 和行为兼容性。
 
 ## 2026-10-19 Session 与本地 PaaS 联合构建
 
-Session 边界见 [ADR 0133](../decisions/0133-session-aware-public-services.md)。core 的
+联合构建见 [ADR 0133](../decisions/0133-session-aware-public-services.md)，Session 使用范围见
+[ADR 0134](../decisions/0134-limit-session-to-user-service-entrypoints.md)。core 的
 paas-session 为非传递 api 依赖，并显式导出公共签名涉及的 paas-common、paas-json
-及 micronaut-json-core 类型；默认关闭 paas.session.enabled，宿主显式配置可覆盖。
+及 micronaut-json-core 类型。`paas.session.enabled` 由宿主管理。
 与现有 gen 所需的 common/json/sql/exception/pulsar 一起使用本地 neworg 源码。
 未使用的 pulsar-client-admin-original 在 gen 和 jdbc 的相关依赖边排除，保留既有
 Admin API 类型；运行隔离检查继续禁止其实现、Redis、HTTP Server 和其他 PaaS 模块。

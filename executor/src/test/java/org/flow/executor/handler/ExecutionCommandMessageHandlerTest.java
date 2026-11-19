@@ -15,6 +15,7 @@ import org.flow.core.async.AsyncOperationService;
 import org.flow.core.executor.command.Create;
 import org.flow.core.executor.command.ExecutionCommand;
 import org.flow.core.executor.command.Replay;
+import org.flow.core.executor.command.SessionCommand;
 import org.flow.core.killswitch.EvaluationType;
 import org.flow.core.killswitch.KillSwitchService;
 import org.flow.core.models.executions.Execution;
@@ -66,9 +67,6 @@ class ExecutionCommandMessageHandlerTest {
     @Mock
     KillSwitchActionService killSwitchActionService;
 
-    @Mock
-    org.flow.core.services.executions.SessionCommandContext sessionCommandContext;
-
     ExecutionCommandMessageHandler handler;
     Create createCommand;
     Execution sourceExecution;
@@ -85,8 +83,7 @@ class ExecutionCommandMessageHandlerTest {
             asyncOperationService,
             executionEventMessageHandler,
             killSwitchService,
-            killSwitchActionService,
-            sessionCommandContext
+            killSwitchActionService
         );
         createCommand = Create.of(new ExecutionId("tenant", "ns", "flow-id", "exec-1", null))
             .withOperationId("op-1");
@@ -420,28 +417,12 @@ class ExecutionCommandMessageHandlerTest {
         return execution;
     }
 
-    /** Session 恢复失败不能创建实例，并向异步操作记录失败结果。 */
-    @Test
-    void rejectsCommandsWhoseSessionCannotBeRestored() throws Exception {
-        var session = org.mockito.Mockito.mock(org.paas.session.Session.class);
-        var user = org.mockito.Mockito.mock(org.paas.session.SessionUser.class);
-        when(session.getCompanyId()).thenReturn("tenant");
-        when(session.getUser()).thenReturn(user);
-        when(user.getId()).thenReturn("actor-1");
-        var scoped = org.flow.core.executor.command.SessionCommand.from(session, createCommand);
-        when(sessionCommandContext.restore(scoped)).thenThrow(new IllegalStateException("宿主工厂不可用"));
-        assertThat(handler.handle(scoped)).isEmpty();
-        verifyNoInteractions(executionService, executionStateStore);
-        verify(asyncOperationService).emitProcessedIfAsync(scoped, "tenant", "exec-1",
-            Outcome.FAILED, "宿主工厂不可用");
-    }
-
     /** 重放不能借助不带 ACL 的状态仓储读取其他租户的来源执行。 */
     @Test
     void rejectsCrossTenantReplaySource() {
         var otherTenantExecution = mockExecution("source-exec-id", "another-tenant", "ns", "flow-id");
         when(executionStateStore.findByIdWithoutAcl("source-exec-id")).thenReturn(otherTenantExecution);
-        assertThat(handler.handle(replayCommand)).isEmpty();
+        assertThat(handler.handle(new SessionCommand(replayCommand, "actor-1"))).isEmpty();
         verifyNoInteractions(executionService, flowMetaStore);
         verify(asyncOperationService).emitProcessedIfAsync(eq(replayCommand), eq("tenant"), eq("new-exec-id"),
             eq(Outcome.FAILED), anyString());
@@ -450,14 +431,16 @@ class ExecutionCommandMessageHandlerTest {
     /** 锁内再次校验租户，拒绝发布后目标发生变化或手工伪造的控制命令。 */
     @Test
     void rejectsCrossTenantTargetInsideTheLock() {
-        var pause = org.flow.core.executor.command.Pause.from(sourceExecution);
+        var pause = org.flow.core.executor.command.Pause.from(sourceExecution).withOperationId("op-pause");
         when(killSwitchService.evaluate(pause)).thenReturn(EvaluationType.PASS);
         when(executionStateStore.lock(eq("source-exec-id"), any())).thenAnswer(invocation -> {
             java.util.function.Function<Execution, ExecutorContext> action = invocation.getArgument(1);
             return Optional.ofNullable(action.apply(mockExecution("source-exec-id", "another-tenant", "ns", "flow-id")));
         });
-        assertThat(handler.handle(pause)).isEmpty();
+        assertThat(handler.handle(new SessionCommand(pause, "actor-1"))).isEmpty();
         verifyNoInteractions(executionService, flowMetaStore);
+        verify(asyncOperationService).emitProcessedIfAsync(eq(pause), eq("tenant"), eq("source-exec-id"),
+            eq(Outcome.FAILED), anyString());
     }
 
     private Execution mockExecution(String execId, String tenantId, String namespace, String flowId) {

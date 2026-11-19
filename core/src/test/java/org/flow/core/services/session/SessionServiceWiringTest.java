@@ -144,8 +144,8 @@ class SessionServiceWiringTest {
             assertThat(flows.findById(owner, namespace, flowId).orElseThrow().getRevision())
                 .isEqualTo(saved.getRevision());
             assertThat(flows.findById(otherTenant, namespace, flowId)).isEmpty();
-            assertThat(plugins.plugins(owner)).anyMatch(plugin -> plugin.hasClass(Log.class.getName()));
-            assertThat(plugins.plugin(owner, Log.class.getName())).isPresent();
+            assertThat(plugins.plugins()).anyMatch(plugin -> plugin.hasClass(Log.class.getName()));
+            assertThat(plugins.plugin(Log.class.getName())).isPresent();
             assertThatThrownBy(() -> executions.create(otherTenant, namespace, flowId, null, Map.of("greeting", "hello")))
                 .isInstanceOf(NoSuchElementException.class);
 

@@ -10,10 +10,9 @@
 
 调用应用依赖根 `flow` Java Library，在自己的 Micronaut ApplicationContext 中配置
 `datasources.flow`。显式准备数据库后，注入 `org.flow.core.runners.FlowEngine` 并调用
-`start()`；通过接收宿主 Session 的 `FlowService` 创建流程、`ExecutionService`
-创建和查询执行、`PluginService` 查询注册插件。三个服务统一位于
-`org.flow.core.services`，由原有 Service 直接接收 Session 并实现业务。业务调用
-统一从 Session 提取租户和操作者。
+`start()`。三个公开服务位于 `org.flow.core.services`。`FlowService` 和
+`ExecutionService` 直接接收宿主 Session，从中提取租户和操作者。
+`PluginService` 直接查询全局插件目录，调用无需 Session。
 
 完整配置与 Java 示例见 [直接使用指南](docs/harness/java-engine.md)。根制品负责依赖
 聚合，需连同依赖使用；单独复制根 JAR 不会包含所有模块。目前没有发布新 Maven 制品。

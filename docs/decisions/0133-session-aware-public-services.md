@@ -4,6 +4,8 @@
 - 日期：2026-10-19
 - 关联：ADR 0121、0125、0126、0127、0132
 
+[ADR 0134](0134-limit-session-to-user-service-entrypoints.md) 修订本文中插件查询、后台 Session 恢复与应用级 Session 默认值的条款。本文保留 2026-10-19 的实现及验证记录。
+
 ## 背景
 
 宿主基于 PaaS，企业和操作者来自宿主 Session。直接暴露接受 tenantId 的原生服务，

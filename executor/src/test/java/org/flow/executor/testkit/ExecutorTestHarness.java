@@ -266,12 +266,19 @@ public final class ExecutorTestHarness {
         runContextFactoryRef[0] = runContextFactory;
         WorkerQueueService workerQueueService = new WorkerQueueService.Default();
 
+        var executionRepository = Mockito.mock(ExecutionRepositoryInterface.class);
+        Mockito.when(executionRepository.findById(Mockito.anyString(), Mockito.anyString())).thenAnswer(invocation -> {
+            String tenantId = invocation.getArgument(0);
+            String executionId = invocation.getArgument(1);
+            return Optional.ofNullable(executionStateStore.findByIdWithoutAcl(executionId))
+                .filter(execution -> tenantId.equals(execution.getTenantId()));
+        });
         // a spy so tests can stub the methods that reach for other services while the rest stays real
         this.executionService = Mockito.spy(
             new ExecutionService(
                 Mockito.mock(org.flow.core.services.FlowService.class),
                 Mockito.mock(StorageInterface.class),
-                Mockito.mock(ExecutionRepositoryInterface.class),
+                executionRepository,
                 Mockito.mock(LogDataStoreInterface.class),
                 Mockito.mock(MetricRepositoryInterface.class),
                 Mockito.mock(FlowInputOutput.class),
@@ -351,8 +358,7 @@ public final class ExecutorTestHarness {
             asyncOperationService,
             executionEventMessageHandler,
             killSwitchService,
-            killSwitchActionService,
-            org.mockito.Mockito.mock(org.flow.core.services.executions.SessionCommandContext.class)
+            killSwitchActionService
         );
         this.workerTaskResultMessageHandler = new WorkerTaskResultMessageHandler(
             executionStateStore,

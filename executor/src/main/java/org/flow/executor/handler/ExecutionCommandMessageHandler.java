@@ -3,8 +3,6 @@ package org.flow.executor.handler;
 import java.util.Optional;
 import java.util.Objects;
 
-import org.flow.core.services.executions.SessionCommandContext;
-
 import org.flow.core.async.AsyncOperationProcessedEvent;
 import org.flow.core.async.AsyncOperationService;
 import org.flow.core.exceptions.FlowNotFoundException;
@@ -47,9 +45,18 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
     private final KillSwitchService killSwitchService;
     private final KillSwitchActionService killSwitchActionService;
 
-    private SessionCommandContext sessionCommandContext;
-
-    /** 注入原生执行链路及宿主 Session 身份恢复器。 */
+    /**
+     * 注入处理执行命令所需的运行组件。构造时只保存依赖引用。
+     * @param executionService 非空的执行创建及状态变更服务
+     * @param executionStateStore 非空的执行状态存储，用于创建、读取和锁定执行
+     * @param flowMetaStore 非空的运行定义存储，用于加载命令对应的流程版本
+     * @param taskOutputService 非空的任务输出服务，用于迁移历史输出
+     * @param executionOutputService 非空的执行输出服务，用于迁移历史输出
+     * @param asyncOperationService 非空的异步操作服务，用于发布命令处理结果
+     * @param executionEventMessageHandler 非空的执行事件处理器，用于推进新执行
+     * @param killSwitchService 非空的停止策略查询服务
+     * @param killSwitchActionService 非空的停止策略执行服务
+     */
     @Inject
     public ExecutionCommandMessageHandler(
         ExecutionService executionService,
@@ -60,8 +67,7 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
         AsyncOperationService asyncOperationService,
         ExecutionEventMessageHandler executionEventMessageHandler,
         KillSwitchService killSwitchService,
-        KillSwitchActionService killSwitchActionService,
-        SessionCommandContext sessionCommandContext) {
+        KillSwitchActionService killSwitchActionService) {
         this.executionService = executionService;
         this.executionStateStore = executionStateStore;
         this.flowMetaStore = flowMetaStore;
@@ -71,23 +77,19 @@ public class ExecutionCommandMessageHandler implements ExecutorMessageHandler<Ex
         this.executionEventMessageHandler = executionEventMessageHandler;
         this.killSwitchService = killSwitchService;
         this.killSwitchActionService = killSwitchActionService;
-        this.sessionCommandContext = sessionCommandContext;
     }
 
-    /** 消费原生或带 Session 身份的命令；身份恢复失败时记录异步失败。 */
+    /**
+     * 消费原生命令或携带操作者标识的命令。带操作者的命令使用消息中的身份记录日志，
+     * 并按原生命令协议检查目标和更新状态。
+     * @param message 非空的执行命令，包含目标以及该操作所需的参数
+     * @return 推进后的执行上下文；没有发生推进或处理失败时返回空 Optional
+     */
     @Override
     public Optional<ExecutorContext> handle(ExecutionCommand message) {
         if (message instanceof SessionCommand scoped) {
-            try {
-                var actor = sessionCommandContext.restore(scoped);
-                log.info("Processing execution command {} for tenant {} by actor {}, eventId {}",
-                    scoped.command().type(), scoped.tenantId(), actor.id(), scoped.eventId());
-            } catch (Exception exception) {
-                log.error("Unable to restore Session for command {}", scoped.eventId(), exception);
-                asyncOperationService.emitProcessedIfAsync(scoped, scoped.tenantId(), scoped.executionId(),
-                    AsyncOperationProcessedEvent.Outcome.FAILED, exception.getMessage());
-                return Optional.empty();
-            }
+            log.info("Processing execution command {} for tenant {} by actor {}, eventId {}",
+                scoped.command().type(), scoped.tenantId(), scoped.actorId(), scoped.eventId());
             return handle(scoped.command());
         }
         // Create and Replay bootstrap a new execution — they cannot go through executionStateStore.lock()

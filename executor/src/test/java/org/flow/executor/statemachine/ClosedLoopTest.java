@@ -3,23 +3,32 @@ package org.flow.executor.statemachine;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.NoSuchElementException;
 
 import org.junit.jupiter.api.Test;
 
 import org.flow.core.models.executions.Execution;
+import org.flow.core.executor.command.SessionCommand;
 import org.flow.core.models.flows.Concurrency;
 import org.flow.core.models.flows.FlowWithSource;
 import org.flow.core.models.flows.State;
 import org.flow.core.runners.ExecutionEvent;
 import org.flow.core.runners.ExecutionEventType;
+import org.flow.core.serializers.JacksonMapper;
 import org.flow.executor.testkit.Executions;
 import org.flow.executor.testkit.ExecutorTestHarness;
 import org.flow.executor.testkit.Flows;
 import org.flow.executor.testkit.ScriptedWorker;
 import org.flow.executor.testkit.Trace;
+import org.flow.plugin.core.flow.Pause;
+import org.paas.session.Session;
+import org.paas.session.User;
 
 import static org.flow.executor.testkit.HarnessAssert.assertThat;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.InstanceOfAssertFactories.MAP;
 
 /**
  * The production {@code DefaultExecutor}, running: messages are delivered to its own subscribers,
@@ -137,4 +146,42 @@ class ClosedLoopTest {
         assertThat(harness.executionDelayStateStore().pending()).isEmpty();
     }
 
+    /**
+     * 验证其他租户无法提交恢复，且合法恢复经 Executor 消费后将提交时的操作者写入 Pause 输出。
+     * @throws Exception 当合法恢复无法提交或读取已保存的输出时使测试失败
+     */
+    @Test
+    void resumesWithTheSubmittedActorWithoutRestoringSession() throws Exception {
+        var task = Pause.builder().id("review").type(Pause.class.getName()).build();
+        var flow = Flows.of(task, Flows.log("after-review"));
+        harness.registerFlow(flow);
+        var execution = Executions.created(flow);
+        var worker = ScriptedWorker.succeeding(T0);
+        harness.run(execution, worker);
+        assertThat(harness).hasExecutionInState(execution, State.Type.PAUSED);
+        var pausedRun = harness.executionStateStore().findByIdWithoutAcl(execution.getId()).getTaskRunList().getFirst();
+        var inputs = Map.<String, Object>of("decision", "approved");
+
+        var user = new User();
+        user.setId("reviewer");
+        user.setCompanyId("another-tenant");
+        var session = new Session<User>();
+        session.setUser(user);
+        assertThatThrownBy(() -> harness.executionService().resume(session, execution.getId(), inputs))
+            .isInstanceOf(NoSuchElementException.class);
+        assertThat(harness.executionCommandQueue().emitted()).isEmpty();
+
+        user.setCompanyId(flow.getTenantId());
+        var command = harness.executionService().resume(session, execution.getId(), inputs);
+        assertThat(harness.executionCommandQueue().emitted()).containsExactly(new SessionCommand(command, "reviewer"));
+        user.setId("later-request-user");
+
+        harness.run(List.of(), worker);
+        assertThat(harness).hasExecutionInState(execution, State.Type.SUCCESS);
+        var stored = harness.taskOutputRepository().findById(flow.getTenantId(), pausedRun.getId()).orElseThrow();
+        var outputs = JacksonMapper.ofIonBinary().readValue(stored.value(), JacksonMapper.MAP_TYPE_REFERENCE);
+        assertThat(outputs).containsEntry("onResume", inputs);
+        assertThat(outputs.get("resumed")).asInstanceOf(MAP).containsEntry("by", "reviewer");
+        assertThat(harness.taskOutputRepository().findById("another-tenant", pausedRun.getId())).isEmpty();
+    }
 }

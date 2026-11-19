@@ -15,6 +15,7 @@ Java 版本选择按 [ADR 0125](decisions/0125-use-build-selected-java-version.m
 插件验证模块移除及显式导出目录按 [ADR 0131](decisions/0131-remove-plugin-fixture.md)，
 插件 API 模块和包名按 [ADR 0132](decisions/0132-rename-model-to-plugin-api.md)。
 Session 服务与 Java 25 / 本地 PaaS 联合构建按 [ADR 0133](decisions/0133-session-aware-public-services.md)。
+后台命令的身份和宿主 Session 配置按 [ADR 0134](decisions/0134-limit-session-to-user-service-entrypoints.md)。
 [ADR 0117](decisions/0117-prune-kestra-product-entrypoints.md)、
 [0118](decisions/0118-prune-kestra-core-product-features.md)、
 [0119](decisions/0119-use-postgresql-only.md)、
@@ -35,7 +36,7 @@ Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前
 | `plugin-api`、`processor` | 基础插件契约、注解与编译期插件注册资源生成 |
 | `gen` | PostgreSQL 生成对象及独立 codegen 入口；运行生成类型供数据库适配器使用，普通编译不连接数据库 |
 | `jdbc` | 不依赖 core 的数据库底层：datasources.flow、jOOQ、事务执行、通用工具和宿主可覆盖的内部 DB 事件/消费者默认配置；不承载能力专属仓储 |
-| `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；通用仓储基类、ServiceInstance 等 core 仓储、迁移 SPI 适配、迁移历史和锁；公开业务入口为 org.flow.core.services 下唯一的 FlowService、ExecutionService、PluginService，原有服务直接接收宿主 Session 并实现业务；同一服务保留后台运行方法，FlowEngine 管理生命周期 |
+| `core` | Flow/Task/Execution、服务、表达式、原生 Task、插件注册和导出；通用仓储基类、ServiceInstance 等 core 仓储、迁移 SPI 适配、迁移历史和锁；公开入口位于 `org.flow.core.services`，FlowService、ExecutionService 的用户操作接收宿主 Session，PluginService 直接查询全局插件目录；FlowEngine 管理生命周期 |
 | `queue` | 队列协议、原生 JDBC Dispatch/Broadcast 实现及队列持久化和表配置 |
 | `executor` | 原生执行状态推进与命令消费；ExecutionRepository、ExecutionStateStore、执行器专属持久化和表配置 |
 | `worker` | Task/Trigger 执行、队列领取与结果发布、PG 心跳和恢复，以及 Worker 专属持久化和表配置；普通和 SystemWorker 独立线程池 |
