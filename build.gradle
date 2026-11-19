@@ -309,7 +309,7 @@ tasks.register('verifyRuntimeIsolation') {
                 (id.group == 'io.micronaut' && id.name == 'micronaut-http-server-netty') ||
                 (id.group == 'org.cses.flow' && ['core', 'scheduler', 'flow', 'embedded'].contains(id.name)) ||
                 (id.group == 'org.flow.fixture') ||
-                (id.group == 'org.flow' && ['embedded', 'tooling', 'tests', 'storage-local', 'cli', 'webserver', 'jdbc-h2', 'jdbc-mysql', 'jdbc-postgres', 'queue-jdbc', 'runner-memory', 'repository-memory'].contains(id.name))
+                (id.group == 'org.flow' && ['http', 'embedded', 'tooling', 'tests', 'storage-local', 'cli', 'webserver', 'jdbc-h2', 'jdbc-mysql', 'jdbc-postgres', 'queue-jdbc', 'runner-memory', 'repository-memory'].contains(id.name))
         }
         if (!forbidden.isEmpty()) {
             throw new GradleException("项目运行时包含禁止的依赖：${forbidden*.moduleVersion*.id}")

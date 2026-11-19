@@ -1,0 +1,27 @@
+dependencies {
+    implementation project(':core')
+    implementation libs.micronaut.http
+
+    // The PaaS host already supplies its HTTP server and response filter.
+    compileOnly(libs.paas.response.wrapper) { transitive = false }
+
+    ['annotationProcessor', 'testAnnotationProcessor'].each { configuration ->
+        add(configuration, platform(libs.micronaut.platform)) {
+            exclude group: 'org.paas'
+            exclude group: 'org.paas.nlp'
+            exclude group: 'org.paas.service'
+            exclude group: 'org.redisson', module: 'redisson-micronaut-50'
+        }
+        add(configuration, libs.micronaut.inject.java)
+    }
+
+    testImplementation libs.micronaut.test.junit5
+    testImplementation libs.micronaut.http.server.netty
+    testImplementation libs.paas.response.wrapper
+}
+
+tasks.named('test', Test) {
+    // Load the controller from the library JAR, as a consuming host does.
+    def httpJar = tasks.named('jar', Jar).flatMap { it.archiveFile }
+    classpath = files(httpJar) + (classpath - sourceSets.main.output)
+}

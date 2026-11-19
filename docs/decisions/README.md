@@ -11,7 +11,8 @@ JDBC 继续使用现有命令格式，Executor 直接消费命令及操作者标
 按 [ADR 0132](0132-rename-model-to-plugin-api.md)，原 model 更名为 plugin-api，
 公共接口、注解与枚举统一归 org.flow.plugin.api 包及其子包。
 
-当前模块共 12 个，按 [ADR 0131](0131-remove-plugin-fixture.md) 移除 plugin-fixture；
+当前模块共 13 个。[ADR 0135](0135-expose-plugin-queries-through-host-paas-web.md) 增加可选的
+`http` 模块，由 Flow 在宿主 HTTP 服务上提供插件查询。按 [ADR 0131](0131-remove-plugin-fixture.md)，
 离线 Schema 导出须显式指定已有插件目录。
 
 持久化归属以
@@ -72,6 +73,7 @@ JDBC，实现共用可配置 `datasources.flow`。旧 Pulsar、DataSourceEngine/
 
 ## Core 组件与依赖方向
 
+- [ADR 0135](0135-expose-plugin-queries-through-host-paas-web.md)：Flow 持有插件 HTTP 路由和契约，使用宿主 PaaS Web 与鉴权。
 - [ADR 0134](0134-limit-session-to-user-service-entrypoints.md)：定义与执行的用户操作使用宿主 Session，插件查询直接读取全局目录，异步执行消费命令与操作者标识，应用开关由宿主管理。
 - [ADR 0132](0132-rename-model-to-plugin-api.md)：model 更名为 plugin-api，统一插件 API 包名与 SPI 注册路径。
 - [ADR 0133](0133-session-aware-public-services.md)：原有 Service 直接接收 Session，不增加同名委托层；租户、操作者和异步命令边界，Java 25 与本地 PaaS neworg 联合构建。

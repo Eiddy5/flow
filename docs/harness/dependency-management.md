@@ -13,7 +13,7 @@ Micronaut 按模块声明的边界依据
 测试和专用资源一并删除，不迁移测试支持；生产存储由宿主提供。
 数据库底层及持久化归属按
 [ADR 0130](../decisions/0130-co-locate-persistence-with-owning-modules.md) 调整：删除
-queue-jdbc、jdbc-postgres；按 ADR 0131 移除 plugin-fixture，当前注册子模块为 12 个，script 保持独立。
+queue-jdbc、jdbc-postgres；按 ADR 0131 移除 plugin-fixture，当前注册子模块为 13 个，script 保持独立。
 
 ## 维护位置
 
@@ -175,6 +175,7 @@ core 导出的 BOM 沿正常项目依赖提供版本约束；jdbc 不依赖 core
 | script | 无直接 Micronaut 库声明，依赖 core 的协议及运行环境 | 保留插件 SPI 处理器；依赖已删除模块的集成测试退出 |
 | plugin-api、processor | 无自身 Micronaut 需求 | 不配置 Micronaut 处理器或 Micronaut Test |
 | tooling | Context API 用于读取 Bean 元数据；经 core 带入 jdbc/gen 及数据库库，不启动容器或连接数据库 | 无主源码或测试 Micronaut 处理器，单元测试不声明 Micronaut Test |
+| http | 可选宿主 HTTP 适配模块。编译期使用 PaaS 响应包装注解，运行时使用宿主 PaaS Web | 主源码生成路由元数据。测试侧启动 Netty 并加载 PaaS 响应过滤器 |
 
 主源码没有框架 import 不足以证明某个运行库可以删除。core 保留校验、指标、
 Prometheus、Tracing 和响应式集成所需的自动装配；生产 HTTP 调用使用 Apache

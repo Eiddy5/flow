@@ -11,6 +11,7 @@ include 'scheduler'
 include 'indexer'
 include 'script'
 include 'tooling'
+include 'http'
 
 // The SessionUser contract is currently available from the local PaaS neworg sources.
 // Keep the source path configurable for CI and composite-build consumers.

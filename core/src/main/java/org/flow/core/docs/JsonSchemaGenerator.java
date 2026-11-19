@@ -548,6 +548,12 @@ public class JsonSchemaGenerator {
             .orElse(ImmutableMap.of());
     }
 
+    /** Returns the documented output properties indexed by their field paths. */
+    public Map<String, Object> outputProperties(Class<?> pluginType) {
+        Map<String, Object> schema = this.outputs(null, pluginType);
+        return flattenWithoutType(AbstractClassDocumentation.properties(schema), required(schema));
+    }
+
     protected void build(SchemaGeneratorConfigBuilder builder, boolean draft7) {
         this.build(builder, draft7, Collections.emptyList());
     }
@@ -825,10 +831,9 @@ public class JsonSchemaGenerator {
                     }
 
                     if (withOutputs) {
-                        Map<String, Object> outputsSchema = this.outputs(null, scope.getType().getErasedType());
                         collectedTypeAttributes.set(
                             "outputs", context.getGeneratorConfig().createObjectNode().pojoNode(
-                                flattenWithoutType(AbstractClassDocumentation.properties(outputsSchema), required(outputsSchema))
+                                this.outputProperties(scope.getType().getErasedType())
                             )
                         );
                     }

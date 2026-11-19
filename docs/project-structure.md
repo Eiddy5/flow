@@ -23,7 +23,7 @@ Session 服务与 Java 25 / 本地 PaaS 联合构建按 [ADR 0133](decisions/013
 
 ## 当前模块
 
-根 `flow` 是直接可消费的 Java Library，聚合 12 个注册子模块中的运行依赖。
+根 `flow` 是直接可消费的 Java Library，从 13 个注册子模块中聚合引擎运行依赖。
 项目代码使用 `org.flow` 包，职责在所属模块内实现。旧 Flow 的 `org.cses.flow.core`、
 Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前 gen 为原生数据库
 结构重新生成，不恢复旧 gen 的 Schema 或领域模型；旧项目恢复见
@@ -44,6 +44,7 @@ Pulsar 队列、server、buildSrc 及 embedded 均不参与当前构建。当前
 | `indexer` | 日志、指标与执行统计异步入库，以及相关持久化和表配置 |
 | `script` | 通用脚本基类、CommandsWrapper 和 ScriptOutput；TaskRunner SPI/Process 位于 core，脚本显式选择执行器，无内置 Docker |
 | `tooling` | 离线聚合/配置 Schema 生成器；不启动 Context，不进入根生产依赖 |
+| `http` | 可选 PaaS HTTP 适配模块。宿主启用后由 Flow Controller 提供插件查询，契约见 [HTTP API](../http/api/README.md) |
 
 `plugin-api` 的接口为 `org.flow.plugin.api.Plugin`，注解与枚举分别位于
 `org.flow.plugin.api.annotations`、`org.flow.plugin.api.enums`。core 与 processor
@@ -85,6 +86,7 @@ core 的数据库技术测试在测试运行 classpath 引入所需能力模块�
 core、queue、jdbc、executor、worker、scheduler 和 indexer
 拥有 Micronaut 装配职责。script 的主源码不直接声明 Micronaut，
 通过 core 间接依赖框架。tooling 运行时读取 Bean 元数据，不进入根生产依赖。
+`http` 依赖 core 和 Micronaut HTTP API，复用宿主 PaaS Web，独立于根引擎运行依赖。
 具体作用域及验证方法见 [依赖管理](harness/dependency-management.md)。
 
 core 及各能力模块的数据库实现直接消费 gen 的 Table、Field、Record 和 `JooqPojo`
@@ -129,7 +131,7 @@ Pulsar 类型，Flow 队列仍是 JDBC。jdbc 的 `FlowDatabaseContextConfigurer
 
 ## 构建、来源和产物
 
-- `build.gradle`、`settings.gradle`：唯一根构建；根 Java Library 与 12 个子模块。
+- `build.gradle`、`settings.gradle`：唯一根构建；根 Java Library 与 13 个子模块。
 - `gradle/libs.versions.toml`：唯一外部依赖版本目录；维护与比较方法见 [依赖管理](harness/dependency-management.md)。
 - `gradle/`、`gradlew*`：固定 Wrapper 9.7.1；Java 版本由标准 Gradle Java 配置或构建 JDK 决定，不固定 toolchain、source、target 或 release。
 - `lombok.config`：原生构造器元数据协议，不能遗漏。

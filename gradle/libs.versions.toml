@@ -103,6 +103,7 @@ jooq-codegen-extension = { module = "org.jooq:jooq-codegen-extension", version.r
 paas-common = { module = "org.paas:paas-common" }
 paas-json = { module = "org.paas:paas-json" }
 paas-session = { module = "org.paas:paas-session" }
+paas-response-wrapper = { module = "org.paas:paas-response-wrapper", version.ref = "paas" }
 paas-bom = { module = "org.paas:paas-bom", version.ref = "paas" }
 json-patch = { module = "com.github.java-json-tools:json-patch", version.ref = "json-patch" }
 json-schema-validator = { module = "com.networknt:json-schema-validator", version.ref = "json-schema-validator" }
@@ -159,6 +160,7 @@ swagger-annotations = { module = "io.swagger.core.v3:swagger-annotations", versi
 
 micronaut-json-core = { module = "io.micronaut:micronaut-json-core" }
 micronaut-http = { module = "io.micronaut:micronaut-http" }
+micronaut-http-server-netty = { module = "io.micronaut:micronaut-http-server-netty" }
 micronaut-micrometer-core = { module = "io.micronaut.micrometer:micronaut-micrometer-core" }
 micronaut-tracing-opentelemetry = { module = "io.micronaut.tracing:micronaut-tracing-opentelemetry" }
 micronaut-jdbc = { module = "io.micronaut.sql:micronaut-jdbc" }

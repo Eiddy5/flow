@@ -1,0 +1,227 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Flow 插件查询 API",
+    "version": "0.1.0",
+    "description": "Flow 的原生 Micronaut Controller 与宿主共用 HTTP 服务，由 Flow 定义路由、JSON 响应和查询错误状态。宿主配置流量鉴权后，通过 flow.http.plugins.enabled 启用路由。调用方通过插件目录发现类型，再按返回的 type 查询详情。编辑器根据 schema 生成配置项，根据 examples 展示配置示例，根据 outputs 提示下游可引用的字段。Flow 定义的完整校验由 FlowService.validate 执行。"
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "宿主 HTTP 服务的根路径"
+    }
+  ],
+  "x-host-authentication": {
+    "required": true,
+    "description": "宿主的 HTTP 安全入口覆盖 /flow/plugins 及其子路径。调用方使用宿主现有登录凭据，凭据格式和鉴权错误体由宿主定义。Flow Controller 和 PluginService 直接查询全局插件目录，无 Session 或租户入参。"
+  },
+  "tags": [
+    {
+      "name": "Plugins",
+      "description": "查询当前引擎已注册的插件类型"
+    }
+  ],
+  "paths": {
+    "/flow/plugins": {
+      "get": {
+        "tags": ["Plugins"],
+        "operationId": "listFlowPlugins",
+        "summary": "列出已注册的插件类型",
+        "description": "每个规范类型返回一条摘要，按 type 升序排列。编排器新增任务时使用 category=tasks，新增触发器时使用 category=triggers。省略 category 时返回当前目录中所有类别。分类没有匹配项时返回空数组。",
+        "parameters": [
+          {
+            "name": "category",
+            "in": "query",
+            "description": "按插件注册表的类别精确筛选。示例值为 tasks 或 triggers。",
+            "schema": { "type": "string", "minLength": 1 },
+            "example": "tasks"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "插件摘要列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/PluginMetadata" }
+                },
+                "example": [
+                  {
+                    "type": "org.flow.plugin.core.log.Log",
+                    "category": "tasks",
+                    "title": "Emit log entries from a flow."
+                  }
+                ]
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidQuery" },
+          "401": { "$ref": "#/components/responses/HostUnauthenticated" },
+          "403": { "$ref": "#/components/responses/HostForbidden" }
+        }
+      }
+    },
+    "/flow/plugins/{type}": {
+      "parameters": [{ "$ref": "#/components/parameters/PluginType" }],
+      "get": {
+        "tags": ["Plugins"],
+        "operationId": "getFlowPlugin",
+        "summary": "获取一个插件类型的完整详情",
+        "description": "在同一个响应中返回元数据、配置 Schema、示例和输出说明。编排器将 metadata.type 原样写入节点的 type，tasks 类别用于任务节点，triggers 类别用于触发器节点。其他类别按引擎对应的扩展位置使用。outputs 描述输出字段，实际值来自每次执行。示例和输出可为空数组。",
+        "responses": {
+          "200": {
+            "description": "插件详情",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PluginDetails" },
+                "examples": {
+                  "logTask": {
+                    "summary": "Log 任务详情的结构示例",
+                    "description": "示例中的 Schema 节选了常用字段。实际响应包含该类型完整的配置 Schema。",
+                    "value": {
+                      "metadata": {
+                        "type": "org.flow.plugin.core.log.Log",
+                        "category": "tasks",
+                        "title": "Emit log entries from a flow."
+                      },
+                      "schema": {
+                        "$schema": "https://json-schema.org/draft/2019-09/schema",
+                        "type": "object",
+                        "required": ["id", "type", "message"],
+                        "properties": {
+                          "id": { "type": "string" },
+                          "type": { "const": "org.flow.plugin.core.log.Log" },
+                          "message": {
+                            "anyOf": [
+                              { "type": "string" },
+                              { "type": "array", "items": { "type": "string" } }
+                            ]
+                          }
+                        }
+                      },
+                      "examples": [
+                        {
+                          "title": "Log a DEBUG level message containing expressions.",
+                          "lang": "yaml",
+                          "full": true,
+                          "code": [
+                            "id: send_logs",
+                            "namespace: company.team",
+                            "",
+                            "tasks:",
+                            "  - id: hello",
+                            "    type: org.flow.plugin.core.log.Log",
+                            "    level: DEBUG",
+                            "    message: \"{{ task.id }} started at {{ taskrun.startDate }}\""
+                          ]
+                        }
+                      ],
+                      "outputs": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidQuery" },
+          "401": { "$ref": "#/components/responses/HostUnauthenticated" },
+          "403": { "$ref": "#/components/responses/HostForbidden" },
+          "404": { "$ref": "#/components/responses/PluginNotFound" },
+          "500": { "description": "插件详情生成失败" }
+        }
+      }
+    },
+    "/flow/plugins/{type}/versions": {
+      "parameters": [{ "$ref": "#/components/parameters/PluginType" }],
+      "get": {
+        "tags": ["Plugins"],
+        "operationId": "listFlowPluginVersions",
+        "summary": "查询当前引擎已加载的插件版本",
+        "description": "版本信息用于展示或诊断。当前默认注册表每个类型至多返回一个已加载版本。已注册的类型没有版本元数据时返回空数组。详情请求按类型解析到当前注册实现。",
+        "responses": {
+          "200": {
+            "description": "从已加载插件中读取到的版本字符串",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "type": "string" } },
+                "examples": {
+                  "loadedVersion": { "value": ["1.2.3"] },
+                  "noVersionMetadata": { "value": [] }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/InvalidQuery" },
+          "401": { "$ref": "#/components/responses/HostUnauthenticated" },
+          "403": { "$ref": "#/components/responses/HostForbidden" },
+          "404": { "$ref": "#/components/responses/PluginNotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "PluginType": {
+        "name": "type",
+        "in": "path",
+        "required": true,
+        "description": "目录返回的规范插件类型。使用区分大小写的 Java 类全限定名。",
+        "schema": { "type": "string", "minLength": 1 },
+        "example": "org.flow.plugin.core.log.Log"
+      }
+    },
+    "responses": {
+      "InvalidQuery": { "description": "传入的 category 或 type 为空白" },
+      "HostUnauthenticated": { "description": "宿主未认证请求身份" },
+      "HostForbidden": { "description": "宿主拒绝当前身份访问插件目录" },
+      "PluginNotFound": { "description": "当前引擎未注册该规范插件类型" }
+    },
+    "schemas": {
+      "PluginMetadata": {
+        "type": "object",
+        "required": ["type", "category", "title"],
+        "properties": {
+          "type": { "type": "string", "description": "规范插件类型，可原样写入相应的 Flow 节点" },
+          "category": { "type": "string", "description": "插件的注册类别，例如 tasks、triggers 或 task-runners" },
+          "title": { "type": "string", "description": "插件类型的显示名称，缺少声明时使用类的简单名称" },
+          "description": { "type": "string", "description": "插件声明的用途和行为说明" },
+          "group": { "type": "string", "description": "插件包的分组，用于目录展示" }
+        }
+      },
+      "PluginDetails": {
+        "type": "object",
+        "required": ["metadata", "schema", "examples", "outputs"],
+        "properties": {
+          "metadata": { "$ref": "#/components/schemas/PluginMetadata" },
+          "schema": {
+            "type": "object",
+            "description": "该类型的 JSON Schema，使用 JSON Schema Draft 2019-09。Schema 是独立文档，包含解析内部 $ref 所需的 $defs。调用方可以据此渲染字段、展示默认值和做字段校验。",
+            "additionalProperties": true
+          },
+          "examples": { "type": "array", "items": { "$ref": "#/components/schemas/PluginExample" } },
+          "outputs": { "type": "array", "items": { "$ref": "#/components/schemas/PluginOutput" } }
+        }
+      },
+      "PluginExample": {
+        "type": "object",
+        "required": ["title", "lang", "full", "code"],
+        "properties": {
+          "title": { "type": "string" },
+          "lang": { "type": "string", "example": "yaml" },
+          "full": { "type": "boolean", "description": "为 true 时示例是一份完整 Flow，为 false 时是该类型的配置片段" },
+          "code": { "type": "array", "description": "示例源文本按行返回，调用方按换行符拼接", "items": { "type": "string" } }
+        }
+      },
+      "PluginOutput": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "description": "相对于插件输出对象的字段路径" },
+          "type": { "type": "string", "description": "输出类型的显示文本" },
+          "description": { "type": "string", "description": "输出字段的含义" }
+        }
+      }
+    }
+  }
+}
